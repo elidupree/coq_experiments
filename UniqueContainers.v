@@ -285,13 +285,14 @@ End Hashable.
 
 Section FixedSizeHashSet.
   Variable A : Type.
-  (* Variable Bucket : ∀ (A : Type) (So : Setoid A) (ED : EqDec So) → {c | UniqueContainer (So:=So) (CC:=c)}. *)
   Context {So : Setoid A}.
   Context {ED : EqDec So}.
   Context {Dig : Hashable So}.
+  Variable Bucket : Type.
+  Context {BC : Container So Bucket}.
+  Context {BUC : UniqueContainer BC}.
   Variable maxDigest : nat.
   
-  Definition Bucket : Type := UniqueList (A:=A).
   Definition numBuckets : nat := S maxDigest.
   Definition Digest : Set := Fin.t numBuckets.
   Definition digestOf (a : A) : Digest := Fin.of_nat_lt (PeanoNat.Nat.mod_upper_bound (hashOf a) numBuckets (PeanoNat.Nat.neq_succ_0 maxDigest)).
@@ -335,9 +336,9 @@ Section FixedSizeHashSet.
   Hint Rewrite Vector.const_nth : hashset.
   Hint Resolve empty_containsNothing_unfolded : hashset.
   
-  Definition FixedSizeHashSet_empty : C := Vector.const (UniqueList_empty (A:=A)) numBuckets.
+  Definition FixedSizeHashSet_empty : C := Vector.const (empty (UniqueContainer:=BUC)) numBuckets.
   
-  Lemma FixedSizeHashSet_empty_nth n : nth FixedSizeHashSet_empty n = UniqueList_empty (A:=A).
+  Lemma FixedSizeHashSet_empty_nth n : nth FixedSizeHashSet_empty n = empty (UniqueContainer:=BUC).
     cbv [FixedSizeHashSet_empty]; automatic.
   Qed.
   
@@ -360,40 +361,36 @@ Section FixedSizeHashSet.
   Hint Immediate eq_sym : hashset.
   Hint Immediate neq_sym : hashset.
   
-  Definition FixedSizeHashSet_insert : ∀ (a:A) (c:C), a ∉ c → C.
-    refine (λ a c nc,
-      let d := digestOf a in
-      let anb : a ∉ nth c d := _ in
-      replace c d (insert anb)); automatic.
-  Defined.
+  Definition FixedSizeHashSet_insert (a:A) (c:C) (nc: a ∉ c) : C :=
+    let d := digestOf a in
+    let anb : a ∉ nth c d := nc in
+    replace c d (insert anb).
   
-  Lemma FixedSizeHashSet_insert_works : ∀ (a:A) (c:C) (nc: a ∉ c), a ∈ (FixedSizeHashSet_insert nc).
+  Lemma FixedSizeHashSet_insert_works : ∀ (a:A) (c:C) (nc: a ∉ c), a ∈ (FixedSizeHashSet_insert a c nc).
     cbv [FixedSizeHashSet_insert].
     simplify.
     apply insert_works.
   Qed.
   
   Lemma FixedSizeHashSet_insert_noSideEffects : ∀ (a:A) (c:C) (nc: a ∉ c),
-    ∀ (b:A), b =/= a → (b ∈ c) ↔ (b ∈ (FixedSizeHashSet_insert nc)).
+    ∀ (b:A), b =/= a → (b ∈ c) ↔ (b ∈ (FixedSizeHashSet_insert a c nc)).
     cbv [FixedSizeHashSet_insert].
     intros; split_sameOrDifferentBucket.
     (* " different element in same bucket " case *)
     Hint Rewrite vector_nth_replace : hashset.
     match goal with
-    | [bna : ?b =/= ?a, dbeda : digestOf ?b = digestOf ?a |- _] => pose (UniqueList_insert_noSideEffects nc bna); simplify; rewrite dbeda in *; automatic
+    | [bna : ?b =/= ?a, dbeda : digestOf ?b = digestOf ?a |- _] => pose (insert_noSideEffects (UniqueContainer := BUC) nc bna); simplify; rewrite dbeda in *; automatic
     end.
     (* " different bucket " case *)
     simplify; rewrite vector_nth_replace_different in *; automatic.
   Qed.
   
-  Definition FixedSizeHashSet_remove : ∀ (a:A) (c:C), a ∈ c → C.
-    refine (λ a c nc,
-      let d := digestOf a in
-      let aeb : a ∈ nth c d := _ in
-      replace c d (remove aeb)); automatic.
-  Defined.
+  Definition FixedSizeHashSet_remove (a:A) (c:C) (yc: a ∈ c) : C :=
+    let d := digestOf a in
+    let aeb : a ∈ nth c d := yc in
+    replace c d (remove aeb).
   
-  Lemma FixedSizeHashSet_remove_works : ∀ (a:A) (c:C) (yc: a ∈ c), a ∉ (FixedSizeHashSet_remove yc).
+  Lemma FixedSizeHashSet_remove_works : ∀ (a:A) (c:C) (yc: a ∈ c), a ∉ (FixedSizeHashSet_remove a c yc).
     cbv [FixedSizeHashSet_remove].
     simplify.
     simple eapply remove_works.
@@ -401,13 +398,13 @@ Section FixedSizeHashSet.
   Qed.
   
   Lemma FixedSizeHashSet_remove_noSideEffects : ∀ (a:A) (c:C) (yc: a ∈ c),
-    ∀ (b:A), b =/= a → (b ∈ c) ↔ (b ∈ (FixedSizeHashSet_remove yc)).
+    ∀ (b:A), b =/= a → (b ∈ c) ↔ (b ∈ (FixedSizeHashSet_remove a c yc)).
     cbv [FixedSizeHashSet_remove].
     intros; split_sameOrDifferentBucket.
     (* " different element in same bucket " case *)
     Hint Rewrite vector_nth_replace : hashset.
     match goal with
-    | [bna : ?b =/= ?a, dbeda : digestOf ?b = digestOf ?a |- _] => pose (UniqueList_remove_noSideEffects yc bna); simplify; rewrite dbeda in *; automatic
+    | [bna : ?b =/= ?a, dbeda : digestOf ?b = digestOf ?a |- _] => pose (remove_noSideEffects (UniqueContainer := BUC) yc bna); simplify; rewrite dbeda in *; automatic
     end.
     (* " different bucket " case *)
     simplify; rewrite vector_nth_replace_different in *; automatic.
@@ -438,13 +435,15 @@ Import C.Notations.
     Require Import String.
     Require Import Ascii.
 Definition StringSetoid : Setoid LString.t := eq_setoid LString.t.
-Definition StringSet := @FixedSizeHashSet LString.t StringSetoid 16.
+Definition StringEqDec : EqDec StringSetoid := list_eq_dec ascii_dec.
+Definition StringBucket := UniqueList (A:=LString.t).
+Definition StringSet := FixedSizeHashSet StringBucket 16.
 Instance LString_Hashable : Hashable StringSetoid := {
     hashOf := λ s, Datatypes.length s ;
     hashOf_respectsEquiv := f_equal (@Datatypes.length Ascii.ascii) ;
   }.
-Definition StringSet_Container := @FixedSizeHashSet_Container LString.t.
-Definition StringSet_UniqueContainer := @FixedSizeHashSet_UniqueContainer LString.t StringSetoid (list_eq_dec ascii_dec) LString_Hashable 16.
+Definition StringSet_Container := FixedSizeHashSet_Container (BC := UniqueList_Container (ED:=StringEqDec)) 16.
+Definition StringSet_UniqueContainer := FixedSizeHashSet_UniqueContainer (Dig:=LString_Hashable) (BUC:=UniqueList_UniqueContainer (ED:=StringEqDec)) 16.
     
 Fixpoint mainLoop (i : nat) : StringSet -> C.t System.effect unit :=
   λ set,
@@ -463,7 +462,7 @@ Fixpoint mainLoop (i : nat) : StringSet -> C.t System.effect unit :=
       end
   end.
 Definition main' (argv : list LString.t) : C.t System.effect unit :=
-  mainLoop 100 (@FixedSizeHashSet_empty LString.t StringSetoid 16).
+  mainLoop 100 (FixedSizeHashSet_empty (BUC:=UniqueList_UniqueContainer (ED:=StringEqDec)) 16).
 
 Definition main := Extraction.launch main'.
 Extraction "UniqueContainersTest" main.
