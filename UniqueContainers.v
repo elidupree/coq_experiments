@@ -13,30 +13,8 @@ Reserved Notation "a ∈ c" (at level 60, no associativity).
 Reserved Notation "a ∉ c" (at level 60, no associativity).
 Reserved Notation "a ∈? c" (at level 60, no associativity).
 
-    
-(*   note : for the moment , I'm deliberately doing proofs step-by-step , for my own learning, before trying to automate them
-     *)
-      
-Lemma decide_left : ∀ (A B : Prop) (R : Type) (decision : {A} + {B}) (nb: ¬B) (r : R) (fa : A → R) (fb : B → R), r = match decision with left a => fa a | right b => fb b end → {a | r = fa a}.
-  (* destruct decision.
-  intros; exact (exist _ a H).
-  intros; contradiction.
-  Show Proof. *)
-  intuition.
-  exists a; assumption.
-  (* exact (exist _ a H). *)
-  Show Proof.
-  Print sumbool_ind.
-Qed.
-Lemma decide_right : ∀ (A B : Prop) (R : Type) (decision : {A} + {B}) (na: ¬A) (r : R) (fa : A → R) (fb : B → R), r = match decision with left a => fa a | right b => fb b end → { b | r = fb b }.
-  intuition.
-  exists b; assumption.
-Qed.
-
 Lemma NoDupA_head : ∀ (A : Type) (eqA : A -> A -> Prop) (x : A) (l : list A), NoDupA eqA (x::l) → ¬ InA eqA x l.
   intuition.
-  (* apply H in (NoDupA_cons (x:=x) (l:=l)) .
-  destruct H. *)
   inversion H.
   contradiction.
 Qed.
@@ -54,12 +32,7 @@ Lemma InA_tail : ∀ (A : Type) (eqA : A -> A -> Prop) (a x : A) (l : list A), I
   assumption.
 Qed.
 
-Lemma contrapositive : ∀ A B : Prop, (A → B) → ¬ B → ¬ A.
-  tauto.
-Qed.
 
-Definition sig_apply (A: Type) (P: A → Prop) : ∀ (s : sig P) (R: Type), (∀ (a: A) (p : P a), (s = exist _ a p) → R) → R :=
-  λ s _, match s with exist a p => λ f, f a p eq_refl end.
 
 Class Container (A : Type) (So : Setoid A) (C : Type) := {
   contains : A → C → Prop ;
@@ -76,9 +49,6 @@ Section UniqueContainerInterface.
   Context (So : Setoid A).
   Variable C : Type.
   Context (CC : Container So C).
-  
-  (* Definition insertResult (a:A) (c:C) : Type := {c' | (a ∈ c') ∧ (∀ (b:A) (_:b =/= a), (b ∈ c') ↔ (b ∈ c))}.
-  Definition removeResult (a:A) (c:C) : Type := {c' | (a ∉ c') ∧ (∀ (b:A) (_:b =/= a), (b ∈ c') ↔ (b ∈ c))}. *)
   
   Class UniqueContainer := {
     empty : C ;
@@ -110,19 +80,6 @@ Section UniqueContainerInterface.
     end.
   
   
-  Remark tryInsert_left : ∀ (a:A) (c:C) (c' : C) (nc: a ∉ c), inleft (c', nc) = (tryInsert a c) → c' = insert nc.
-    unfold tryInsert.
-    intros.
-    apply decide_right in H.
-    inversion H.
-    Set Keep Proof Equalities.
-    injection H0.
-    intuition.
-    rewrite H1; assumption.
-    assumption.
-  Qed.
-  
-  
   Lemma insert_noSideEffects_proj1 : ∀ (a : A) (c : C) (nc : a ∉ c) (b : A), b =/= a → b ∈ c → b ∈ insert nc.
     intros; apply (proj1 (insert_noSideEffects nc H)); assumption.
   Qed.
@@ -139,6 +96,7 @@ Section UniqueContainerInterface.
     intros; apply (proj2 (remove_noSideEffects yc H)); assumption.
   Qed.
 End UniqueContainerInterface.
+
 
 Section UniqueList.
   Variable A : Type.
@@ -163,11 +121,7 @@ Section UniqueList.
     | [e : context[_ ∈ _] |- _] => simpl in e
     | [e : context[_ ∉ _] |- _] => simpl in e
   end : unique_list.
-  (* Hint Extern 5 => match goal with
-    | [H : _ ∈ _ |- _] => inversion_clear H
-    (* | [H : _ ∉ _ |- _] => inversion_clear H
-    | [H : _ ∈ _ → False |- _] => inversion_clear H *)
-  end : unique_list. *)
+  
   Lemma InA_nil' (a : A) : ¬ InA eq a nil.
     exact (proj1 (InA_nil eq a)).
   Qed.
@@ -179,6 +133,7 @@ Section UniqueList.
     intros anx H; inversion H; auto with exfalso crelations.
   Qed.
   Hint Resolve InA_cons_nequiv : unique_list.
+  
   Lemma InA_eqA' : ∀ (l : list A) (x y : A), eq x y → InA eq x l → InA eq y l.
     exact (InA_eqA setoid_equiv).
   Qed.
@@ -188,11 +143,7 @@ Section UniqueList.
     intros a x xs ys tail_map H; inversion H; auto.
   Qed.
   Hint Resolve InA_same_head : unique_list.
-  (* Hint Extern 1 (InA eq ?b ?xs) => match goal with
-    | [H : b ∈ [?x :: xs] |- _] => apply InA_cons_neq
-    (* | [H : _ ∉ _ |- _] => inversion_clear H
-    | [H : _ ∈ _ → False |- _] => inversion_clear H *)
-  end : unique_list. *)
+  
   
   Instance UniqueList_Container : Container So UniqueList := {
     contains := λ a c, InA eq a (proj1_sig c) ;
@@ -205,6 +156,7 @@ Section UniqueList.
   Lemma UniqueList_empty_containsNothing : ∀ a, a ∉ UniqueList_empty.
     auto with unique_list.
   Qed.
+  
   Definition UniqueList_insert : ∀ (a:A) (c:C), a ∉ c → C.
     refine (λ a c nc, [a :: proj1_sig c]).
     auto with unique_list.
@@ -278,43 +230,7 @@ End UniqueList.
 Hint Immediate UniqueList_Container : typeclass_instances.
 Hint Immediate UniqueList_UniqueContainer : typeclass_instances.
 
-Section Hashable.
-  Variable A : Type.
-  Context (So : Setoid A).
-  
-  Class Hashable := {
-    hashOf : A → nat ;
-    hashOf_respectsEquiv : ∀ a b, a == b → hashOf a = hashOf b
-    }.
-End Hashable.
 
-
-Section SetoidMap.
-  Variable A B : Type.
-  Variable M : B → A.
-  Context {So : Setoid A}.
-  Context {ED : EqDec So}.
-  
-  Definition SetoidMap_equiv : relation B := λ x y, SetoidClass.equiv (M x) (M y).
-
-  Instance SetoidMap_setoid_equiv : Equivalence SetoidMap_equiv.
-    constructor.
-    exact (λ x, reflexivity (M x)).
-    exact (λ x y, symmetry (x:=M x) (y:=M y)).
-    exact (λ x y z, transitivity (x:=M x) (y:=M y) (z:=M z)).
-  Defined.
-  
-  Instance SetoidMap_Setoid : Setoid B := {
-    equiv := SetoidMap_equiv;
-    setoid_equiv := SetoidMap_setoid_equiv
-    }.
-   
-  Instance SetoidMap_EqDec : EqDec SetoidMap_Setoid := {
-    equiv_dec := λ x y, equiv_dec (M x) (M y);
-    }.
-End SetoidMap.
-Hint Immediate SetoidMap_Setoid : typeclass_instances.
-Hint Immediate SetoidMap_EqDec : typeclass_instances.
 
 Require Import Vector.
 
@@ -350,6 +266,18 @@ Lemma vector_nth_replace_different : ∀ (A : Type) (n : nat) (p q : Fin.t n) (v
   reflexivity.
   apply fp''; congruence.
 Qed.
+
+
+
+Section Hashable.
+  Variable A : Type.
+  Context (So : Setoid A).
+  
+  Class Hashable := {
+    hashOf : A → nat ;
+    hashOf_respectsEquiv : ∀ a b, a == b → hashOf a = hashOf b
+    }.
+End Hashable.
 
 Section FixedSizeHashSet.
   Variable A : Type.
@@ -389,21 +317,11 @@ Section FixedSizeHashSet.
     contains_dec := λ a c, a ∈? (nth c (digestOf a)) ;
     contains_respectsEquiv := FixedSizeHashSet_contains_respectsEquiv ;
     }.
-   
-  (* Lemma FixedSizeHashSet_contains_nth (a : A) (c : C) : a ∈ c = a ∈ nth c (digestOf a).
-    reflexivity.
-  Qed. *)
   
   Ltac simplify := 
     repeat progress (intuition idtac; repeat match goal with
       | [H : C |- _] => destruct H
       | [H : {_ | _} |- _] => destruct H
-      (* | [bna : ?b =/= ?a |- _] => match goal with
-        | [H : digestOf b = digestOf a |- _] => fail 1
-        | [H : digestOf b ≠ digestOf a |- _] => fail 1
-        | _ => destruct (Fin.eq_dec (digestOf b) (digestOf a))
-      end *)
-      (* | [H : nth (replace _ ?d _) ?n |- _] => split on d?=n *)
     end; autorewrite with hashset in *; cbv [proj1_sig] in *).
   
   Ltac automatic := 
@@ -528,7 +446,7 @@ Instance LString_Hashable : Hashable StringSetoid := {
 Definition StringSet_Container := @FixedSizeHashSet_Container LString.t.
 Definition StringSet_UniqueContainer := @FixedSizeHashSet_UniqueContainer LString.t StringSetoid (list_eq_dec ascii_dec) LString_Hashable 16.
     
-Fixpoint loop (i : nat) : StringSet -> C.t System.effect unit :=
+Fixpoint mainLoop (i : nat) : StringSet -> C.t System.effect unit :=
   λ set,
   match i with
   | O => ret tt
@@ -536,16 +454,16 @@ Fixpoint loop (i : nat) : StringSet -> C.t System.effect unit :=
     do! System.log (LString.s "Enter a value to insert :") in
     let! newopt := System.read_line in
     match newopt with
-      | None => do! System.log (LString.s "read_line returned None.") in loop i' set
+      | None => do! System.log (LString.s "read_line returned None.") in mainLoop i' set
       | Some new =>
         match tryInsert (UC:=StringSet_UniqueContainer) new set with
-        | inleft (new_set, _) => do! System.log (LString.s "Inserted `" ++ new ++ LString.s "`.") in loop i' new_set
-        | inright _ => do! System.log (LString.s "`" ++ new ++ LString.s "` was already in the set!") in loop i' set
+        | inleft (new_set, _) => do! System.log (LString.s "Inserted `" ++ new ++ LString.s "`.") in mainLoop i' new_set
+        | inright _ => do! System.log (LString.s "`" ++ new ++ LString.s "` was already in the set!") in mainLoop i' set
         end
       end
   end.
 Definition main' (argv : list LString.t) : C.t System.effect unit :=
-  loop 100 (@FixedSizeHashSet_empty LString.t StringSetoid 16).
+  mainLoop 100 (@FixedSizeHashSet_empty LString.t StringSetoid 16).
 
 Definition main := Extraction.launch main'.
 Extraction "UniqueContainersTest" main.
