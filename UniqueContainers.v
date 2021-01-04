@@ -95,6 +95,10 @@ Section UniqueContainerInterface.
   Lemma remove_noSideEffects_proj2 : ∀ (a : A) (c : C) (yc : a ∈ c) (b : A), b =/= a → b ∈ remove yc → b ∈ c.
     intros; apply (proj2 (remove_noSideEffects yc H)); assumption.
   Qed.
+  
+  Lemma empty_containsNothing_unfolded : ∀ a, a ∈ empty → False.
+    exact empty_containsNothing.
+  Qed.
 End UniqueContainerInterface.
 
 
@@ -287,7 +291,7 @@ Section FixedSizeHashSet.
   Context {Dig : Hashable So}.
   Variable maxDigest : nat.
   
-  Definition Bucket : Type := UniqueList (So :=So).
+  Definition Bucket : Type := UniqueList (A:=A).
   Definition numBuckets : nat := S maxDigest.
   Definition Digest : Set := Fin.t numBuckets.
   Definition digestOf (a : A) : Digest := Fin.of_nat_lt (PeanoNat.Nat.mod_upper_bound (hashOf a) numBuckets (PeanoNat.Nat.neq_succ_0 maxDigest)).
@@ -329,15 +333,11 @@ Section FixedSizeHashSet.
     
   Hint Rewrite FixedSizeHashSet_contains_nth : hashset.
   Hint Rewrite Vector.const_nth : hashset.
-  Lemma UniqueList_empty_containsNothing' :
-∀ (A : Type) (So : Setoid A) (ED : EqDec So) (a : A), a ∈ UniqueList_empty (A:=A) → False.
-    exact UniqueList_empty_containsNothing.
-  Qed.
-  Hint Resolve UniqueList_empty_containsNothing' : hashset.
+  Hint Resolve empty_containsNothing_unfolded : hashset.
   
-  Definition FixedSizeHashSet_empty : C := Vector.const (UniqueList_empty (So:=So)) numBuckets.
+  Definition FixedSizeHashSet_empty : C := Vector.const (UniqueList_empty (A:=A)) numBuckets.
   
-  Lemma FixedSizeHashSet_empty_nth n : nth FixedSizeHashSet_empty n = UniqueList_empty (So:=So).
+  Lemma FixedSizeHashSet_empty_nth n : nth FixedSizeHashSet_empty n = UniqueList_empty (A:=A).
     cbv [FixedSizeHashSet_empty]; automatic.
   Qed.
   
