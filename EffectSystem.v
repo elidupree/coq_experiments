@@ -18,7 +18,7 @@ Fixpoint bind T U Primitive (primitiveType : Primitive → Type)
 | PrimitiveThen p cont1 => PrimitiveThen p (λ pOutput, (bind (cont1 pOutput) continuation))
 end.
 
-
+(* A very simple effect, for prototyping purposes: A single cell of memory *)
 Inductive MemoryOps T : Type :=
 | Read : MemoryOps T
 | Write : T → MemoryOps T.
