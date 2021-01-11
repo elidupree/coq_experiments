@@ -4,17 +4,18 @@ Set Implicit Arguments.
 Set Asymmetric Patterns.
 
 Require Import Unicode.Utf8.
+Notation "x × y" := (prod x y) (at level 60, right associativity) : type_scope.
 
 Inductive Effectful Primitive (primitiveType : Primitive → Type) returnType : Type :=
 | Return : returnType → Effectful primitiveType returnType
 | PrimitiveThen : ∀ p, ((primitiveType p) → Effectful primitiveType returnType) → Effectful primitiveType returnType.
 
-Fixpoint Bind T U Primitive (primitiveType : Primitive → Type)
+Fixpoint bind T U Primitive (primitiveType : Primitive → Type)
   (operation : Effectful primitiveType T) 
   (continuation : (T → Effectful primitiveType U))
   : Effectful primitiveType U := match operation with
 | Return t => continuation t
-| PrimitiveThen p cont1 => PrimitiveThen p (λ pOutput, (Bind (cont1 pOutput) continuation))
+| PrimitiveThen p cont1 => PrimitiveThen p (λ pOutput, (bind (cont1 pOutput) continuation))
 end.
 
 
@@ -44,74 +45,84 @@ A third way would be to allow multiple possible state transitions that produce t
 
 A fourth way would be to require the effects to be deterministic, so that the state transition function is (state, primitive) to (state, primitive output). This is simpler to work with for deterministic effects. For nondeterministic effects, what you have to do is encode all possible behaviors in the state (for example, the state of a random number generator could be a nat index and a (nat -> random number) function defining what it will yield), and proofs are done by having a proof for all possible starting states, rather than a proof for all possible outputs at each primitive. This approach is, again, isomorphic to the others. This approach is ALMOST isomorphic to the others, but not quite: it's actually more powerful, because the others require decidable equality to replicate this, while on the other hand, this approach can replicate all the others by having the state include a nat->choice function (like the RNG example). However, for synchronization primitives, expressing it as a choice function feels pretty nonintuitive. The other upside of this approach is that you can implement "run to completion, given this starting state" as an actual function rather than just making "legal complete run" a predicate on operation histories.
 
-I'm going to go with the second way, because it seems like it will be the most convenient: programmers think in terms of state, and we frequently want to prove that a procedure leaves the world in a particular state, which is more intuitive than proving that its effect-history conforms to the more complex conditions that would leave it in that state.
+I'm going to go with the last way, because it seems like it will be the most convenient: programmers think in terms of state, and we frequently want to prove that a procedure leaves the world in a particular state, which is more intuitive than proving that its effect-history conforms to the more complex conditions that would leave it in that state.
 
 *)
 
-Definition StateTransitions Primitive (primitiveType : Primitive → Type) State : Type := State → ∀ p, (primitiveType p) → option State.
-Definition StateTransitionsInhabited Primitive (primitiveType : Primitive → Type) State (transitions : StateTransitions primitiveType State) : Type := ∀ state p, ∃ (output : primitiveType p) next, transitions state p output = Some next.
+Definition StateTransitions Primitive (primitiveType : Primitive → Type) State : Type := State → ∀ p, State × (primitiveType p).
 
-Definition MemoryOpsStateTransitions T (eq_dec : ∀ t u : T, {t = u} + {t ≠ u}) : StateTransitions (@MemoryOpsType T) T :=
+Definition MemoryOpsStateTransitions T : StateTransitions (@MemoryOpsType T) T :=
   λ state p, match p with
-  | Read => λ output, if eq_dec output state then Some state else None
-  | Write t => λ _, Some t
+  | Read => (state , state)
+  | Write t => (t , tt)
   end.
   
-Lemma MemoryOpsStateTransitionsInhabited T (eq_dec : ∀ t u : T, {t = u} + {t ≠ u}) : StateTransitionsInhabited (MemoryOpsStateTransitions eq_dec).
-  unfold StateTransitionsInhabited.
-  intuition idtac.
-  destruct p.
-  exists state; exists state.
-  simpl.
-  destruct eq_dec; trivial.
-  contradict f; reflexivity.
-  exists tt; exists t; reflexivity.
+Definition run Primitive returnType State
+  (primitiveType : Primitive → Type)
+  (transitions : StateTransitions primitiveType State) : 
+  Effectful primitiveType returnType → State → State × returnType :=
+  fix run operation := match operation with
+    | Return t => λ state, (state , t)
+    | PrimitiveThen p continuation => λ state, match transitions state p with
+      | (nextState , output) => run (continuation output) nextState
+      end
+    end.
+
+Theorem writeSThenRead_readsS : ∀ n startingState, fst (run (@MemoryOpsStateTransitions nat) (writeSThenRead n) startingState) = S n.
+  reflexivity.
 Qed.
-  
 
-Inductive PossibleOutcome Primitive (primitiveType : Primitive → Type) : ∀ R, Effectful primitiveType R → list {p : Primitive & primitiveType p} → R → Type :=
-| ReturnOutcome : ∀ T (t: T), PossibleOutcome (Return primitiveType t) nil t
-| PrimitiveOutcome : ∀ p po, PossibleOutcome (Primitive primitiveType p) (existT _ p po :: nil) po
-| BindOutcome : ∀ T U
+Lemma runThen : ∀ Primitive T State
+  (primitiveType : Primitive → Type)
+  (transitions : StateTransitions primitiveType State)
+  (p : Primitive)
+  (continuation : (primitiveType p) → Effectful primitiveType T)
+  (state : State),
+  run transitions (PrimitiveThen p continuation) state =
+  match transitions state p with
+    (nextState , output) => run transitions (continuation output) nextState
+  end.
+  reflexivity.
+Qed.
+ 
+
+Theorem runBind_bindRun : ∀ Primitive T U State
+  (primitiveType : Primitive → Type)
+  (transitions : StateTransitions primitiveType State)
   (operation : Effectful primitiveType T)
-  (continuation : (T → Effectful primitiveType U))
-  opList contList (opRet : T) (contRet : U),
-    PossibleOutcome operation opList opRet →
-    PossibleOutcome (continuation opRet) contList contRet →
-    PossibleOutcome (Bind operation continuation) (opList ++ contList) contRet.
-
-
-Theorem writeSThenRead_readsS : ∀ n, writeSThenRead n
-
-Definition unwrap_or T (default : T) (o : option T) : T := match o with
-| None => default
-| Some t => t
-end.
-
-Definition lastWrite T U (e : Effectful (@MemoryOpsType T) U) (startingValue : U) : option T := match e with
-| Return _ _ => None
-| Primitive p => match p with
-  | Read => None
-  | Write t => Some t
-  end
-| Bind _ _ a b => unwrap_or ()
-end.
-
-Definition readWriteReduce T U (e : Effectful (@MemoryOpsType T) U) (startingValue : option T) : Effectful (@MemoryOpsType T) U := match e with
-| Return _ _ => e
-| Primitive p => match p with
-  | Read => Return (@MemoryOpsType T) startingValue
-  | Write _ => e
-  end
-| Bind _ _ a b => match readWriteReduce a startingValue with
-  | Return _ t => e
-  | Primitive _ => e
-  | Bind _ _ a b => e
-  end
-end.
-
-
-Parameter read : ∀ T, Address T → Effectful T,
-Parameter write : ∀ T, Address T → T → Effectful RustUnitType,
-  coherence : ∀ T (t : T) (addr : Address T) → Bind (write addr t) (λ _, read addr) 
+  (continuation : T → Effectful primitiveType U)
+  (state : State),
+  run transitions (bind operation continuation) state = match run transitions operation state with
+    (nextState , t) => run transitions (continuation t) nextState
+  end.
+  intros Primitive T U State primitiveType transitions.
+  refine(fix proof operation := match operation with
+  | Return t => _
+  | PrimitiveThen p cont1 => _
+  end).
+  reflexivity.
+  intros.
+  rewrite runThen.
+  pose (transitions state p) as afterFirst.
+  specialize (proof (cont1 (snd afterFirst)) continuation (fst afterFirst)).
+  unfold bind.
+  simpl.
+  fold bind.
+  change ((
+ run transitions (bind (cont1 (snd afterFirst)) continuation) (fst afterFirst)) =
+(let (nextState, t) :=
+   let (nextState, output) := transitions state p in run transitions (cont1 output) nextState in
+ run transitions (continuation t) nextState)).
+  rewrite proof.
+  exact proof.
+  unfold run.
+  intuition idtac.
+  rewrite runThen.
+  simpl.
+  reflexivity.
+  
+  apply H.
+  unfold bind.
+  reflexivity.
+Qed.
   
