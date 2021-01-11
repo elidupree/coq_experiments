@@ -95,6 +95,8 @@ Theorem runBind_bindRun : ∀ Primitive T U State
   run transitions (bind operation continuation) state = match run transitions operation state with
     (nextState , t) => run transitions (continuation t) nextState
   end.
+  
+  (* Apologies for this proof being a bit of a mess *)
   intros Primitive T U State primitiveType transitions.
   refine(fix proof operation := match operation with
   | Return t => _
@@ -108,21 +110,7 @@ Theorem runBind_bindRun : ∀ Primitive T U State
   unfold bind.
   simpl.
   fold bind.
-  change ((
- run transitions (bind (cont1 (snd afterFirst)) continuation) (fst afterFirst)) =
-(let (nextState, t) :=
-   let (nextState, output) := transitions state p in run transitions (cont1 output) nextState in
- run transitions (continuation t) nextState)).
-  rewrite proof.
+  destruct (transitions state p).
   exact proof.
-  unfold run.
-  intuition idtac.
-  rewrite runThen.
-  simpl.
-  reflexivity.
-  
-  apply H.
-  unfold bind.
-  reflexivity.
 Qed.
   
