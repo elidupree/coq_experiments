@@ -114,3 +114,50 @@ Theorem runBind_bindRun : ∀ Primitive T U State
   exact proof.
 Qed.
   
+(*
+
+But the next bit might not quite work with this model. Let's consider.
+
+If we were designing an effect system for a safe language, we might want a typical function to take multiple effects – for example, a different effect for each &mut in its arguments. To do that, maybe the next thing to do would be to make a system of product types on the types of Primitives and StateTransitions, so that you could pass subsets of your effects into callees.
+
+But that's not what we're doing. This is the effect system for a model of an *unsafe* language – so the assumption is that there's a universal collection of primitive effects, and any code might attempt to use any effect, even if it's not allowed.
+
+In that system, functions want to consume *guarantees* about which effects their allowed to do and what their outcomes would be. The state transitions are just a way of expressing a particular guarantee.
+
+So maybe, instead of passing collections of *effects*, we pass collections of *permissions*, which are predicates on the primitives. Except, of course, what you have permission to do can also be a function of the state, so the full form of permissions is simply "state, but the outcome of some primitives is defined as UB". If you want to benefit from the guarantees of a callee, the guarantees need to be based on the assumption of a *supertype* of your guarantees. Here, a supertype is a modified state machine where all of the original possible outcomes are still possible, but there may be some additional outcomes that are also possible (which means any outcome can be changed to "always UB", because UB is something like "anything is possible").
+
+This clearly seems to favor the "predicate on outcomes" approaches. Just in case, though, is it possible to do this through the "deterministic state transitions" approach? With the deterministic approach, we express guarantees through the "for all possible starting states…" instead of "for all possible outcomes at each step". So, if we want to say that for a particular (a b : StateTransitions, supertype a b), we wouldn't be able to compare states at all because the state types are different, and the determinism means that a particular state from one type is either identical or distinct. So `supertype a b` would be to say, for all possible states in `b`, there's a state in `a` that gives the same behavior for all possible sequences of primitives. As an example, if `b` describes memory with 2 locations that obey write-read consistency, and `a` describes the same memory but only the first location behaves consistently, then `a` includes a way to specify ANY behavior on the second location, so in particular, you COULD select a behavior that is consistent.
+
+The guarantee we want to relay from callee to caller is initially expressed as a proposition about the callee's state (here, the `a` state), but it needs to be transformable into a proposition about the caller's state (here, the `b` state). Thus, one way or another, we need a mapping between the states, not just a guarantee that SOME state exists that has the same behavior. In particular, I think we need the following guarantee: for a given starting state b0, predicates B1 and A1, and Effectful e, we can produce at least one mapped-starting-state a0 that behaves identically to b0, where if e under a-transitions took state a0 to a state matching predicate A1, then e under b-transitions would take b0 to a state matching predicate B1. (And in this model, "UB" is just shorthand for "you can produce a state that fills in any possible sequence of outcomes after this" - so if there's an a0 that matches b0 until it hits UB, then there's an a0 that matches b0 indefinitely, but on the flip side, if you reached UB, the callee wouldn't be able to prove anything about what state it ends up in.)
+
+Wait, let's approach this from a different angle. I intend for this system to support mutexes. So, let us consider the following situation:
+– function Main constructs a Mutex in owned memory, then spawns 2 threads running function Locker.
+– function Locker locks the Mutex, calls Operation on the contained data, then unlocks it.
+– function Operation operates on the contained data as owned data; it must not be aware that the data is inside a Mutex.
+
+Let us first consider the call from Locker to Operation. Locker initially receives a memory effect that is guaranteed to be in an "unlocked Mutex" state. In this state,
+– accessing the interior in any way yields UB
+– performing the lock sequence may yield a confirmation which only happens if the effect is now in a "locked Mutex" state.
+Having received the confirmation, the memory effect is guaranteed to be in a "locked Mutex" state.
+– accessing the interior behaves as owned data, UNLESS
+– if you perform the unlock sequence, it switches back to an "unlocked Mutex" state.
+
+Naturally, a "locked Mutex" state is distinct from an "owned data" state, because of the possibility of unlocking it. But we can characterize it as a subtype of "owned data" – if we relax the guarantees by making the unlock sequence be UB, then it is now indistinguishable from owned data. So this state mapping allows Locker to call Operation.
+
+Now, let's consider the calls from Main to Locker. Main STARTS with owned memory and must convert it in the other direction, making it into an unlocked Mutex. Again, this must be done by *relaxing* guarantees. Here, Main begins by doing some atomic setup operations (which are permitted in owned data), then declares that interacting with the data in a non-Mutex way is now UB. This is straightforward so far – the real question is what guarantees you need in order to spawn multiple threads.
+
+I suppose what we need is for the caller's effects to simultaneously simulate the state of both effects passed to the callees. Let's first consider it in the simpler case where all operations are in a total order. So if the caller is proven to be in some range M of possible states, and we want to call two threads that demand states in T0 and T1, then for every m : M, we must find t0 : T0 and t1 : T1 such that for any sequences of primitives e0 and e1, any *interleaving* of e0 and e1 will witness t0 and m giving the same outputs for the e0 primitives, and t1 and m giving the same outputs for the e1 primitives.
+
+As the simplest example: you pass disjoint memory regions into two threads as owned data; for each thread, accessing the other thread's memory is UB... oh, here we need to get a bit stricter. As written, UB in one thread isn't automatically UB in the other, so if e0 messes with e1's memory but e1 is legit, we cannot produce a t1 that matches m. So we need to give UB a special status: the above should say "for any sequences of primitives e0 and e1 *that do not produce UB in t0 and t1*" - or actually, - "for any *Effectfuls* e0 and e1 that can never produce UB from states in T0 and T1" (because we bind e0 and e1 before the interleaving, and whether a sequence hits UB could depend on the choice of interleaving). With that guarantee, we can prove that each thread doesn't access the other thread's data, so the conversion is straightforward.
+
+Let's proceed to the Mutex example. Now our e0 and e1 may lock the mutex, which I suppose must be represented in T0/T1 as try-lock loops, since our current definitions don't guarantee that the thread won't wake up before the lock is available. So, thinking about how to produce t0 and t1: The states in T0 and T1 must include the information about what data you will find inside the Mutex after each time you successfully lock it. If we fix the data first, then choose an interleaving afterwards, the interleaving could change what data e0 could witness. That's no good! We need to change the order of the rule:
+
+"If the caller is proven to be in some range M of possible states, and we want to call two threads whose behaviors are Effectfuls e0 and e1 that demand states in T0 and T1, then for any m : M and any interleaving of e0 and e1, we must find t0 : T0 and t1 : T1 such that t0 and m give the same outputs for the e0 primitives, and t1 and m give the same outputs for the e1 primitives."
+
+Now, the interleaving is predetermined before we choose t0 and t1. From the perspective of the caller, we can simply check what order the successful locks happen, and construct t0 and t1 to feed in the same information as m would.
+
+So, the states can be *constructed*. Now, how do we *retrieve* the guarantees provided by the callee? As an example, let's start with the modest guarantee that the Mutex an integer, which begins at 0, and Operation increments the integer exactly once. Thus, we should be able to prove that at the end of Main, the integer is now 2.
+
+*)
+
+
