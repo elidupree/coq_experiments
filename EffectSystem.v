@@ -213,24 +213,18 @@ Theorem writeSThenRead_readsS' : ∀ n history returnValue, (Run (@memoryOpsHist
   (* Unfortunately, now, the proof is more verbose than the `reflexivity` proof in the first approach.
   But it's straightforward; the only mess here is unpacking all the dependent types.
   Domain-specific tactics and lemmas could help with this. *)
-  intros.
-  simpl in H.
-  destruct H.
+  intros n history returnValue run.
+  simpl in run; destruct run as [wholeHistoryValid run'].
   destruct history as [|hist0 historyTail].
   contradiction.
-  destruct hist0 as [p0 po0].
-  destruct historyTail as [|hist1 historyTail].
-  exfalso; exact (proj2 (ex_proj2 H0)).
-  destruct hist1 as [p1 po1].
-  destruct historyTail as [|hist2 historyTail].
-  2: unfold unpackSigT in H0; decompose record H0; discriminate.
-  unfold unpackSigT in H0; decompose record H0.
-  pose (ex_intro _ po0 H) as H'; rewrite x in H'; destruct H'.
-  pose (ex_intro (λ po1, (memoryOpsHistoryPredicateWithState (S n)
-       (existT (λ p : MemoryOps nat, MemoryOpsType p) p1 po1 :: nil)) × (returnValue = rew [λ p : MemoryOps nat, MemoryOpsType p] x0 in po1)) po1 (H4 , H5)) as H''; rewrite x0 in H''.
-  decompose record H''.
-  simpl in b.
-  simpl in a.
-  exact (eq_trans b (proj1 a)).
+  destruct hist0 as [p0 po0]; destruct historyTail as [|hist1 historyTail].
+  exfalso; exact (proj2 (ex_proj2 run')).
+  destruct hist1 as [p1 po1]; destruct historyTail as [|hist2 historyTail]; unfold unpackSigT in run'; destruct run' as [p0isWriteSn x]; destruct x as [_ x]; destruct x as [p1isRead x]; destruct x as [_ x]; destruct x as [finalHistoryIsNil returnCorrect].
+  2: discriminate.
+  revert dependent po0; rewrite p0isWriteSn.
+  revert dependent po1; rewrite p1isRead.
+  simpl in *.
+  intuition idtac.
+  congruence.
 Qed.
 
