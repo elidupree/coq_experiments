@@ -5,6 +5,7 @@ Set Asymmetric Patterns.
 
 Require Import Unicode.Utf8.
 Notation "x × y" := (prod x y) (at level 60, right associativity) : type_scope.
+Require Import List.
 
 Inductive Effectful Primitive (primitiveType : Primitive → Type) returnType : Type :=
 | Return : returnType → Effectful primitiveType returnType
@@ -152,12 +153,84 @@ As the simplest example: you pass disjoint memory regions into two threads as ow
 
 Let's proceed to the Mutex example. Now our e0 and e1 may lock the mutex, which I suppose must be represented in T0/T1 as try-lock loops, since our current definitions don't guarantee that the thread won't wake up before the lock is available. So, thinking about how to produce t0 and t1: The states in T0 and T1 must include the information about what data you will find inside the Mutex after each time you successfully lock it. If we fix the data first, then choose an interleaving afterwards, the interleaving could change what data e0 could witness. That's no good! We need to change the order of the rule:
 
-"If the caller is proven to be in some range M of possible states, and we want to call two threads whose behaviors are Effectfuls e0 and e1 that demand states in T0 and T1, then for any m : M and any interleaving of e0 and e1, we must find t0 : T0 and t1 : T1 such that t0 and m give the same outputs for the e0 primitives, and t1 and m give the same outputs for the e1 primitives."
+"If the caller is proven to be in some range M of possible states, and we want to call two threads whose behaviors are Effectfuls e0 and e1 that demand states in T0 and T1 and never produce UB, then for any m : M and any interleaving of e0 and e1, we must find t0 : T0 and t1 : T1 such that t0 and m give the same outputs for the e0 primitives, and t1 and m give the same outputs for the e1 primitives."
 
-Now, the interleaving is predetermined before we choose t0 and t1. From the perspective of the caller, we can simply check what order the successful locks happen, and construct t0 and t1 to feed in the same information as m would.
+Now, the interleaving is predetermined before we choose t0 and t1. From the perspective of the caller, we can simply check what order the successful locks happen, and construct t0 and t1 to feed in the same information as m would. (Note that the "No UB" guarantee is once again necessary for this construction.)
 
-So, the states can be *constructed*. Now, how do we *retrieve* the guarantees provided by the callee? As an example, let's start with the modest guarantee that the Mutex an integer, which begins at 0, and Operation increments the integer exactly once. Thus, we should be able to prove that at the end of Main, the integer is now 2.
+So, the states can be *constructed*. Now, how do we *retrieve* the guarantees provided by the callee? First, let's consider the simple case with disjoint owned data. Here, the callees can guarantee that they leave the data in a certain state, which is to say that they provide a proof about the ending state of running e0 with T0-transitions on t0. First, I think my retrieveability proof concept above was too general: what I would like to do is require a caller-callee state mapping f that respects all primitive operations, i.e. for all s p, callee_transitions(f(s), p) = f(caller_transitions(s, p)). Thus, if we have a proof about the result state of a callee, it's an unbroken chain of primitive transitions, so we can apply the "respects" rule repeatedly to receive a proof about the result state in the caller. But how does this apply to interleaved callees? Here the chain is broken: as soon as e0 does one operation and e1 does another, the above doesn't provide any implication from the resulting state after the e0 operation to the resulting state in the caller. Intuitively, we also need the guarantee that e1 operations "don't change the e0 part of the caller state"... but with the current definitions, the e0 states ARE dependent on the interleaving (because they encode what WOULD happen in the case of UB). We could special-case UB again, but I don't know if that's the right approach. Later, we are going to have legitimate cases where one state affects the other – let's jump forward to considering one of those.
+
+To consider the Mutex case, let's start with the modest guarantee that the Mutex an integer, which begins at 0, and Operation increments the integer exactly once. Thus, we should be able to prove that at the end of Main, the integer is now 2. If we want to express this as a condition on *result states* of the Lockers, then we have a complication. In the naive approach, the state used by Locker would only contain the information Locker could observe – so as soon as it unlocks the Mutex, the state contains no knowledge of what was left there, because it could be arbitrarily changed before the next time it was unlocked. So the state must contain additional information about the history of what operations it did.
+
+At this point, it feels burdensome to that I will have to define a state type to use to express conditions about the history. I will now make another attempt to do the definitions in terms of conditions on primitive-histories.
+
+The intuitive purpose of the "deterministic state" approach was to be able to say "for all things that could happen…". Let's define "thing that could happen" directly, as a predicate on histories:
 
 *)
 
+Definition History Primitive (primitiveType : Primitive → Type) := list {p & primitiveType p}.
+Definition HistoryPredicate Primitive (primitiveType : Primitive → Type) := (History primitiveType) → Prop.
+
+Definition unpackSigT A (P : A → Type) R (s : sigT P) (f : ∀ a b, R) : R :=
+  match s with existT a b => f a b end.
+
+Definition memoryOpsHistoryPredicateWithState T : T → HistoryPredicate (@MemoryOpsType T) :=
+  fix P state history := match history with
+  | nil => True
+  | x :: xs => unpackSigT x (λ a, match a return MemoryOpsType a → Prop with
+    | Read => λ p, p = state ∧ P state xs
+    | Write t => λ _, P t xs
+  end) end.
+Definition memoryOpsHistoryPredicateUnknownState T : HistoryPredicate (@MemoryOpsType T) :=
+  λ history, match history with
+  | nil => True
+  | x :: xs => unpackSigT x (λ a, match a return MemoryOpsType a → Prop with
+    | Read => λ p, memoryOpsHistoryPredicateWithState p xs
+    | Write t => λ _, memoryOpsHistoryPredicateWithState t xs
+  end) end.
+  
+Import EqNotations.
+  
+(* Definition BehaviorDefinitionsIsomorphic Primitive returnType State
+  (primitiveType : Primitive → Type)
+  (transitions : StateTransitions primitiveType State)
+  (predicate : HistoryPredicate primitiveType) :  *)
+  
+Definition Run Primitive returnType
+  (primitiveType : Primitive → Type)
+  (predicate : HistoryPredicate primitiveType): 
+  Effectful primitiveType returnType → History primitiveType → returnType → Prop :=
+  fix Run operation history returnValue := predicate history ∧ match operation with
+    | Return t => history = nil ∧ returnValue = t
+    | PrimitiveThen p continuation => match history with
+      | nil => False
+      | x :: xs => unpackSigT x (λ p' output, ∃ (eq : p' = p), Run (continuation (rew eq in output)) xs returnValue)
+      end
+    end.
+    
+    About eq_rect.
+
+Theorem writeSThenRead_readsS' : ∀ n history returnValue, (Run (@memoryOpsHistoryPredicateUnknownState nat) (writeSThenRead n) history returnValue) → returnValue = S n.
+  (* Unfortunately, now, the proof is more verbose than the `reflexivity` proof in the first approach.
+  But it's straightforward; the only mess here is unpacking all the dependent types.
+  Domain-specific tactics and lemmas could help with this. *)
+  intros.
+  simpl in H.
+  destruct H.
+  destruct history as [|hist0 historyTail].
+  contradiction.
+  destruct hist0 as [p0 po0].
+  destruct historyTail as [|hist1 historyTail].
+  exfalso; exact (proj2 (ex_proj2 H0)).
+  destruct hist1 as [p1 po1].
+  destruct historyTail as [|hist2 historyTail].
+  2: unfold unpackSigT in H0; decompose record H0; discriminate.
+  unfold unpackSigT in H0; decompose record H0.
+  pose (ex_intro _ po0 H) as H'; rewrite x in H'; destruct H'.
+  pose (ex_intro (λ po1, (memoryOpsHistoryPredicateWithState (S n)
+       (existT (λ p : MemoryOps nat, MemoryOpsType p) p1 po1 :: nil)) × (returnValue = rew [λ p : MemoryOps nat, MemoryOpsType p] x0 in po1)) po1 (H4 , H5)) as H''; rewrite x0 in H''.
+  decompose record H''.
+  simpl in b.
+  simpl in a.
+  exact (eq_trans b (proj1 a)).
+Qed.
 
