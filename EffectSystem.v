@@ -253,6 +253,14 @@ It also feels potentially misguided to not have an explicit representation of th
 
 *)
 
+
+(*
+
+Oops... we had a circular reference issue in these definitions...:
+
+*)
+
+(*
 Inductive ControlFlowChoice Primitive (primitiveType : Primitive → Type) ReturnType State :=
 | ControlFlowReturn : ReturnType → ControlFlowChoice primitiveType ReturnType State
 | ControlFlowPrimitive : ∀ p, (primitiveType p → State) → ControlFlowChoice primitiveType ReturnType State.
@@ -266,8 +274,7 @@ Definition EffectfulToControlFlow Primitive (primitiveType : Primitive → Type)
   | PrimitiveThen p continuation => ControlFlowPrimitive _ _ p continuation
   end.
 
-(* This time, let's have multiple memory locations, indexed by `nat`.
-Oops... we have a circular reference issue in these definitions... *)
+(* This time, let's have multiple memory locations, indexed by `nat`.*)
 Inductive ThreadedOps : Type :=
 | NonAtomicRead : nat → ThreadedOps
 | NonAtomicWrite : nat → nat → ThreadedOps
@@ -283,5 +290,77 @@ Definition incrementEffectful (address : nat) : Effectful ThreadedOpsType unit :
 
 Definition increment (address : nat) := EffectfulToControlFlow (incrementEffectful address).
 
+*)
 
+(*
+
+To avoid the circular reference, this time, let's require that the same ControlFlowState type will be used across all threads. That way, we can postpone defining the ControlFlow for it: One ControlFlow defines the behavior of all ControlFlowStates.
+
+It follows that the ControlFlowState type must account for multiple return types, and if we need to know that a function returns a specific type, we give that as a proof. Or we could require a `Type → Type` instead of just a `Type` for the ControlFlowState... the latter has the arguable advantage that it inherently forbids functions that don't always return the same type; the former has the arguable advantage that if a function never terminates, you can present the "F returns T" proof for multiple return types. I'm going to go with the former and see if I run into any problems.
+
+The Primitive type can't even take the ControlFlowState as a parameter because ControlFlow types also have to take the Primitive type as a parameter, so you'd still have circular reference problems. Instead, we just let you pass any type as the thread function, and say it's UB if you pass the wrong type.
+
+While I'm refactoring things, I think it makes more sense if I make Primitive an indexed type instead of having a separate function to say what type it is.
+
+*)
+
+Inductive ControlFlowChoice (Primitive : Type → Type) State :=
+| ControlFlowReturn : ∀ ReturnType : Type, ReturnType → ControlFlowChoice Primitive State
+| ControlFlowPrimitive : ∀ po, Primitive po → (po → State) → ControlFlowChoice Primitive State.
+Definition ControlFlow (Primitive : Type → Type) State : Type := State → ControlFlowChoice Primitive State.
+
+(* We can no longer convert from the original Effectful, so let's make a modified version: *)
+Inductive Terminating (Primitive : Type → Type) : Type :=
+| TerminatingReturn : ∀ ReturnType : Type, ReturnType → Terminating Primitive
+| TerminatingPrimitive : ∀ po, Primitive po → (po → Terminating Primitive) → Terminating Primitive.
+Definition TerminatingControlFlow (Primitive : Type → Type)
+  : ControlFlow Primitive (Terminating Primitive) := 
+  λ operation, match operation with
+  | TerminatingReturn _ t => ControlFlowReturn _ _ t
+  | TerminatingPrimitive _ p continuation => ControlFlowPrimitive _ p continuation
+  end.
+
+(* But we really need a bit of nontermination. Let's make the minimal definition: *)
+Inductive Loopable (Primitive : Type → Type) : Type :=
+| LoopableReturn : ∀ ReturnType : Type, ReturnType → Loopable Primitive
+| LoopablePrimitive : ∀ po, Primitive po → (po → Loopable Primitive) → Loopable Primitive
+| LoopableLoop : ∀ po, Primitive po → (po → option (Loopable Primitive)) → Loopable Primitive.
+Definition LoopableControlFlow (Primitive : Type → Type)
+  : ControlFlow Primitive (Loopable Primitive) := 
+  λ operation, match operation with
+  | LoopableReturn _ t => ControlFlowReturn _ _ t
+  | LoopablePrimitive _ p continuation => ControlFlowPrimitive _ p continuation
+  | LoopableLoop _ p continuationPicker => ControlFlowPrimitive _ p (λ output, match continuationPicker output with
+    | Some c => c
+    | None => operation
+    end)
+  end.
+
+(* This time, let's have multiple memory locations, indexed by `nat`.*)
+Inductive ThreadedOps : Type → Type :=
+| NonAtomicRead : nat → ThreadedOps nat
+| NonAtomicWrite : nat → nat → ThreadedOps unit
+| CompareAndSwapAcquire : nat → nat → nat → ThreadedOps bool
+| StoreRelease : nat → nat → ThreadedOps unit
+| Spawn : ∀ ControlFlowState, ControlFlowState → ThreadedOps unit
+| Join : nat → ThreadedOps unit.
+
+Definition increment (address : nat) : Loopable ThreadedOps :=
+  LoopablePrimitive (NonAtomicRead address) (λ n, LoopablePrimitive (NonAtomicWrite address (S n)) (λ _, LoopableReturn _ tt)).
+
+Definition lock (address : nat) : Loopable ThreadedOps :=
+  LoopableLoop (CompareAndSwapAcquire address 0 1) (λ worked : bool, if worked then Some (LoopableReturn _ tt) else None).
+
+Definition unlock (address : nat) : Loopable ThreadedOps :=
+  LoopablePrimitive (StoreRelease address 0) (λ _, LoopableReturn _ tt).
+
+Fixpoint sequenceLoopable (Primitive : Type → Type) (f g : Loopable Primitive)
+  : Loopable Primitive := match f with
+| LoopableReturn _ t => g
+| LoopablePrimitive _ p continuation => LoopablePrimitive p (λ po, sequenceLoopable (continuation po) g)
+| LoopableLoop _ p continuationPicker => LoopableLoop p (λ po, option_map (λ continuation, sequenceLoopable continuation g) (continuationPicker po))
+end.
+
+Definition incrementLockContents (address : nat) : Loopable ThreadedOps :=
+  sequenceLoopable (lock address) (sequenceLoopable (increment (S address)) (unlock address)).
 
