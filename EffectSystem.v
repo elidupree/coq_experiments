@@ -195,6 +195,12 @@ Import EqNotations.
   (transitions : StateTransitions primitiveType State)
   (predicate : HistoryPredicate primitiveType) :  *)
   
+  
+(*
+Whoops... this definition applies the predicate to all suffixes of the history,
+when it should actually be applied to all prefixes.
+I'm going to put off fixing this for now.
+*)
 Definition Run Primitive returnType
   (primitiveType : Primitive → Type)
   (predicate : HistoryPredicate primitiveType): 
@@ -206,8 +212,6 @@ Definition Run Primitive returnType
       | x :: xs => unpackSigT x (λ p' output, ∃ (eq : p' = p), Run (continuation (rew eq in output)) xs returnValue)
       end
     end.
-    
-    About eq_rect.
 
 Theorem writeSThenRead_readsS' : ∀ n history returnValue, (Run (@memoryOpsHistoryPredicateUnknownState nat) (writeSThenRead n) history returnValue) → returnValue = S n.
   (* Unfortunately, now, the proof is more verbose than the `reflexivity` proof in the first approach.
@@ -227,4 +231,57 @@ Theorem writeSThenRead_readsS' : ∀ n history returnValue, (Run (@memoryOpsHist
   intuition idtac.
   congruence.
 Qed.
+
+
+(*
+
+Trying to apply the above definitions to the proposed Mutex case runs into several problems.
+
+The Run type is now powerful enough to handle nondeterministic effects, but *Effectful* itself is lacking. It's not trivial to express a function that spawns threads as an Effectful, because Effectfuls are deterministic, and the interleaving is not. Perhaps we could make a nondeterminism effect for deciding which thread to advance next, but I'm not confident that that's a good approach. Perhaps Effectful itself should be allowed to be nondeterministic. But before resolving that problem, let's also consider the second problem:
+
+*Locker* can't be expressed as an Effectful either, because it has an unbounded try-lock loop, and Effectful doesn't account for non-termination.
+
+To account for nontermination, we want to express Effectful as a step function, where, after receiving the output of a primitive, it may return any Effectful, including itself. But of course, a function can't return itself. So instead, we need to have a second type to represent the control flow state, and then have a function from control flow state to either a Return or a PrimitiveThen (but this time PrimitiveThen wraps a function that returns another *state*, rather than returning Effectful).
+
+But should these be allowed to be nondeterministic? Or must they require a nondeterminism effect to perform the interleaving?
+
+Since this isn't obvious even by itself, let's glance forward to the consideration of how to represent general multithreading, not just interleaving. In that case, there's no longer a "what happens next" – but that's tolerable if we merely generalize our "history" type so that instead of being a list, it's an arbitrary collection with a happens-before relation. Predicates can still be defined on such histories. But where does that leave Effectful? I suppose that that means each step of an Effectful can specify one *or more* "next" operations that must exist. Wait, there's a problem: if you specify that two identical next operations must exist, what's to stop the same operation from fulfilling both requirements? One could arbitrarily construct distinct control flow states for them, but that seems fragile. And on the other hand, they have to merge eventually (when you join both threads).
+
+It also feels potentially misguided to not have an explicit representation of threads. After all, to join a thread, you are claiming your next primitive will happen-after the return of that thread, but this claim isn't necessarily aware of the specific return operation in question; it follows that to express the claim, you must be able to refer to a thread. So, then, is "spawning a thread" a primitive that takes an Effectful and returns a join handle? And a History is a list of thread histories, which are lists, and the HistoryPredicate required by Main requires that every Spawn primitive returns a distinct ID, and whenever a Spawn primitive exists, there is a thread with the same ID, and a valid Run of that thread. And Join takes an ID and must happen-after every primitive in that thread.
+
+
+
+*)
+
+Inductive ControlFlowChoice Primitive (primitiveType : Primitive → Type) ReturnType State :=
+| ControlFlowReturn : ReturnType → ControlFlowChoice primitiveType ReturnType State
+| ControlFlowPrimitive : ∀ p, (primitiveType p → State) → ControlFlowChoice primitiveType ReturnType State.
+Definition ControlFlow Primitive (primitiveType : Primitive → Type) ReturnType State : Type := State → ControlFlowChoice primitiveType ReturnType State.
+
+(* Note that this is strictly more powerful than Effectful, as we can illustrate with a conversion: *)
+Definition EffectfulToControlFlow Primitive (primitiveType : Primitive → Type) ReturnType
+  : ControlFlow primitiveType ReturnType (Effectful primitiveType ReturnType) := 
+  λ operation, match operation with
+  | Return t => ControlFlowReturn _ _ t
+  | PrimitiveThen p continuation => ControlFlowPrimitive _ _ p continuation
+  end.
+
+(* This time, let's have multiple memory locations, indexed by `nat`.
+Oops... we have a circular reference issue in these definitions... *)
+Inductive ThreadedOps : Type :=
+| NonAtomicRead : nat → ThreadedOps
+| NonAtomicWrite : nat → nat → ThreadedOps
+| Spawn : ∀ ControlFlowState controlFlowState, ControlFlow ThreadedOpsType unit ControlFlowState → ThreadedOps
+| Join : nat → ThreadedOps.
+Definition ThreadedOpsType (op : ThreadedOps) : Type := match op with
+| NonAtomicRead _ => nat
+| _ => unit
+end.
+
+Definition incrementEffectful (address : nat) : Effectful ThreadedOpsType unit :=
+  PrimitiveThen (Write (S n)) (λ _, PrimitiveThen (Read nat) (λ r, Return _ r)).
+
+Definition increment (address : nat) := EffectfulToControlFlow (incrementEffectful address).
+
+
 
