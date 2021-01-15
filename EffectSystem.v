@@ -360,7 +360,14 @@ Fixpoint sequenceLoopable (Primitive : Type → Type) (f g : Loopable Primitive)
 | LoopablePrimitive _ p continuation => LoopablePrimitive p (λ po, sequenceLoopable (continuation po) g)
 | LoopableLoop _ p continuationPicker => LoopableLoop p (λ po, option_map (λ continuation, sequenceLoopable continuation g) (continuationPicker po))
 end.
+Notation "x ; y" := (sequenceLoopable x y) (at level 94, left associativity).
 
 Definition incrementLockContents (address : nat) : Loopable ThreadedOps :=
-  sequenceLoopable (lock address) (sequenceLoopable (increment (S address)) (unlock address)).
+  lock address ; increment (S address) ; unlock address.
 
+Definition incrementTwiceConcurrentlyTestcase (address : nat) : Loopable ThreadedOps :=
+  LoopablePrimitive (NonAtomicWrite address 0) (λ _,
+    LoopablePrimitive (NonAtomicWrite (S address) 0) (λ _,
+      LoopablePrimitive (@Spawn (Loopable ThreadedOps) (incrementLockContents address)) (λ handle,
+        incrementLockContents address ; LoopablePrimitive (Join handle) (λ _, LoopableReturn _ tt) 
+  ))).
