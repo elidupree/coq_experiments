@@ -304,70 +304,63 @@ While I'm refactoring things, I think it makes more sense if I make Primitive an
 
 *)
 
-Inductive ControlFlowChoice (Primitive : Type → Type) State :=
-| ControlFlowReturn : ∀ ReturnType : Type, ReturnType → ControlFlowChoice Primitive State
-| ControlFlowPrimitive : ∀ po, Primitive po → (po → State) → ControlFlowChoice Primitive State.
-Definition ControlFlow (Primitive : Type → Type) State : Type := State → ControlFlowChoice Primitive State.
+Inductive ControlFlowChoice :=
+| ControlFlowReturn : ∀ ReturnType : Type, ReturnType → ControlFlowChoice
+| ControlFlowPrimitive : ∀ p po State, p → (po → State) → ControlFlowChoice.
+Definition ControlFlow State : Type := State → ControlFlowChoice.
 
-(* We can no longer convert from the original Effectful, so let's make a modified version: *)
-Inductive Terminating (Primitive : Type → Type) : Type :=
-| TerminatingReturn : ∀ ReturnType : Type, ReturnType → Terminating Primitive
-| TerminatingPrimitive : ∀ po, Primitive po → (po → Terminating Primitive) → Terminating Primitive.
-Definition TerminatingControlFlow (Primitive : Type → Type)
-  : ControlFlow Primitive (Terminating Primitive) := 
-  λ operation, match operation with
-  | TerminatingReturn _ t => ControlFlowReturn _ _ t
-  | TerminatingPrimitive _ p continuation => ControlFlowPrimitive _ p continuation
-  end.
+(* This time, let's have multiple memory locations, indexed by `nat`.*)
+Inductive NonSpawnOps : Type → Type :=
+| NonAtomicRead : nat → NonSpawnOps nat
+| NonAtomicWrite : nat → nat → NonSpawnOps unit
+| CompareAndSwapSeqCst : nat → nat → nat → NonSpawnOps bool
+| StoreSeqCst : nat → nat → NonSpawnOps unit
+| Join : nat → NonSpawnOps unit.
+Definition ThreadId := nat.
+Inductive ThreadedOps : Type → Type :=
+| NonSpawn : ∀ t, NonSpawnOps t → ThreadedOps t
+| Spawn : ∀ ControlFlowState, ControlFlowState → ThreadedOps ThreadId.
 
-(* But we really need a bit of nontermination. Let's make the minimal definition: *)
-Inductive Loopable (Primitive : Type → Type) : Type :=
-| LoopableReturn : ∀ ReturnType : Type, ReturnType → Loopable Primitive
-| LoopablePrimitive : ∀ po, Primitive po → (po → Loopable Primitive) → Loopable Primitive
-| LoopableLoop : ∀ po, Primitive po → (po → option (Loopable Primitive)) → Loopable Primitive.
-Definition LoopableControlFlow (Primitive : Type → Type)
-  : ControlFlow Primitive (Loopable Primitive) := 
+Inductive Loopable :=
+| LoopableReturn : ∀ ReturnType : Type, ReturnType → Loopable
+| LoopableNonSpawn : ∀ po, NonSpawnOps po → (po → Loopable) → Loopable
+| LoopableLoop : ∀ po, NonSpawnOps po → (po → option Loopable) → Loopable
+| LoopableSpawn : Loopable → (ThreadId → Loopable) → Loopable.
+
+Definition LoopableControlFlow : ControlFlow Loopable := 
   λ operation, match operation with
-  | LoopableReturn _ t => ControlFlowReturn _ _ t
-  | LoopablePrimitive _ p continuation => ControlFlowPrimitive _ p continuation
-  | LoopableLoop _ p continuationPicker => ControlFlowPrimitive _ p (λ output, match continuationPicker output with
+  | LoopableReturn _ t => ControlFlowReturn t
+  | LoopableNonSpawn _ p continuation => ControlFlowPrimitive (NonSpawn p) continuation
+  | LoopableLoop _ p continuationPicker => ControlFlowPrimitive (NonSpawn p) (λ output, match continuationPicker output with
     | Some c => c
     | None => operation
     end)
+  | LoopableSpawn spawned continuation => ControlFlowPrimitive (Spawn spawned) continuation
   end.
 
-(* This time, let's have multiple memory locations, indexed by `nat`.*)
-Inductive ThreadedOps : Type → Type :=
-| NonAtomicRead : nat → ThreadedOps nat
-| NonAtomicWrite : nat → nat → ThreadedOps unit
-| CompareAndSwapAcquire : nat → nat → nat → ThreadedOps bool
-| StoreRelease : nat → nat → ThreadedOps unit
-| Spawn : ∀ ControlFlowState, ControlFlowState → ThreadedOps unit
-| Join : nat → ThreadedOps unit.
+Definition increment (address : nat) : Loopable :=
+  LoopableNonSpawn (NonAtomicRead address) (λ n, LoopableNonSpawn (NonAtomicWrite address (S n)) (λ _ : unit, LoopableReturn tt)).
 
-Definition increment (address : nat) : Loopable ThreadedOps :=
-  LoopablePrimitive (NonAtomicRead address) (λ n, LoopablePrimitive (NonAtomicWrite address (S n)) (λ _, LoopableReturn _ tt)).
+Definition lock (address : nat) : Loopable :=
+  LoopableLoop (CompareAndSwapSeqCst address 0 1) (λ worked : bool, if worked then Some (LoopableReturn tt) else None).
 
-Definition lock (address : nat) : Loopable ThreadedOps :=
-  LoopableLoop (CompareAndSwapAcquire address 0 1) (λ worked : bool, if worked then Some (LoopableReturn _ tt) else None).
+Definition unlock (address : nat) : Loopable :=
+  LoopableNonSpawn (StoreSeqCst address 0) (λ _ : unit, LoopableReturn tt).
 
-Definition unlock (address : nat) : Loopable ThreadedOps :=
-  LoopablePrimitive (StoreRelease address 0) (λ _, LoopableReturn _ tt).
-
-Fixpoint sequenceLoopable (Primitive : Type → Type) (f g : Loopable Primitive)
-  : Loopable Primitive := match f with
+Fixpoint sequenceLoopable (f g : Loopable) : Loopable := match f with
 | LoopableReturn _ t => g
-| LoopablePrimitive _ p continuation => LoopablePrimitive p (λ po, sequenceLoopable (continuation po) g)
+| LoopableNonSpawn _ p continuation => LoopableNonSpawn p (λ po, sequenceLoopable (continuation po) g)
 | LoopableLoop _ p continuationPicker => LoopableLoop p (λ po, option_map (λ continuation, sequenceLoopable continuation g) (continuationPicker po))
+| LoopableSpawn spawned continuation => LoopableSpawn spawned (λ po, sequenceLoopable (continuation po) g)
 end.
 Notation "x ; y" := (sequenceLoopable x y) (at level 94, left associativity).
 
-Definition incrementLockContents (address : nat) : Loopable ThreadedOps :=
+Definition incrementLockContents (address : nat) : Loopable :=
   lock address ; increment (S address) ; unlock address.
 
-Definition incrementTwiceConcurrentlyTestcase (address : nat) : Loopable ThreadedOps :=
-  LoopablePrimitive (NonAtomicWrite address 0) (λ _,
-    LoopablePrimitive (NonAtomicWrite (S address) 0) (λ _,
-      LoopablePrimitive (@Spawn (Loopable ThreadedOps) (incrementLockContents address)) (λ handle,
-        incrementLockContents address ; LoopablePrimitive (Join handle) (λ _, LoopableReturn _ tt) 
+Definition incrementTwiceConcurrentlyTestcase (address : nat) : Loopable :=
+  LoopableNonSpawn (NonAtomicWrite address 0) (λ _,
+    LoopableNonSpawn (NonAtomicWrite (S address) 0) (λ _,
+      LoopableSpawn (incrementLockContents address) (λ handle,
+        incrementLockContents address ; LoopableNonSpawn (Join handle) (λ _, LoopableReturn tt) 
   ))).
