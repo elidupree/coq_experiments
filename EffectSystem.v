@@ -304,19 +304,21 @@ While I'm refactoring things, I think it makes more sense if I make Primitive an
 
 *)
 
-Inductive ControlFlowChoice :=
-| ControlFlowReturn : ∀ ReturnType : Type, ReturnType → ControlFlowChoice
-| ControlFlowPrimitive : ∀ p po State, p → (po → State) → ControlFlowChoice.
-Definition ControlFlow State : Type := State → ControlFlowChoice.
+Inductive ControlFlowChoice (Primitive : Type → Type) State :=
+| ControlFlowReturn : ∀ ReturnType : Type, ReturnType → ControlFlowChoice Primitive State
+| ControlFlowPrimitive : ∀ p, Primitive p → (p → State) → ControlFlowChoice Primitive State.
+Definition ControlFlow Primitive State : Type := State → ControlFlowChoice Primitive State.
 
 (* This time, let's have multiple memory locations, indexed by `nat`.*)
-Inductive NonSpawnOps : Type → Type :=
-| NonAtomicRead : nat → NonSpawnOps nat
-| NonAtomicWrite : nat → nat → NonSpawnOps unit
-| CompareAndSwapSeqCst : nat → nat → nat → NonSpawnOps bool
-| StoreSeqCst : nat → nat → NonSpawnOps unit
-| Join : nat → NonSpawnOps unit.
+Definition MemoryValue := nat.
+Definition Address := nat.
 Definition ThreadId := nat.
+Inductive NonSpawnOps : Type → Type :=
+| NonAtomicRead : Address → NonSpawnOps nat
+| NonAtomicWrite : Address → MemoryValue → NonSpawnOps unit
+| CompareAndSwapSeqCst : Address → MemoryValue → MemoryValue → NonSpawnOps bool
+| StoreSeqCst : Address → MemoryValue → NonSpawnOps unit
+| Join : ThreadId → NonSpawnOps unit.
 Inductive ThreadedOps : Type → Type :=
 | NonSpawn : ∀ t, NonSpawnOps t → ThreadedOps t
 | Spawn : ∀ ControlFlowState, ControlFlowState → ThreadedOps ThreadId.
@@ -327,24 +329,24 @@ Inductive Loopable :=
 | LoopableLoop : ∀ po, NonSpawnOps po → (po → option Loopable) → Loopable
 | LoopableSpawn : Loopable → (ThreadId → Loopable) → Loopable.
 
-Definition LoopableControlFlow : ControlFlow Loopable := 
+Definition LoopableControlFlow : ControlFlow ThreadedOps Loopable := 
   λ operation, match operation with
-  | LoopableReturn _ t => ControlFlowReturn t
-  | LoopableNonSpawn _ p continuation => ControlFlowPrimitive (NonSpawn p) continuation
-  | LoopableLoop _ p continuationPicker => ControlFlowPrimitive (NonSpawn p) (λ output, match continuationPicker output with
+  | LoopableReturn _ t => ControlFlowReturn ThreadedOps Loopable t
+  | LoopableNonSpawn _ p continuation => ControlFlowPrimitive ThreadedOps (NonSpawn p) continuation
+  | LoopableLoop _ p continuationPicker => ControlFlowPrimitive ThreadedOps (NonSpawn p) (λ output, match continuationPicker output with
     | Some c => c
     | None => operation
     end)
-  | LoopableSpawn spawned continuation => ControlFlowPrimitive (Spawn spawned) continuation
+  | LoopableSpawn spawned continuation => ControlFlowPrimitive ThreadedOps (Spawn spawned) continuation
   end.
 
-Definition increment (address : nat) : Loopable :=
+Definition increment (address : Address) : Loopable :=
   LoopableNonSpawn (NonAtomicRead address) (λ n, LoopableNonSpawn (NonAtomicWrite address (S n)) (λ _ : unit, LoopableReturn tt)).
 
-Definition lock (address : nat) : Loopable :=
+Definition lock (address : Address) : Loopable :=
   LoopableLoop (CompareAndSwapSeqCst address 0 1) (λ worked : bool, if worked then Some (LoopableReturn tt) else None).
 
-Definition unlock (address : nat) : Loopable :=
+Definition unlock (address : Address) : Loopable :=
   LoopableNonSpawn (StoreSeqCst address 0) (λ _ : unit, LoopableReturn tt).
 
 Fixpoint sequenceLoopable (f g : Loopable) : Loopable := match f with
@@ -355,12 +357,134 @@ Fixpoint sequenceLoopable (f g : Loopable) : Loopable := match f with
 end.
 Notation "x ; y" := (sequenceLoopable x y) (at level 94, left associativity).
 
-Definition incrementLockContents (address : nat) : Loopable :=
+Definition incrementLockContents (address : Address) : Loopable :=
   lock address ; increment (S address) ; unlock address.
 
-Definition incrementTwiceConcurrentlyTestcase (address : nat) : Loopable :=
+Definition incrementTwiceConcurrentlyTestcase (address : Address) : Loopable :=
   LoopableNonSpawn (NonAtomicWrite address 0) (λ _,
     LoopableNonSpawn (NonAtomicWrite (S address) 0) (λ _,
       LoopableSpawn (incrementLockContents address) (λ handle,
         incrementLockContents address ; LoopableNonSpawn (Join handle) (λ _, LoopableReturn tt) 
   ))).
+
+
+(* ThreadClaimed doesn't refer to explicit ownership, but to what's implied *must* be the ownership given that a thread did a nonatomic operation at the address and it wasn't known to be forbidden at the time. This doesn't account for shared read access yet (just because I don't need it yet).
+
+After a thread does a nonatomic operation, other threads can't mess with it until the first thread does an SeqCst operation AND the second thread does a SeqCst operation. So, to know what threads would be allowed to start doing nonatomic operations, we have to remember *which* threads have done SeqCst operations since the original SeqCst. *)
+Inductive AddressState := 
+| Uninitialized : AddressState
+| ThreadClaimed : ThreadId → MemoryValue → AddressState
+| Released : (ThreadId → Prop) → MemoryValue → AddressState.
+
+(* Record ThreadedOpsState ControlFlowState : Type := mkThreadedOpsState
+  { threads : list (option ControlFlowState)
+  ; memory : Address → AddressState
+  }. *)
+
+(* This time let's do the history in reverse order - y::x::nil means x then y *)
+Definition PrimitiveHistory (Primitive : Type → Type) := list {p & Primitive p × p}.
+
+Inductive EffectsHistory State (Primitive : Type → Type) (initial : State) (step : {p & Primitive p × p} → State → State → Prop) : PrimitiveHistory Primitive → list State → Type :=
+| EffectsHistoryInitial : EffectsHistory initial step nil (initial :: nil)
+| EffectsHistoryCons : ∀ p pl y x sl , step p x y →
+    EffectsHistory initial step pl (x :: sl) →
+    EffectsHistory initial step (p :: pl) (y :: x :: sl).
+
+Definition lastEState State (Primitive : Type → Type) (initial : State) (step : {p & Primitive p × p} → State → State → Prop) (pHistory : PrimitiveHistory Primitive) (states : list State) (eHistory : EffectsHistory initial step pHistory states) : State := match eHistory with
+| EffectsHistoryInitial => initial
+| EffectsHistoryCons _ _ y _ _ _ _ => y
+end.
+
+Inductive ControlFlowHistory State (Primitive : Type → Type) (initial : State) (Flow : ControlFlow Primitive State) : PrimitiveHistory Primitive → list State → Type :=
+| ControlFlowHistoryInitial : ControlFlowHistory initial Flow nil (initial :: nil)
+| ControlFlowHistoryCons : ∀ pt p po pl cont state l,
+  Flow state = ControlFlowPrimitive _ p cont →
+  ControlFlowHistory initial Flow pl (state :: l) →
+  ControlFlowHistory initial Flow (existT _ pt (p, po) :: pl) ((cont po) :: state :: l).
+
+Definition lastCState State (Primitive : Type → Type) (initial : State) (Flow : ControlFlow Primitive State) (pHistory : PrimitiveHistory Primitive) (states : list State) (cHistory : ControlFlowHistory initial Flow pHistory states) : State := match cHistory with
+| ControlFlowHistoryInitial => initial
+| ControlFlowHistoryCons _ _ po _ cont _ _ _ _ => cont po
+end.
+  
+Inductive Subsequence A : list A → list A → Type :=
+| SubsequenceNil : ∀ l, Subsequence nil l
+| SubsequenceSkip : ∀ s x l, Subsequence s l → Subsequence s (x::l)
+| SubsequenceInclude : ∀ s x l, Subsequence s l → Subsequence (x::s) (x::l).
+
+Inductive SubHistory S1 S2 (M : S1 → S2) : list S2 → list S1 → Type :=
+| SubHistoryNil : ∀ x l, SubHistory M (M x :: nil) (x :: l)
+| SubHistorySkip : ∀ y x l1 l2, M y = M x → SubHistory M l2 l1 → SubHistory M (M x :: l2) (y :: x :: l1)
+| SubHistoryInclude : ∀ y x l1 l2, SubHistory M l2 l1 → SubHistory M (M y :: M x :: l2) (y :: x :: l1).
+  
+Definition WellBehaved (Primitive : Type → Type) CState EState (Flow : ControlFlow Primitive CState) (cInitial : CState) (eInitial : EState) (step : {p & Primitive p × p} → EState → EState → Prop) (NotUB : {p & Primitive p} → EState → Prop) : Prop := ∀
+  pHistory cStates eStates
+  (eHistory : EffectsHistory eInitial step pHistory eStates)
+  (cHistory : ControlFlowHistory cInitial Flow pHistory cStates),
+match Flow (lastCState cHistory) with
+| ControlFlowReturn _ _ => True
+| ControlFlowPrimitive pt p continuation => NotUB (existT _ pt p) (lastEState eHistory)
+end.
+  
+  
+match Flow cState with
+| ControlFlowReturn _ _ => True
+| ControlFlowPrimitive _ p continuation => ∀ p po pState', step (existT _ _ (p, po)) pState pState' → NotUB (existT _ _ p) pState ∧ WellBehaved Flow (continuation po) pState' step NotUB
+end.
+
+Inductive SubsequenceMap A : list A → list A → Type :=
+| SubsequenceNil : ∀ l, Subsequence nil l
+| SubsequenceSkip : ∀ s x l, Subsequence s l → Subsequence s (x::l)
+| SubsequenceInclude : ∀ s x l, Subsequence s l → Subsequence (x::s) (x::l).
+
+  
+Inductive NonDeterministicHistory EffectsState (initialState : EffectsState) (step : EffectsState → EffectsState → Prop) : EffectsState → Type :=
+| Start : NonDeterministicHistory initialState step initialState
+| Step : ∀ old next , step old next → NonDeterministicHistory initialState step old → NonDeterministicHistory initialState step next.
+
+Inductive SubHistory EffectsState SubEffectsState
+  (stateMapping : EffectsState → SubEffectsState)
+  (initialState : EffectsState)
+  (step : EffectsState → EffectsState → Prop)
+  (subStep : SubEffectsState → SubEffectsState → Prop)
+  (latest : EffectsState)
+  :
+  NonDeterministicHistory initialState step latest →
+  ∀ subInitialState : SubEffectsState,
+  NonDeterministicHistory subInitialState subStep (stateMapping latest) →
+  Type :=
+| SubStart : ∀ history : NonDeterministicHistory initialState step latest, SubHistory stateMapping history (Start (stateMapping latest) subStep)
+| SubSkip : ∀ old (s : step old latest)
+    (prevHistory : NonDeterministicHistory initialState step old)
+    (subPrevHistory : NonDeterministicHistory (stateMapping old) subStep (stateMapping old))
+    (noChange : stateMapping latest = stateMapping old),
+    SubHistory stateMapping prevHistory subPrevHistory →
+    SubHistory stateMapping (Step latest s prevHistory) (rew <- noChange in subPrevHistory)
+| SubStep : ∀ old (s : step old latest)
+    (prevHistory : NonDeterministicHistory initialState step old)
+    (subPrevHistory : NonDeterministicHistory (stateMapping old) subStep (stateMapping old))
+    (subS : subStep (stateMapping old) (stateMapping latest)),
+    SubHistory stateMapping prevHistory subPrevHistory →
+    SubHistory stateMapping (Step latest s prevHistory) (Step (stateMapping latest) subS subPrevHistory).
+
+Definition threadedOpsStep ControlFlowState (controlFlow : ControlFlow ControlFlowState) (old : ThreadedOpsState ControlFlowState) (new : ThreadedOpsState ControlFlowState) : Prop :=
+  ∃ c, n < length (threads old) ∧ nth (threads old)
+
+Definition memoryOpsHistoryPredicateWithState T : T → HistoryPredicate (@MemoryOpsType T) :=
+  fix P state history := match history with
+  | nil => True
+  | x :: xs => unpackSigT x (λ a, match a return MemoryOpsType a → Prop with
+    | Read => λ p, p = state ∧ P state xs
+    | Write t => λ _, P t xs
+  end) end.
+Definition memoryOpsHistoryPredicateUnknownState T : HistoryPredicate (@MemoryOpsType T) :=
+  λ history, match history with
+  | nil => True
+  | x :: xs => unpackSigT x (λ a, match a return MemoryOpsType a → Prop with
+    | Read => λ p, memoryOpsHistoryPredicateWithState p xs
+    | Write t => λ _, memoryOpsHistoryPredicateWithState t xs
+  end) end.
+Definition uniqueAccessGuaranteesUnknownState (address : nat) : ThreadedHistory → Prop :=
+Definition uniqueAccessPermissions (address : nat) : ThreadedHistory → Prop :=
+  
+  
