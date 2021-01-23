@@ -61,16 +61,16 @@ Lemma childHistory P C
   apply (HistoryStep _ H0); assumption.
 Qed.
 
-Definition NonNullStep A (SA : Step A) : Step A := λ x y, SA x y ∧ x ≠ y.
-Lemma RemoveNullSteps A (SA : Step A) (eq_dec : ∀ x y : A, x = y ∨ x ≠ y) i f : History SA i f → History (NonNullStep SA) i f.
+(* Definition NonNullStep A (SA : Step A) : Step A := λ x y, SA x y ∧ x ≠ y. *)
+Lemma RemoveNullSteps A (SA : Step A) (NonNullSA : Step A) (null_dec : ∀ x y : A, SA x y → NonNullSA x y ∨ x = y) i f : History SA i f → History NonNullSA i f.
   intros; induction H.
   constructor.
-  destruct (eq_dec x y).
+  destruct (null_dec x y H).
+  exact (HistoryStep y H1 IHHistory).
   rewrite <- H1; assumption.
-  exact (HistoryStep y (conj H H1) IHHistory).
 Qed.
 
-Lemma NullStepsIrrelevant A (SA : Step A) (R : A → Prop) (eq_dec : ∀ x y : A, x = y ∨ x ≠ y) i : (∀ f, History (NonNullStep SA) i f → R f) → (∀ f, History SA i f → R f).
-  intros; exact (H f (RemoveNullSteps eq_dec H0)).
+Lemma NullStepsIrrelevant A (SA : Step A) (NonNullSA : Step A) (null_dec : ∀ x y : A, SA x y → NonNullSA x y ∨ x = y) (R : A → Prop) i : (∀ f, History NonNullSA i f → R f) → (∀ f, History SA i f → R f).
+  intros; exact (H f (RemoveNullSteps NonNullSA null_dec H0)).
 Qed.
   
