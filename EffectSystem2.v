@@ -87,16 +87,26 @@ Definition ThreadId := nat.
 After a thread does a nonatomic operation, other threads can't mess with it until the first thread does an SeqCst operation AND the second thread does a SeqCst operation. So, to know what threads would be allowed to start doing nonatomic operations, we have to remember *which* threads have done SeqCst operations since the original SeqCst. *)
 Inductive AddressState := 
 | ThreadClaimed : ThreadId → MemoryValue → AddressState
-| Released : (ThreadId → Prop) → MemoryValue → AddressState.
+| Released : (ThreadId → Prop) → MemoryValue → AddressState
+(* | Forbidden : AddressState *)
+.
 
 Definition ThreadCanNonAtomicAccess id state : Prop := match state with
 | ThreadClaimed id2 _ => id = id2
 | Released allowed _ => allowed id
+(* | Forbidden => False *)
+end.
+
+Definition ThreadCanAtomicAccess id state : Prop := match state with
+| ThreadClaimed id2 _ => id = id2
+| Released allowed _ => True
+(* | Forbidden => False *)
 end.
 
 Definition AddressValue state : MemoryValue := match state with
 | ThreadClaimed _ value => value
 | Released _ value => value
+(* | Forbidden => 0 *)
 end.
 
 Definition AddressAfterSeqCst id value state : AddressState := match state with
@@ -169,11 +179,12 @@ Definition PrimitiveThenStep (prev next : ConcreteState) (thread : Selection (st
         ¬ ThreadCanNonAtomicAccess id (memory address) ∨ next = mkState
           (setAddress address memory (ThreadClaimed id value))
           (replaceSelected thread (id, cont tt))
-      | StoreSeqCst address value => λ cont, next = mkState
+      | StoreSeqCst address value => λ cont,
+        ¬ ThreadCanAtomicAccess id (memory address) ∨ next = mkState
           (setAddress address memory (AddressAfterSeqCst id value (memory address)))
           (replaceSelected thread (id, cont tt))
       | CompareAndSwapSeqCst address old new => λ cont, let value := AddressValue (memory address) in
-          next = 
+        ¬ ThreadCanAtomicAccess id (memory address) ∨ next = 
             if eq_dec old value then
               mkState
                 (setAddress address memory (AddressAfterSeqCst id new (memory address)))
@@ -184,10 +195,94 @@ Definition PrimitiveThenStep (prev next : ConcreteState) (thread : Selection (st
       end cont.
 
 Definition ConcreteStep : Step ConcreteState :=
-  λ prev next, let memory := stateMemory prev in ∃ thread : Selection (stateThreads prev), let (id , control) := selectedValue thread in match control with
+  λ prev next, prev = next ∨ let memory := stateMemory prev in ∃ thread : Selection (stateThreads prev), let (id , control) := selectedValue thread in match control with
     | Return _ _ => False
     | PrimitiveThen _ p cont => PrimitiveThenStep prev next thread p cont
     | PrimitiveLoop _ p cont => PrimitiveThenStep prev next thread p (λ output, match cont output with Some a => a | None => control end)
     end.
 
+
+
+
+
+Definition increment (address : Address) : ThreadControlFlow :=
+  PrimitiveThen (NonAtomicRead address) (λ n, PrimitiveThen (NonAtomicWrite address (S n)) (λ _ : unit, Return tt)).
+
+Definition lock (address : Address) : ThreadControlFlow :=
+  PrimitiveLoop (CompareAndSwapSeqCst address 0 1) (λ worked : bool, if worked then Some (Return tt) else None).
+
+Definition unlock (address : Address) : ThreadControlFlow :=
+  PrimitiveThen (StoreSeqCst address 0) (λ _ : unit, Return tt).
+
+Fixpoint sequenceThreadControlFlow (f g : ThreadControlFlow) : ThreadControlFlow := match f with
+| Return _ t => g
+| PrimitiveThen _ p continuation => PrimitiveThen p (λ po, sequenceThreadControlFlow (continuation po) g)
+| PrimitiveLoop _ p continuationPicker => PrimitiveLoop p (λ po, option_map (λ continuation, sequenceThreadControlFlow continuation g) (continuationPicker po))
+end.
+Notation "x ; y" := (sequenceThreadControlFlow x y) (at level 94, left associativity).
+
+Definition incrementLockContents (address : Address) : ThreadControlFlow :=
+  lock address ; increment (S address) ; unlock address.
+
+Definition incrementTwiceConcurrentlyTestcase (address : Address) : ThreadControlFlow :=
+  PrimitiveThen (NonAtomicWrite address 0) (λ _,
+    PrimitiveThen (NonAtomicWrite (S address) 0) (λ _,
+      PrimitiveThen (Spawn (incrementLockContents address)) (λ handle,
+        incrementLockContents address ; PrimitiveThen (Join handle) (λ _, Return tt) 
+  ))).
+
+Lemma incrementBehavior (address : Address) (initial final : ConcreteState) (history : History ConcreteStep initial final) :
+  stateThreads initial = (0 , increment address) :: nil →
+  ThreadCanNonAtomicAccess 0 (stateMemory initial address) →
+    final = initial ∨
+    (stateThreads final = (0 , PrimitiveThen (NonAtomicWrite address (S (AddressValue (stateMemory initial address)))) (λ _ : unit, Return tt)) :: nil ∧ stateMemory final = 
+      setAddress address (stateMemory initial) (ThreadClaimed 0 (AddressValue (stateMemory initial address)))
+    ) ∨
+    (stateThreads final = (0 , Return tt) :: nil ∧ stateMemory final =
+      setAddress address (setAddress address (stateMemory initial) (ThreadClaimed 0 (AddressValue (stateMemory initial address)))) (ThreadClaimed 0 (S (AddressValue (stateMemory initial address))))
+    ).
+    
+  intuition idtac.
+  dependent induction history.
+  left; reflexivity.
+  
+  destruct initial; destruct x; destruct y; simpl in *.
+  rewrite H0 in *; clear H0 stateThreads0.
+  intuition idtac; simpl in *.
+  
+  inversion H0; rewrite H3 in *; rewrite H4 in *.
+  destruct H.
+  left; symmetry; assumption.
+  right; left. destruct H. simpl in *. dependent destruction x; simpl in *. unfold PrimitiveThenStep in H; simpl in H.
+  destruct H. contradiction.
+  congruence.
+  
+  
+  admit. admit.
+  
+  
+  destruct H. intuition idtac. simpl in *. inversion H. specialize (H3 address2). rewrite (H3 H2). rewrite H4. reflexivity.
+  
+  destruct H. intuition idtac. simpl in *. inversion x. revert dependent x; intro; destruct x. 
+  
+  
+  dependent induction history.
+
+Lemma incrementNoSideEffects (address : Address) (initial final : ConcreteState) (history : History ConcreteStep initial final) : stateThreads initial = (0 , increment address) :: nil → ThreadCanNonAtomicAccess 0 (stateMemory initial address) → ∀ address2, address ≠ address2 → stateMemory initial address2 = stateMemory final address2.
+  intuition idtac.
+  dependent induction history.
+  reflexivity.
+  
+  destruct initial; destruct x; destruct y; simpl in *.
+  rewrite H0 in *; clear H0 stateThreads0.
+  
+  destruct H. intuition idtac. simpl in *. inversion H. specialize (H3 address2). rewrite (H3 H2). rewrite H4. reflexivity.
+  
+  destruct H. intuition idtac. simpl in *. inversion x. revert dependent x; intro; destruct x. 
+  
+  
+  dependent induction history.
+
+
+Lemma incrementIncrements (address : Address) (initial final : ConcreteState) (history : History initial final) : stateThreads initial = (0 , increment address) :: nil → ThreadCanNonAtomicAccess 0 (stateMemory initial address) → 
 
