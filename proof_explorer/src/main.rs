@@ -1,60 +1,32 @@
 //use anyhow::{anyhow, Context};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use serde_lexpr::Value;
-use std::io::{BufRead, BufReader};
-use std::process::{ChildStdin, ChildStdout, Command, Stdio};
+use std::io::{BufRead, BufReader, Write};
+use std::process::{self, ChildStdin, ChildStdout, Stdio};
 use std::thread;
 use std::time::Duration;
 
+mod serapi_protocol;
+
+use crate::serapi_protocol::*;
+
 fn main() {
-    let child = Command::new("sertop")
+    let child = process::Command::new("sertop")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
         .expect("failed sertop command");
     let child_stdout = child.stdout.expect("no stdout?");
+    let child_stdin = child.stdin.expect("no stdin?");
+    thread::spawn(move || other_thread(child_stdin));
     receiver_thread(child_stdout);
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-enum FeedbackContent {
-    Processed,
-    Incomplete,
-    Complete,
-    ProcessingIn(String),
-    InProgress(i64),
-    WorkerStatus(String, String),
-    AddedAcxiom,
-    FileDependency(Option<String>, String),
-    FileLoaded(String, String),
-    Message {
-        level: i64,
-        loc: Option<()>,
-        pp: (),
-        str: String,
-    },
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct Feedback {
-    doc_id: i64,
-    span_id: i64,
-    route: i64,
-    contents: FeedbackContent,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-enum Answer {
-    Feedback(Feedback),
-    Other,
 }
 
 pub fn receiver_thread(child_stdout: ChildStdout) {
     for line in BufReader::new(child_stdout).lines() {
         let line = line.unwrap();
         let parsed = serde_lexpr::parse::from_str(&line);
-        let parsed: serde_lexpr::Value = match parsed {
+        let parsed = match parsed {
             Ok(parsed) => parsed,
             Err(err) => {
                 eprintln!(
@@ -76,6 +48,34 @@ pub fn receiver_thread(child_stdout: ChildStdout) {
                 continue;
             }
         };
-        eprintln!("received valid input from sertop: {:#?}\n", interpreted);
+        eprintln!("received valid input from sertop: {:?}\n", interpreted);
+
+        match interpreted {
+            Answer::Feedback(feedback) => match feedback.contents {
+                FeedbackContent::Processed => {}
+                _ => {}
+            },
+            Answer::Answer(command_tag, answer_kind) => match answer_kind {
+                AnswerKind::Added(state_id, location, extra) => {}
+                _ => {}
+            },
+        }
     }
+}
+
+pub fn send_command(child_stdin: &mut ChildStdin, command: &Command) {
+    let text = serde_lexpr::to_string(command).unwrap();
+    eprintln!("sending command to sertop: {}\n", text);
+    writeln!(child_stdin, "{}", text);
+}
+
+pub fn other_thread(mut child_stdin: ChildStdin) {
+    send_command(
+        &mut child_stdin,
+        &Command::Add(
+            Default::default(),
+            "Lemma foo : forall x : nat, x = x.".to_string(),
+        ),
+    );
+    send_command(&mut child_stdin, &Command::Exec(2));
 }

@@ -13,3 +13,4 @@ serde-lexpr = { git = "https://github.com/elidupree/lexpr-rs/" }
 parking_lot = "0.11.1"
 lexpr = "0.2.6"
 anyhow = "1.0.38"
+derivative = "2.2.0"
