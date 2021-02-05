@@ -1,0 +1,15 @@
+[package]
+name = "proof_explorer"
+version = "0.1.0"
+authors = ["Eli Dupree <vcs@elidupree.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde = {version = "1.0", features = ["derive"]}
+serde-lexpr = { git = "https://github.com/elidupree/lexpr-rs/" }
+# typed-html = "0.2.2"
+parking_lot = "0.11.1"
+lexpr = "0.2.6"
+anyhow = "1.0.38"
