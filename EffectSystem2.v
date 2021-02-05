@@ -255,6 +255,8 @@ Lemma incrementBehavior (address : Address) (initial final : ConcreteState) (his
   left; symmetry; assumption.
   right; left. destruct H. simpl in *. dependent destruction x; simpl in *. unfold PrimitiveThenStep in H; simpl in H.
   destruct H. contradiction.
+  
+  (* 
   congruence.
   
   
@@ -284,5 +286,5 @@ Lemma incrementNoSideEffects (address : Address) (initial final : ConcreteState)
   dependent induction history.
 
 
-Lemma incrementIncrements (address : Address) (initial final : ConcreteState) (history : History initial final) : stateThreads initial = (0 , increment address) :: nil → ThreadCanNonAtomicAccess 0 (stateMemory initial address) → 
+Lemma incrementIncrements (address : Address) (initial final : ConcreteState) (history : History initial final) : stateThreads initial = (0 , increment address) :: nil → ThreadCanNonAtomicAccess 0 (stateMemory initial address) →  *)
 

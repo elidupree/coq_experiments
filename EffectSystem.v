@@ -426,22 +426,22 @@ match Flow (lastCState cHistory) with
 | ControlFlowPrimitive pt p continuation => NotUB (existT _ pt p) (lastEState eHistory)
 end.
   
-  
+  (* 
 match Flow cState with
 | ControlFlowReturn _ _ => True
 | ControlFlowPrimitive _ p continuation => ∀ p po pState', step (existT _ _ (p, po)) pState pState' → NotUB (existT _ _ p) pState ∧ WellBehaved Flow (continuation po) pState' step NotUB
-end.
+end. *)
 
 Inductive SubsequenceMap A : list A → list A → Type :=
-| SubsequenceNil : ∀ l, Subsequence nil l
-| SubsequenceSkip : ∀ s x l, Subsequence s l → Subsequence s (x::l)
-| SubsequenceInclude : ∀ s x l, Subsequence s l → Subsequence (x::s) (x::l).
+| SubsequenceMapNil : ∀ l, SubsequenceMap nil l
+| SubsequenceMapSkip : ∀ s x l, SubsequenceMap s l → SubsequenceMap s (x::l)
+| SubsequenceMapInclude : ∀ s x l, SubsequenceMap s l → SubsequenceMap (x::s) (x::l).
 
   
 Inductive NonDeterministicHistory EffectsState (initialState : EffectsState) (step : EffectsState → EffectsState → Prop) : EffectsState → Type :=
 | Start : NonDeterministicHistory initialState step initialState
 | Step : ∀ old next , step old next → NonDeterministicHistory initialState step old → NonDeterministicHistory initialState step next.
-
+(* 
 Inductive SubHistory EffectsState SubEffectsState
   (stateMapping : EffectsState → SubEffectsState)
   (initialState : EffectsState)
@@ -486,5 +486,5 @@ Definition memoryOpsHistoryPredicateUnknownState T : HistoryPredicate (@MemoryOp
   end) end.
 Definition uniqueAccessGuaranteesUnknownState (address : nat) : ThreadedHistory → Prop :=
 Definition uniqueAccessPermissions (address : nat) : ThreadedHistory → Prop :=
-  
+   *)
   

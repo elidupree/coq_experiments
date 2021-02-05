@@ -29,3 +29,14 @@ nia.cache
 nlia.cache
 nra.cache
 \#*.v#
+
+*.vok
+*.vos
+
+.idea
+.makefile.d
+makefile
+makefile.conf
+CoqMakefile
+CoqMakefile.conf
+modify_noticer
