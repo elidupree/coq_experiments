@@ -1,3 +1,4 @@
+use crate::universally_deserializable::NotYetImplemented;
 use derivative::Derivative;
 use serde::{de, Deserialize, Serialize};
 
@@ -8,22 +9,12 @@ fn is_default<T: Default + PartialEq>(value: &T) -> bool {
     value == &T::default()
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize)]
-pub struct Unfinished;
-
-impl<'de> de::Deserialize<'de> for Unfinished {
-    fn deserialize<D: de::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        Ok(Unfinished)
-    }
-}
-
 pub type StateId = i64;
 pub type RouteId = i64;
-pub type Constr = Unfinished;
-pub type ConstrExpr = Unfinished;
-pub type RawBacktrace = Unfinished;
-pub type Exn = Unfinished;
-pub type PrettyPrint = Unfinished;
+pub type Constr = NotYetImplemented;
+pub type ConstrExpr = NotYetImplemented;
+pub type RawBacktrace = NotYetImplemented;
+pub type PrettyPrint = NotYetImplemented;
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Location {
     line_nb: i64,
@@ -40,6 +31,13 @@ pub enum FeedbackLevel {
     Notice,
     Warning,
     Error,
+}
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum Exn {
+    #[serde(rename = "CErrors.UserError")]
+    UserErrorSome((String, PrettyPrint)),
+    #[serde(rename = "CErrors.UserError")]
+    UserErrorNone((PrettyPrint)),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -134,7 +132,7 @@ pub struct AddOptions {
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Command {
-    NewDoc(Unfinished),
+    NewDoc(NotYetImplemented),
     Add(AddOptions, String),
     Cancel(Vec<StateId>),
     Exec(StateId),

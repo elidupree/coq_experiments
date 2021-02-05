@@ -7,6 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 mod serapi_protocol;
+mod universally_deserializable;
 
 use crate::serapi_protocol::*;
 
