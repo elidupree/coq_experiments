@@ -48,7 +48,10 @@ pub fn receiver_thread(child_stdout: ChildStdout) {
                 continue;
             }
         };
-        eprintln!("received valid input from sertop: {:?}\n", interpreted);
+        eprintln!(
+            "received valid input from sertop:\n{:?}\n{}\n",
+            interpreted, line
+        );
 
         match interpreted {
             Answer::Feedback(feedback) => match feedback.contents {

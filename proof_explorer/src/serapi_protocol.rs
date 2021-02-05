@@ -1,5 +1,5 @@
 use derivative::Derivative;
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Serialize};
 
 fn default<T: Default>() -> T {
     Default::default()
@@ -8,7 +8,14 @@ fn is_default<T: Default + PartialEq>(value: &T) -> bool {
     value == &T::default()
 }
 
-pub type Unfinished = ();
+#[derive(Clone, PartialEq, Eq, Debug, Serialize)]
+pub struct Unfinished;
+
+impl<'de> de::Deserialize<'de> for Unfinished {
+    fn deserialize<D: de::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(Unfinished)
+    }
+}
 
 pub type StateId = i64;
 pub type RouteId = i64;
@@ -25,6 +32,14 @@ pub struct Location {
     bol_pos_last: i64,
     bp: i64,
     ep: i64,
+}
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum FeedbackLevel {
+    Debug,
+    Info,
+    Notice,
+    Warning,
+    Error,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -171,7 +186,7 @@ pub enum FeedbackContent {
     FileDependency(Option<String>, String),
     FileLoaded(String, String),
     Message {
-        level: i64,
+        level: FeedbackLevel,
         loc: Option<Location>,
         pp: PrettyPrint,
         str: String,
