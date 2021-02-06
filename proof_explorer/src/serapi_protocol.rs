@@ -1,12 +1,18 @@
 use crate::universally_deserializable::NotYetImplemented;
 use derivative::Derivative;
-use serde::{de, Deserialize, Serialize};
+use serde::{ser, Deserialize, Serialize};
 
-fn default<T: Default>() -> T {
+pub fn default<T: Default>() -> T {
     Default::default()
 }
-fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+pub fn is_default<T: Default + PartialEq>(value: &T) -> bool {
     value == &T::default()
+}
+pub fn serialize_unwrapped_option<T: Serialize, S: ser::Serializer>(
+    value: &Option<T>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    value.as_ref().unwrap().serialize(serializer)
 }
 
 pub type StateId = i64;
@@ -37,7 +43,7 @@ pub enum Exn {
     #[serde(rename = "CErrors.UserError")]
     UserErrorSome((String, PrettyPrint)),
     #[serde(rename = "CErrors.UserError")]
-    UserErrorNone((PrettyPrint)),
+    UserErrorNone((PrettyPrint,)),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -121,10 +127,13 @@ pub struct ParseOptions {
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub struct AddOptions {
     #[serde(skip_serializing_if = "is_default")]
+    #[serde(serialize_with = "serialize_unwrapped_option")]
     pub lim: Option<i64>,
     #[serde(skip_serializing_if = "is_default")]
+    #[serde(serialize_with = "serialize_unwrapped_option")]
     pub ontop: Option<StateId>,
     #[serde(skip_serializing_if = "is_default")]
+    #[serde(serialize_with = "serialize_unwrapped_option")]
     pub newtip: Option<StateId>,
     #[serde(skip_serializing_if = "is_default")]
     pub verb: bool,

@@ -9,8 +9,10 @@ edition = "2018"
 [dependencies]
 serde = {version = "1.0", features = ["derive"]}
 serde-lexpr = { git = "https://github.com/elidupree/lexpr-rs/" }
-# typed-html = "0.2.2"
+typed-html = { git = "https://github.com/bodil/typed-html/", version = "0.2.2" }
 parking_lot = "0.11.1"
 lexpr = "0.2.6"
 anyhow = "1.0.38"
 derivative = "2.2.0"
+rocket = "0.4.6"
+rocket_contrib = { version = "0.4.6", features = ["json"]}

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Borg the Spire</title>
+<style>
+</style>
+  </head>
+  <body>
+    <div>
+      <div id="content">
+      
+      </div>
+    </div>
+    <script src="/media/lodash.js"></script>
+    <script src="/media/jquery-3.2.1.min.js"></script>
+    <script src="/media/morphdom-umd.js"></script>
+    <script>
+      $.get ("/default_interface_state").done((default_interface_state) => {
+        window.interface_state = default_interface_state
+        console.log (default_interface_state);
+        
+        function frame() {
+          $.post ({
+            url: "/content",
+            data: JSON.stringify (window.interface_state),
+          })
+            .done ((response) => {
+              morphdom ($("#content") [0], response);
+            })
+            .always (() => {
+              requestAnimationFrame (frame);
+            });
+        }
+        
+        frame();
+      });
+    </script>
+  </body>
+</html>
