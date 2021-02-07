@@ -504,15 +504,33 @@ pub fn receiver_thread(child_stdout: ChildStdout, application_state: Arc<Mutex<A
                         state_ids.iter().all(|canceled| &added.state_id != canceled)
                     });
                 }
-                AnswerKind::CoqExn(_) => match &application.active_command_extra {
-                    Some(ActiveCommandExtra::ExecFromFile { .. }) => {
-                        application.error_occurred_during_last_file_exec = true;
+                AnswerKind::CoqExn(_) => {
+                    match &application.active_command_extra {
+                        Some(ActiveCommandExtra::ExecFromFile { .. }) => {
+                            application.error_occurred_during_last_file_exec = true;
+                        }
+                        Some(ActiveCommandExtra::ExecExploratory { .. }) => {
+                            application.error_occurred_during_last_exploratory_exec = true;
+                            let proof_state = match &mut application.known_mode
+                        {Some(Mode::ProofMode(p)) =>p, _ => panic!("shouldn't be doing exploratory execution when not in proof mode"),
+                        };
+                            proof_state.steps.insert(
+                                application
+                                    .top_state
+                                    .added_exploratory
+                                    .last()
+                                    .unwrap()
+                                    .code
+                                    .clone(),
+                                ProofState {
+                                    goals: "failed".to_string(),
+                                    steps: HashMap::new(),
+                                },
+                            );
+                        }
+                        _ => {}
                     }
-                    Some(ActiveCommandExtra::ExecExploratory { .. }) => {
-                        application.error_occurred_during_last_exploratory_exec = true;
-                    }
-                    _ => {}
-                },
+                }
                 AnswerKind::ObjList(objects) => match &application.top_state.active_command {
                     Some(Command::Query(_, QueryCommand::EGoals)) => match &mut application
                         .known_mode
