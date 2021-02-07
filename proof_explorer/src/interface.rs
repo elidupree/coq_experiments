@@ -1,4 +1,4 @@
-#![allow(unused_imports)]
+#![allow(unused_imports, clippy::collapsible_else_if)]
 
 use parking_lot::Mutex;
 use rocket::config::{Config, Environment, LoggingLevel};
@@ -11,10 +11,10 @@ use std::time::{Duration, SystemTime};
 //use rocket::response::content::Json;
 use rocket_contrib::json::Json;
 use std::collections::HashMap;
-use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::ops::Range;
 use std::process::{self, ChildStdin, ChildStdout, Stdio};
+use std::{fs, mem};
 use typed_html::dom::DOMTree;
 use typed_html::elements::FlowContent;
 use typed_html::{html, text};
@@ -69,6 +69,7 @@ pub struct AddedFromFile {
 }
 #[derive(Debug)]
 pub struct AddedExploratory {
+    code: String,
     state_id: StateId,
 }
 #[derive(Debug)]
@@ -268,7 +269,7 @@ pub fn frequent_update(application: &mut ApplicationState) {
     }
 
     // third priority: proof exploration
-    let proof_state = match &application.known_mode {
+    let proof_state = match application.known_mode {
         None => {
             send_command(
                 application,
@@ -292,7 +293,7 @@ pub fn frequent_update(application: &mut ApplicationState) {
             return;
         }
         Some(Mode::NotProofMode) => return,
-        Some(Mode::ProofMode(p)) => p,
+        Some(Mode::ProofMode(ref p)) => p,
     };
 
     const TACTICS: &[&str] = &[
@@ -302,6 +303,72 @@ pub fn frequent_update(application: &mut ApplicationState) {
         "split.",
         "reflexivity.",
     ];
+
+    for &tactic in TACTICS {
+        if proof_state.steps.get(tactic).is_none() {
+            if application.top_state.added_exploratory.is_empty() {
+                send_command(
+                    application,
+                    Command::Add(
+                        AddOptions {
+                            ontop: application
+                                .top_state
+                                .added_from_file
+                                .last()
+                                .map(|a| a.state_id),
+                            ..default()
+                        },
+                        tactic.to_string(),
+                    ),
+                    ActiveCommandExtra::AddExploratory,
+                );
+                return;
+            } else {
+                assert!(application.top_state.added_exploratory.last().unwrap().code == tactic);
+                send_command(
+                    application,
+                    Command::Query(
+                        QueryOptions {
+                            sid: application
+                                .top_state
+                                .added_exploratory
+                                .last()
+                                .unwrap()
+                                .state_id,
+                            pp: FormatOptions {
+                                pp_format: PrintFormat::PpStr,
+                                ..default()
+                            },
+                            ..default()
+                        },
+                        QueryCommand::EGoals,
+                    ),
+                    ActiveCommandExtra::Other,
+                );
+                return;
+            }
+        } else {
+            if let Some(established) = application.top_state.added_exploratory.last() {
+                if established.code == tactic {
+                    send_command(
+                        application,
+                        Command::Cancel(vec![
+                            application
+                                .top_state
+                                .added_exploratory
+                                .last()
+                                .unwrap()
+                                .state_id,
+                        ]),
+                        ActiveCommandExtra::Other,
+                    );
+                    application.top_state.num_executed_exploratory = 0;
+                    application.error_occurred_during_last_exploratory_exec = false;
+                    return;
+                }
+            }
+        }
+    }
 }
 
 #[post("/content", data = "<interface_state>")]
@@ -309,16 +376,39 @@ fn content(interface_state: Json<InterfaceState>, rocket_state: State<RocketStat
     let mut guard = rocket_state.application_state.lock();
     let application = &mut *guard;
 
-    let proof_state_representation = match &application.known_mode {
+    let proof_state_representation: Element = match &application.known_mode {
         None => text!("Processing..."),
         Some(Mode::NotProofMode) => text!("Not in proof mode"),
-        Some(Mode::ProofMode(p)) => text!("{}", p.goals),
+        Some(Mode::ProofMode(p)) => {
+            let steps = p.steps.iter().map(|(tactic, p2)| {
+                html! {
+                    <div class="step">
+                        <div class="tactic">
+                            <pre>{text!("{}", tactic)}</pre>
+                        </div>
+                        <div class="step_goal">
+                            <pre>{text!("{}", p2.goals)}</pre>
+                        </div>
+                    </div>
+                }
+            });
+            html! {
+                <div class="proof_state">
+                    <div class="proof_root">
+                        <pre>{text!("{}", p.goals)}</pre>
+                    </div>
+                    <div class="proof_steps">
+                        {steps}
+                    </div>
+                </div>
+            }
+        }
     };
 
     let document: DOMTree<String> = html! {
-      <div id="content">
-        {proof_state_representation}
-      </div>
+        <div id="content">
+            {proof_state_representation}
+        </div>
     };
     document.to_string()
 }
@@ -383,19 +473,25 @@ pub fn receiver_thread(child_stdout: ChildStdout, application_state: Arc<Mutex<A
             },
             Answer::Answer(_command_tag, answer_kind) => match answer_kind {
                 AnswerKind::Added(state_id, location, _extra) => {
-                    match &application.active_command_extra {
-                        Some(ActiveCommandExtra::AddFromFile { offset }) => {
+                    match (
+                        &application.top_state.active_command,
+                        &application.active_command_extra,
+                    ) {
+                        (_, Some(ActiveCommandExtra::AddFromFile { offset })) => {
                             application.top_state.added_from_file.push(AddedFromFile {
                                 location_in_file: offset + location.bp as usize
                                     ..offset + location.ep as usize,
                                 state_id,
                             });
                         }
-                        Some(ActiveCommandExtra::AddExploratory) => {
+                        (Some(Command::Add(_, code)), Some(ActiveCommandExtra::AddExploratory)) => {
                             application
                                 .top_state
                                 .added_exploratory
-                                .push(AddedExploratory { state_id });
+                                .push(AddedExploratory {
+                                    code: code.clone(),
+                                    state_id,
+                                });
                         }
                         _ => panic!("received Added when we weren't doing an Add"),
                     }
@@ -418,8 +514,10 @@ pub fn receiver_thread(child_stdout: ChildStdout, application_state: Arc<Mutex<A
                     _ => {}
                 },
                 AnswerKind::ObjList(objects) => match &application.top_state.active_command {
-                    Some(Command::Query(_, QueryCommand::EGoals)) => {
-                        if application.known_mode == None {
+                    Some(Command::Query(_, QueryCommand::EGoals)) => match &mut application
+                        .known_mode
+                    {
+                        None => {
                             application.known_mode = Some(match objects.first() {
                                 Some(CoqObject::CoqString(goals)) => Mode::ProofMode(ProofState {
                                     goals: goals.clone(),
@@ -428,7 +526,31 @@ pub fn receiver_thread(child_stdout: ChildStdout, application_state: Arc<Mutex<A
                                 _ => Mode::NotProofMode,
                             });
                         }
-                    }
+                        Some(Mode::NotProofMode) => panic!(
+                            "shouldn't have queried goals when known not to be in proof mode"
+                        ),
+                        Some(Mode::ProofMode(p)) => {
+                            let goals = match objects.first() {
+                                Some(CoqObject::CoqString(goals)) => goals,
+                                _ => panic!(
+                                    "sertop didn't send any goals after tactic while in proof mode"
+                                ),
+                            };
+                            p.steps.insert(
+                                application
+                                    .top_state
+                                    .added_exploratory
+                                    .last()
+                                    .unwrap()
+                                    .code
+                                    .clone(),
+                                ProofState {
+                                    goals: goals.clone(),
+                                    steps: HashMap::new(),
+                                },
+                            );
+                        }
+                    },
                     _ => {}
                 },
                 AnswerKind::Completed => {

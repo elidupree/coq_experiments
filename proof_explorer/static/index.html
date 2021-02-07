@@ -20,6 +20,7 @@
       $.get ("/default_interface_state").done((default_interface_state) => {
         window.interface_state = default_interface_state
         console.log (default_interface_state);
+        let previous = null;
         
         function frame() {
           $.post ({
@@ -27,7 +28,10 @@
             data: JSON.stringify (window.interface_state),
           })
             .done ((response) => {
-              morphdom ($("#content") [0], response);
+              if (response !== previous) {
+                morphdom ($("#content") [0], response);
+                previous = response;
+              }
             })
             .always (() => {
               requestAnimationFrame (frame);
