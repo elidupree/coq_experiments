@@ -75,7 +75,7 @@ pub struct FormatOptions {
     #[derivative(Default(value = "PrintFormat::PpSer"))]
     pub pp_format: PrintFormat,
     pub pp_depth: i64,
-    #[derivative(Default(value = "\"...\".to_string ()"))]
+    #[derivative(Default(value = "\"...\".to_string()"))]
     pub pp_elide: String,
     #[derivative(Default(value = "72"))]
     pub pp_margin: i64,
