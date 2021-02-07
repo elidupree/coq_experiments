@@ -12,6 +12,7 @@ use std::time::{Duration, SystemTime};
 use rocket_contrib::json::Json;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
+use std::ops::Range;
 use std::process::{self, ChildStdin, ChildStdout, Stdio};
 use typed_html::dom::DOMTree;
 use typed_html::elements::FlowContent;
@@ -60,12 +61,12 @@ pub type Element = Box<dyn FlowContent<String>>;
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct InterfaceState {}
 
-pub struct AddedStatement {
-    code: String,
+pub struct AddedFromFile {
+    location_in_file: Range<usize>,
     state_id: StateId,
 }
 pub struct TopState {
-    added_statements: Vec<AddedStatement>,
+    added_from_file: Vec<AddedFromFile>,
     num_executed: usize,
     active_command: Option<Command>,
 }
@@ -73,9 +74,12 @@ pub struct TopState {
 pub struct ApplicationState {
     child_stdin: ChildStdin,
     code_path: PathBuf,
-    remembered_code_commands: Vec<String>,
+    current_file_code: String,
+    last_added_file_code: String,
     // TODO : this isn't the most efficient file watcher system, figure out what is?
     last_code_modified: Option<SystemTime>,
+    current_add_file_offset: usize,
+    error_occurred_during_last_file_exec: bool,
     top_state: TopState,
 }
 
@@ -92,6 +96,16 @@ pub fn send_command(application: &mut ApplicationState, command: Command) {
     application.top_state.active_command = Some(command);
 }
 
+pub fn first_difference_index<T: PartialEq>(a: &[T], b: &[T]) -> Option<usize> {
+    a.iter().zip(b).position(|(a, b)| a != b).or_else(|| {
+        if a.len() == b.len() {
+            None
+        } else {
+            Some(std::cmp::min(a.len(), b.len()))
+        }
+    })
+}
+
 pub fn frequent_update(application: &mut ApplicationState) {
     // If the code file has been modified, update it.
     if fs::metadata(&application.code_path)
@@ -99,76 +113,88 @@ pub fn frequent_update(application: &mut ApplicationState) {
         .ok()
         != application.last_code_modified
     {
-        if let Ok(code) = fs::read_to_string(&application.code_path) {
-            application.remembered_code_commands = code
-                .split_inclusive(".")
-                .filter(|command| command.ends_with("."))
-                .map(ToOwned::to_owned)
-                .collect();
+        if let Ok(mut code) = fs::read_to_string(&application.code_path) {
+            if let Some(index) = code.find("STOP") {
+                code.truncate(index);
+            }
+            application.current_file_code = code;
         }
     }
 
     // current design: only start doing things if sertop is ready
-    if application.top_state.active_command.is_none() {
-        // first priority: make sure coq isn't inconsistent with the file
-        if let Some(first_wrong_index) = application
-            .top_state
-            .added_statements
-            .iter()
-            .zip(&application.remembered_code_commands)
-            .position(|(added, code)| &added.code != code)
-        {
-            send_command(
-                application,
-                Command::Cancel(
-                    application.top_state.added_statements[first_wrong_index..]
-                        .iter()
-                        .map(|added| added.state_id)
-                        .collect(),
-                ),
-            );
-            application.top_state.num_executed = first_wrong_index;
-        }
-        // second priority: make sure coq is up-to-date with the file if possible
-        else if application.top_state.num_executed < application.top_state.added_statements.len()
-        {
-            send_command(
-                application,
-                Command::Exec(
-                    application.top_state.added_statements[application.top_state.num_executed]
-                        .state_id,
-                ),
-            );
-            application.top_state.num_executed += 1;
-        } else if application.top_state.added_statements.len()
-            < application.remembered_code_commands.len()
-        {
-            send_command(
-                application,
-                Command::Add(
-                    AddOptions {
-                        ontop: application
-                            .top_state
-                            .added_statements
-                            .last()
-                            .map(|added| added.state_id),
-                        ..default()
-                    },
-                    application.remembered_code_commands
-                        [application.top_state.added_statements.len()]
-                    .clone(),
-                ),
-            );
-        }
-        // third priority: proof exploration
-        else {
-        }
+    if application.top_state.active_command.is_some() {
+        return;
     }
+
+    // first priority: make sure coq "Added" state is up-to-date with the file
+    let first_difference_offset = first_difference_index(
+        application.current_file_code.as_bytes(),
+        application.last_added_file_code.as_bytes(),
+    );
+    if let Some(first_difference_offset) = first_difference_offset {
+        // first cancel everything that's been invalidated...
+        for (index, added) in application.top_state.added_from_file.iter().enumerate() {
+            if added.location_in_file.end > first_difference_offset {
+                let first_wrong_index = index;
+                send_command(
+                    application,
+                    Command::Cancel(
+                        application.top_state.added_from_file[first_wrong_index..]
+                            .iter()
+                            .map(|added| added.state_id)
+                            .collect(),
+                    ),
+                );
+                if first_wrong_index < application.top_state.num_executed {
+                    application.top_state.num_executed = first_wrong_index;
+                    application.error_occurred_during_last_file_exec = false;
+                }
+                return;
+            }
+        }
+
+        // ...and then add anything that remains
+        let (unhandled_file_offset, last_added_id) = application
+            .top_state
+            .added_from_file
+            .last()
+            .map_or((0, None), |a| (a.location_in_file.end, Some(a.state_id)));
+        let unhandled_file_contents =
+            application.current_file_code[unhandled_file_offset..].to_owned();
+        application.last_added_file_code = application.current_file_code.clone();
+        application.current_add_file_offset = unhandled_file_offset;
+        send_command(
+            application,
+            Command::Add(
+                AddOptions {
+                    ontop: last_added_id,
+                    ..default()
+                },
+                unhandled_file_contents,
+            ),
+        );
+        return;
+    }
+
+    // second priority: make sure coq "Executed" state is as far along as possible
+    if application.top_state.num_executed < application.top_state.added_from_file.len()
+        && !application.error_occurred_during_last_file_exec
+    {
+        send_command(
+            application,
+            Command::Exec(
+                application.top_state.added_from_file[application.top_state.num_executed].state_id,
+            ),
+        );
+        return;
+    }
+
+    // third priority: proof exploration
 }
 
 #[post("/content", data = "<interface_state>")]
 fn content(interface_state: Json<InterfaceState>, rocket_state: State<RocketState>) -> String {
-    let application_state = rocket_state.application_state.lock();
+    //let application_state = rocket_state.application_state.lock();
 
     // let state_representation = application_state
     //     .search_state
@@ -232,32 +258,52 @@ pub fn receiver_thread(child_stdout: ChildStdout, application_state: Arc<Mutex<A
         );
 
         let mut guard = application_state.lock();
-        let application = &mut *guard;
+        let application: &mut ApplicationState = &mut *guard;
+        #[allow(clippy::single_match)]
         match interpreted {
             Answer::Feedback(feedback) => match feedback.contents {
                 FeedbackContent::Processed => {}
                 _ => {}
             },
-            Answer::Answer(command_tag, answer_kind) => match answer_kind {
-                AnswerKind::Added(state_id, _location, _extra) => {
+            Answer::Answer(_command_tag, answer_kind) => match answer_kind {
+                AnswerKind::Added(state_id, location, _extra) => {
                     match &application.top_state.active_command {
-                        Some(Command::Add(_, code)) => {
-                            application.top_state.added_statements.push(AddedStatement {
-                                code: code.clone(),
+                        Some(Command::Add(_, _)) => {
+                            application.top_state.added_from_file.push(AddedFromFile {
+                                location_in_file: application.current_add_file_offset
+                                    + location.bp as usize
+                                    ..application.current_add_file_offset + location.ep as usize,
                                 state_id,
-                            })
+                            });
                         }
                         _ => panic!("received Added when we weren't doing an Add"),
                     }
                 }
                 AnswerKind::Canceled(state_ids) => {
-                    application.top_state.added_statements.retain(|added| {
+                    application.top_state.added_from_file.retain(|added| {
                         state_ids.iter().all(|canceled| &added.state_id != canceled)
                     });
                 }
+                AnswerKind::CoqExn(_) => match &application.top_state.active_command {
+                    Some(Command::Exec(_)) => {
+                        application.error_occurred_during_last_file_exec = true;
+                    }
+                    _ => {}
+                },
                 AnswerKind::Completed => {
-                    assert!(application.top_state.active_command.is_some());
-                    application.top_state.active_command = None;
+                    match application
+                        .top_state
+                        .active_command
+                        .take()
+                        .expect("received Completed when no command was running?")
+                    {
+                        Command::Exec(_) => {
+                            if !application.error_occurred_during_last_file_exec {
+                                application.top_state.num_executed += 1;
+                            }
+                        }
+                        _ => {}
+                    }
                 }
                 _ => {}
             },
@@ -303,10 +349,13 @@ pub fn run(root_path: PathBuf, code_path: PathBuf) {
     let application_state = ApplicationState {
         child_stdin,
         code_path,
-        remembered_code_commands: Vec::new(),
+        current_file_code: String::new(),
+        last_added_file_code: String::new(),
         last_code_modified: None,
+        current_add_file_offset: 0,
+        error_occurred_during_last_file_exec: false,
         top_state: TopState {
-            added_statements: Vec::new(),
+            added_from_file: Vec::new(),
             num_executed: 0,
             active_command: None,
         },
@@ -315,7 +364,6 @@ pub fn run(root_path: PathBuf, code_path: PathBuf) {
     let application_state = Arc::new(Mutex::new(application_state));
 
     std::thread::spawn({
-        let root_path = root_path.clone();
         let application_state = application_state.clone();
         move || {
             receiver_thread(child_stdout, application_state);

@@ -23,12 +23,12 @@ pub type RawBacktrace = NotYetImplemented;
 pub type PrettyPrint = NotYetImplemented;
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Location {
-    line_nb: i64,
-    bol_pos: i64,
-    line_nb_last: i64,
-    bol_pos_last: i64,
-    bp: i64,
-    ep: i64,
+    pub line_nb: i64,
+    pub bol_pos: i64,
+    pub line_nb_last: i64,
+    pub bol_pos_last: i64,
+    pub bp: i64,
+    pub ep: i64,
 }
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum FeedbackLevel {
@@ -38,13 +38,17 @@ pub enum FeedbackLevel {
     Warning,
     Error,
 }
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub enum Exn {
-    #[serde(rename = "CErrors.UserError")]
-    UserErrorSome((String, PrettyPrint)),
-    #[serde(rename = "CErrors.UserError")]
-    UserErrorNone((PrettyPrint,)),
-}
+pub type Exn = NotYetImplemented;
+// not sure how to deal with the open-ended nature of exns
+// #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+// pub enum Exn {
+//     #[serde(rename = "CErrors.UserError")]
+//     UserErrorSome((String, PrettyPrint)),
+//     #[serde(rename = "CErrors.UserError")]
+//     UserErrorNone((PrettyPrint,)),
+//     #[serde(rename = "Stream.Error")]
+//     StreamError(String),
+// }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum CoqObject {
