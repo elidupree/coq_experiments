@@ -123,20 +123,6 @@ pub struct RocketState {
     root_path: PathBuf,
 }
 
-pub fn send_command(
-    application: &mut ApplicationState,
-    command: Command,
-    extra: ActiveCommandExtra,
-) {
-    assert!(application.top_state.active_command == None);
-    assert!(application.active_command_extra == None);
-    let text = serde_lexpr::to_string(&command).unwrap();
-    eprintln!("sending command to sertop: {}\n", text);
-    writeln!(application.child_stdin, "{}", text).unwrap();
-    application.top_state.active_command = Some(command);
-    application.active_command_extra = Some(extra);
-}
-
 pub fn first_difference_index<T: PartialEq>(a: &[T], b: &[T]) -> Option<usize> {
     a.iter().zip(b).position(|(a, b)| a != b).or_else(|| {
         if a.len() == b.len() {
@@ -147,194 +133,138 @@ pub fn first_difference_index<T: PartialEq>(a: &[T], b: &[T]) -> Option<usize> {
     })
 }
 
-pub fn frequent_update(application: &mut ApplicationState) {
-    // If the code file has been modified, update it.
-    if fs::metadata(&application.code_path)
-        .and_then(|m| m.modified())
-        .ok()
-        != application.last_code_modified
-    {
-        if let Ok(mut code) = fs::read_to_string(&application.code_path) {
-            if let Some(index) = code.find("STOP") {
-                code.truncate(index);
+impl ApplicationState {
+    pub fn send_command(&mut self, command: Command, extra: ActiveCommandExtra) {
+        assert!(self.top_state.active_command == None);
+        assert!(self.active_command_extra == None);
+        let text = serde_lexpr::to_string(&command).unwrap();
+        eprintln!("sending command to sertop: {}\n", text);
+        writeln!(self.child_stdin, "{}", text).unwrap();
+        self.top_state.active_command = Some(command);
+        self.active_command_extra = Some(extra);
+    }
+
+    pub fn frequent_update(&mut self) {
+        // If the code file has been modified, update it.
+        if fs::metadata(&self.code_path)
+            .and_then(|m| m.modified())
+            .ok()
+            != self.last_code_modified
+        {
+            if let Ok(mut code) = fs::read_to_string(&self.code_path) {
+                if let Some(index) = code.find("STOP") {
+                    code.truncate(index);
+                }
+                self.current_file_code = code;
             }
-            application.current_file_code = code;
         }
-    }
 
-    // current design: only start doing things if sertop is ready
-    if application.top_state.active_command.is_some() {
-        return;
-    }
-
-    // first priority: make sure coq "Added" state is up-to-date with the file
-    let first_difference_offset = first_difference_index(
-        application.current_file_code.as_bytes(),
-        application.last_added_file_code.as_bytes(),
-    );
-    if let Some(first_difference_offset) = first_difference_offset {
-        // first cancel everything that's been invalidated...
-        let mut invalidated = application
-            .top_state
-            .added_from_file
-            .iter()
-            .map(|a| (a.state_id, a.location_in_file.end > first_difference_offset))
-            .chain(
-                application
-                    .top_state
-                    .added_exploratory
-                    .iter()
-                    .map(|a| (a.state_id, true)),
-            )
-            .enumerate()
-            .skip_while(|(_index, (_id, invalidated))| !invalidated)
-            .map(|(index, (id, _invalidated))| (index, id))
-            .peekable();
-
-        if let Some(&(first_invalidated_index, _)) = invalidated.peek() {
-            let canceled = invalidated.map(|(_index, id)| id).collect();
-            send_command(
-                application,
-                Command::Cancel(canceled),
-                ActiveCommandExtra::Other,
-            );
-            application.known_mode = None;
-            application.top_state.num_executed_exploratory = 0;
-            application.error_occurred_during_last_exploratory_exec = false;
-            if first_invalidated_index <= application.top_state.num_executed_from_file {
-                // i.e. if we invalidated the one that failed to execute, or earlier
-                application.error_occurred_during_last_file_exec = false;
-                application.top_state.num_executed_from_file = first_invalidated_index;
-            }
+        // current design: only start doing things if sertop is ready
+        if self.top_state.active_command.is_some() {
             return;
         }
 
-        // ...and then add anything that remains
-        let (unhandled_file_offset, last_added_id) = application
-            .top_state
-            .added_from_file
-            .last()
-            .map_or((0, None), |a| (a.location_in_file.end, Some(a.state_id)));
-        let unhandled_file_contents =
-            application.current_file_code[unhandled_file_offset..].to_owned();
-        application.last_added_file_code = application.current_file_code.clone();
-        send_command(
-            application,
-            Command::Add(
-                AddOptions {
-                    ontop: last_added_id,
-                    ..default()
-                },
-                unhandled_file_contents,
-            ),
-            ActiveCommandExtra::AddFromFile {
-                offset: unhandled_file_offset,
-            },
+        // first priority: make sure coq "Added" state is up-to-date with the file
+        let first_difference_offset = first_difference_index(
+            self.current_file_code.as_bytes(),
+            self.last_added_file_code.as_bytes(),
         );
-        return;
-    }
+        if let Some(first_difference_offset) = first_difference_offset {
+            // first cancel everything that's been invalidated...
+            let mut invalidated = self
+                .top_state
+                .added_from_file
+                .iter()
+                .map(|a| (a.state_id, a.location_in_file.end > first_difference_offset))
+                .chain(
+                    self.top_state
+                        .added_exploratory
+                        .iter()
+                        .map(|a| (a.state_id, true)),
+                )
+                .enumerate()
+                .skip_while(|(_index, (_id, invalidated))| !invalidated)
+                .map(|(index, (id, _invalidated))| (index, id))
+                .peekable();
 
-    // second priority: make sure coq "Executed" state is as far along as possible
-    if application.top_state.num_executed_from_file < application.top_state.added_from_file.len()
-        && !application.error_occurred_during_last_file_exec
-    {
-        send_command(
-            application,
-            Command::Exec(
-                application.top_state.added_from_file[application.top_state.num_executed_from_file]
-                    .state_id,
-            ),
-            ActiveCommandExtra::ExecFromFile {
-                index: application.top_state.num_executed_from_file,
-            },
-        );
-        return;
-    }
-    if application.top_state.num_executed_exploratory
-        < application.top_state.added_exploratory.len()
-        && !application.error_occurred_during_last_exploratory_exec
-    {
-        send_command(
-            application,
-            Command::Exec(
-                application.top_state.added_exploratory
-                    [application.top_state.num_executed_exploratory]
-                    .state_id,
-            ),
-            ActiveCommandExtra::ExecExploratory {
-                index: application.top_state.num_executed_exploratory,
-            },
-        );
-        return;
-    }
+            if let Some(&(first_invalidated_index, _)) = invalidated.peek() {
+                let canceled = invalidated.map(|(_index, id)| id).collect();
+                self.send_command(Command::Cancel(canceled), ActiveCommandExtra::Other);
+                self.known_mode = None;
+                self.top_state.num_executed_exploratory = 0;
+                self.error_occurred_during_last_exploratory_exec = false;
+                if first_invalidated_index <= self.top_state.num_executed_from_file {
+                    // i.e. if we invalidated the one that failed to execute, or earlier
+                    self.error_occurred_during_last_file_exec = false;
+                    self.top_state.num_executed_from_file = first_invalidated_index;
+                }
+                return;
+            }
 
-    // third priority: proof exploration
-    let proof_state = match application.known_mode {
-        None => {
-            send_command(
-                application,
-                Command::Query(
-                    QueryOptions {
-                        sid: application
-                            .top_state
-                            .added_from_file
-                            .last()
-                            .map_or(0, |a| a.state_id),
-                        pp: FormatOptions {
-                            pp_format: PrintFormat::PpStr,
-                            ..default()
-                        },
+            // ...and then add anything that remains
+            let (unhandled_file_offset, last_added_id) = self
+                .top_state
+                .added_from_file
+                .last()
+                .map_or((0, None), |a| (a.location_in_file.end, Some(a.state_id)));
+            let unhandled_file_contents =
+                self.current_file_code[unhandled_file_offset..].to_owned();
+            self.last_added_file_code = self.current_file_code.clone();
+            self.send_command(
+                Command::Add(
+                    AddOptions {
+                        ontop: last_added_id,
                         ..default()
                     },
-                    QueryCommand::EGoals,
+                    unhandled_file_contents,
                 ),
-                ActiveCommandExtra::Other,
+                ActiveCommandExtra::AddFromFile {
+                    offset: unhandled_file_offset,
+                },
             );
             return;
         }
-        Some(Mode::NotProofMode) => return,
-        Some(Mode::ProofMode(ref p)) => p,
-    };
 
-    const TACTICS: &[&str] = &[
-        "intuition idtac.",
-        "intro.",
-        "intros.",
-        "split.",
-        "reflexivity.",
-    ];
+        // second priority: make sure coq "Executed" state is as far along as possible
+        if self.top_state.num_executed_from_file < self.top_state.added_from_file.len()
+            && !self.error_occurred_during_last_file_exec
+        {
+            self.send_command(
+                Command::Exec(
+                    self.top_state.added_from_file[self.top_state.num_executed_from_file].state_id,
+                ),
+                ActiveCommandExtra::ExecFromFile {
+                    index: self.top_state.num_executed_from_file,
+                },
+            );
+            return;
+        }
+        if self.top_state.num_executed_exploratory < self.top_state.added_exploratory.len()
+            && !self.error_occurred_during_last_exploratory_exec
+        {
+            self.send_command(
+                Command::Exec(
+                    self.top_state.added_exploratory[self.top_state.num_executed_exploratory]
+                        .state_id,
+                ),
+                ActiveCommandExtra::ExecExploratory {
+                    index: self.top_state.num_executed_exploratory,
+                },
+            );
+            return;
+        }
 
-    for &tactic in TACTICS {
-        if proof_state.steps.get(tactic).is_none() {
-            if application.top_state.added_exploratory.is_empty() {
-                send_command(
-                    application,
-                    Command::Add(
-                        AddOptions {
-                            ontop: application
+        // third priority: proof exploration
+        let proof_state = match self.known_mode {
+            None => {
+                self.send_command(
+                    Command::Query(
+                        QueryOptions {
+                            sid: self
                                 .top_state
                                 .added_from_file
                                 .last()
-                                .map(|a| a.state_id),
-                            ..default()
-                        },
-                        tactic.to_string(),
-                    ),
-                    ActiveCommandExtra::AddExploratory,
-                );
-                return;
-            } else {
-                assert!(application.top_state.added_exploratory.last().unwrap().code == tactic);
-                send_command(
-                    application,
-                    Command::Query(
-                        QueryOptions {
-                            sid: application
-                                .top_state
-                                .added_exploratory
-                                .last()
-                                .unwrap()
-                                .state_id,
+                                .map_or(0, |a| a.state_id),
                             pp: FormatOptions {
                                 pp_format: PrintFormat::PpStr,
                                 ..default()
@@ -347,24 +277,63 @@ pub fn frequent_update(application: &mut ApplicationState) {
                 );
                 return;
             }
-        } else {
-            if let Some(established) = application.top_state.added_exploratory.last() {
-                if established.code == tactic {
-                    send_command(
-                        application,
-                        Command::Cancel(vec![
-                            application
-                                .top_state
-                                .added_exploratory
-                                .last()
-                                .unwrap()
-                                .state_id,
-                        ]),
+            Some(Mode::NotProofMode) => return,
+            Some(Mode::ProofMode(ref p)) => p,
+        };
+
+        const TACTICS: &[&str] = &[
+            "intuition idtac.",
+            "intro.",
+            "intros.",
+            "split.",
+            "reflexivity.",
+        ];
+
+        for &tactic in TACTICS {
+            if proof_state.steps.get(tactic).is_none() {
+                if self.top_state.added_exploratory.is_empty() {
+                    self.send_command(
+                        Command::Add(
+                            AddOptions {
+                                ontop: self.top_state.added_from_file.last().map(|a| a.state_id),
+                                ..default()
+                            },
+                            tactic.to_string(),
+                        ),
+                        ActiveCommandExtra::AddExploratory,
+                    );
+                    return;
+                } else {
+                    assert!(self.top_state.added_exploratory.last().unwrap().code == tactic);
+                    self.send_command(
+                        Command::Query(
+                            QueryOptions {
+                                sid: self.top_state.added_exploratory.last().unwrap().state_id,
+                                pp: FormatOptions {
+                                    pp_format: PrintFormat::PpStr,
+                                    ..default()
+                                },
+                                ..default()
+                            },
+                            QueryCommand::EGoals,
+                        ),
                         ActiveCommandExtra::Other,
                     );
-                    application.top_state.num_executed_exploratory = 0;
-                    application.error_occurred_during_last_exploratory_exec = false;
                     return;
+                }
+            } else {
+                if let Some(established) = self.top_state.added_exploratory.last() {
+                    if established.code == tactic {
+                        self.send_command(
+                            Command::Cancel(vec![
+                                self.top_state.added_exploratory.last().unwrap().state_id,
+                            ]),
+                            ActiveCommandExtra::Other,
+                        );
+                        self.top_state.num_executed_exploratory = 0;
+                        self.error_occurred_during_last_exploratory_exec = false;
+                        return;
+                    }
                 }
             }
         }
@@ -458,10 +427,7 @@ pub fn receiver_thread(child_stdout: ChildStdout, application_state: Arc<Mutex<A
                 continue;
             }
         };
-        eprintln!(
-            "received valid input from sertop:\n{:?}\n{}\n",
-            interpreted, line
-        );
+        eprintln!("received valid input from sertop: {:?}\n", interpreted);
 
         let mut guard = application_state.lock();
         let application: &mut ApplicationState = &mut *guard;
@@ -602,26 +568,9 @@ pub fn receiver_thread(child_stdout: ChildStdout, application_state: Arc<Mutex<A
 }
 
 pub fn processing_thread(application_state: Arc<Mutex<ApplicationState>>) {
-    // let mut guard = application_state.lock();
-    // send_command(
-    //     &mut guard.child_stdin,
-    //     &Command::Add(
-    //         Default::default(),
-    //         "Lemma foo : forall x : nat, x = x.".to_string(),
-    //     ),
-    // );
-    // send_command(
-    //     &mut guard.child_stdin,
-    //     &Command::Add(
-    //         Default::default(),
-    //         "Lemma foo : forall x : nat, x = x.".to_string(),
-    //     ),
-    // );
-    // send_command(&mut guard.child_stdin, &Command::Exec(2));
-
     loop {
         let mut guard = application_state.lock();
-        frequent_update(&mut *guard);
+        guard.frequent_update();
         std::mem::drop(guard);
         std::thread::sleep(Duration::from_millis(10));
     }
