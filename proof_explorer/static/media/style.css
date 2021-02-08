@@ -37,7 +37,7 @@ ins::before {
 .change::before {
   content: '~';
 }
- 
+
 del::before, ins::before, .change::before {
   position: absolute;
   left: 8px;

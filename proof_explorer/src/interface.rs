@@ -24,7 +24,7 @@ use typed_html::{html, text};
 
 use crate::serapi_protocol::{
     AddOptions, Answer, AnswerKind, Command, ConstrExpr, CoqObject, FeedbackContent, FormatOptions,
-    PrintFormat, QueryCommand, QueryOptions, ReifiedGoal, SerGoals, StateId,
+    NamesId, PrintFormat, QueryCommand, QueryOptions, ReifiedGoal, SerGoals, StateId,
 };
 
 pub type Element = Box<dyn FlowContent<String>>;
@@ -640,7 +640,7 @@ impl ApplicationState {
     }
 
     fn do_proof_exploration(&mut self) {
-        let proof_state = match self.known_mode {
+        let proof_state: &ProofState = match self.known_mode {
             None => {
                 self.query_goals();
                 return;
@@ -655,12 +655,28 @@ impl ApplicationState {
             return;
         }
 
-        const TACTICS: &str = "intuition idtac.intro.intros.split.reflexivity.assumption.constructor.exfalso.instantiate.contradiction.discriminate.trivial.inversion_sigma.symmetry.simpl in *.left.right.classical_left.classical_right.solve_constraints.subst.cbv.lazy.vm_compute.native_compute.red.hnf.cbn.injection.decide equality.tauto.dtauto.congruence.firstorder.easy.auto.eauto.auto with *.eauto with *.";
+        const GLOBAL_TACTICS: &str = "intuition idtac.intro.intros.split.reflexivity.assumption.constructor.exfalso.instantiate.contradiction.discriminate.trivial.inversion_sigma.symmetry.simpl in *.left.right.classical_left.classical_right.solve_constraints.simplify_eq.subst.cbv.lazy.vm_compute.native_compute.red.hnf.cbn.injection.decide equality.tauto.dtauto.congruence.firstorder.easy.auto.eauto.auto with *.eauto with *.";
 
-        for tactic in TACTICS.split_inclusive(".") {
+        for tactic in GLOBAL_TACTICS.split_inclusive(".") {
             if proof_state.attempted_tactics.get(tactic).is_none() {
                 self.run_tactic(tactic.to_string());
                 return;
+            }
+        }
+
+        const HYPOTHESIS_TACTICS: &str = "injection H.apply H.simple apply H.eapply H.rapply H.lapply H.clear H.revert H.decompose sum H.decompose record H.generalize H.generalize dependent H.absurd H.contradiction H.contradict H.destruct H.case H.induction H.dependent destruction H.dependent induction H.inversion H.discriminate H.inversion_clear H.dependent inversion H.symmetry in H.simplify_eq H.rewrite <- H. rewrite -> H.rewrite <- H in *. rewrite -> H in *.dependent rewrite <- H. dependent rewrite -> H.";
+
+        if let Some(goal) = proof_state.goals_ser.goals.first() {
+            for (names, _, _) in &goal.hyp {
+                for NamesId::Id(name) in names {
+                    for tactic_h in HYPOTHESIS_TACTICS.split_inclusive(".") {
+                        let tactic = tactic_h.replace("H", name);
+                        if proof_state.attempted_tactics.get(&tactic).is_none() {
+                            self.run_tactic(tactic);
+                            return;
+                        }
+                    }
+                }
             }
         }
     }
@@ -715,7 +731,7 @@ fn content(
                             for item in diff.diffs {
                                 match item {
                                     Difference::Add(added) => {
-                                        for line in added.split("\n") {
+                                        for line in added.split('\n') {
                                             if in_hypotheses {
                                                 elements.push(html! {
                                                     <ins><pre class="diff">{text!("{}", line)}</pre></ins>
@@ -728,7 +744,7 @@ fn content(
                                         }
                                     }
                                     Difference::Rem(removed) => {
-                                        for line in removed.split("\n") {
+                                        for line in removed.split('\n') {
                                             if in_hypotheses && !line.starts_with("none") {
                                                 elements.push(html! {
                                                     <del><pre class="diff">{text!("{}", line)}</pre></del>
@@ -737,7 +753,7 @@ fn content(
                                         }
                                     }
                                     Difference::Same(same) => {
-                                        for line in same.split("\n") {
+                                        for line in same.split('\n') {
                                             if line.starts_with("=====") {
                                                 in_hypotheses = false;
                                                 elements.push(html! {
