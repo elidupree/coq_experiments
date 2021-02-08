@@ -314,6 +314,21 @@ impl ApplicationState {
         );
     }
 
+    fn revert_to_proof_exploration_root(&mut self) {
+        self.send_command(
+            Command::Cancel(
+                self.top_state
+                    .added_synthetic
+                    .iter()
+                    .map(|a| a.state_id)
+                    .collect(),
+            ),
+            ActiveCommandExtra::Other,
+        );
+        self.top_state.num_executed_synthetic = 0;
+        self.error_occurred_during_last_exploratory_exec = false;
+    }
+
     fn do_proof_exploration(&mut self) {
         let proof_state = match self.known_mode {
             None => {
@@ -324,8 +339,8 @@ impl ApplicationState {
             Some(Mode::ProofMode(ref p)) => p,
         };
 
-        // If we're in the middle of trying a tactic, execute it.
         if !self.error_occurred_during_last_exploratory_exec {
+            // If we're in the middle of trying a tactic, execute it.
             if let Some(next) = self
                 .top_state
                 .added_synthetic
@@ -340,6 +355,20 @@ impl ApplicationState {
                 );
                 return;
             }
+
+            // if it's been executed but not goal-queried, goal-query it.
+            if let Some(last) = self.top_state.added_synthetic.last() {
+                if proof_state.steps.get(&last.code).is_none() {
+                    self.query_goals();
+                    return;
+                }
+            }
+        }
+
+        // if it hit an error or was already goal-queried, revert it.
+        if !self.top_state.added_synthetic.is_empty() {
+            self.revert_to_proof_exploration_root();
+            return;
         }
 
         const TACTICS: &[&str] = &[
@@ -352,28 +381,8 @@ impl ApplicationState {
 
         for &tactic in TACTICS {
             if proof_state.steps.get(tactic).is_none() {
-                if self.top_state.added_synthetic.is_empty() {
-                    self.try_tactic(tactic.to_string());
-                    return;
-                } else {
-                    assert!(self.top_state.added_synthetic.last().unwrap().code == tactic);
-                    self.query_goals();
-                    return;
-                }
-            } else {
-                if let Some(established) = self.top_state.added_synthetic.last() {
-                    if established.code == tactic {
-                        self.send_command(
-                            Command::Cancel(vec![
-                                self.top_state.added_synthetic.last().unwrap().state_id,
-                            ]),
-                            ActiveCommandExtra::Other,
-                        );
-                        self.top_state.num_executed_synthetic = 0;
-                        self.error_occurred_during_last_exploratory_exec = false;
-                        return;
-                    }
-                }
+                self.try_tactic(tactic.to_string());
+                return;
             }
         }
     }
