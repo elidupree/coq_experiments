@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 //use rocket::response::content::Json;
+use difference::{Changeset, Difference};
 use rocket_contrib::json::Json;
 use std::collections::HashMap;
 use std::default::default;
@@ -705,17 +706,49 @@ fn content(
             for (tactic, result) in &p.attempted_tactics {
                 match result {
                     TacticResult::Success(successor) => {
-                        let element = html! {
-                            <div class="successful_tactic">
-                                <div class="tactic">
-                                    <pre>{text!("{}", tactic)}</pre>
+                        let diff = Changeset::new(&p.goals_string, &successor.goals_string, "\n");
+                        if successor.goals_string == p.goals_string {
+                            let element = html! {
+                                <div class="failed_tactic">
+                                    <pre>{text!("{}: no effect", tactic)}</pre>
                                 </div>
-                                <div class="step_goal">
-                                    <pre>{text!("{}", successor.goals_string)}</pre>
+                            };
+                            failed_tactics.push(element);
+                        } else {
+                            let mut elements: Vec<Element> = Vec::new();
+                            for item in diff.diffs {
+                                match item {
+                                    Difference::Add(added) => {
+                                        elements.push(html! {
+                                            <ins><pre class="diff">{text!("{}", added)}</pre></ins>
+                                        });
+                                    }
+                                    Difference::Rem(removed) => {
+                                        elements.push(html! {
+                                            <del><pre class="diff">{text!("{}", removed)}</pre></del>
+                                        });
+                                    }
+                                    Difference::Same(same) => {
+                                        if same.starts_with("=====") {
+                                            elements.push(html! {
+                                                <pre class="diff">{text!("{}", same)}</pre>
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                            let element = html! {
+                                <div class="successful_tactic">
+                                    <div class="tactic">
+                                        <pre>{text!("{}", tactic)}</pre>
+                                    </div>
+                                    <div class="goal">
+                                        {elements}
+                                    </div>
                                 </div>
-                            </div>
-                        };
-                        successful_tactics.push(element);
+                            };
+                            successful_tactics.push(element);
+                        }
                     }
                     TacticResult::Failure => {
                         let element = html! {
@@ -732,7 +765,7 @@ fn content(
                     <div class="proof_root">
                         <pre>{text!("{}", p.goals_string)}</pre>
                     </div>
-                    <div class="proof_steps">
+                    <div class="attempted_tactics">
                         {successful_tactics}
                         {failed_tactics}
                     </div>

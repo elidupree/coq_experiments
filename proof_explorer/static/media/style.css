@@ -1,0 +1,59 @@
+@charset "UTF-8";
+article,aside,figure,footer,header,hgroup,menu,nav,section{display:block;}
+body,div,dl,dt,dd,ol,ul,li,h1,h2,h3,h4,h5,h6,pre,code,form,fieldset,legend,input,button,textarea,select,p,blockquote,th,td{margin:0;padding:0}
+h1,h2,h3,h4,h5,h6{font-size:100%;font-weight:inherit;}
+img{color:transparent;border:0;vertical-align:middle;-ms-interpolation-mode:bicubic;}
+iframe {border:0;}
+
+body {
+  background-color: #ddd;
+}
+
+.successful_tactic {
+  background-color: white;
+  padding: 6px;
+  margin: 6px;
+}
+
+.successful_tactic .tactic {
+  font-weight: bold;
+  font-size: 120%;
+  padding: 8px;
+}
+
+.attempted_tactics {
+  display: flex;
+  flex-flow: row wrap;
+}
+
+del::before {
+  content: '-';
+}
+
+ins::before {
+  content: '+';
+}
+
+del::before, ins::before {
+  position: absolute;
+  left: 8px;
+  font-family: monospace;
+}
+
+del, ins {
+  position: relative;
+  display: block;
+  text-decoration: none;
+}
+
+del {
+  background-color: #fcc;
+}
+
+ins {
+  background-color: #dfd;
+}
+
+.diff {
+  margin-left: 28px;
+}
