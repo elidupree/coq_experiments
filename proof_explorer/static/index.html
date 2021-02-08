@@ -17,29 +17,34 @@
     <script src="/media/jquery-3.2.1.min.js"></script>
     <script src="/media/morphdom-umd.js"></script>
     <script>
-      $.get ("/default_interface_state").done((default_interface_state) => {
-        window.interface_state = default_interface_state
-        console.log (default_interface_state);
-        let previous = null;
-        
-        function frame() {
+      let update_period = 200;
+      let last_update = Date.now();
+      let last_ui_change_serial_number = undefined;
+      function frame() {
+        const now = Date.now();
+        if (now < last_update + update_period) {
+          requestAnimationFrame (frame);
+        }
+        else {
+          last_update = now;
           $.post ({
             url: "/content",
-            data: JSON.stringify (window.interface_state),
+            data: JSON.stringify ({last_ui_change_serial_number}),
           })
             .done ((response) => {
-              if (response !== previous) {
-                morphdom ($("#content") [0], response);
-                previous = response;
+              console.log("foo");
+              last_ui_change_serial_number = response.last_ui_change_serial_number;
+              if (response.ui_replacement !== null) {
+                morphdom ($("#content") [0], response.ui_replacement);
               }
             })
             .always (() => {
               requestAnimationFrame (frame);
             });
         }
-        
-        frame();
-      });
+      }
+
+      frame();
     </script>
   </body>
 </html>

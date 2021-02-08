@@ -56,9 +56,6 @@ Separately, any time the collection of executed statements *changes*, we need to
 
  */
 
-#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub struct InterfaceState {}
-
 #[derive(Debug)]
 pub struct AddedFromFile {
     location_in_file: Range<usize>,
@@ -120,6 +117,8 @@ pub struct ApplicationState {
     top_state: TopState,
 
     known_mode: Option<Mode>,
+
+    last_ui_change_serial_number: u64,
 }
 
 pub struct RocketState {
@@ -671,10 +670,31 @@ impl ApplicationState {
     }
 }
 
-#[post("/content", data = "<interface_state>")]
-fn content(interface_state: Json<InterfaceState>, rocket_state: State<RocketState>) -> String {
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+pub struct ContentRequestParameters {
+    last_ui_change_serial_number: Option<u64>,
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+pub struct ContentResponse {
+    last_ui_change_serial_number: u64,
+    ui_replacement: Option<String>,
+}
+
+#[post("/content", data = "<parameters>")]
+fn content(
+    parameters: Json<ContentRequestParameters>,
+    rocket_state: State<RocketState>,
+) -> Json<ContentResponse> {
     let mut guard = rocket_state.application_state.lock();
     let application = &mut *guard;
+
+    if parameters.last_ui_change_serial_number == Some(application.last_ui_change_serial_number) {
+        return Json(ContentResponse {
+            last_ui_change_serial_number: application.last_ui_change_serial_number,
+            ui_replacement: None,
+        });
+    }
 
     let proof_state_representation: Element = match &application.known_mode {
         None => text!("Processing..."),
@@ -726,16 +746,10 @@ fn content(interface_state: Json<InterfaceState>, rocket_state: State<RocketStat
             {proof_state_representation}
         </div>
     };
-    document.to_string()
-}
-
-#[get("/default_interface_state")]
-fn default_interface_state() -> Json<InterfaceState> {
-    Json(InterfaceState {
-    //client_placeholder: 3,
-    //placeholder_i32: 5,
-    //placeholder_string: "whatever".to_string()
-  })
+    Json(ContentResponse {
+        last_ui_change_serial_number: application.last_ui_change_serial_number,
+        ui_replacement: Some(document.to_string()),
+    })
 }
 
 #[get("/")]
@@ -778,7 +792,7 @@ pub fn receiver_thread(child_stdout: ChildStdout, application_state: Arc<Mutex<A
 
         let mut guard = application_state.lock();
         let application: &mut ApplicationState = &mut *guard;
-        #[allow(clippy::single_match)]
+
         match interpreted {
             Answer::Feedback(_feedback) => {}
             Answer::Answer(_command_tag, answer_kind) => {
@@ -796,7 +810,8 @@ pub fn receiver_thread(child_stdout: ChildStdout, application_state: Arc<Mutex<A
                         .take()
                         .expect("received Completed when no command was running?");
                     runner.finish(application);
-                // and don't put it back if it's finished
+                    // assume every completed command might cause a UI change
+                    application.last_ui_change_serial_number += 1;
                 } else {
                     application.active_command_runner = Some(runner);
                 }
@@ -839,6 +854,7 @@ pub fn run(root_path: PathBuf, code_path: PathBuf) {
             active_command: None,
         },
         known_mode: None,
+        last_ui_change_serial_number: 0,
     };
 
     let application_state = Arc::new(Mutex::new(application_state));
@@ -864,7 +880,7 @@ pub fn run(root_path: PathBuf, code_path: PathBuf) {
             .log_level(LoggingLevel::Off)
             .unwrap(),
     )
-    .mount("/", routes![index, media, content, default_interface_state])
+    .mount("/", routes![index, media, content])
     .manage(RocketState {
         application_state,
         root_path,
