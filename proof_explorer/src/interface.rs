@@ -179,23 +179,21 @@ impl ApplicationState {
         // First, if a file change has invalidated anything that was actually executed,
         // cancel it all and forget the proof state.
         if let Some(first_difference_offset) = first_difference_offset {
-            let mut canceled: Vec<_> = self.top_state.added_from_file
+            let mut need_to_cancel = self.top_state.added_from_file
                 [..self.top_state.num_executed_from_file]
-                .iter()
-                .rev()
-                .take_while(|a| a.location_in_file.end > first_difference_offset)
-                .map(|a| a.state_id)
-                .collect();
-            if !canceled.is_empty() {
-                self.known_mode = None;
-                self.top_state.num_executed_from_file -= canceled.len();
-                self.end_of_first_added_from_file_that_failed_to_execute = None;
-
+                .last()
+                .map_or(false, |a| a.location_in_file.end > first_difference_offset);
+            if need_to_cancel {
                 // In this case, it's possible that there are also synthetic commands left,
-                // which we'd need to clean up:
-                self.top_state.num_executed_synthetic = 0;
-                self.error_occurred_during_last_exploratory_exec = false;
-                canceled.extend(self.top_state.added_synthetic.iter().map(|a| a.state_id));
+                // which we'd need to clean up
+                let canceled = self
+                    .top_state
+                    .added_from_file
+                    .iter()
+                    .filter(|a| a.location_in_file.end > first_difference_offset)
+                    .map(|a| a.state_id)
+                    .chain(self.top_state.added_synthetic.iter().map(|a| a.state_id))
+                    .collect();
 
                 self.send_command(Command::Cancel(canceled), ActiveCommandExtra::Other);
                 return;
@@ -514,6 +512,21 @@ pub fn receiver_thread(child_stdout: ChildStdout, application_state: Arc<Mutex<A
                     application.top_state.added_synthetic.retain(|added| {
                         state_ids.iter().all(|canceled| &added.state_id != canceled)
                     });
+                    if application.top_state.added_from_file.len()
+                        < application.top_state.num_executed_from_file
+                    {
+                        application.top_state.num_executed_from_file =
+                            application.top_state.added_from_file.len();
+                        application.end_of_first_added_from_file_that_failed_to_execute = None;
+                        application.known_mode = None;
+                    }
+                    if application.top_state.added_synthetic.len()
+                        < application.top_state.num_executed_synthetic
+                    {
+                        application.top_state.num_executed_synthetic =
+                            application.top_state.added_synthetic.len();
+                        application.error_occurred_during_last_exploratory_exec = false;
+                    }
                 }
                 AnswerKind::CoqExn(_) => {
                     match &application.active_command_extra {

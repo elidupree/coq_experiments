@@ -51,13 +51,38 @@ pub type Exn = NotYetImplemented;
 // }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct SerGoals<A> {
+    pub goals: Vec<A>,
+    pub stack: NotYetImplemented,
+    pub shelf: NotYetImplemented,
+    pub given_up: NotYetImplemented,
+    pub bullet: NotYetImplemented,
+}
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct ReifiedGoal<A> {
+    pub info: ReifiedGoalInfo,
+    pub ty: A,
+    pub hyp: Vec<Hypothesis<A>>,
+}
+pub type Hypothesis<A> = (Vec<NamesId>, Option<A>, A);
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct ReifiedGoalInfo {
+    pub evar: NotYetImplemented,
+    pub name: Option<NamesId>,
+}
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum NamesId {
+    Id(String),
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum CoqObject {
     CoqString(String),
     CoqSList(Vec<String>),
     CoqPp(PrettyPrint),
     CoqLoc(Location),
-    CoqGoal(Constr),
-    CoqExtGoal(ConstrExpr),
+    CoqGoal(SerGoals<ReifiedGoal<Constr>>),
+    CoqExtGoal(SerGoals<ReifiedGoal<ConstrExpr>>),
     // ...
 }
 
