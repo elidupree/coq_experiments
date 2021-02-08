@@ -11,6 +11,8 @@ use std::time::{Duration, SystemTime};
 //use rocket::response::content::Json;
 use rocket_contrib::json::Json;
 use std::collections::HashMap;
+use std::default::default;
+use std::fmt::Debug;
 use std::io::{BufRead, BufReader, Write};
 use std::ops::Range;
 use std::process::{self, ChildStdin, ChildStdout, Stdio};
@@ -19,7 +21,10 @@ use typed_html::dom::DOMTree;
 use typed_html::elements::FlowContent;
 use typed_html::{html, text};
 
-use crate::serapi_protocol::*;
+use crate::serapi_protocol::{
+    AddOptions, Answer, AnswerKind, Command, ConstrExpr, CoqObject, FeedbackContent, FormatOptions,
+    PrintFormat, QueryCommand, QueryOptions, ReifiedGoal, SerGoals, StateId,
+};
 
 pub type Element = Box<dyn FlowContent<String>>;
 
@@ -75,19 +80,23 @@ pub struct TopState {
     active_command: Option<Command>,
 }
 
-#[derive(PartialEq, Eq, Debug)]
-pub enum ActiveCommandExtra {
-    AddFromFile { offset: usize },
-    AddExploratory,
-    ExecFromFile { index: usize },
-    ExecExploratory { index: usize },
-    Other,
+#[allow(unused)]
+pub trait CommandRunner: Send + Sync + 'static {
+    fn handle_answer(&mut self, application: &mut ApplicationState, answer: &AnswerKind) {}
+    fn finish(self: Box<Self>, application: &mut ApplicationState) {}
 }
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct ProofState {
-    goals: String,
-    steps: HashMap<String, ProofState>,
+    goals_string: String,
+    goals_ser: SerGoals<ReifiedGoal<ConstrExpr>>,
+    attempted_tactics: HashMap<String, TacticResult>,
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum TacticResult {
+    Success(ProofState),
+    Failure,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -96,7 +105,6 @@ pub enum Mode {
     NotProofMode,
 }
 
-#[derive(Debug)]
 pub struct ApplicationState {
     child_stdin: ChildStdin,
 
@@ -106,16 +114,14 @@ pub struct ApplicationState {
     // TODO : this isn't the most efficient file watcher system, figure out what is?
     last_code_modified: Option<SystemTime>,
 
-    active_command_extra: Option<ActiveCommandExtra>,
+    active_command_runner: Option<Box<dyn CommandRunner>>,
     end_of_first_added_from_file_that_failed_to_execute: Option<usize>,
-    error_occurred_during_last_exploratory_exec: bool,
 
     top_state: TopState,
 
     known_mode: Option<Mode>,
 }
 
-#[derive(Debug)]
 pub struct RocketState {
     application_state: Arc<Mutex<ApplicationState>>,
     root_path: PathBuf,
@@ -140,15 +146,367 @@ impl TopState {
     }
 }
 
+impl ProofState {
+    pub fn descendant<'a>(&self, mut tactics: impl Iterator<Item = &'a str>) -> &ProofState {
+        match tactics.next() {
+            None => self,
+            Some(tactic) => match self.attempted_tactics.get(tactic) {
+                Some(TacticResult::Success(child)) => child.descendant(tactics),
+                Some(TacticResult::Failure) => {
+                    panic!("attempted to descend into tactic that failed")
+                }
+                None => panic!("attempted to descend into a tactic that was never checked"),
+            },
+        }
+    }
+    pub fn descendant_mut<'a>(
+        &mut self,
+        mut tactics: impl Iterator<Item = &'a str>,
+    ) -> &mut ProofState {
+        match tactics.next() {
+            None => self,
+            Some(tactic) => match self.attempted_tactics.get_mut(tactic) {
+                Some(TacticResult::Success(child)) => child.descendant_mut(tactics),
+                Some(TacticResult::Failure) => {
+                    panic!("attempted to descend into tactic that failed")
+                }
+                None => panic!("attempted to descend into a tactic that was never checked"),
+            },
+        }
+    }
+}
+
 impl ApplicationState {
-    pub fn send_command(&mut self, command: Command, extra: ActiveCommandExtra) {
-        assert!(self.top_state.active_command == None);
-        assert!(self.active_command_extra == None);
+    pub fn send_command(&mut self, command: Command, runner: impl CommandRunner) {
+        assert_eq!(self.top_state.active_command, None);
+        assert!(self.active_command_runner.is_none());
         let text = serde_lexpr::to_string(&command).unwrap();
         eprintln!("sending command to sertop: {}\n", text);
         writeln!(self.child_stdin, "{}", text).unwrap();
         self.top_state.active_command = Some(command);
-        self.active_command_extra = Some(extra);
+        self.active_command_runner = Some(Box::new(runner));
+    }
+
+    pub fn cancel(&mut self, canceled: Vec<StateId>) {
+        #[derive(Debug)]
+        struct CancelRunner;
+        impl CommandRunner for CancelRunner {
+            fn handle_answer(&mut self, application: &mut ApplicationState, answer: &AnswerKind) {
+                if let AnswerKind::Canceled(state_ids) = answer {
+                    application.top_state.added_from_file.retain(|added| {
+                        state_ids.iter().all(|canceled| &added.state_id != canceled)
+                    });
+                    application.top_state.added_synthetic.retain(|added| {
+                        state_ids.iter().all(|canceled| &added.state_id != canceled)
+                    });
+                    if application.top_state.added_from_file.len()
+                        < application.top_state.num_executed_from_file
+                    {
+                        application.top_state.num_executed_from_file =
+                            application.top_state.added_from_file.len();
+                        application.end_of_first_added_from_file_that_failed_to_execute = None;
+                        application.known_mode = None;
+                    }
+                    if application.top_state.added_synthetic.len()
+                        < application.top_state.num_executed_synthetic
+                    {
+                        application.top_state.num_executed_synthetic =
+                            application.top_state.added_synthetic.len();
+                    }
+                }
+            }
+        }
+
+        self.send_command(Command::Cancel(canceled), CancelRunner);
+    }
+
+    pub fn exec_next_from_file(&mut self) {
+        #[derive(Debug)]
+        struct ExecFromFileRunner {
+            index: usize,
+        }
+        impl CommandRunner for ExecFromFileRunner {
+            fn handle_answer(&mut self, application: &mut ApplicationState, answer: &AnswerKind) {
+                if let AnswerKind::CoqExn(_) = answer {
+                    application.end_of_first_added_from_file_that_failed_to_execute = Some(
+                        application.top_state.added_from_file[self.index]
+                            .location_in_file
+                            .end,
+                    );
+                }
+            }
+            fn finish(self: Box<Self>, application: &mut ApplicationState) {
+                if application
+                    .end_of_first_added_from_file_that_failed_to_execute
+                    .is_none()
+                {
+                    application.top_state.num_executed_from_file += 1;
+                    application.known_mode = None;
+                }
+            }
+        }
+
+        // There should never be synthetic commands while there are
+        // still unexecuted ones from the file. Make sure of this.
+        assert!(self.top_state.added_synthetic.is_empty());
+
+        self.send_command(
+            Command::Exec(
+                self.top_state.added_from_file[self.top_state.num_executed_from_file].state_id,
+            ),
+            ExecFromFileRunner {
+                index: self.top_state.num_executed_from_file,
+            },
+        );
+    }
+
+    pub fn add_rest_of_file(&mut self) {
+        #[derive(Debug)]
+        struct AddFromFileRunner {
+            offset: usize,
+        }
+        impl CommandRunner for AddFromFileRunner {
+            fn handle_answer(&mut self, application: &mut ApplicationState, answer: &AnswerKind) {
+                if let AnswerKind::Added(state_id, location, _extra) = answer {
+                    application.top_state.added_from_file.push(AddedFromFile {
+                        location_in_file: self.offset + location.bp as usize
+                            ..self.offset + location.ep as usize,
+                        state_id: *state_id,
+                    });
+                }
+            }
+        }
+
+        let (unhandled_file_offset, last_added_id) = self
+            .top_state
+            .added_from_file
+            .last()
+            .map_or((0, None), |a| (a.location_in_file.end, Some(a.state_id)));
+        let unhandled_file_contents = self.current_file_code[unhandled_file_offset..].to_owned();
+        self.last_added_file_code = self.current_file_code.clone();
+        self.send_command(
+            Command::Add(
+                AddOptions {
+                    ontop: last_added_id,
+                    ..default()
+                },
+                unhandled_file_contents,
+            ),
+            AddFromFileRunner {
+                offset: unhandled_file_offset,
+            },
+        );
+    }
+
+    fn query_goals(&mut self) {
+        #[derive(Debug)]
+        struct QueryGoalsStringRunner {
+            received_goals_string: Option<String>,
+        }
+        impl CommandRunner for QueryGoalsStringRunner {
+            fn handle_answer(&mut self, application: &mut ApplicationState, answer: &AnswerKind) {
+                let objects = if let AnswerKind::ObjList(objects) = answer {
+                    objects
+                } else {
+                    return;
+                };
+                match objects.first() {
+                    Some(CoqObject::CoqString(goals_string)) => {
+                        self.received_goals_string = Some(goals_string.clone())
+                    }
+                    _ => match application.known_mode {
+                        None => {
+                            application.known_mode = Some(Mode::NotProofMode);
+                        }
+                        Some(Mode::NotProofMode) => panic!(
+                            "shouldn't have queried goals when known not to be in proof mode"
+                        ),
+                        Some(Mode::ProofMode(_)) => panic!(
+                            "sertop was supposed to send goals as a CoqString, but sent {:?}",
+                            objects
+                        ),
+                    },
+                };
+            }
+            fn finish(self: Box<Self>, application: &mut ApplicationState) {
+                if let Some(goals_string) = self.received_goals_string {
+                    application.send_command(
+                        Command::Query(
+                            QueryOptions {
+                                sid: application.top_state.last_added().unwrap_or(0),
+                                pp: FormatOptions {
+                                    pp_format: PrintFormat::PpSer,
+                                    ..default()
+                                },
+                                ..default()
+                            },
+                            QueryCommand::EGoals,
+                        ),
+                        QueryGoalsSerRunner { goals_string },
+                    );
+                }
+            }
+        }
+
+        #[derive(Debug)]
+        struct QueryGoalsSerRunner {
+            goals_string: String,
+        }
+        impl CommandRunner for QueryGoalsSerRunner {
+            fn handle_answer(&mut self, application: &mut ApplicationState, answer: &AnswerKind) {
+                let objects = if let AnswerKind::ObjList(objects) = answer {
+                    objects
+                } else {
+                    return;
+                };
+                let goals_ser = match objects.first() {
+                    Some(CoqObject::CoqExtGoal(goals_ser)) => goals_ser,
+                    _ => panic!("sertop sent goals string, but didn't send goals ser - huh?"),
+                };
+                let new_proof_state = ProofState {
+                    goals_string: self.goals_string.clone(),
+                    goals_ser: goals_ser.clone(),
+                    attempted_tactics: HashMap::new(),
+                };
+                match &mut application.known_mode {
+                    None => {
+                        application.known_mode = Some(Mode::ProofMode(new_proof_state));
+                    }
+                    Some(Mode::NotProofMode) => {
+                        panic!("shouldn't have even gotten to QueryGoalsSerRunner when known not to be in proof mode")
+                    }
+                    Some(Mode::ProofMode(p)) => {
+                        assert_eq!(application.top_state.num_executed_synthetic, application.top_state.added_synthetic.len());
+                        // Note: can't use application.latest_proof_state_mut() here because the application would believe we have already gotten to this spot
+                        let tactics : &[AddedSynthetic] = &application.top_state.added_synthetic;
+                        let latest = tactics.last().expect("if the proof state already exists, we should only be querying goals after a tactic").code.clone();
+                        let p2 = p.descendant_mut (tactics [..tactics.len()-1].iter().map(|t|t.code.as_str()));
+                        let insert_result = p2.attempted_tactics.insert(latest,TacticResult::Success(new_proof_state));
+                        assert!(insert_result.is_none(), "shouldn't have queried goals for a tactic that was already tested");
+                    }
+                }
+            }
+        }
+        self.send_command(
+            Command::Query(
+                QueryOptions {
+                    sid: self.top_state.last_added().unwrap_or(0),
+                    pp: FormatOptions {
+                        pp_format: PrintFormat::PpStr,
+                        ..default()
+                    },
+                    ..default()
+                },
+                QueryCommand::EGoals,
+            ),
+            QueryGoalsStringRunner {
+                received_goals_string: None,
+            },
+        );
+    }
+
+    pub fn run_tactic(&mut self, tactic: String) {
+        #[derive(Debug)]
+        struct AddSyntheticRunner {
+            exception_happened: bool,
+        }
+        impl CommandRunner for AddSyntheticRunner {
+            fn handle_answer(&mut self, application: &mut ApplicationState, answer: &AnswerKind) {
+                let code =
+                    if let Some(Command::Add(_, code)) = &application.top_state.active_command {
+                        code.clone()
+                    } else {
+                        panic!("command doesn't match runner");
+                    };
+                match answer {
+                    AnswerKind::Added(state_id, _location, _extra) => {
+                        application.top_state.added_synthetic.push(AddedSynthetic {
+                            code,
+                            state_id: *state_id,
+                        });
+                    }
+                    AnswerKind::CoqExn(_exn) => {
+                        self.exception_happened = true;
+                        assert_eq!(
+                            application.top_state.num_executed_synthetic,
+                            application.top_state.added_synthetic.len()
+                        );
+                        let insert_result = application
+                            .latest_proof_state_mut()
+                            .attempted_tactics
+                            .insert(code, TacticResult::Failure);
+                        assert!(
+                            insert_result.is_none(),
+                            "shouldn't have added a tactic that was already tested and failed"
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            fn finish(self: Box<Self>, application: &mut ApplicationState) {
+                if !self.exception_happened {
+                    application.send_command(
+                        Command::Exec(
+                            application.top_state.added_synthetic
+                                [application.top_state.num_executed_synthetic]
+                                .state_id,
+                        ),
+                        ExecSyntheticRunner {
+                            exception_happened: false,
+                        },
+                    );
+                }
+            }
+        }
+
+        #[derive(Debug)]
+        struct ExecSyntheticRunner {
+            exception_happened: bool,
+        }
+        impl CommandRunner for ExecSyntheticRunner {
+            fn handle_answer(&mut self, application: &mut ApplicationState, answer: &AnswerKind) {
+                if let AnswerKind::CoqExn(_exn) = answer {
+                    self.exception_happened = true;
+                    assert_eq!(
+                        application.top_state.num_executed_synthetic + 1,
+                        application.top_state.added_synthetic.len()
+                    );
+                    let latest = application
+                        .top_state
+                        .added_synthetic
+                        .last()
+                        .expect("if we're executing a tactic, it should have been added")
+                        .code
+                        .clone();
+                    let insert_result = application
+                        .latest_proof_state_mut()
+                        .attempted_tactics
+                        .insert(latest, TacticResult::Failure);
+                    assert!(
+                        insert_result.is_none(),
+                        "shouldn't have queried goals for a tactic that was already tested"
+                    );
+                }
+            }
+            fn finish(self: Box<Self>, application: &mut ApplicationState) {
+                if !self.exception_happened {
+                    application.top_state.num_executed_synthetic += 1;
+                    application.query_goals();
+                }
+            }
+        }
+        self.send_command(
+            Command::Add(
+                AddOptions {
+                    ontop: self.top_state.last_added(),
+                    ..default()
+                },
+                tactic,
+            ),
+            AddSyntheticRunner {
+                exception_happened: false,
+            },
+        );
     }
 
     pub fn frequent_update(&mut self) {
@@ -179,7 +537,7 @@ impl ApplicationState {
         // First, if a file change has invalidated anything that was actually executed,
         // cancel it all and forget the proof state.
         if let Some(first_difference_offset) = first_difference_offset {
-            let mut need_to_cancel = self.top_state.added_from_file
+            let need_to_cancel = self.top_state.added_from_file
                 [..self.top_state.num_executed_from_file]
                 .last()
                 .map_or(false, |a| a.location_in_file.end > first_difference_offset);
@@ -195,7 +553,7 @@ impl ApplicationState {
                     .chain(self.top_state.added_synthetic.iter().map(|a| a.state_id))
                     .collect();
 
-                self.send_command(Command::Cancel(canceled), ActiveCommandExtra::Other);
+                self.cancel(canceled);
                 return;
             }
         }
@@ -211,20 +569,8 @@ impl ApplicationState {
                 .added_from_file
                 .get(self.top_state.num_executed_from_file)
             {
-                // There should never be synthetic commands while there are
-                // still unexecuted ones from the file. Make sure of this.
-                assert!(self.top_state.added_synthetic.is_empty());
-
                 if first_difference_offset.map_or(true, |i| next.location_in_file.end <= i) {
-                    self.send_command(
-                        Command::Exec(
-                            self.top_state.added_from_file[self.top_state.num_executed_from_file]
-                                .state_id,
-                        ),
-                        ActiveCommandExtra::ExecFromFile {
-                            index: self.top_state.num_executed_from_file,
-                        },
-                    );
+                    self.exec_next_from_file();
                     return;
                 }
             }
@@ -243,7 +589,7 @@ impl ApplicationState {
                 // still unexecuted ones from the file. Make sure of this.
                 assert!(self.top_state.added_synthetic.is_empty());
 
-                self.send_command(Command::Cancel(canceled), ActiveCommandExtra::Other);
+                self.cancel(canceled);
                 return;
             }
 
@@ -254,26 +600,7 @@ impl ApplicationState {
                 .end_of_first_added_from_file_that_failed_to_execute
                 .map_or(true, |i| first_difference_offset < i)
             {
-                let (unhandled_file_offset, last_added_id) = self
-                    .top_state
-                    .added_from_file
-                    .last()
-                    .map_or((0, None), |a| (a.location_in_file.end, Some(a.state_id)));
-                let unhandled_file_contents =
-                    self.current_file_code[unhandled_file_offset..].to_owned();
-                self.last_added_file_code = self.current_file_code.clone();
-                self.send_command(
-                    Command::Add(
-                        AddOptions {
-                            ontop: last_added_id,
-                            ..default()
-                        },
-                        unhandled_file_contents,
-                    ),
-                    ActiveCommandExtra::AddFromFile {
-                        offset: unhandled_file_offset,
-                    },
-                );
+                self.add_rest_of_file();
                 return;
             }
         }
@@ -282,49 +609,33 @@ impl ApplicationState {
         self.do_proof_exploration();
     }
 
-    fn try_tactic(&mut self, tactic: String) {
-        self.send_command(
-            Command::Add(
-                AddOptions {
-                    ontop: self.top_state.last_added(),
-                    ..default()
-                },
-                tactic,
-            ),
-            ActiveCommandExtra::AddExploratory,
-        );
+    fn root_proof_state_mut(&mut self) -> &mut ProofState {
+        match &mut self.known_mode {
+            Some(Mode::ProofMode(p)) => p,
+            _ => panic!("assumed we were in proof mode when we weren't"),
+        }
     }
 
-    fn query_goals(&mut self) {
-        self.send_command(
-            Command::Query(
-                QueryOptions {
-                    sid: self.top_state.last_added().unwrap_or(0),
-                    pp: FormatOptions {
-                        pp_format: PrintFormat::PpStr,
-                        ..default()
-                    },
-                    ..default()
-                },
-                QueryCommand::EGoals,
-            ),
-            ActiveCommandExtra::Other,
-        );
+    fn latest_proof_state_mut(&mut self) -> &mut ProofState {
+        let root = match &mut self.known_mode {
+            Some(Mode::ProofMode(p)) => p,
+            _ => panic!("assumed we were in proof mode when we weren't"),
+        };
+        root.descendant_mut(
+            self.top_state.added_synthetic[..self.top_state.num_executed_synthetic]
+                .iter()
+                .map(|t| t.code.as_str()),
+        )
     }
 
     fn revert_to_proof_exploration_root(&mut self) {
-        self.send_command(
-            Command::Cancel(
-                self.top_state
-                    .added_synthetic
-                    .iter()
-                    .map(|a| a.state_id)
-                    .collect(),
-            ),
-            ActiveCommandExtra::Other,
+        self.cancel(
+            self.top_state
+                .added_synthetic
+                .iter()
+                .map(|a| a.state_id)
+                .collect(),
         );
-        self.top_state.num_executed_synthetic = 0;
-        self.error_occurred_during_last_exploratory_exec = false;
     }
 
     fn do_proof_exploration(&mut self) {
@@ -337,33 +648,7 @@ impl ApplicationState {
             Some(Mode::ProofMode(ref p)) => p,
         };
 
-        if !self.error_occurred_during_last_exploratory_exec {
-            // If we're in the middle of trying a tactic, execute it.
-            if let Some(next) = self
-                .top_state
-                .added_synthetic
-                .get(self.top_state.num_executed_synthetic)
-            {
-                let id = next.state_id;
-                self.send_command(
-                    Command::Exec(id),
-                    ActiveCommandExtra::ExecExploratory {
-                        index: self.top_state.num_executed_synthetic,
-                    },
-                );
-                return;
-            }
-
-            // if it's been executed but not goal-queried, goal-query it.
-            if let Some(last) = self.top_state.added_synthetic.last() {
-                if proof_state.steps.get(&last.code).is_none() {
-                    self.query_goals();
-                    return;
-                }
-            }
-        }
-
-        // if it hit an error or was already goal-queried, revert it.
+        // for now: always test from the root
         if !self.top_state.added_synthetic.is_empty() {
             self.revert_to_proof_exploration_root();
             return;
@@ -378,8 +663,8 @@ impl ApplicationState {
         ];
 
         for &tactic in TACTICS {
-            if proof_state.steps.get(tactic).is_none() {
-                self.try_tactic(tactic.to_string());
+            if proof_state.attempted_tactics.get(tactic).is_none() {
+                self.run_tactic(tactic.to_string());
                 return;
             }
         }
@@ -395,25 +680,41 @@ fn content(interface_state: Json<InterfaceState>, rocket_state: State<RocketStat
         None => text!("Processing..."),
         Some(Mode::NotProofMode) => text!("Not in proof mode"),
         Some(Mode::ProofMode(p)) => {
-            let steps = p.steps.iter().map(|(tactic, p2)| {
-                html! {
-                    <div class="step">
-                        <div class="tactic">
-                            <pre>{text!("{}", tactic)}</pre>
-                        </div>
-                        <div class="step_goal">
-                            <pre>{text!("{}", p2.goals)}</pre>
-                        </div>
-                    </div>
+            let mut successful_tactics = Vec::new();
+            let mut failed_tactics = Vec::new();
+            for (tactic, result) in &p.attempted_tactics {
+                match result {
+                    TacticResult::Success(successor) => {
+                        let element = html! {
+                            <div class="successful_tactic">
+                                <div class="tactic">
+                                    <pre>{text!("{}", tactic)}</pre>
+                                </div>
+                                <div class="step_goal">
+                                    <pre>{text!("{}", successor.goals_string)}</pre>
+                                </div>
+                            </div>
+                        };
+                        successful_tactics.push(element);
+                    }
+                    TacticResult::Failure => {
+                        let element = html! {
+                            <div class="failed_tactic">
+                                <pre>{text!("{}: failed", tactic)}</pre>
+                            </div>
+                        };
+                        failed_tactics.push(element);
+                    }
                 }
-            });
+            }
             html! {
                 <div class="proof_state">
                     <div class="proof_root">
-                        <pre>{text!("{}", p.goals)}</pre>
+                        <pre>{text!("{}", p.goals_string)}</pre>
                     </div>
                     <div class="proof_steps">
-                        {steps}
+                        {successful_tactics}
+                        {failed_tactics}
                     </div>
                 </div>
             }
@@ -479,156 +780,27 @@ pub fn receiver_thread(child_stdout: ChildStdout, application_state: Arc<Mutex<A
         let application: &mut ApplicationState = &mut *guard;
         #[allow(clippy::single_match)]
         match interpreted {
-            Answer::Feedback(feedback) => match feedback.contents {
-                FeedbackContent::Processed => {}
-                _ => {}
-            },
-            Answer::Answer(_command_tag, answer_kind) => match answer_kind {
-                AnswerKind::Added(state_id, location, _extra) => {
-                    match (
-                        &application.top_state.active_command,
-                        &application.active_command_extra,
-                    ) {
-                        (_, Some(ActiveCommandExtra::AddFromFile { offset })) => {
-                            application.top_state.added_from_file.push(AddedFromFile {
-                                location_in_file: offset + location.bp as usize
-                                    ..offset + location.ep as usize,
-                                state_id,
-                            });
-                        }
-                        (Some(Command::Add(_, code)), Some(ActiveCommandExtra::AddExploratory)) => {
-                            application.top_state.added_synthetic.push(AddedSynthetic {
-                                code: code.clone(),
-                                state_id,
-                            });
-                        }
-                        _ => panic!("received Added when we weren't doing an Add"),
-                    }
-                }
-                AnswerKind::Canceled(state_ids) => {
-                    application.top_state.added_from_file.retain(|added| {
-                        state_ids.iter().all(|canceled| &added.state_id != canceled)
-                    });
-                    application.top_state.added_synthetic.retain(|added| {
-                        state_ids.iter().all(|canceled| &added.state_id != canceled)
-                    });
-                    if application.top_state.added_from_file.len()
-                        < application.top_state.num_executed_from_file
-                    {
-                        application.top_state.num_executed_from_file =
-                            application.top_state.added_from_file.len();
-                        application.end_of_first_added_from_file_that_failed_to_execute = None;
-                        application.known_mode = None;
-                    }
-                    if application.top_state.added_synthetic.len()
-                        < application.top_state.num_executed_synthetic
-                    {
-                        application.top_state.num_executed_synthetic =
-                            application.top_state.added_synthetic.len();
-                        application.error_occurred_during_last_exploratory_exec = false;
-                    }
-                }
-                AnswerKind::CoqExn(_) => {
-                    match &application.active_command_extra {
-                        Some(ActiveCommandExtra::ExecFromFile { index }) => {
-                            application.end_of_first_added_from_file_that_failed_to_execute = Some(
-                                application.top_state.added_from_file[*index]
-                                    .location_in_file
-                                    .end,
-                            );
-                        }
-                        Some(ActiveCommandExtra::ExecExploratory { .. }) => {
-                            application.error_occurred_during_last_exploratory_exec = true;
-                            let proof_state = match &mut application.known_mode
-                        {Some(Mode::ProofMode(p)) =>p, _ => panic!("shouldn't be doing exploratory execution when not in proof mode"),
-                        };
-                            proof_state.steps.insert(
-                                application
-                                    .top_state
-                                    .added_synthetic
-                                    .last()
-                                    .unwrap()
-                                    .code
-                                    .clone(),
-                                ProofState {
-                                    goals: "failed".to_string(),
-                                    steps: HashMap::new(),
-                                },
-                            );
-                        }
-                        _ => {}
-                    }
-                }
-                AnswerKind::ObjList(objects) => match &application.top_state.active_command {
-                    Some(Command::Query(_, QueryCommand::EGoals)) => match &mut application
-                        .known_mode
-                    {
-                        None => {
-                            application.known_mode = Some(match objects.first() {
-                                Some(CoqObject::CoqString(goals)) => Mode::ProofMode(ProofState {
-                                    goals: goals.clone(),
-                                    steps: HashMap::new(),
-                                }),
-                                _ => Mode::NotProofMode,
-                            });
-                        }
-                        Some(Mode::NotProofMode) => panic!(
-                            "shouldn't have queried goals when known not to be in proof mode"
-                        ),
-                        Some(Mode::ProofMode(p)) => {
-                            let goals = match objects.first() {
-                                Some(CoqObject::CoqString(goals)) => goals,
-                                _ => panic!(
-                                    "sertop didn't send any goals after tactic while in proof mode"
-                                ),
-                            };
-                            p.steps.insert(
-                                application
-                                    .top_state
-                                    .added_synthetic
-                                    .last()
-                                    .unwrap()
-                                    .code
-                                    .clone(),
-                                ProofState {
-                                    goals: goals.clone(),
-                                    steps: HashMap::new(),
-                                },
-                            );
-                        }
-                    },
-                    _ => {}
-                },
-                AnswerKind::Completed => {
-                    let command = application
+            Answer::Feedback(_feedback) => {}
+            Answer::Answer(_command_tag, answer_kind) => {
+                // We have to take it and put it back so that we can
+                // hand it both &mut self and &mut application
+                let mut runner = application
+                    .active_command_runner
+                    .take()
+                    .expect("active_command_extra not set for a command?");
+                runner.handle_answer(application, &answer_kind);
+                if let AnswerKind::Completed = answer_kind {
+                    let _command = application
                         .top_state
                         .active_command
                         .take()
                         .expect("received Completed when no command was running?");
-                    let extra = application
-                        .active_command_extra
-                        .take()
-                        .expect("active_command_extra not set for a command?");
-                    match (command, extra) {
-                        (_, ActiveCommandExtra::ExecFromFile { .. }) => {
-                            if application
-                                .end_of_first_added_from_file_that_failed_to_execute
-                                .is_none()
-                            {
-                                application.top_state.num_executed_from_file += 1;
-                                application.known_mode = None;
-                            }
-                        }
-                        (_, ActiveCommandExtra::ExecExploratory { .. }) => {
-                            if !application.error_occurred_during_last_exploratory_exec {
-                                application.top_state.num_executed_synthetic += 1;
-                            }
-                        }
-                        _ => {}
-                    }
+                    runner.finish(application);
+                // and don't put it back if it's finished
+                } else {
+                    application.active_command_runner = Some(runner);
                 }
-                _ => {}
-            },
+            }
         }
     }
 }
@@ -657,9 +829,8 @@ pub fn run(root_path: PathBuf, code_path: PathBuf) {
         current_file_code: String::new(),
         last_added_file_code: String::new(),
         last_code_modified: None,
-        active_command_extra: None,
+        active_command_runner: None,
         end_of_first_added_from_file_that_failed_to_execute: None,
-        error_occurred_during_last_exploratory_exec: false,
         top_state: TopState {
             added_from_file: Vec::new(),
             added_synthetic: Vec::new(),

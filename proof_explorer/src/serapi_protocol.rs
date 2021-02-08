@@ -2,9 +2,6 @@ use crate::universally_deserializable::NotYetImplemented;
 use derivative::Derivative;
 use serde::{ser, Deserialize, Serialize};
 
-pub fn default<T: Default>() -> T {
-    Default::default()
-}
 pub fn is_default<T: Default + PartialEq>(value: &T) -> bool {
     value == &T::default()
 }
