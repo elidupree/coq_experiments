@@ -393,6 +393,7 @@ impl ApplicationState {
                     sid: self.top_state.last_added().unwrap_or(0),
                     pp: FormatOptions {
                         pp_format: PrintFormat::PpStr,
+                        pp_margin: 9999999,
                         ..default()
                     },
                     ..default()
@@ -654,15 +655,9 @@ impl ApplicationState {
             return;
         }
 
-        const TACTICS: &[&str] = &[
-            "intuition idtac.",
-            "intro.",
-            "intros.",
-            "split.",
-            "reflexivity.",
-        ];
+        const TACTICS: &str = "intuition idtac.intro.intros.split.reflexivity.assumption.constructor.exfalso.instantiate.contradiction.discriminate.trivial.inversion_sigma.symmetry.simpl in *.left.right.classical_left.classical_right.solve_constraints.subst.cbv.lazy.vm_compute.native_compute.red.hnf.cbn.injection.decide equality.tauto.dtauto.congruence.firstorder.easy.auto.eauto.auto with *.eauto with *.";
 
-        for &tactic in TACTICS {
+        for tactic in TACTICS.split_inclusive(".") {
             if proof_state.attempted_tactics.get(tactic).is_none() {
                 self.run_tactic(tactic.to_string());
                 return;
@@ -716,23 +711,39 @@ fn content(
                             failed_tactics.push(element);
                         } else {
                             let mut elements: Vec<Element> = Vec::new();
+                            let mut in_hypotheses = true;
                             for item in diff.diffs {
                                 match item {
                                     Difference::Add(added) => {
-                                        elements.push(html! {
-                                            <ins><pre class="diff">{text!("{}", added)}</pre></ins>
-                                        });
+                                        for line in added.split("\n") {
+                                            if in_hypotheses {
+                                                elements.push(html! {
+                                                    <ins><pre class="diff">{text!("{}", line)}</pre></ins>
+                                                });
+                                            } else {
+                                                elements.push(html! {
+                                                    <div class="change"><pre class="diff">{text!("{}", line)}</pre></div>
+                                                });
+                                            }
+                                        }
                                     }
                                     Difference::Rem(removed) => {
-                                        elements.push(html! {
-                                            <del><pre class="diff">{text!("{}", removed)}</pre></del>
-                                        });
+                                        for line in removed.split("\n") {
+                                            if in_hypotheses && !line.starts_with("none") {
+                                                elements.push(html! {
+                                                    <del><pre class="diff">{text!("{}", line)}</pre></del>
+                                                });
+                                            }
+                                        }
                                     }
                                     Difference::Same(same) => {
-                                        if same.starts_with("=====") {
-                                            elements.push(html! {
-                                                <pre class="diff">{text!("{}", same)}</pre>
-                                            });
+                                        for line in same.split("\n") {
+                                            if line.starts_with("=====") {
+                                                in_hypotheses = false;
+                                                elements.push(html! {
+                                                    <pre class="diff">{text!("{}", line)}</pre>
+                                                });
+                                            }
                                         }
                                     }
                                 }
