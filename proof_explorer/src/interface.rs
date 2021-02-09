@@ -17,14 +17,15 @@ use std::fmt::Debug;
 use std::io::{BufRead, BufReader, Write};
 use std::ops::Range;
 use std::process::{self, ChildStdin, ChildStdout, Stdio};
-use std::{fs, mem};
+use std::{fs, iter, mem};
 use typed_html::dom::DOMTree;
 use typed_html::elements::FlowContent;
 use typed_html::{html, text};
 
 use crate::serapi_protocol::{
-    AddOptions, Answer, AnswerKind, Command, ConstrExpr, CoqObject, FeedbackContent, FormatOptions,
-    NamesId, PrintFormat, QueryCommand, QueryOptions, ReifiedGoal, SerGoals, StateId,
+    map_goals, AddOptions, Answer, AnswerKind, Command, ConstrExpr, CoqObject, FeedbackContent,
+    FormatOptions, Goals, Hypothesis, NamesId, PrintFormat, PrintOptions, QueryCommand,
+    QueryOptions, ReifiedGoal, SerGoals, StateId,
 };
 
 pub type Element = Box<dyn FlowContent<String>>;
@@ -84,10 +85,15 @@ pub trait CommandRunner: Send + Sync + 'static {
     fn finish(self: Box<Self>, application: &mut ApplicationState) {}
 }
 
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct CoqValueInfo {
+    constr_expr: ConstrExpr,
+    string: String,
+}
+
 #[derive(PartialEq, Eq, Debug)]
 pub struct ProofState {
-    goals_string: String,
-    goals_ser: SerGoals<ReifiedGoal<ConstrExpr>>,
+    goals: Goals<CoqValueInfo>,
     attempted_tactics: HashMap<String, TacticResult>,
 }
 
@@ -311,10 +317,10 @@ impl ApplicationState {
 
     fn query_goals(&mut self) {
         #[derive(Debug)]
-        struct QueryGoalsStringRunner {
-            received_goals_string: Option<String>,
+        struct QueryGoalsRunner {
+            received_goals: Option<Goals<ConstrExpr>>,
         }
-        impl CommandRunner for QueryGoalsStringRunner {
+        impl CommandRunner for QueryGoalsRunner {
             fn handle_answer(&mut self, application: &mut ApplicationState, answer: &AnswerKind) {
                 let objects = if let AnswerKind::ObjList(objects) = answer {
                     objects
@@ -322,9 +328,7 @@ impl ApplicationState {
                     return;
                 };
                 match objects.first() {
-                    Some(CoqObject::CoqString(goals_string)) => {
-                        self.received_goals_string = Some(goals_string.clone())
-                    }
+                    Some(CoqObject::CoqExtGoal(goals)) => self.received_goals = Some(goals.clone()),
                     _ => match application.known_mode {
                         None => {
                             application.known_mode = Some(Mode::NotProofMode);
@@ -340,60 +344,92 @@ impl ApplicationState {
                 };
             }
             fn finish(self: Box<Self>, application: &mut ApplicationState) {
-                if let Some(goals_string) = self.received_goals_string {
-                    application.send_command(
-                        Command::Query(
-                            QueryOptions {
-                                sid: application.top_state.last_added().unwrap_or(0),
-                                pp: FormatOptions {
-                                    pp_format: PrintFormat::PpSer,
-                                    ..default()
-                                },
-                                ..default()
-                            },
-                            QueryCommand::EGoals,
-                        ),
-                        QueryGoalsSerRunner { goals_string },
-                    );
+                if let Some(goals) = self.received_goals {
+                    let iter = goals.goals.clone().into_iter().flat_map(|g| {
+                        iter::once(g.ty)
+                            .chain(g.hyp.into_iter().flat_map(|h| iter::once(h.2).chain(h.1)))
+                    });
+                    Box::new(PrintGoalsRunner {
+                        goals,
+                        iter,
+                        current: None,
+                        collected: HashMap::new(),
+                    })
+                    .finish(application);
                 }
             }
         }
 
         #[derive(Debug)]
-        struct QueryGoalsSerRunner {
-            goals_string: String,
+        struct PrintGoalsRunner<I> {
+            goals: Goals<ConstrExpr>,
+            iter: I,
+            current: Option<ConstrExpr>,
+            collected: HashMap<ConstrExpr, String>,
         }
-        impl CommandRunner for QueryGoalsSerRunner {
-            fn handle_answer(&mut self, application: &mut ApplicationState, answer: &AnswerKind) {
+        impl<I: Iterator<Item = ConstrExpr> + Send + Sync + 'static> CommandRunner for PrintGoalsRunner<I> {
+            fn handle_answer(&mut self, _application: &mut ApplicationState, answer: &AnswerKind) {
                 let objects = if let AnswerKind::ObjList(objects) = answer {
                     objects
                 } else {
                     return;
                 };
-                let goals_ser = match objects.first() {
-                    Some(CoqObject::CoqExtGoal(goals_ser)) => goals_ser,
-                    _ => panic!("sertop sent goals string, but didn't send goals ser - huh?"),
+                let string = match objects.first() {
+                    Some(CoqObject::CoqString(string)) => string,
+                    _ => panic!("unexpected response to Print"),
                 };
-                let new_proof_state = ProofState {
-                    goals_string: self.goals_string.clone(),
-                    goals_ser: goals_ser.clone(),
-                    attempted_tactics: HashMap::new(),
-                };
-                match &mut application.known_mode {
-                    None => {
-                        application.known_mode = Some(Mode::ProofMode(new_proof_state));
-                    }
-                    Some(Mode::NotProofMode) => {
-                        panic!("shouldn't have even gotten to QueryGoalsSerRunner when known not to be in proof mode")
-                    }
-                    Some(Mode::ProofMode(p)) => {
-                        assert_eq!(application.top_state.num_executed_synthetic, application.top_state.added_synthetic.len());
-                        // Note: can't use application.latest_proof_state_mut() here because the application would believe we have already gotten to this spot
-                        let tactics : &[AddedSynthetic] = &application.top_state.added_synthetic;
-                        let latest = tactics.last().expect("if the proof state already exists, we should only be querying goals after a tactic").code.clone();
-                        let p2 = p.descendant_mut (tactics [..tactics.len()-1].iter().map(|t|t.code.as_str())).unwrap();
-                        let insert_result = p2.attempted_tactics.insert(latest,TacticResult::Success(new_proof_state));
-                        assert!(insert_result.is_none(), "shouldn't have queried goals for a tactic that was already tested");
+                self.collected
+                    .insert(self.current.take().unwrap(), string.clone());
+            }
+            fn finish(mut self: Box<Self>, application: &mut ApplicationState) {
+                if let Some(unused) = self.current.take() {
+                    panic!("Didn't receive printed representation for {:?}?", unused);
+                }
+                if let Some(next) = self.iter.next() {
+                    self.current = Some(next.clone());
+                    application.send_command(
+                        Command::Print(
+                            PrintOptions {
+                                sid: application.top_state.last_added().unwrap_or(0),
+                                pp: FormatOptions {
+                                    pp_format: PrintFormat::PpStr,
+                                    pp_margin: 9999999,
+                                    ..default()
+                                },
+                            },
+                            CoqObject::CoqExpr(next),
+                        ),
+                        *self,
+                    );
+                } else {
+                    let collected = self.collected;
+                    let new_proof_state = ProofState {
+                        goals: map_goals(self.goals, |constr_expr| {
+                            // note: can't be efficient using `remove` here because there might be duplicates
+                            let string = collected.get(&constr_expr).unwrap().clone();
+                            CoqValueInfo {
+                                constr_expr,
+                                string,
+                            }
+                        }),
+                        attempted_tactics: HashMap::new(),
+                    };
+                    match &mut application.known_mode {
+                        None => {
+                            application.known_mode = Some(Mode::ProofMode(new_proof_state));
+                        }
+                        Some(Mode::NotProofMode) => {
+                            panic!("shouldn't have even gotten to QueryGoalsSerRunner when known not to be in proof mode")
+                        }
+                        Some(Mode::ProofMode(p)) => {
+                            assert_eq!(application.top_state.num_executed_synthetic, application.top_state.added_synthetic.len());
+                            // Note: can't use application.latest_proof_state_mut() here because the application would believe we have already gotten to this spot
+                            let tactics : &[AddedSynthetic] = &application.top_state.added_synthetic;
+                            let latest = tactics.last().expect("if the proof state already exists, we should only be querying goals after a tactic").code.clone();
+                            let p2 = p.descendant_mut (tactics [..tactics.len()-1].iter().map(|t|t.code.as_str())).unwrap();
+                            let insert_result = p2.attempted_tactics.insert(latest,TacticResult::Success(new_proof_state));
+                            assert!(insert_result.is_none(), "shouldn't have queried goals for a tactic that was already tested");
+                        }
                     }
                 }
             }
@@ -403,16 +439,15 @@ impl ApplicationState {
                 QueryOptions {
                     sid: self.top_state.last_added().unwrap_or(0),
                     pp: FormatOptions {
-                        pp_format: PrintFormat::PpStr,
-                        pp_margin: 9999999,
+                        pp_format: PrintFormat::PpSer,
                         ..default()
                     },
                     ..default()
                 },
                 QueryCommand::EGoals,
             ),
-            QueryGoalsStringRunner {
-                received_goals_string: None,
+            QueryGoalsRunner {
+                received_goals: None,
             },
         );
     }
@@ -701,7 +736,7 @@ impl ApplicationState {
 
         const HYPOTHESIS_TACTICS: &str = "injection H.apply H.simple apply H.eapply H.rapply H.lapply H.clear H.revert H.decompose sum H.decompose record H.generalize H.generalize dependent H.absurd H.contradiction H.contradict H.destruct H.case H.induction H.dependent destruction H.dependent induction H.inversion H.discriminate H.inversion_clear H.dependent inversion H.symmetry in H.simplify_eq H.rewrite <- H. rewrite -> H.rewrite <- H in *. rewrite -> H in *.dependent rewrite <- H. dependent rewrite -> H.";
 
-        if let Some(goal) = featured.goals_ser.goals.first() {
+        if let Some(goal) = featured.goals.goals.first() {
             for (names, _, _) in &goal.hyp {
                 for NamesId::Id(name) in names {
                     for tactic_h in HYPOTHESIS_TACTICS.split_inclusive(".") {
@@ -713,6 +748,214 @@ impl ApplicationState {
                     }
                 }
             }
+        }
+    }
+}
+
+fn hypothesis_string(hypothesis: &Hypothesis<CoqValueInfo>) -> String {
+    let (names, def, ty) = hypothesis;
+    let names: Vec<_> = names
+        .iter()
+        .map(|NamesId::Id(name)| name.as_str())
+        .collect();
+    let names = names.join(", ");
+    if let Some(def) = def.as_ref() {
+        format!("{} := {} : {}", names, def.string, ty.string)
+    } else {
+        format!("{} : {}", names, ty.string)
+    }
+}
+
+impl ReifiedGoal<CoqValueInfo> {
+    pub fn hypothesis_strings(&self) -> Vec<String> {
+        self.hyp.iter().map(hypothesis_string).collect()
+    }
+
+    pub fn representation(&self) -> Element {
+        let hypotheses_string = self.hypothesis_strings().join("\n");
+        let conclusion_string = &self.ty.string;
+        html! {
+            <div class="goal">
+                {text!("{}", hypotheses_string)}
+                <hr/>
+                {text!("{}", conclusion_string)}
+            </div>
+        }
+    }
+}
+impl Goals<CoqValueInfo> {
+    pub fn representation(&self) -> Element {
+        html! {
+            <div class="goals">
+                {self.goals.iter().map(|g| g.representation())}
+            </div>
+        }
+    }
+}
+
+impl ApplicationState {
+    fn attempted_tactics_representation(&self, featured: &ProofState) -> Element {
+        let first_goal = match featured.goals.goals.first() {
+            Some(goal) => goal,
+            None => {
+                return text!(
+                "All goals solved! (Except maybe shelved goals, I haven't implemented that yet)."
+            )
+            }
+        };
+        let featured_hypotheses_string = first_goal.hypothesis_strings().join("\n");
+        let featured_conclusion_string = &first_goal.ty.string;
+
+        let mut successful_tactics = Vec::new();
+        let mut failed_tactics = Vec::new();
+        for (tactic, result) in &featured.attempted_tactics {
+            let successor = match result {
+                TacticResult::Success(successor) => successor,
+                TacticResult::Failure => {
+                    let element = html! {
+                        <div class="failed_tactic">
+                            <pre>{text!("{}: failed", tactic)}</pre>
+                        </div>
+                    };
+                    failed_tactics.push(element);
+                    continue;
+                }
+            };
+
+            if successor.goals == featured.goals {
+                let element = html! {
+                    <div class="failed_tactic">
+                        <pre>{text!("{}: no effect", tactic)}</pre>
+                    </div>
+                };
+                failed_tactics.push(element);
+                continue;
+            }
+
+            let relevant_goals = &successor.goals.goals
+                [..successor.goals.goals.len() + 1 - featured.goals.goals.len()];
+            let mut elements: Vec<Element> = Vec::new();
+            if relevant_goals.is_empty() {
+                elements.push(
+                    html! { <ins><pre class="diff">{text!("Current goal solved!")}</pre></ins> },
+                )
+            }
+
+            for goal in relevant_goals {
+                let hypotheses_string = goal.hypothesis_strings().join("\n");
+                let conclusion_string = &goal.ty.string;
+                let hypotheses_diff =
+                    Changeset::new(&featured_hypotheses_string, &hypotheses_string, "\n");
+                for item in hypotheses_diff.diffs {
+                    match item {
+                        Difference::Add(added) => {
+                            elements.push(html! {
+                                <ins><pre class="diff">{text!("{}", added)}</pre></ins>
+                            });
+                        }
+                        Difference::Rem(removed) => {
+                            elements.push(html! {
+                                <del><pre class="diff">{text!("{}", removed)}</pre></del>
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+                elements.push(html! {
+                    <hr/>
+                });
+                let conclusion_diff =
+                    Changeset::new(&featured_conclusion_string, conclusion_string, "\n");
+                for item in conclusion_diff.diffs {
+                    match item {
+                        Difference::Add(added) => {
+                            elements.push(html! {
+                                <ins><pre>{text!("{}", added)}</pre></ins>
+                            });
+                        }
+                        Difference::Rem(removed) => {
+                            elements.push(html! {
+                                <del><pre>{text!("{}", removed)}</pre></del>
+                            });
+                        }
+                        Difference::Same(same) => {
+                            elements.push(html! {
+                                <pre>{text!("{}", same)}</pre>
+                            });
+                        }
+                    }
+                }
+                elements.push(html! {
+                    <hr/>
+                });
+            }
+            elements.pop();
+
+            let mut extended = self.featured_proof_path.clone();
+            extended.push(tactic.clone());
+            let onclick = serde_json::to_string(&Input::SetFocused(extended)).unwrap();
+            let element = html! {
+                <div class="successful_tactic" data-onclick={onclick}>
+                    <div class="tactic">
+                        <pre>{text!("{}", tactic)}</pre>
+                    </div>
+                    <div class="goal">
+                        {elements}
+                    </div>
+                </div>
+            };
+            successful_tactics.push(element);
+        }
+        html! {
+            <div class="attempted_tactics">
+                {successful_tactics}
+                {failed_tactics}
+            </div>
+        }
+    }
+    fn proof_state_representation(&self) -> Element {
+        let proof_root = match &self.known_mode {
+            None => return text!("Processing..."),
+            Some(Mode::NotProofMode) => return text!("Not in proof mode"),
+            Some(Mode::ProofMode(proof_root)) => proof_root,
+        };
+
+        let featured = proof_root
+            .descendant(self.featured_proof_path.iter().map(String::as_str))
+            .unwrap();
+        let attempted_tactics = self.attempted_tactics_representation(featured);
+        let mut context: Vec<Element> = Vec::new();
+        for (index, tactic) in self.featured_proof_path.iter().enumerate() {
+            let included = &self.featured_proof_path[0..=index];
+            let onclick = serde_json::to_string(&Input::SetFocused(included.to_owned())).unwrap();
+            let state = proof_root
+                .descendant(included.iter().map(String::as_str))
+                .unwrap();
+            context.push(html! {
+                <div class="prior_tactic" data-onclick={onclick}>
+                    <div class="tactic">
+                        <pre>{text!("{}", tactic)}</pre>
+                    </div>
+                    {state.goals.representation()}
+                </div>
+            });
+        }
+        if !context.is_empty() {
+            context = vec![html! {
+                <div class="prior_tactics">
+                    {context}
+                </div>
+            }]
+        }
+        let onclick_root = serde_json::to_string(&Input::SetFocused(Vec::new())).unwrap();
+        html! {
+            <div class="proof_state">
+                <div class="proof_root" data-onclick={onclick_root}>
+                    {proof_root.goals.representation()}
+                </div>
+                {context}
+                {attempted_tactics}
+            </div>
         }
     }
 }
@@ -775,134 +1018,7 @@ fn content(
         });
     }
 
-    let proof_state_representation: Element = match &application.known_mode {
-        None => text!("Processing..."),
-        Some(Mode::NotProofMode) => text!("Not in proof mode"),
-        Some(Mode::ProofMode(proof_root)) => {
-            let mut successful_tactics = Vec::new();
-            let mut failed_tactics = Vec::new();
-            let featured = proof_root
-                .descendant(application.featured_proof_path.iter().map(String::as_str))
-                .unwrap();
-            for (tactic, result) in &featured.attempted_tactics {
-                match result {
-                    TacticResult::Success(successor) => {
-                        let diff =
-                            Changeset::new(&featured.goals_string, &successor.goals_string, "\n");
-                        if successor.goals_string == featured.goals_string {
-                            let element = html! {
-                                <div class="failed_tactic">
-                                    <pre>{text!("{}: no effect", tactic)}</pre>
-                                </div>
-                            };
-                            failed_tactics.push(element);
-                        } else {
-                            let mut elements: Vec<Element> = Vec::new();
-                            let mut in_hypotheses = true;
-                            for item in diff.diffs {
-                                match item {
-                                    Difference::Add(added) => {
-                                        for line in added.split('\n') {
-                                            if in_hypotheses {
-                                                elements.push(html! {
-                                                    <ins><pre class="diff">{text!("{}", line)}</pre></ins>
-                                                });
-                                            } else {
-                                                elements.push(html! {
-                                                    <div class="change"><pre class="diff">{text!("{}", line)}</pre></div>
-                                                });
-                                            }
-                                        }
-                                    }
-                                    Difference::Rem(removed) => {
-                                        for line in removed.split('\n') {
-                                            if in_hypotheses && !line.starts_with("none") {
-                                                elements.push(html! {
-                                                    <del><pre class="diff">{text!("{}", line)}</pre></del>
-                                                });
-                                            }
-                                        }
-                                    }
-                                    Difference::Same(same) => {
-                                        for line in same.split('\n') {
-                                            if line.starts_with("=====") {
-                                                in_hypotheses = false;
-                                                elements.push(html! {
-                                                    <pre class="diff">{text!("{}", line)}</pre>
-                                                });
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            let mut extended = application.featured_proof_path.clone();
-                            extended.push(tactic.clone());
-                            let onclick =
-                                serde_json::to_string(&Input::SetFocused(extended)).unwrap();
-                            let element = html! {
-                                <div class="successful_tactic" data-onclick={onclick}>
-                                    <div class="tactic">
-                                        <pre>{text!("{}", tactic)}</pre>
-                                    </div>
-                                    <div class="goal">
-                                        {elements}
-                                    </div>
-                                </div>
-                            };
-                            successful_tactics.push(element);
-                        }
-                    }
-                    TacticResult::Failure => {
-                        let element = html! {
-                            <div class="failed_tactic">
-                                <pre>{text!("{}: failed", tactic)}</pre>
-                            </div>
-                        };
-                        failed_tactics.push(element);
-                    }
-                }
-            }
-            let mut context: Vec<Element> = Vec::new();
-            for (index, tactic) in application.featured_proof_path.iter().enumerate() {
-                let included = &application.featured_proof_path[0..=index];
-                let onclick =
-                    serde_json::to_string(&Input::SetFocused(included.to_owned())).unwrap();
-                let state = proof_root
-                    .descendant(included.iter().map(String::as_str))
-                    .unwrap();
-                context.push(html! {
-                    <div class="prior_tactic" data-onclick={onclick}>
-                        <div class="tactic">
-                            <pre>{text!("{}", tactic)}</pre>
-                        </div>
-                        <div class="goal">
-                            <pre>{text!("{}", state.goals_string)}</pre>
-                        </div>
-                    </div>
-                });
-            }
-            if !context.is_empty() {
-                context = vec![html! {
-                    <div class="prior_tactics">
-                        {context}
-                    </div>
-                }]
-            }
-            let onclick_root = serde_json::to_string(&Input::SetFocused(Vec::new())).unwrap();
-            html! {
-                <div class="proof_state">
-                    <div class="proof_root" data-onclick={onclick_root}>
-                        <pre>{text!("{}", proof_root.goals_string)}</pre>
-                    </div>
-                    {context}
-                    <div class="attempted_tactics">
-                        {successful_tactics}
-                        {failed_tactics}
-                    </div>
-                </div>
-            }
-        }
-    };
+    let proof_state_representation: Element = application.proof_state_representation();
 
     let document: DOMTree<String> = html! {
         <div id="content">
@@ -941,7 +1057,10 @@ pub fn receiver_thread(child_stdout: ChildStdout, application_state: Arc<Mutex<A
                 continue;
             }
         };
-        eprintln!("received valid input from sertop: {:?}\n", interpreted);
+        eprintln!(
+            "received valid input from sertop: {:?}\n{}\n",
+            interpreted, line
+        );
 
         let mut guard = application_state.lock();
         let application: &mut ApplicationState = &mut *guard;
