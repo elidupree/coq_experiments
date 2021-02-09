@@ -120,6 +120,9 @@ pub struct ApplicationState {
     known_mode: Option<Mode>,
 
     last_ui_change_serial_number: u64,
+
+    // I was going to call this "focused", but that term is already used
+    featured_proof_path: Vec<String>,
 }
 
 pub struct RocketState {
@@ -147,31 +150,38 @@ impl TopState {
 }
 
 impl ProofState {
-    pub fn descendant<'a>(&self, mut tactics: impl Iterator<Item = &'a str>) -> &ProofState {
+    pub fn child(&self, tactic: &str) -> Option<&ProofState> {
+        match self.attempted_tactics.get(tactic) {
+            Some(TacticResult::Success(child)) => Some(child),
+            _ => None,
+        }
+    }
+    pub fn child_mut(&mut self, tactic: &str) -> Option<&mut ProofState> {
+        match self.attempted_tactics.get_mut(tactic) {
+            Some(TacticResult::Success(child)) => Some(child),
+            _ => None,
+        }
+    }
+    pub fn descendant<'a>(
+        &self,
+        mut tactics: impl Iterator<Item = &'a str>,
+    ) -> Option<&ProofState> {
         match tactics.next() {
-            None => self,
-            Some(tactic) => match self.attempted_tactics.get(tactic) {
-                Some(TacticResult::Success(child)) => child.descendant(tactics),
-                Some(TacticResult::Failure) => {
-                    panic!("attempted to descend into tactic that failed")
-                }
-                None => panic!("attempted to descend into a tactic that was never checked"),
-            },
+            None => Some(self),
+            Some(tactic) => self
+                .child(tactic)
+                .and_then(|child| child.descendant(tactics)),
         }
     }
     pub fn descendant_mut<'a>(
         &mut self,
         mut tactics: impl Iterator<Item = &'a str>,
-    ) -> &mut ProofState {
+    ) -> Option<&mut ProofState> {
         match tactics.next() {
-            None => self,
-            Some(tactic) => match self.attempted_tactics.get_mut(tactic) {
-                Some(TacticResult::Success(child)) => child.descendant_mut(tactics),
-                Some(TacticResult::Failure) => {
-                    panic!("attempted to descend into tactic that failed")
-                }
-                None => panic!("attempted to descend into a tactic that was never checked"),
-            },
+            None => Some(self),
+            Some(tactic) => self
+                .child_mut(tactic)
+                .and_then(|child| child.descendant_mut(tactics)),
         }
     }
 }
@@ -206,6 +216,7 @@ impl ApplicationState {
                             application.top_state.added_from_file.len();
                         application.end_of_first_added_from_file_that_failed_to_execute = None;
                         application.known_mode = None;
+                        application.featured_proof_path.clear();
                     }
                     if application.top_state.added_synthetic.len()
                         < application.top_state.num_executed_synthetic
@@ -380,7 +391,7 @@ impl ApplicationState {
                         // Note: can't use application.latest_proof_state_mut() here because the application would believe we have already gotten to this spot
                         let tactics : &[AddedSynthetic] = &application.top_state.added_synthetic;
                         let latest = tactics.last().expect("if the proof state already exists, we should only be querying goals after a tactic").code.clone();
-                        let p2 = p.descendant_mut (tactics [..tactics.len()-1].iter().map(|t|t.code.as_str()));
+                        let p2 = p.descendant_mut (tactics [..tactics.len()-1].iter().map(|t|t.code.as_str())).unwrap();
                         let insert_result = p2.attempted_tactics.insert(latest,TacticResult::Success(new_proof_state));
                         assert!(insert_result.is_none(), "shouldn't have queried goals for a tactic that was already tested");
                     }
@@ -434,6 +445,7 @@ impl ApplicationState {
                         );
                         let insert_result = application
                             .latest_proof_state_mut()
+                            .unwrap()
                             .attempted_tactics
                             .insert(code, TacticResult::Failure);
                         assert!(
@@ -481,6 +493,7 @@ impl ApplicationState {
                         .clone();
                     let insert_result = application
                         .latest_proof_state_mut()
+                        .unwrap()
                         .attempted_tactics
                         .insert(latest, TacticResult::Failure);
                     assert!(
@@ -492,7 +505,9 @@ impl ApplicationState {
             fn finish(self: Box<Self>, application: &mut ApplicationState) {
                 if !self.exception_happened {
                     application.top_state.num_executed_synthetic += 1;
-                    application.query_goals();
+                    if application.latest_proof_state_mut().is_none() {
+                        application.query_goals();
+                    }
                 }
             }
         }
@@ -610,17 +625,17 @@ impl ApplicationState {
         self.do_proof_exploration();
     }
 
-    fn root_proof_state_mut(&mut self) -> &mut ProofState {
-        match &mut self.known_mode {
-            Some(Mode::ProofMode(p)) => p,
-            _ => panic!("assumed we were in proof mode when we weren't"),
+    fn root_proof_state(&self) -> Option<&ProofState> {
+        match &self.known_mode {
+            Some(Mode::ProofMode(p)) => Some(p),
+            _ => None,
         }
     }
 
-    fn latest_proof_state_mut(&mut self) -> &mut ProofState {
+    fn latest_proof_state_mut(&mut self) -> Option<&mut ProofState> {
         let root = match &mut self.known_mode {
             Some(Mode::ProofMode(p)) => p,
-            _ => panic!("assumed we were in proof mode when we weren't"),
+            _ => return None,
         };
         root.descendant_mut(
             self.top_state.added_synthetic[..self.top_state.num_executed_synthetic]
@@ -640,7 +655,7 @@ impl ApplicationState {
     }
 
     fn do_proof_exploration(&mut self) {
-        let proof_state: &ProofState = match self.known_mode {
+        let proof_root: &ProofState = match self.known_mode {
             None => {
                 self.query_goals();
                 return;
@@ -648,17 +663,37 @@ impl ApplicationState {
             Some(Mode::NotProofMode) => return,
             Some(Mode::ProofMode(ref p)) => p,
         };
+        let featured = proof_root
+            .descendant(self.featured_proof_path.iter().map(String::as_str))
+            .unwrap();
 
-        // for now: always test from the root
-        if !self.top_state.added_synthetic.is_empty() {
-            self.revert_to_proof_exploration_root();
+        // make sure we are currently at the featured proof path before exploring
+        let canceled: Vec<_> = self
+            .top_state
+            .added_synthetic
+            .iter()
+            .enumerate()
+            .skip_while(|(i, a)| self.featured_proof_path.get(*i) == Some(&a.code))
+            .map(|(_, a)| a.state_id)
+            .collect();
+
+        if !canceled.is_empty() {
+            self.cancel(canceled);
+            return;
+        }
+        if let Some(next_catchup_tactic) = self
+            .featured_proof_path
+            .get(self.top_state.added_synthetic.len())
+        {
+            let tactic = next_catchup_tactic.clone();
+            self.run_tactic(tactic);
             return;
         }
 
         const GLOBAL_TACTICS: &str = "intuition idtac.intro.intros.split.reflexivity.assumption.constructor.exfalso.instantiate.contradiction.discriminate.trivial.inversion_sigma.symmetry.simpl in *.left.right.classical_left.classical_right.solve_constraints.simplify_eq.subst.cbv.lazy.vm_compute.native_compute.red.hnf.cbn.injection.decide equality.tauto.dtauto.congruence.firstorder.easy.auto.eauto.auto with *.eauto with *.";
 
         for tactic in GLOBAL_TACTICS.split_inclusive(".") {
-            if proof_state.attempted_tactics.get(tactic).is_none() {
+            if featured.attempted_tactics.get(tactic).is_none() {
                 self.run_tactic(tactic.to_string());
                 return;
             }
@@ -666,16 +701,49 @@ impl ApplicationState {
 
         const HYPOTHESIS_TACTICS: &str = "injection H.apply H.simple apply H.eapply H.rapply H.lapply H.clear H.revert H.decompose sum H.decompose record H.generalize H.generalize dependent H.absurd H.contradiction H.contradict H.destruct H.case H.induction H.dependent destruction H.dependent induction H.inversion H.discriminate H.inversion_clear H.dependent inversion H.symmetry in H.simplify_eq H.rewrite <- H. rewrite -> H.rewrite <- H in *. rewrite -> H in *.dependent rewrite <- H. dependent rewrite -> H.";
 
-        if let Some(goal) = proof_state.goals_ser.goals.first() {
+        if let Some(goal) = featured.goals_ser.goals.first() {
             for (names, _, _) in &goal.hyp {
                 for NamesId::Id(name) in names {
                     for tactic_h in HYPOTHESIS_TACTICS.split_inclusive(".") {
                         let tactic = tactic_h.replace("H", name);
-                        if proof_state.attempted_tactics.get(&tactic).is_none() {
+                        if featured.attempted_tactics.get(&tactic).is_none() {
                             self.run_tactic(tactic);
                             return;
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+#[get("/")]
+fn index(rocket_state: State<RocketState>) -> Option<NamedFile> {
+    NamedFile::open(rocket_state.root_path.join("static/index.html")).ok()
+}
+
+#[get("/media/<file..>")]
+fn media(file: PathBuf, rocket_state: State<RocketState>) -> Option<NamedFile> {
+    NamedFile::open(rocket_state.root_path.join("static/media/").join(file)).ok()
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+pub enum Input {
+    SetFocused(Vec<String>),
+}
+
+#[post("/input", data = "<input>")]
+fn input(input: Json<Input>, rocket_state: State<RocketState>) {
+    let Json(input) = input;
+    let mut guard = rocket_state.application_state.lock();
+    let application: &mut ApplicationState = &mut *guard;
+
+    match input {
+        Input::SetFocused(tactics) => {
+            // gotta check b
+            if let Some(p) = application.root_proof_state() {
+                if p.descendant(tactics.iter().map(String::as_str)).is_some() {
+                    application.featured_proof_path = tactics;
                 }
             }
         }
@@ -692,14 +760,13 @@ pub struct ContentResponse {
     last_ui_change_serial_number: u64,
     ui_replacement: Option<String>,
 }
-
 #[post("/content", data = "<parameters>")]
 fn content(
     parameters: Json<ContentRequestParameters>,
     rocket_state: State<RocketState>,
 ) -> Json<ContentResponse> {
     let mut guard = rocket_state.application_state.lock();
-    let application = &mut *guard;
+    let application: &mut ApplicationState = &mut *guard;
 
     if parameters.last_ui_change_serial_number == Some(application.last_ui_change_serial_number) {
         return Json(ContentResponse {
@@ -711,14 +778,18 @@ fn content(
     let proof_state_representation: Element = match &application.known_mode {
         None => text!("Processing..."),
         Some(Mode::NotProofMode) => text!("Not in proof mode"),
-        Some(Mode::ProofMode(p)) => {
+        Some(Mode::ProofMode(proof_root)) => {
             let mut successful_tactics = Vec::new();
             let mut failed_tactics = Vec::new();
-            for (tactic, result) in &p.attempted_tactics {
+            let featured = proof_root
+                .descendant(application.featured_proof_path.iter().map(String::as_str))
+                .unwrap();
+            for (tactic, result) in &featured.attempted_tactics {
                 match result {
                     TacticResult::Success(successor) => {
-                        let diff = Changeset::new(&p.goals_string, &successor.goals_string, "\n");
-                        if successor.goals_string == p.goals_string {
+                        let diff =
+                            Changeset::new(&featured.goals_string, &successor.goals_string, "\n");
+                        if successor.goals_string == featured.goals_string {
                             let element = html! {
                                 <div class="failed_tactic">
                                     <pre>{text!("{}: no effect", tactic)}</pre>
@@ -764,8 +835,12 @@ fn content(
                                     }
                                 }
                             }
+                            let mut extended = application.featured_proof_path.clone();
+                            extended.push(tactic.clone());
+                            let onclick =
+                                serde_json::to_string(&Input::SetFocused(extended)).unwrap();
                             let element = html! {
-                                <div class="successful_tactic">
+                                <div class="successful_tactic" data-onclick={onclick}>
                                     <div class="tactic">
                                         <pre>{text!("{}", tactic)}</pre>
                                     </div>
@@ -787,11 +862,39 @@ fn content(
                     }
                 }
             }
+            let mut context: Vec<Element> = Vec::new();
+            for (index, tactic) in application.featured_proof_path.iter().enumerate() {
+                let included = &application.featured_proof_path[0..=index];
+                let onclick =
+                    serde_json::to_string(&Input::SetFocused(included.to_owned())).unwrap();
+                let state = proof_root
+                    .descendant(included.iter().map(String::as_str))
+                    .unwrap();
+                context.push(html! {
+                    <div class="prior_tactic" data-onclick={onclick}>
+                        <div class="tactic">
+                            <pre>{text!("{}", tactic)}</pre>
+                        </div>
+                        <div class="goal">
+                            <pre>{text!("{}", state.goals_string)}</pre>
+                        </div>
+                    </div>
+                });
+            }
+            if !context.is_empty() {
+                context = vec![html! {
+                    <div class="prior_tactics">
+                        {context}
+                    </div>
+                }]
+            }
+            let onclick_root = serde_json::to_string(&Input::SetFocused(Vec::new())).unwrap();
             html! {
                 <div class="proof_state">
-                    <div class="proof_root">
-                        <pre>{text!("{}", p.goals_string)}</pre>
+                    <div class="proof_root" data-onclick={onclick_root}>
+                        <pre>{text!("{}", proof_root.goals_string)}</pre>
                     </div>
+                    {context}
                     <div class="attempted_tactics">
                         {successful_tactics}
                         {failed_tactics}
@@ -810,16 +913,6 @@ fn content(
         last_ui_change_serial_number: application.last_ui_change_serial_number,
         ui_replacement: Some(document.to_string()),
     })
-}
-
-#[get("/")]
-fn index(rocket_state: State<RocketState>) -> Option<NamedFile> {
-    NamedFile::open(rocket_state.root_path.join("static/index.html")).ok()
-}
-
-#[get("/media/<file..>")]
-fn media(file: PathBuf, rocket_state: State<RocketState>) -> Option<NamedFile> {
-    NamedFile::open(rocket_state.root_path.join("static/media/").join(file)).ok()
 }
 
 pub fn receiver_thread(child_stdout: ChildStdout, application_state: Arc<Mutex<ApplicationState>>) {
@@ -915,6 +1008,7 @@ pub fn run(root_path: PathBuf, code_path: PathBuf) {
         },
         known_mode: None,
         last_ui_change_serial_number: 0,
+        featured_proof_path: Vec::new(),
     };
 
     let application_state = Arc::new(Mutex::new(application_state));
@@ -940,7 +1034,7 @@ pub fn run(root_path: PathBuf, code_path: PathBuf) {
             .log_level(LoggingLevel::Off)
             .unwrap(),
     )
-    .mount("/", routes![index, media, content])
+    .mount("/", routes![index, media, input, content])
     .manage(RocketState {
         application_state,
         root_path,

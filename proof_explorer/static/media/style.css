@@ -9,11 +9,65 @@ body {
   background-color: #ddd;
 }
 
-.successful_tactic {
+.proof_root,.prior_tactic,.successful_tactic {
   background-color: white;
-  padding: 6px;
   margin: 6px;
 }
+
+.proof_root {
+  padding: 8px;
+}
+
+
+.prior_tactics,.attempted_tactics {
+  display: flex;
+  flex-flow: row wrap;
+}
+
+.prior_tactic {
+  position: relative;
+  z-index: 2;
+}
+
+.prior_tactic .tactic {
+  padding: 8px;
+  font-weight: bold;
+  background-color: white;
+  position: relative;
+}
+
+.prior_tactic .goal {
+  display: none;
+  position: absolute;
+  z-index: 4;
+  background-color: white;
+  top: 100%;
+  left: 0;
+  box-shadow: 2px 3px 9px black;
+}
+
+.proof_root:hover,.prior_tactic:hover,.successful_tactic:hover {
+  box-shadow: 2px 3px 9px black;
+  cursor: pointer;
+}
+
+.prior_tactic:hover .tactic {
+  z-index: 3;
+}
+
+.prior_tactic:hover .tactic {
+  z-index: 5;
+}
+
+.prior_tactic:hover .goal {
+  display: block;
+}
+
+.proof_root:hover ~ .prior_tactics .tactic, .prior_tactic:hover ~ .prior_tactic .tactic {
+  background-color: #f00;
+}
+
+
 
 .successful_tactic .tactic {
   font-weight: bold;
@@ -21,9 +75,8 @@ body {
   padding: 8px;
 }
 
-.attempted_tactics {
-  display: flex;
-  flex-flow: row wrap;
+.goal {
+  padding: 8px;
 }
 
 del::before {

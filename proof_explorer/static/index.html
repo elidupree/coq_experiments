@@ -12,37 +12,51 @@
       
       </div>
     </div>
-    <script src="/media/lodash.js"></script>
-    <script src="/media/jquery-3.2.1.min.js"></script>
     <script src="/media/morphdom-umd.js"></script>
     <script>
       let update_period = 200;
       let last_update = Date.now();
       let last_ui_change_serial_number = undefined;
-      function frame() {
+      async function frame() {
         const now = Date.now();
         if (now < last_update + update_period) {
           requestAnimationFrame (frame);
         }
         else {
           last_update = now;
-          $.post ({
-            url: "/content",
-            data: JSON.stringify ({last_ui_change_serial_number}),
-          })
-            .done ((response) => {
-              last_ui_change_serial_number = response.last_ui_change_serial_number;
-              if (response.ui_replacement !== null) {
-                morphdom ($("#content") [0], response.ui_replacement);
-              }
-            })
-            .always (() => {
-              requestAnimationFrame (frame);
+          try {
+            const response = await fetch ("/content", {
+              method: "POST",
+              body: JSON.stringify ({last_ui_change_serial_number}),
             });
+            if (response.ok) {
+              const data = await response.json();
+              last_ui_change_serial_number = data.last_ui_change_serial_number;
+              if (data.ui_replacement !== null) {
+                morphdom (document.getElementById("content"), data.ui_replacement);
+              }
+            }
+          }
+          finally {
+            requestAnimationFrame (frame);
+          }
         }
       }
 
       frame();
+
+      document.documentElement.addEventListener("click", event => {
+        let target = event.target.closest("[data-onclick]");
+        if (target !== null) {
+          fetch ("/input", {
+            method: "POST",
+            body: target.getAttribute("data-onclick"),
+          }).then(() => {
+            // Hack: update immediately:
+            last_update -= update_period;
+          });
+        }
+      });
     </script>
   </body>
 </html>
