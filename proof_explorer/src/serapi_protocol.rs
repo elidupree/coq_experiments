@@ -17,7 +17,41 @@ pub type RouteId = i64;
 pub type Constr = NotYetImplemented;
 pub type ConstrExpr = NotYetImplemented;
 pub type RawBacktrace = NotYetImplemented;
-pub type PrettyPrint = NotYetImplemented;
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum PrettyPrintBlockType {
+    #[serde(rename = "Pp_hbox")]
+    Hbox,
+    #[serde(rename = "Pp_vbox")]
+    Vbox(i64),
+    #[serde(rename = "Pp_hvbox")]
+    Hvbox(i64),
+    #[serde(rename = "Pp_hovbox")]
+    Hovbox(i64),
+}
+
+pub type PrettyPrintTag = String;
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum PrettyPrint {
+    #[serde(rename = "Pp_empty")]
+    Empty,
+    #[serde(rename = "Pp_string")]
+    String(String),
+    #[serde(rename = "Pp_glue")]
+    Glue(Vec<PrettyPrint>),
+    #[serde(rename = "Pp_box")]
+    Box(PrettyPrintBlockType, Box<PrettyPrint>),
+    #[serde(rename = "Pp_tag")]
+    Tag(PrettyPrintTag),
+    #[serde(rename = "Pp_print_break")]
+    PrintBreak(i64, i64),
+    #[serde(rename = "Pp_force_newline")]
+    ForceNewline,
+    #[serde(rename = "Pp_comment")]
+    Comment(Vec<String>),
+}
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Location {
     pub line_nb: i64,
