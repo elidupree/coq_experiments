@@ -1,10 +1,19 @@
 use serde::{de, ser};
 use std::fmt;
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum NotYetImplemented {
     String(String),
     Array(Vec<NotYetImplemented>),
+}
+
+impl fmt::Debug for NotYetImplemented {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NotYetImplemented::String(string) => fmt::Debug::fmt(string, f),
+            NotYetImplemented::Array(array) => fmt::Debug::fmt(array, f),
+        }
+    }
 }
 
 impl ser::Serialize for NotYetImplemented {

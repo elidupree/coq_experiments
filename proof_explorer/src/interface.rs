@@ -776,9 +776,9 @@ impl ReifiedGoal<CoqValueInfo> {
         let conclusion_string = &self.ty.string;
         html! {
             <div class="goal">
-                {text!("{}", hypotheses_string)}
+                <pre>{text!("{}", hypotheses_string)}</pre>
                 <hr/>
-                {text!("{}", conclusion_string)}
+                <pre>{text!("{}", conclusion_string)}</pre>
             </div>
         }
     }
@@ -808,7 +808,7 @@ impl ApplicationState {
 
         let mut successful_tactics = Vec::new();
         let mut failed_tactics = Vec::new();
-        for (tactic, result) in &featured.attempted_tactics {
+        'tactics: for (tactic, result) in &featured.attempted_tactics {
             let successor = match result {
                 TacticResult::Success(successor) => successor,
                 TacticResult::Failure => {
@@ -822,15 +822,16 @@ impl ApplicationState {
                 }
             };
 
-            if successor.goals == featured.goals {
-                let element = html! {
-                    <div class="failed_tactic">
-                        <pre>{text!("{}: no effect", tactic)}</pre>
-                    </div>
-                };
-                failed_tactics.push(element);
-                continue;
-            }
+            // these usually won't be exactly equal because evar numbers are different?
+            // if successor.goals == featured.goals {
+            //     let element = html! {
+            //         <div class="failed_tactic">
+            //             <pre>{text!("{}: no effect", tactic)}</pre>
+            //         </div>
+            //     };
+            //     failed_tactics.push(element);
+            //     continue;
+            // }
 
             let relevant_goals = &successor.goals.goals
                 [..successor.goals.goals.len() + 1 - featured.goals.goals.len()];
@@ -844,18 +845,39 @@ impl ApplicationState {
             for goal in relevant_goals {
                 let hypotheses_string = goal.hypothesis_strings().join("\n");
                 let conclusion_string = &goal.ty.string;
+                if hypotheses_string == featured_hypotheses_string
+                    && conclusion_string == featured_conclusion_string
+                {
+                    // If any goal is the same as before, we are no better off;
+                    // but a slightly different message is desirable if we also spawned extra goals
+                    let text = if successor.goals.goals.len() == featured.goals.goals.len() {
+                        text!("{}: no effect", tactic)
+                    } else {
+                        text!(
+                            "{}: spawned new goal, but one was identical to before",
+                            tactic
+                        )
+                    };
+                    let element = html! {
+                        <div class="failed_tactic">
+                            <pre>{text}</pre>
+                        </div>
+                    };
+                    failed_tactics.push(element);
+                    continue 'tactics;
+                }
                 let hypotheses_diff =
                     Changeset::new(&featured_hypotheses_string, &hypotheses_string, "\n");
                 for item in hypotheses_diff.diffs {
                     match item {
                         Difference::Add(added) => {
                             elements.push(html! {
-                                <ins><pre class="diff">{text!("{}", added)}</pre></ins>
+                                <ins class="line"><pre>{text!("{}", added)}</pre></ins>
                             });
                         }
                         Difference::Rem(removed) => {
                             elements.push(html! {
-                                <del><pre class="diff">{text!("{}", removed)}</pre></del>
+                                <del class="line"><pre>{text!("{}", removed)}</pre></del>
                             });
                         }
                         _ => {}
@@ -864,26 +886,39 @@ impl ApplicationState {
                 elements.push(html! {
                     <hr/>
                 });
-                let conclusion_diff =
-                    Changeset::new(&featured_conclusion_string, conclusion_string, "\n");
-                for item in conclusion_diff.diffs {
-                    match item {
-                        Difference::Add(added) => {
-                            elements.push(html! {
-                                <ins><pre>{text!("{}", added)}</pre></ins>
-                            });
-                        }
-                        Difference::Rem(removed) => {
-                            elements.push(html! {
-                                <del><pre>{text!("{}", removed)}</pre></del>
-                            });
-                        }
-                        Difference::Same(same) => {
-                            elements.push(html! {
-                                <pre>{text!("{}", same)}</pre>
-                            });
+                if featured_conclusion_string != conclusion_string {
+                    let conclusion_diff =
+                        Changeset::new(&featured_conclusion_string, conclusion_string, "");
+                    let mut old: Vec<Element> = Vec::new();
+                    let mut new: Vec<Element> = Vec::new();
+                    for item in conclusion_diff.diffs {
+                        match item {
+                            Difference::Add(added) => {
+                                new.push(html! {
+                                    <ins><pre>{text!("{}", added)}</pre></ins>
+                                });
+                            }
+                            Difference::Rem(removed) => {
+                                old.push(html! {
+                                    <del><pre>{text!("{}", removed)}</pre></del>
+                                });
+                            }
+                            Difference::Same(same) => {
+                                new.push(html! {
+                                    <pre>{text!("{}", same)}</pre>
+                                });
+                                old.push(html! {
+                                    <pre>{text!("{}", same)}</pre>
+                                });
+                            }
                         }
                     }
+                    elements.push(html! {
+                        <div>{old}</div>
+                    });
+                    elements.push(html! {
+                        <div>{new}</div>
+                    });
                 }
                 elements.push(html! {
                     <hr/>

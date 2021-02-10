@@ -79,27 +79,25 @@ body {
   padding: 8px;
 }
 
-del::before {
+del.line::before {
   content: '-';
 }
 
-ins::before {
+ins.line::before {
   content: '+';
 }
 
-.change::before {
-  content: '~';
-}
-
-del::before, ins::before, .change::before {
+del.line::before, ins.line::before {
   position: absolute;
   left: 8px;
   font-family: monospace;
 }
 
-del, ins, .change {
-  position: relative;
+del.line, ins.line {
   display: block;
+}
+del, ins {
+  position: relative;
   text-decoration: none;
 }
 
@@ -111,10 +109,10 @@ ins {
   background-color: #dfd;
 }
 
-.change {
-  background-color: #ffc;
+pre {
+  display: inline;
 }
-
-.diff {
+.line pre {
   margin-left: 28px;
+  display: block;
 }
