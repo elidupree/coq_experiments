@@ -6,16 +6,35 @@ img{color:transparent;border:0;vertical-align:middle;-ms-interpolation-mode:bicu
 iframe {border:0;}
 
 body {
-  background-color: #ddd;
+  background-color: #ccc;
 }
 
-.proof_root,.prior_tactic,.successful_tactic {
+h2 {
+  font-size: 140%;
+  font-weight: bold;
+  font-family: Arial, Helvetica, sans-serif;
+  padding: 12px;
+}
+
+.proof_root,.prior_tactics_row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background-color: #eee;
+  margin: 2px;
+}
+
+.proof_root .goals,.prior_tactic,.successful_tactic {
   background-color: white;
   margin: 6px;
 }
 
 .proof_root {
   padding: 8px;
+}
+
+.proof_root .goals {
+  border: 1px solid transparent;
 }
 
 
@@ -34,6 +53,7 @@ body {
   font-weight: bold;
   background-color: white;
   position: relative;
+  border: 1px solid transparent;
 }
 
 .prior_tactic .goals {
@@ -46,27 +66,29 @@ body {
   box-shadow: 2px 3px 9px black;
 }
 
-.proof_root:hover,.prior_tactic:hover,.successful_tactic:hover {
+.proof_root:hover, .prior_tactic.not_present:hover, .successful_tactic:hover {
   box-shadow: 2px 3px 9px black;
   cursor: pointer;
 }
 
-.prior_tactic:hover .tactic {
-  z-index: 3;
-}
-
-.prior_tactic:hover .tactic {
+.proof_root:hover, .prior_tactic.not_present:hover .tactic {
   z-index: 5;
 }
+.proof_root.present .goals, .proof_root.not_present:hover .goals, .prior_tactic.present .tactic, .prior_tactic.not_present:hover .tactic {
+  background-color: white;
+  color: black;
+  border-color: black;
+}
 
-.prior_tactic:hover .goals {
+.prior_tactic.not_present:hover .goals {
   display: block;
 }
 
-.tactic.future, .proof_root:hover ~ .prior_tactics .tactic, .prior_tactic:hover ~ .prior_tactic .tactic {
+.prior_tactic.future .tactic, .proof_root:hover ~ .prior_tactics_row .tactic, .prior_tactic:hover ~ .prior_tactic .tactic {
   background-color: #eee;
   color: #999;
   font-weight: normal;
+  border-color: transparent;
 }
 
 

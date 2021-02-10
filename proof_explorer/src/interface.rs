@@ -983,7 +983,7 @@ impl ApplicationState {
 
         let featured_state = proof_root.descendant(featured.tactics_path()).unwrap();
         let attempted_tactics = self.attempted_tactics_representation(featured_state, featured);
-        let mut context: Vec<Element> = Vec::new();
+        let mut prior_tactics: Vec<Element> = Vec::new();
         for (index, (tactic, _)) in featured.tactics.iter().enumerate() {
             let featured_after_this_tactic = Featured {
                 num_tactics_run: index + 1,
@@ -994,24 +994,31 @@ impl ApplicationState {
                 .unwrap();
             let onclick =
                 serde_json::to_string(&Input::SetFeatured(featured_after_this_tactic)).unwrap();
-            let class = if index < featured.num_tactics_run {
-                "tactic"
+            let class = if index + 1 < featured.num_tactics_run {
+                "prior_tactic past not_present"
+            } else if index + 1 == featured.num_tactics_run {
+                "prior_tactic present"
             } else {
-                "tactic future"
+                "prior_tactic future not_present"
             };
-            context.push(html! {
-                <div class="prior_tactic" data-onclick={onclick}>
-                    <div class={class}>
+            prior_tactics.push(html! {
+                <div class={class} data-onclick={onclick}>
+                    <div class="tactic">
                         <pre>{text!("{}", tactic)}</pre>
                     </div>
                     {state.goals.representation()}
                 </div>
             });
         }
-        if !context.is_empty() {
-            context = vec![html! {
-                <div class="prior_tactics">
-                    {context}
+        if !prior_tactics.is_empty() {
+            prior_tactics = vec![html! {
+                <div class="prior_tactics_row">
+                    <h2>
+                        {text!("And you've already done this stuff:")}
+                    </h2>
+                    <div class="prior_tactics">
+                        {prior_tactics}
+                    </div>
                 </div>
             }]
         }
@@ -1021,12 +1028,20 @@ impl ApplicationState {
         };
         let onclick_root =
             serde_json::to_string(&Input::SetFeatured(onclick_root_featured)).unwrap();
+        let proof_root_class = if featured.num_tactics_run > 0 {
+            "proof_root past not_present"
+        } else {
+            "proof_root present"
+        };
         html! {
             <div class="proof_state">
-                <div class="proof_root" data-onclick={onclick_root}>
+                <div class={proof_root_class} data-onclick={onclick_root}>
+                    <h2>
+                        {text!("So you're trying to prove this:")}
+                    </h2>
                     {proof_root.goals.representation()}
                 </div>
-                {context}
+                {prior_tactics}
                 {attempted_tactics}
             </div>
         }
