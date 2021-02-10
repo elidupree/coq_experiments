@@ -121,6 +121,7 @@ pub enum FeaturedInState {
 // I was going to call this "focused", but that term is already used
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
 pub struct Featured {
+    featured_in_root: FeaturedInState,
     tactics: Vec<(String, FeaturedInState)>,
     num_tactics_run: usize,
 }
@@ -180,6 +181,18 @@ impl Featured {
     }
     pub fn tactics_path_all(&self) -> impl Iterator<Item = &str> {
         self.tactics.iter().map(|(t, _)| t.as_str())
+    }
+    pub fn featured_in_current(&self) -> &FeaturedInState {
+        match self.num_tactics_run.checked_sub(1) {
+            Some(i) => &self.tactics[i].1,
+            None => &self.featured_in_root,
+        }
+    }
+    pub fn featured_in_current_mut(&mut self) -> &mut FeaturedInState {
+        match self.num_tactics_run.checked_sub(1) {
+            Some(i) => &mut self.tactics[i].1,
+            None => &mut self.featured_in_root,
+        }
     }
 }
 
@@ -970,6 +983,55 @@ impl ApplicationState {
             </div>
         }
     }
+    fn hypothesis_html(
+        &self,
+        hypothesis: &Hypothesis<CoqValueInfo>,
+        featured: &Featured,
+    ) -> Element {
+        let (names, def, ty) = &hypothesis;
+        let mut elements: Vec<Element> = Vec::new();
+        let mut dropdown: Option<Element> = None;
+        for NamesId::Id(name) in names {
+            let mut featured_featuring_this = featured.clone();
+            *featured_featuring_this.featured_in_current_mut() = FeaturedInState::Hypothesis {
+                name: name.clone(),
+                subterm: None,
+            };
+            let onclick =
+                serde_json::to_string(&Input::SetFeatured(featured_featuring_this)).unwrap();
+            let mut class = "hypothesis_name";
+            if let FeaturedInState::Hypothesis {
+                name: featured_name,
+                subterm,
+            } = featured.featured_in_current()
+            {
+                if featured_name == name {
+                    class = "hypothesis_name featured";
+                }
+            }
+            elements.push(html! {
+                <pre class={class} data-onclick={onclick}>{text!("{}", name)}</pre>
+            });
+            elements.push(html! { <pre>{text!(", ")}</pre> });
+        }
+        elements.pop();
+
+        if let Some(def) = def {
+            elements.push(html! { <pre>{text!(" := {}", def.string)}</pre> });
+        }
+
+        elements.push(html! { <pre>{text!(" : {}", ty.string)}</pre> });
+
+        html! {
+            <div class="hypothesis">
+                <div class="hypothesis_text">
+                    {elements}
+                </div>
+                {dropdown}
+            </div>
+        }
+    }
+
     fn whole_interface_html(&self) -> Element {
         let (proof_root, featured): (&ProofState, &Featured) = match &self.known_mode {
             None => return text!("Processing..."),
@@ -1018,6 +1080,27 @@ impl ApplicationState {
                 </div>
             }]
         }
+
+        let hypotheses: Option<Element> =
+            featured_state.goals.goals.first().and_then(|first_goal| {
+                if first_goal.hyp.is_empty() {
+                    return None;
+                }
+                let hypotheses = first_goal
+                    .hyp
+                    .iter()
+                    .map(|h| self.hypothesis_html(h, featured));
+                let result: Element = html! {
+                    <div class="hypotheses">
+                        <h2>
+                            {text!("And you know this stuff:")}
+                        </h2>
+                        {hypotheses}
+                    </div>
+                };
+                Some(result)
+            });
+
         let onclick_root_featured = Featured {
             num_tactics_run: 0,
             ..featured.clone()
@@ -1029,6 +1112,7 @@ impl ApplicationState {
         } else {
             "proof_root present"
         };
+
         html! {
             <div class="whole_interface">
                 <div class={proof_root_class} data-onclick={onclick_root}>
@@ -1038,7 +1122,10 @@ impl ApplicationState {
                     {proof_root.goals.html()}
                 </div>
                 {prior_tactics}
-                {attempted_tactics}
+                <div class="main_area">
+                    {hypotheses}
+                    {attempted_tactics}
+                </div>
             </div>
         }
     }

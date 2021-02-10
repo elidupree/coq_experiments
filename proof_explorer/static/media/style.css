@@ -20,6 +20,8 @@ h2 {
   position: relative;
   display: flex;
   align-items: center;
+}
+.proof_root,.prior_tactics_row,.hypotheses {
   background-color: #eee;
   margin: 2px;
 }
@@ -91,6 +93,32 @@ h2 {
   border-color: transparent;
 }
 
+
+
+.main_area {
+  display: flex;
+}
+.hypotheses {
+  background-color: #eee;
+}
+.hypothesis {
+  background-color: white;
+  padding: 6px;
+  margin: 6px;
+}
+.hypothesis_name {
+  background-color: white;
+  font-weight: bold;
+  font-size: 120%;
+  padding: 4px;
+  position: relative;
+  border: 1px solid transparent;
+}
+.hypothesis_name:hover, .hypothesis_name.featured {
+  box-shadow: 2px 3px 9px black;
+  border-color: black;
+  cursor: pointer;
+}
 
 
 .successful_tactic .tactic {
