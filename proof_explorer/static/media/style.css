@@ -63,8 +63,10 @@ body {
   display: block;
 }
 
-.proof_root:hover ~ .prior_tactics .tactic, .prior_tactic:hover ~ .prior_tactic .tactic {
-  background-color: #f00;
+.tactic.future, .proof_root:hover ~ .prior_tactics .tactic, .prior_tactic:hover ~ .prior_tactic .tactic {
+  background-color: #eee;
+  color: #999;
+  font-weight: normal;
 }
 
 

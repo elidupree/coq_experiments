@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 //use rocket::response::content::Json;
+use derivative::Derivative;
 use difference::{Changeset, Difference};
 use rocket_contrib::json::Json;
 use std::collections::HashMap;
@@ -103,9 +104,30 @@ pub enum TacticResult {
     Failure,
 }
 
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Derivative)]
+#[derivative(Default)]
+pub enum FeaturedInState {
+    #[derivative(Default)]
+    Nothing,
+    Hypothesis {
+        name: String,
+        subterm: Option<Range<usize>>,
+    },
+    Conclusion {
+        subterm: Option<Range<usize>>,
+    },
+}
+
+// I was going to call this "focused", but that term is already used
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+pub struct Featured {
+    tactics: Vec<(String, FeaturedInState)>,
+    num_tactics_run: usize,
+}
+
 #[derive(PartialEq, Eq, Debug)]
 pub enum Mode {
-    ProofMode(ProofState),
+    ProofMode(ProofState, Featured),
     NotProofMode,
 }
 
@@ -126,9 +148,6 @@ pub struct ApplicationState {
     known_mode: Option<Mode>,
 
     last_ui_change_serial_number: u64,
-
-    // I was going to call this "focused", but that term is already used
-    featured_proof_path: Vec<String>,
 }
 
 pub struct RocketState {
@@ -152,6 +171,15 @@ impl TopState {
             .last()
             .map(|a| a.state_id)
             .or_else(|| self.added_from_file.last().map(|a| a.state_id))
+    }
+}
+
+impl Featured {
+    pub fn tactics_path(&self) -> impl Iterator<Item = &str> {
+        self.tactics_path_all().take(self.num_tactics_run)
+    }
+    pub fn tactics_path_all(&self) -> impl Iterator<Item = &str> {
+        self.tactics.iter().map(|(t, _)| t.as_str())
     }
 }
 
@@ -222,7 +250,6 @@ impl ApplicationState {
                             application.top_state.added_from_file.len();
                         application.end_of_first_added_from_file_that_failed_to_execute = None;
                         application.known_mode = None;
-                        application.featured_proof_path.clear();
                     }
                     if application.top_state.added_synthetic.len()
                         < application.top_state.num_executed_synthetic
@@ -336,7 +363,7 @@ impl ApplicationState {
                         Some(Mode::NotProofMode) => panic!(
                             "shouldn't have queried goals when known not to be in proof mode"
                         ),
-                        Some(Mode::ProofMode(_)) => panic!(
+                        Some(Mode::ProofMode(_, _)) => panic!(
                             "sertop was supposed to send goals as a CoqString, but sent {:?}",
                             objects
                         ),
@@ -416,12 +443,12 @@ impl ApplicationState {
                     };
                     match &mut application.known_mode {
                         None => {
-                            application.known_mode = Some(Mode::ProofMode(new_proof_state));
+                            application.known_mode = Some(Mode::ProofMode(new_proof_state, Featured::default()));
                         }
                         Some(Mode::NotProofMode) => {
                             panic!("shouldn't have even gotten to QueryGoalsSerRunner when known not to be in proof mode")
                         }
-                        Some(Mode::ProofMode(p)) => {
+                        Some(Mode::ProofMode(p,_)) => {
                             assert_eq!(application.top_state.num_executed_synthetic, application.top_state.added_synthetic.len());
                             // Note: can't use application.latest_proof_state_mut() here because the application would believe we have already gotten to this spot
                             let tactics : &[AddedSynthetic] = &application.top_state.added_synthetic;
@@ -660,16 +687,9 @@ impl ApplicationState {
         self.do_proof_exploration();
     }
 
-    fn root_proof_state(&self) -> Option<&ProofState> {
-        match &self.known_mode {
-            Some(Mode::ProofMode(p)) => Some(p),
-            _ => None,
-        }
-    }
-
     fn latest_proof_state_mut(&mut self) -> Option<&mut ProofState> {
         let root = match &mut self.known_mode {
-            Some(Mode::ProofMode(p)) => p,
+            Some(Mode::ProofMode(p, _)) => p,
             _ => return None,
         };
         root.descendant_mut(
@@ -690,17 +710,18 @@ impl ApplicationState {
     }
 
     fn do_proof_exploration(&mut self) {
-        let proof_root: &ProofState = match self.known_mode {
+        let (proof_root, featured): (&ProofState, &Featured) = match self.known_mode {
             None => {
                 self.query_goals();
                 return;
             }
             Some(Mode::NotProofMode) => return,
-            Some(Mode::ProofMode(ref p)) => p,
+            // note: we have to use `ref` instead of matching on &
+            // because otherwise we got lifetime errors from the None branch
+            Some(Mode::ProofMode(ref p, ref f)) => (p, f),
         };
-        let featured = proof_root
-            .descendant(self.featured_proof_path.iter().map(String::as_str))
-            .unwrap();
+        let tactics_path: Vec<_> = featured.tactics_path().collect();
+        let featured_state = proof_root.descendant(tactics_path.iter().copied()).unwrap();
 
         // make sure we are currently at the featured proof path before exploring
         let canceled: Vec<_> = self
@@ -708,7 +729,7 @@ impl ApplicationState {
             .added_synthetic
             .iter()
             .enumerate()
-            .skip_while(|(i, a)| self.featured_proof_path.get(*i) == Some(&a.code))
+            .skip_while(|(i, a)| tactics_path.get(*i) == Some(&a.code.as_str()))
             .map(|(_, a)| a.state_id)
             .collect();
 
@@ -716,11 +737,8 @@ impl ApplicationState {
             self.cancel(canceled);
             return;
         }
-        if let Some(next_catchup_tactic) = self
-            .featured_proof_path
-            .get(self.top_state.added_synthetic.len())
-        {
-            let tactic = next_catchup_tactic.clone();
+        if let Some(next_catchup_tactic) = tactics_path.get(self.top_state.added_synthetic.len()) {
+            let tactic = (*next_catchup_tactic).to_owned();
             self.run_tactic(tactic);
             return;
         }
@@ -728,7 +746,7 @@ impl ApplicationState {
         const GLOBAL_TACTICS: &str = "intuition idtac.intro.intros.split.reflexivity.assumption.constructor.exfalso.instantiate.contradiction.discriminate.trivial.inversion_sigma.symmetry.simpl in *.left.right.classical_left.classical_right.solve_constraints.simplify_eq.subst.cbv.lazy.vm_compute.native_compute.red.hnf.cbn.injection.decide equality.tauto.dtauto.congruence.firstorder.easy.auto.eauto.auto with *.eauto with *.";
 
         for tactic in GLOBAL_TACTICS.split_inclusive(".") {
-            if featured.attempted_tactics.get(tactic).is_none() {
+            if featured_state.attempted_tactics.get(tactic).is_none() {
                 self.run_tactic(tactic.to_string());
                 return;
             }
@@ -736,12 +754,12 @@ impl ApplicationState {
 
         const HYPOTHESIS_TACTICS: &str = "injection H.apply H.simple apply H.eapply H.rapply H.lapply H.clear H.revert H.decompose sum H.decompose record H.generalize H.generalize dependent H.absurd H.contradiction H.contradict H.destruct H.case H.induction H.dependent destruction H.dependent induction H.inversion H.discriminate H.inversion_clear H.dependent inversion H.symmetry in H.simplify_eq H.rewrite <- H. rewrite -> H.rewrite <- H in *. rewrite -> H in *.dependent rewrite <- H. dependent rewrite -> H.";
 
-        if let Some(goal) = featured.goals.goals.first() {
+        if let Some(goal) = featured_state.goals.goals.first() {
             for (names, _, _) in &goal.hyp {
                 for NamesId::Id(name) in names {
                     for tactic_h in HYPOTHESIS_TACTICS.split_inclusive(".") {
                         let tactic = tactic_h.replace("H", name);
-                        if featured.attempted_tactics.get(&tactic).is_none() {
+                        if featured_state.attempted_tactics.get(&tactic).is_none() {
                             self.run_tactic(tactic);
                             return;
                         }
@@ -794,8 +812,12 @@ impl Goals<CoqValueInfo> {
 }
 
 impl ApplicationState {
-    fn attempted_tactics_representation(&self, featured: &ProofState) -> Element {
-        let first_goal = match featured.goals.goals.first() {
+    fn attempted_tactics_representation(
+        &self,
+        featured_state: &ProofState,
+        featured: &Featured,
+    ) -> Element {
+        let first_goal = match featured_state.goals.goals.first() {
             Some(goal) => goal,
             None => {
                 return text!(
@@ -808,7 +830,7 @@ impl ApplicationState {
 
         let mut successful_tactics = Vec::new();
         let mut failed_tactics = Vec::new();
-        'tactics: for (tactic, result) in &featured.attempted_tactics {
+        'tactics: for (tactic, result) in &featured_state.attempted_tactics {
             let successor = match result {
                 TacticResult::Success(successor) => successor,
                 TacticResult::Failure => {
@@ -834,7 +856,7 @@ impl ApplicationState {
             // }
 
             let relevant_goals = &successor.goals.goals
-                [..successor.goals.goals.len() + 1 - featured.goals.goals.len()];
+                [..successor.goals.goals.len() + 1 - featured_state.goals.goals.len()];
             let mut elements: Vec<Element> = Vec::new();
             if relevant_goals.is_empty() {
                 elements.push(
@@ -850,7 +872,7 @@ impl ApplicationState {
                 {
                     // If any goal is the same as before, we are no better off;
                     // but a slightly different message is desirable if we also spawned extra goals
-                    let text = if successor.goals.goals.len() == featured.goals.goals.len() {
+                    let text = if successor.goals.goals.len() == featured_state.goals.goals.len() {
                         text!("{}: no effect", tactic)
                     } else {
                         text!(
@@ -926,9 +948,13 @@ impl ApplicationState {
             }
             elements.pop();
 
-            let mut extended = self.featured_proof_path.clone();
-            extended.push(tactic.clone());
-            let onclick = serde_json::to_string(&Input::SetFocused(extended)).unwrap();
+            let mut extended = featured.clone();
+            extended.tactics.truncate(extended.num_tactics_run);
+            extended
+                .tactics
+                .push((tactic.clone(), FeaturedInState::Nothing));
+            extended.num_tactics_run += 1;
+            let onclick = serde_json::to_string(&Input::SetFeatured(extended)).unwrap();
             let element = html! {
                 <div class="successful_tactic" data-onclick={onclick}>
                     <div class="tactic">
@@ -949,26 +975,33 @@ impl ApplicationState {
         }
     }
     fn proof_state_representation(&self) -> Element {
-        let proof_root = match &self.known_mode {
+        let (proof_root, featured): (&ProofState, &Featured) = match &self.known_mode {
             None => return text!("Processing..."),
             Some(Mode::NotProofMode) => return text!("Not in proof mode"),
-            Some(Mode::ProofMode(proof_root)) => proof_root,
+            Some(Mode::ProofMode(p, f)) => (p, f),
         };
 
-        let featured = proof_root
-            .descendant(self.featured_proof_path.iter().map(String::as_str))
-            .unwrap();
-        let attempted_tactics = self.attempted_tactics_representation(featured);
+        let featured_state = proof_root.descendant(featured.tactics_path()).unwrap();
+        let attempted_tactics = self.attempted_tactics_representation(featured_state, featured);
         let mut context: Vec<Element> = Vec::new();
-        for (index, tactic) in self.featured_proof_path.iter().enumerate() {
-            let included = &self.featured_proof_path[0..=index];
-            let onclick = serde_json::to_string(&Input::SetFocused(included.to_owned())).unwrap();
+        for (index, (tactic, _)) in featured.tactics.iter().enumerate() {
+            let featured_after_this_tactic = Featured {
+                num_tactics_run: index + 1,
+                ..featured.clone()
+            };
             let state = proof_root
-                .descendant(included.iter().map(String::as_str))
+                .descendant(featured_after_this_tactic.tactics_path())
                 .unwrap();
+            let onclick =
+                serde_json::to_string(&Input::SetFeatured(featured_after_this_tactic)).unwrap();
+            let class = if index < featured.num_tactics_run {
+                "tactic"
+            } else {
+                "tactic future"
+            };
             context.push(html! {
                 <div class="prior_tactic" data-onclick={onclick}>
-                    <div class="tactic">
+                    <div class={class}>
                         <pre>{text!("{}", tactic)}</pre>
                     </div>
                     {state.goals.representation()}
@@ -982,7 +1015,12 @@ impl ApplicationState {
                 </div>
             }]
         }
-        let onclick_root = serde_json::to_string(&Input::SetFocused(Vec::new())).unwrap();
+        let onclick_root_featured = Featured {
+            num_tactics_run: 0,
+            ..featured.clone()
+        };
+        let onclick_root =
+            serde_json::to_string(&Input::SetFeatured(onclick_root_featured)).unwrap();
         html! {
             <div class="proof_state">
                 <div class="proof_root" data-onclick={onclick_root}>
@@ -1007,7 +1045,7 @@ fn media(file: PathBuf, rocket_state: State<RocketState>) -> Option<NamedFile> {
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub enum Input {
-    SetFocused(Vec<String>),
+    SetFeatured(Featured),
 }
 
 #[post("/input", data = "<input>")]
@@ -1016,12 +1054,15 @@ fn input(input: Json<Input>, rocket_state: State<RocketState>) {
     let mut guard = rocket_state.application_state.lock();
     let application: &mut ApplicationState = &mut *guard;
 
+    // assume every input might cause a UI change
+    application.last_ui_change_serial_number += 1;
+
     match input {
-        Input::SetFocused(tactics) => {
-            // gotta check b
-            if let Some(p) = application.root_proof_state() {
-                if p.descendant(tactics.iter().map(String::as_str)).is_some() {
-                    application.featured_proof_path = tactics;
+        Input::SetFeatured(new_featured) => {
+            // gotta check if this input wasn't delayed across a file reload
+            if let Some(Mode::ProofMode(p, f)) = &mut application.known_mode {
+                if p.descendant(new_featured.tactics_path_all()).is_some() {
+                    *f = new_featured;
                 }
             }
         }
@@ -1162,7 +1203,6 @@ pub fn run(root_path: PathBuf, code_path: PathBuf) {
         },
         known_mode: None,
         last_ui_change_serial_number: 0,
-        featured_proof_path: Vec::new(),
     };
 
     let application_state = Arc::new(Mutex::new(application_state));
