@@ -789,7 +789,7 @@ impl ReifiedGoal<CoqValueInfo> {
         self.hyp.iter().map(hypothesis_string).collect()
     }
 
-    pub fn representation(&self) -> Element {
+    pub fn html(&self) -> Element {
         let hypotheses_string = self.hypothesis_strings().join("\n");
         let conclusion_string = &self.ty.string;
         html! {
@@ -802,21 +802,17 @@ impl ReifiedGoal<CoqValueInfo> {
     }
 }
 impl Goals<CoqValueInfo> {
-    pub fn representation(&self) -> Element {
+    pub fn html(&self) -> Element {
         html! {
             <div class="goals">
-                {self.goals.iter().map(|g| g.representation())}
+                {self.goals.iter().map(|g| g.html())}
             </div>
         }
     }
 }
 
 impl ApplicationState {
-    fn attempted_tactics_representation(
-        &self,
-        featured_state: &ProofState,
-        featured: &Featured,
-    ) -> Element {
+    fn attempted_tactics_html(&self, featured_state: &ProofState, featured: &Featured) -> Element {
         let first_goal = match featured_state.goals.goals.first() {
             Some(goal) => goal,
             None => {
@@ -974,7 +970,7 @@ impl ApplicationState {
             </div>
         }
     }
-    fn proof_state_representation(&self) -> Element {
+    fn whole_interface_html(&self) -> Element {
         let (proof_root, featured): (&ProofState, &Featured) = match &self.known_mode {
             None => return text!("Processing..."),
             Some(Mode::NotProofMode) => return text!("Not in proof mode"),
@@ -982,7 +978,7 @@ impl ApplicationState {
         };
 
         let featured_state = proof_root.descendant(featured.tactics_path()).unwrap();
-        let attempted_tactics = self.attempted_tactics_representation(featured_state, featured);
+        let attempted_tactics = self.attempted_tactics_html(featured_state, featured);
         let mut prior_tactics: Vec<Element> = Vec::new();
         for (index, (tactic, _)) in featured.tactics.iter().enumerate() {
             let featured_after_this_tactic = Featured {
@@ -1006,7 +1002,7 @@ impl ApplicationState {
                     <div class="tactic">
                         <pre>{text!("{}", tactic)}</pre>
                     </div>
-                    {state.goals.representation()}
+                    {state.goals.html()}
                 </div>
             });
         }
@@ -1034,12 +1030,12 @@ impl ApplicationState {
             "proof_root present"
         };
         html! {
-            <div class="proof_state">
+            <div class="whole_interface">
                 <div class={proof_root_class} data-onclick={onclick_root}>
                     <h2>
                         {text!("So you're trying to prove this:")}
                     </h2>
-                    {proof_root.goals.representation()}
+                    {proof_root.goals.html()}
                 </div>
                 {prior_tactics}
                 {attempted_tactics}
@@ -1109,16 +1105,18 @@ fn content(
         });
     }
 
-    let proof_state_representation: Element = application.proof_state_representation();
+    let whole_interface_html = application.whole_interface_html();
 
     let document: DOMTree<String> = html! {
         <div id="content">
-            {proof_state_representation}
+            {whole_interface_html}
         </div>
     };
+    let document = document.to_string();
+    //eprintln!("Sending to frontend: {}", document);
     Json(ContentResponse {
         last_ui_change_serial_number: application.last_ui_change_serial_number,
-        ui_replacement: Some(document.to_string()),
+        ui_replacement: Some(document),
     })
 }
 
