@@ -1248,6 +1248,7 @@ pub fn receiver_thread(child_stdout: ChildStdout, application_state: Arc<Mutex<A
                 }
             }
         }
+        application.frequent_update();
     }
 }
 
