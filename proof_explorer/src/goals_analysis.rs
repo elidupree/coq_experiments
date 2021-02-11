@@ -174,7 +174,9 @@ impl Goals<CoqValueInfo> {
                 <hr/>
             });
         }
-        elements.pop();
+        if !relevant_goals.is_empty() {
+            elements.pop();
+        }
 
         html! {
             <div class="goals_diff">
