@@ -1,10 +1,9 @@
 use crate::interface::Element;
 use crate::serapi_protocol::{ConstrExpr, IdenticalHypotheses, NamesId, ReifiedGoal, SerGoals};
 use difference::{Changeset, Difference};
-use serde::__private::Formatter;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::{self, Write};
+use std::fmt;
 use typed_html::{html, text};
 
 pub type Goals<A> = SerGoals<ReifiedGoal<A>>;
@@ -190,7 +189,7 @@ impl Goals<CoqValueInfo> {
         child: &Goals<CoqValueInfo>,
         hypothesis_name: &str,
     ) -> Option<Element> {
-        if child.goals.len() == 0 || child.goals.len() != self.goals.len() {
+        if child.goals.is_empty() || child.goals.len() != self.goals.len() {
             return None;
         }
         if child.goals[self.goals.len() - 1] != self.goals[self.goals.len() - 1] {

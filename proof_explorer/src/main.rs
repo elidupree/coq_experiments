@@ -8,6 +8,7 @@ use std::path::PathBuf;
 mod goals_analysis;
 mod interface;
 mod serapi_protocol;
+mod tactics;
 mod universally_deserializable;
 
 fn main() {

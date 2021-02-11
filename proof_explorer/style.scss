@@ -48,10 +48,11 @@ h2 {
 .main_area {
  display: flex;
 }
-.hypotheses {
+.current_goal {
   @extend %big_area;
   flex-shrink: 0;
   margin: 0 2px;
+  max-width: 30vw;
 }
 
 
@@ -197,11 +198,21 @@ $hyp_name_padding: 4px;
 
 
 
+$hyp_padding: 6px;
+//$hyp_indent: 18px;
 
-.hypothesis {
+.hypothesis,.conclusion {
   background-color: white;
-  padding: 6px;
+  padding: $hyp_padding;
   margin: 6px;
+  /*padding-left: $hyp_padding + $hyp_indent;
+  text-indent: - $hyp_indent;
+  * {
+    text-indent: unset;
+  }*/
+  pre {
+    white-space: normal;
+  }
 }
 .hypothesis_name_wrapper {
   display: inline;

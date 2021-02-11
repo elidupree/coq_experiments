@@ -1,27 +1,27 @@
 #![allow(unused_imports, clippy::collapsible_else_if)]
 
+use derivative::Derivative;
+use difference::{Changeset, Difference};
 use parking_lot::Mutex;
 use rocket::config::{Config, Environment, LoggingLevel};
 use rocket::response::NamedFile;
 use rocket::State;
-use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::{Duration, SystemTime};
-//use rocket::response::content::Json;
-use derivative::Derivative;
-use difference::{Changeset, Difference};
 use rocket_contrib::json::Json;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::default::default;
 use std::fmt::Debug;
 use std::io::{BufRead, BufReader, Write};
 use std::ops::Range;
+use std::path::PathBuf;
 use std::process::{self, ChildStdin, ChildStdout, Stdio};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 use std::{fs, iter, mem};
 use typed_html::dom::DOMTree;
 use typed_html::elements::FlowContent;
 use typed_html::{html, text};
+//use rocket::response::content::Json;
 
 use crate::goals_analysis::{CoqValueInfo, Goals};
 use crate::serapi_protocol::{
@@ -29,6 +29,7 @@ use crate::serapi_protocol::{
     IdenticalHypotheses, NamesId, PrintFormat, PrintOptions, QueryCommand, QueryOptions,
     ReifiedGoal, SerGoals, StateId,
 };
+use crate::tactics::Tactic;
 
 pub type Element = Box<dyn FlowContent<String>>;
 
@@ -68,7 +69,7 @@ pub struct AddedFromFile {
 
 #[derive(Debug)]
 pub struct AddedSynthetic {
-    code: String,
+    tactic: Tactic,
     state_id: StateId,
 }
 
@@ -90,7 +91,7 @@ pub trait CommandRunner: Send + Sync + 'static {
 #[derive(PartialEq, Eq, Debug)]
 pub struct ProofState {
     goals: Goals<CoqValueInfo>,
-    attempted_tactics: HashMap<String, TacticResult>,
+    attempted_tactics: HashMap<Tactic, TacticResult>,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -117,7 +118,7 @@ pub enum FeaturedInState {
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
 pub struct Featured {
     featured_in_root: FeaturedInState,
-    tactics: Vec<(String, FeaturedInState)>,
+    tactics: Vec<(Tactic, FeaturedInState)>,
     num_tactics_run: usize,
 }
 
@@ -171,11 +172,11 @@ impl TopState {
 }
 
 impl Featured {
-    pub fn tactics_path(&self) -> impl Iterator<Item = &str> {
+    pub fn tactics_path(&self) -> impl Iterator<Item = &Tactic> {
         self.tactics_path_all().take(self.num_tactics_run)
     }
-    pub fn tactics_path_all(&self) -> impl Iterator<Item = &str> {
-        self.tactics.iter().map(|(t, _)| t.as_str())
+    pub fn tactics_path_all(&self) -> impl Iterator<Item = &Tactic> {
+        self.tactics.iter().map(|(t, _)| t)
     }
     pub fn featured_in_current(&self) -> &FeaturedInState {
         match self.num_tactics_run.checked_sub(1) {
@@ -189,7 +190,7 @@ impl Featured {
             None => &mut self.featured_in_root,
         }
     }
-    pub fn extended(&self, tactic: String) -> Featured {
+    pub fn extended(&self, tactic: Tactic) -> Featured {
         Featured {
             tactics: self
                 .tactics
@@ -209,13 +210,13 @@ impl Featured {
 }
 
 impl ProofState {
-    pub fn child(&self, tactic: &str) -> Option<&ProofState> {
+    pub fn child(&self, tactic: &Tactic) -> Option<&ProofState> {
         match self.attempted_tactics.get(tactic) {
             Some(TacticResult::Success(child)) => Some(child),
             _ => None,
         }
     }
-    pub fn child_mut(&mut self, tactic: &str) -> Option<&mut ProofState> {
+    pub fn child_mut(&mut self, tactic: &Tactic) -> Option<&mut ProofState> {
         match self.attempted_tactics.get_mut(tactic) {
             Some(TacticResult::Success(child)) => Some(child),
             _ => None,
@@ -223,7 +224,7 @@ impl ProofState {
     }
     pub fn descendant<'a>(
         &self,
-        mut tactics: impl Iterator<Item = &'a str>,
+        mut tactics: impl Iterator<Item = &'a Tactic>,
     ) -> Option<&ProofState> {
         match tactics.next() {
             None => Some(self),
@@ -234,7 +235,7 @@ impl ProofState {
     }
     pub fn descendant_mut<'a>(
         &mut self,
-        mut tactics: impl Iterator<Item = &'a str>,
+        mut tactics: impl Iterator<Item = &'a Tactic>,
     ) -> Option<&mut ProofState> {
         match tactics.next() {
             None => Some(self),
@@ -481,8 +482,8 @@ impl ApplicationState {
                             assert_eq!(application.top_state.num_executed_synthetic, application.top_state.added_synthetic.len());
                             // Note: can't use application.latest_proof_state_mut() here because the application would believe we have already gotten to this spot
                             let tactics : &[AddedSynthetic] = &application.top_state.added_synthetic;
-                            let latest = tactics.last().expect("if the proof state already exists, we should only be querying goals after a tactic").code.clone();
-                            let p2 = p.descendant_mut (tactics [..tactics.len()-1].iter().map(|t|t.code.as_str())).unwrap();
+                            let latest = tactics.last().expect("if the proof state already exists, we should only be querying goals after a tactic").tactic.clone();
+                            let p2 = p.descendant_mut (tactics [..tactics.len()-1].iter().map(|t|&t.tactic)).unwrap();
                             let insert_result = p2.attempted_tactics.insert(latest,TacticResult::Success(new_proof_state));
                             assert!(insert_result.is_none(), "shouldn't have queried goals for a tactic that was already tested");
                         }
@@ -508,23 +509,18 @@ impl ApplicationState {
         );
     }
 
-    pub fn run_tactic(&mut self, tactic: String) {
+    pub fn run_tactic(&mut self, tactic: Tactic) {
         #[derive(Debug)]
         struct AddSyntheticRunner {
+            tactic: Tactic,
             exception_happened: bool,
         }
         impl CommandRunner for AddSyntheticRunner {
             fn handle_answer(&mut self, application: &mut ApplicationState, answer: &AnswerKind) {
-                let code =
-                    if let Some(Command::Add(_, code)) = &application.top_state.active_command {
-                        code.clone()
-                    } else {
-                        panic!("command doesn't match runner");
-                    };
                 match answer {
                     AnswerKind::Added(state_id, _location, _extra) => {
                         application.top_state.added_synthetic.push(AddedSynthetic {
-                            code,
+                            tactic: self.tactic.clone(),
                             state_id: *state_id,
                         });
                     }
@@ -538,7 +534,7 @@ impl ApplicationState {
                             .latest_proof_state_mut()
                             .unwrap()
                             .attempted_tactics
-                            .insert(code, TacticResult::Failure);
+                            .insert(self.tactic.clone(), TacticResult::Failure);
                         assert!(
                             insert_result.is_none(),
                             "shouldn't have added a tactic that was already tested and failed"
@@ -556,6 +552,7 @@ impl ApplicationState {
                                 .state_id,
                         ),
                         ExecSyntheticRunner {
+                            tactic: self.tactic,
                             exception_happened: false,
                         },
                     );
@@ -565,6 +562,7 @@ impl ApplicationState {
 
         #[derive(Debug)]
         struct ExecSyntheticRunner {
+            tactic: Tactic,
             exception_happened: bool,
         }
         impl CommandRunner for ExecSyntheticRunner {
@@ -575,18 +573,11 @@ impl ApplicationState {
                         application.top_state.num_executed_synthetic + 1,
                         application.top_state.added_synthetic.len()
                     );
-                    let latest = application
-                        .top_state
-                        .added_synthetic
-                        .last()
-                        .expect("if we're executing a tactic, it should have been added")
-                        .code
-                        .clone();
                     let insert_result = application
                         .latest_proof_state_mut()
                         .unwrap()
                         .attempted_tactics
-                        .insert(latest, TacticResult::Failure);
+                        .insert(self.tactic.clone(), TacticResult::Failure);
                     assert!(
                         insert_result.is_none(),
                         "shouldn't have queried goals for a tactic that was already tested"
@@ -608,9 +599,10 @@ impl ApplicationState {
                     ontop: self.top_state.last_added(),
                     ..default()
                 },
-                tactic,
+                tactic.coq_string(),
             ),
             AddSyntheticRunner {
+                tactic,
                 exception_happened: false,
             },
         );
@@ -724,7 +716,7 @@ impl ApplicationState {
         root.descendant_mut(
             self.top_state.added_synthetic[..self.top_state.num_executed_synthetic]
                 .iter()
-                .map(|t| t.code.as_str()),
+                .map(|t| &t.tactic),
         )
     }
 
@@ -770,7 +762,7 @@ impl ApplicationState {
             .added_synthetic
             .iter()
             .enumerate()
-            .skip_while(|(i, a)| tactics_path.get(*i) == Some(&a.code.as_str()))
+            .skip_while(|(i, a)| tactics_path.get(*i) == Some(&&a.tactic))
             .map(|(_, a)| a.state_id)
             .collect();
 
@@ -785,8 +777,9 @@ impl ApplicationState {
         }
 
         for tactic in GLOBAL_TACTICS.split_inclusive(".") {
-            if featured_state.attempted_tactics.get(tactic).is_none() {
-                self.run_tactic(tactic.to_string());
+            let tactic = Tactic::from_string(tactic.to_string());
+            if featured_state.attempted_tactics.get(&tactic).is_none() {
+                self.run_tactic(tactic);
                 return;
             }
         }
@@ -802,6 +795,7 @@ impl ApplicationState {
                         if name == featured_name {
                             for tactic_h in HYPOTHESIS_TACTICS.split_inclusive(".") {
                                 let tactic = tactic_h.replace("H", name);
+                                let tactic = Tactic::from_string(tactic);
                                 if featured_state.attempted_tactics.get(&tactic).is_none() {
                                     self.run_tactic(tactic);
                                     return;
@@ -837,7 +831,7 @@ impl ApplicationState {
                 TacticResult::Failure => {
                     let element = html! {
                         <div class="failed_tactic">
-                            <pre>{text!("{}: failed", tactic)}</pre>
+                            <pre>{text!("{}: failed", tactic.human_string())}</pre>
                         </div>
                     };
                     failed_tactics.push(element);
@@ -867,11 +861,11 @@ impl ApplicationState {
                     // If any goal is the same as before, we are no better off;
                     // but a slightly different message is desirable if we also spawned extra goals
                     let text = if successor.goals.goals.len() == featured_state.goals.goals.len() {
-                        text!("{}: no effect", tactic)
+                        text!("{}: no effect", tactic.human_string())
                     } else {
                         text!(
                             "{}: spawned new goal, but one was identical to before",
-                            tactic
+                            tactic.human_string()
                         )
                     };
                     let element = html! {
@@ -888,7 +882,7 @@ impl ApplicationState {
             let element = html! {
                 <div class="successful_tactic" data-onclick={onclick}>
                     <div class="tactic">
-                        <pre>{text!("{}", tactic)}</pre>
+                        <pre>{text!("{}", tactic.human_string())}</pre>
                     </div>
                     {featured_state.goals.diff_html(&successor.goals)}
                 </div>
@@ -944,6 +938,7 @@ impl ApplicationState {
                     let mut row_id = 1;
                     for tactic_h in HYPOTHESIS_TACTICS.split_inclusive(".") {
                         let tactic = tactic_h.replace("H", name);
+                        let tactic = Tactic::from_string(tactic);
                         if let Some(child) = featured_state.child(&tactic) {
                             let style = format!("grid-row: {} / span 1", row_id);
                             row_id += 1;
@@ -960,7 +955,7 @@ impl ApplicationState {
                             let onclick = featured.extended(tactic.clone()).input_string();
                             menu_elements.push(html! {
                                 <div class="tactic_entry" style={&style} data-onclick={onclick}>
-                                    <pre class="tactic">{text!("{}", tactic)}</pre>
+                                    <pre class="tactic">{text!("{}", tactic.human_string())}</pre>
                                     {popup_result}
                                 </div>
                             });
@@ -995,9 +990,15 @@ impl ApplicationState {
 
         html! {
             <div class="hypothesis">
-                <div class="hypothesis_text">
-                    {elements}
-                </div>
+                {elements}
+            </div>
+        }
+    }
+    fn conclusion_html(&self, _featured: &Featured) -> Element {
+        let (featured_state, _featured_in_state) = self.featured_state().unwrap();
+        html! {
+            <div class="conclusion">
+                <pre>{text!(" : {}", featured_state.goals.goals.first().unwrap().ty.string)}</pre>
             </div>
         }
     }
@@ -1032,7 +1033,7 @@ impl ApplicationState {
             prior_tactics.push(html! {
                 <div class={class} data-onclick={onclick}>
                     <div class="tactic">
-                        <pre>{text!("{}", tactic)}</pre>
+                        <pre>{text!("{}", tactic.human_string())}</pre>
                     </div>
                     {state.goals.html()}
                 </div>
@@ -1051,25 +1052,37 @@ impl ApplicationState {
             }]
         }
 
-        let hypotheses: Option<Element> =
-            featured_state.goals.goals.first().and_then(|first_goal| {
-                if first_goal.hyp.is_empty() {
-                    return None;
+        let current_goal: Option<Element> = featured_state.goals.goals.first().map(|first_goal| {
+            let conclusion = self.conclusion_html(featured);
+            let result: Element = if first_goal.hyp.is_empty() {
+                html! {
+                    <div class="current_goal">
+                        <h2>
+                            {text!("Now you want to prove this:")}
+                        </h2>
+                        {conclusion}
+                    </div>
                 }
+            } else {
                 let hypotheses = first_goal
                     .hyp
                     .iter()
                     .map(|h| self.hypothesis_html(h, featured));
-                let result: Element = html! {
-                    <div class="hypotheses">
+                html! {
+                    <div class="current_goal">
                         <h2>
-                            {text!("And you know this stuff:")}
+                            {text!("Now you know this stuff:")}
                         </h2>
                         {hypotheses}
+                        <h2>
+                            {text!("And you want to prove this:")}
+                        </h2>
+                        {conclusion}
                     </div>
-                };
-                Some(result)
-            });
+                }
+            };
+            result
+        });
 
         let onclick_root_featured = Featured {
             num_tactics_run: 0,
@@ -1087,13 +1100,13 @@ impl ApplicationState {
             <div class="whole_interface">
                 <div class={proof_root_class} data-onclick={onclick_root}>
                     <h2>
-                        {text!("So you're trying to prove this:")}
+                        {text!("So you started with this:")}
                     </h2>
                     {proof_root.goals.html()}
                 </div>
                 {prior_tactics}
                 <div class="main_area">
-                    {hypotheses}
+                    {current_goal}
                     {attempted_tactics}
                 </div>
             </div>
