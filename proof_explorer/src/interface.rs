@@ -911,13 +911,24 @@ impl ApplicationState {
         let (featured_state, featured_in_state) = self.featured_state().unwrap();
         let mut elements: Vec<Element> = Vec::new();
         for NamesId::Id(name) in names {
-            let mut featured_featuring_this = featured.clone();
-            *featured_featuring_this.featured_in_current_mut() = FeaturedInState::Hypothesis {
-                name: name.clone(),
-                subterm: None,
-            };
+            let mut featured_toggling_this = featured.clone();
+            {
+                let featuring_this = FeaturedInState::Hypothesis {
+                    name: name.clone(),
+                    subterm: None,
+                };
+                let f = featured_toggling_this.featured_in_current_mut();
+                if *f == featuring_this {
+                    *f = FeaturedInState::Nothing;
+                } else {
+                    *f = FeaturedInState::Hypothesis {
+                        name: name.clone(),
+                        subterm: None,
+                    };
+                }
+            }
             let onclick =
-                serde_json::to_string(&Input::SetFeatured(featured_featuring_this)).unwrap();
+                serde_json::to_string(&Input::SetFeatured(featured_toggling_this)).unwrap();
 
             let mut class = "hypothesis_name_wrapper not_featured";
             let mut dropdown: Option<Element> = None;
@@ -946,8 +957,9 @@ impl ApplicationState {
                                     <div class="popup_result">{featured_state.goals.diff_html(&child.goals)}</div>
                                 })
                             };
+                            let onclick = featured.extended(tactic.clone()).input_string();
                             menu_elements.push(html! {
-                                <div class="tactic_entry" style={&style}>
+                                <div class="tactic_entry" style={&style} data-onclick={onclick}>
                                     <pre class="tactic">{text!("{}", tactic)}</pre>
                                     {popup_result}
                                 </div>
