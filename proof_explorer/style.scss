@@ -123,7 +123,7 @@ h2 {
 $hyp_name_padding: 4px;
 .tactic_menu {
   top: calc(100% + #{$hyp_name_padding});
-  left: 0;
+  left: 12px;
 }
 .tactic_menu .tactic_entry .popup_result {
   left: 100%;

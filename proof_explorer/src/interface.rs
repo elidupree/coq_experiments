@@ -862,8 +862,7 @@ impl ApplicationState {
                     };
                 }
             }
-            let onclick =
-                serde_json::to_string(&Input::SetFeatured(featured_toggling_this)).unwrap();
+            let onclick = featured_toggling_this.input_string();
 
             let mut class = "hypothesis_name_wrapper not_featured";
             let mut dropdown: Option<Element> = None;
@@ -1039,8 +1038,12 @@ impl ApplicationState {
             "proof_root present"
         };
 
+        let mut featured_deselecting = featured.clone();
+        *featured_deselecting.featured_in_current_mut() = FeaturedInState::Nothing;
+        let onclick_default = featured_deselecting.input_string();
+
         html! {
-            <div class="whole_interface">
+            <div class="whole_interface" data-onclick={onclick_default}>
                 <div class={proof_root_class} data-onclick={onclick_root}>
                     <h2>
                         {text!("So you started with this:")}
