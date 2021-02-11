@@ -213,6 +213,9 @@ $hyp_padding: 6px;
   pre {
     white-space: normal;
   }
+  .tactic_menu pre {
+    white-space: nowrap;
+  }
 }
 .hypothesis_name_wrapper {
   display: inline;

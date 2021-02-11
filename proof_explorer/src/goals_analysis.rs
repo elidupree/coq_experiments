@@ -88,6 +88,18 @@ impl ReifiedGoal<CoqValueInfo> {
             </div>
         }
     }
+
+    /// approximate detection of changes that are useless.
+    ///
+    /// We suppose that a change is potentially useful if it changes the conclusion, or if it adds a hypothesis with a type that didn't appear among the parent's hypotheses. Thus, clearing and renaming are "useless"
+    pub fn useless_change(&self, child: &ReifiedGoal<CoqValueInfo>) -> bool {
+        child.ty == self.ty
+            && child.hyp.iter().all(|IdenticalHypotheses(_, cd, ct)| {
+                self.hyp
+                    .iter()
+                    .any(|IdenticalHypotheses(_, pd, pt)| pd == cd && pt == ct)
+            })
+    }
 }
 
 impl Goals<CoqValueInfo> {
@@ -97,6 +109,15 @@ impl Goals<CoqValueInfo> {
                 {self.goals.iter().map(|g| g.html())}
             </div>
         }
+    }
+
+    /// approximate detection of changes that are useless.
+    ///
+    /// Our logic for multiple goals is that a change is useless if, for every goal in the parent, there exists a goal in the child that is a useless change from it. Thus, you couldn't solve the child without solving every goal from the parent just as easily.
+    pub fn useless_change(&self, child: &Goals<CoqValueInfo>) -> bool {
+        self.goals
+            .iter()
+            .all(|parent| child.goals.iter().any(|child| parent.useless_change(child)))
     }
 
     pub fn diff_html(&self, child: &Goals<CoqValueInfo>) -> Element {

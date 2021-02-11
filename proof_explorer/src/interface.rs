@@ -29,7 +29,7 @@ use crate::serapi_protocol::{
     IdenticalHypotheses, NamesId, PrintFormat, PrintOptions, QueryCommand, QueryOptions,
     ReifiedGoal, SerGoals, StateId,
 };
-use crate::tactics::Tactic;
+use crate::tactics::{self, Tactic};
 
 pub type Element = Box<dyn FlowContent<String>>;
 
@@ -90,8 +90,8 @@ pub trait CommandRunner: Send + Sync + 'static {
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct ProofState {
-    goals: Goals<CoqValueInfo>,
-    attempted_tactics: HashMap<Tactic, TacticResult>,
+    pub goals: Goals<CoqValueInfo>,
+    pub attempted_tactics: HashMap<Tactic, TacticResult>,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -117,9 +117,9 @@ pub enum FeaturedInState {
 // I was going to call this "focused", but that term is already used
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
 pub struct Featured {
-    featured_in_root: FeaturedInState,
-    tactics: Vec<(Tactic, FeaturedInState)>,
-    num_tactics_run: usize,
+    pub featured_in_root: FeaturedInState,
+    pub tactics: Vec<(Tactic, FeaturedInState)>,
+    pub num_tactics_run: usize,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -245,10 +245,6 @@ impl ProofState {
         }
     }
 }
-
-const GLOBAL_TACTICS: &str = "intro.intros.intuition idtac.split.reflexivity.assumption.constructor.exfalso.instantiate.contradiction.discriminate.trivial.inversion_sigma.symmetry.simpl in *.left.right.classical_left.classical_right.solve_constraints.simplify_eq.subst.cbv.lazy.vm_compute.native_compute.red.hnf.cbn.injection.decide equality.tauto.dtauto.congruence.firstorder.easy.auto.eauto.auto with *.eauto with *.";
-
-const HYPOTHESIS_TACTICS: &str = "simpl in H.cbv in H.injection H.apply H.simple apply H.eapply H.rapply H.lapply H.clear H.revert H.decompose sum H.decompose record H.generalize H.generalize dependent H.absurd H.contradiction H.contradict H.destruct H.case H.induction H.dependent destruction H.dependent induction H.inversion H.discriminate H.inversion_clear H.dependent inversion H.symmetry in H.simplify_eq H.rewrite <- H. rewrite -> H.rewrite <- H in *. rewrite -> H in *.dependent rewrite <- H. dependent rewrite -> H.";
 
 impl ApplicationState {
     pub fn send_command(&mut self, command: Command, runner: impl CommandRunner) {
@@ -776,34 +772,10 @@ impl ApplicationState {
             return;
         }
 
-        for tactic in GLOBAL_TACTICS.split_inclusive(".") {
-            let tactic = Tactic::from_string(tactic.to_string());
+        for tactic in tactics::generate_exploratory_tactics(featured_state, featured_in_state) {
             if featured_state.attempted_tactics.get(&tactic).is_none() {
                 self.run_tactic(tactic);
                 return;
-            }
-        }
-
-        if let FeaturedInState::Hypothesis {
-            name: featured_name,
-            subterm: _,
-        } = featured_in_state
-        {
-            if let Some(goal) = featured_state.goals.goals.first() {
-                for IdenticalHypotheses(names, _, _) in &goal.hyp {
-                    for NamesId::Id(name) in names {
-                        if name == featured_name {
-                            for tactic_h in HYPOTHESIS_TACTICS.split_inclusive(".") {
-                                let tactic = tactic_h.replace("H", name);
-                                let tactic = Tactic::from_string(tactic);
-                                if featured_state.attempted_tactics.get(&tactic).is_none() {
-                                    self.run_tactic(tactic);
-                                    return;
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
     }
@@ -812,7 +784,7 @@ impl ApplicationState {
 impl ApplicationState {
     fn attempted_tactics_html(&self, featured: &Featured) -> Element {
         let (featured_state, _) = self.featured_state().unwrap();
-        let first_goal = match featured_state.goals.goals.first() {
+        let _first_goal = match featured_state.goals.goals.first() {
             Some(goal) => goal,
             None => {
                 return text!(
@@ -820,12 +792,10 @@ impl ApplicationState {
             )
             }
         };
-        let featured_hypotheses_string = first_goal.hypothesis_strings().join("\n");
-        let featured_conclusion_string = &first_goal.ty.string;
 
         let mut successful_tactics = Vec::new();
         let mut failed_tactics = Vec::new();
-        'tactics: for (tactic, result) in &featured_state.attempted_tactics {
+        for (tactic, result) in &featured_state.attempted_tactics {
             let successor = match result {
                 TacticResult::Success(successor) => successor,
                 TacticResult::Failure => {
@@ -839,43 +809,14 @@ impl ApplicationState {
                 }
             };
 
-            // these usually won't be exactly equal because evar numbers are different?
-            // if successor.goals == featured.goals {
-            //     let element = html! {
-            //         <div class="failed_tactic">
-            //             <pre>{text!("{}: no effect", tactic)}</pre>
-            //         </div>
-            //     };
-            //     failed_tactics.push(element);
-            //     continue;
-            // }
-
-            let relevant_goals = &successor.goals.goals
-                [..successor.goals.goals.len() + 1 - featured_state.goals.goals.len()];
-            for goal in relevant_goals {
-                let hypotheses_string = goal.hypothesis_strings().join("\n");
-                let conclusion_string = &goal.ty.string;
-                if hypotheses_string == featured_hypotheses_string
-                    && conclusion_string == featured_conclusion_string
-                {
-                    // If any goal is the same as before, we are no better off;
-                    // but a slightly different message is desirable if we also spawned extra goals
-                    let text = if successor.goals.goals.len() == featured_state.goals.goals.len() {
-                        text!("{}: no effect", tactic.human_string())
-                    } else {
-                        text!(
-                            "{}: spawned new goal, but one was identical to before",
-                            tactic.human_string()
-                        )
-                    };
-                    let element = html! {
-                        <div class="failed_tactic">
-                            <pre>{text}</pre>
-                        </div>
-                    };
-                    failed_tactics.push(element);
-                    continue 'tactics;
-                }
+            if tactic.useless(featured_state) {
+                let element = html! {
+                    <div class="failed_tactic">
+                        <pre>{text!("{}: useless", tactic.human_string())}</pre>
+                    </div>
+                };
+                failed_tactics.push(element);
+                continue;
             }
 
             let onclick = featured.extended(tactic.clone()).input_string();
@@ -936,10 +877,12 @@ impl ApplicationState {
 
                     let mut menu_elements: Vec<Element> = Vec::new();
                     let mut row_id = 1;
-                    for tactic_h in HYPOTHESIS_TACTICS.split_inclusive(".") {
-                        let tactic = tactic_h.replace("H", name);
-                        let tactic = Tactic::from_string(tactic);
+                    for tactic in tactics::hypothesis_tactics(name) {
                         if let Some(child) = featured_state.child(&tactic) {
+                            if tactic.useless(featured_state) {
+                                continue;
+                            }
+
                             let style = format!("grid-row: {} / span 1", row_id);
                             row_id += 1;
                             let diff = featured_state
