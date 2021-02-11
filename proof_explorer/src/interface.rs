@@ -998,7 +998,7 @@ impl ApplicationState {
         let (featured_state, _featured_in_state) = self.featured_state().unwrap();
         html! {
             <div class="conclusion">
-                <pre>{text!(" : {}", featured_state.goals.goals.first().unwrap().ty.string)}</pre>
+                <pre>{text!("{}", featured_state.goals.goals.first().unwrap().ty.string)}</pre>
             </div>
         }
     }
