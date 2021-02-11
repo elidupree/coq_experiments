@@ -194,6 +194,23 @@ impl Featured {
             None => &mut self.featured_in_root,
         }
     }
+    pub fn extended(&self, tactic: String) -> Featured {
+        Featured {
+            tactics: self
+                .tactics
+                .iter()
+                .take(self.num_tactics_run)
+                .cloned()
+                .chain(iter::once((tactic, FeaturedInState::Nothing)))
+                .collect(),
+            num_tactics_run: self.num_tactics_run + 1,
+            ..self.clone()
+        }
+    }
+
+    fn input_string(self) -> String {
+        serde_json::to_string(&Input::SetFeatured(self)).unwrap()
+    }
 }
 
 impl ProofState {
@@ -232,6 +249,10 @@ impl ProofState {
         }
     }
 }
+
+const GLOBAL_TACTICS: &str = "intro.intros.intuition idtac.split.reflexivity.assumption.constructor.exfalso.instantiate.contradiction.discriminate.trivial.inversion_sigma.symmetry.simpl in *.left.right.classical_left.classical_right.solve_constraints.simplify_eq.subst.cbv.lazy.vm_compute.native_compute.red.hnf.cbn.injection.decide equality.tauto.dtauto.congruence.firstorder.easy.auto.eauto.auto with *.eauto with *.";
+
+const HYPOTHESIS_TACTICS: &str = "simpl in H.cbv in H.injection H.apply H.simple apply H.eapply H.rapply H.lapply H.clear H.revert H.decompose sum H.decompose record H.generalize H.generalize dependent H.absurd H.contradiction H.contradict H.destruct H.case H.induction H.dependent destruction H.dependent induction H.inversion H.discriminate H.inversion_clear H.dependent inversion H.symmetry in H.simplify_eq H.rewrite <- H. rewrite -> H.rewrite <- H in *. rewrite -> H in *.dependent rewrite <- H. dependent rewrite -> H.";
 
 impl ApplicationState {
     pub fn send_command(&mut self, command: Command, runner: impl CommandRunner) {
@@ -722,6 +743,17 @@ impl ApplicationState {
         );
     }
 
+    fn featured_state(&self) -> Option<(&ProofState, &FeaturedInState)> {
+        let (proof_root, featured): (&ProofState, &Featured) = match &self.known_mode {
+            Some(Mode::ProofMode(p, f)) => (p, f),
+            _ => return None,
+        };
+        Some((
+            proof_root.descendant(featured.tactics_path()).unwrap(),
+            featured.featured_in_current(),
+        ))
+    }
+
     fn do_proof_exploration(&mut self) {
         let (proof_root, featured): (&ProofState, &Featured) = match self.known_mode {
             None => {
@@ -735,6 +767,7 @@ impl ApplicationState {
         };
         let tactics_path: Vec<_> = featured.tactics_path().collect();
         let featured_state = proof_root.descendant(tactics_path.iter().copied()).unwrap();
+        let featured_in_state = featured.featured_in_current();
 
         // make sure we are currently at the featured proof path before exploring
         let canceled: Vec<_> = self
@@ -756,8 +789,6 @@ impl ApplicationState {
             return;
         }
 
-        const GLOBAL_TACTICS: &str = "intuition idtac.intro.intros.split.reflexivity.assumption.constructor.exfalso.instantiate.contradiction.discriminate.trivial.inversion_sigma.symmetry.simpl in *.left.right.classical_left.classical_right.solve_constraints.simplify_eq.subst.cbv.lazy.vm_compute.native_compute.red.hnf.cbn.injection.decide equality.tauto.dtauto.congruence.firstorder.easy.auto.eauto.auto with *.eauto with *.";
-
         for tactic in GLOBAL_TACTICS.split_inclusive(".") {
             if featured_state.attempted_tactics.get(tactic).is_none() {
                 self.run_tactic(tactic.to_string());
@@ -765,16 +796,22 @@ impl ApplicationState {
             }
         }
 
-        const HYPOTHESIS_TACTICS: &str = "injection H.apply H.simple apply H.eapply H.rapply H.lapply H.clear H.revert H.decompose sum H.decompose record H.generalize H.generalize dependent H.absurd H.contradiction H.contradict H.destruct H.case H.induction H.dependent destruction H.dependent induction H.inversion H.discriminate H.inversion_clear H.dependent inversion H.symmetry in H.simplify_eq H.rewrite <- H. rewrite -> H.rewrite <- H in *. rewrite -> H in *.dependent rewrite <- H. dependent rewrite -> H.";
-
-        if let Some(goal) = featured_state.goals.goals.first() {
-            for (names, _, _) in &goal.hyp {
-                for NamesId::Id(name) in names {
-                    for tactic_h in HYPOTHESIS_TACTICS.split_inclusive(".") {
-                        let tactic = tactic_h.replace("H", name);
-                        if featured_state.attempted_tactics.get(&tactic).is_none() {
-                            self.run_tactic(tactic);
-                            return;
+        if let FeaturedInState::Hypothesis {
+            name: featured_name,
+            subterm: _,
+        } = featured_in_state
+        {
+            if let Some(goal) = featured_state.goals.goals.first() {
+                for (names, _, _) in &goal.hyp {
+                    for NamesId::Id(name) in names {
+                        if name == featured_name {
+                            for tactic_h in HYPOTHESIS_TACTICS.split_inclusive(".") {
+                                let tactic = tactic_h.replace("H", name);
+                                if featured_state.attempted_tactics.get(&tactic).is_none() {
+                                    self.run_tactic(tactic);
+                                    return;
+                                }
+                            }
                         }
                     }
                 }
@@ -822,10 +859,132 @@ impl Goals<CoqValueInfo> {
             </div>
         }
     }
+
+    pub fn diff_html(&self, child: &Goals<CoqValueInfo>) -> Element {
+        let first_goal = self.goals.first().unwrap();
+        let relevant_goals = &child.goals[..child.goals.len() + 1 - self.goals.len()];
+        let mut elements: Vec<Element> = Vec::new();
+        if relevant_goals.is_empty() {
+            elements
+                .push(html! { <ins><pre class="diff">{text!("Current goal solved!")}</pre></ins> })
+        }
+
+        let parent_hypotheses_string = first_goal.hypothesis_strings().join("\n");
+        let parent_conclusion_string = &first_goal.ty.string;
+
+        for goal in relevant_goals {
+            let child_hypotheses_string = goal.hypothesis_strings().join("\n");
+            let child_conclusion_string = &goal.ty.string;
+
+            let hypotheses_diff =
+                Changeset::new(&parent_hypotheses_string, &child_hypotheses_string, "\n");
+            for item in hypotheses_diff.diffs {
+                match item {
+                    Difference::Add(added) => {
+                        elements.push(html! {
+                            <ins class="line"><pre>{text!("{}", added)}</pre></ins>
+                        });
+                    }
+                    Difference::Rem(removed) => {
+                        elements.push(html! {
+                            <del class="line"><pre>{text!("{}", removed)}</pre></del>
+                        });
+                    }
+                    _ => {}
+                }
+            }
+            elements.push(html! {
+                <hr/>
+            });
+            if parent_conclusion_string != child_conclusion_string {
+                let conclusion_diff =
+                    Changeset::new(&parent_conclusion_string, child_conclusion_string, "");
+                let mut old: Vec<Element> = Vec::new();
+                let mut new: Vec<Element> = Vec::new();
+                for item in conclusion_diff.diffs {
+                    match item {
+                        Difference::Add(added) => {
+                            new.push(html! {
+                                <ins><pre>{text!("{}", added)}</pre></ins>
+                            });
+                        }
+                        Difference::Rem(removed) => {
+                            old.push(html! {
+                                <del><pre>{text!("{}", removed)}</pre></del>
+                            });
+                        }
+                        Difference::Same(same) => {
+                            new.push(html! {
+                                <pre>{text!("{}", same)}</pre>
+                            });
+                            old.push(html! {
+                                <pre>{text!("{}", same)}</pre>
+                            });
+                        }
+                    }
+                }
+                elements.push(html! {
+                    <div>{old}</div>
+                });
+                elements.push(html! {
+                    <div>{new}</div>
+                });
+            }
+            elements.push(html! {
+                <hr/>
+            });
+        }
+        elements.pop();
+
+        html! {
+            <div class="goals_diff">
+                {elements}
+            </div>
+        }
+    }
+    pub fn only_difference_in_hypothesis_html(
+        &self,
+        child: &Goals<CoqValueInfo>,
+        hypothesis_name: &str,
+    ) -> Option<Element> {
+        if child.goals.len() == 0 || child.goals.len() != self.goals.len() {
+            return None;
+        }
+        if child.goals[self.goals.len() - 1] != self.goals[self.goals.len() - 1] {
+            return None;
+        }
+        let parent = self.goals.last().unwrap();
+        let child = child.goals.last().unwrap();
+        let parent_hypotheses: HashMap<&str, _> = parent
+            .hyp
+            .iter()
+            .flat_map(move |(names, def, ty)| {
+                names
+                    .iter()
+                    .map(move |NamesId::Id(name)| (name.as_str(), (def, ty)))
+            })
+            .collect();
+        let mut result: Option<Element> = None;
+        for h in &child.hyp {
+            let (names, def, ty) = h;
+            for NamesId::Id(name) in names {
+                if name != hypothesis_name
+                    && parent_hypotheses.get(name.as_str()) != Some(&(def, ty))
+                {
+                    return None;
+                }
+                if name == hypothesis_name {
+                    result = Some(html! { <pre>{text!("{}", hypothesis_string(h))}</pre>});
+                }
+            }
+        }
+        result
+    }
 }
 
 impl ApplicationState {
-    fn attempted_tactics_html(&self, featured_state: &ProofState, featured: &Featured) -> Element {
+    fn attempted_tactics_html(&self, featured: &Featured) -> Element {
+        let (featured_state, _) = self.featured_state().unwrap();
         let first_goal = match featured_state.goals.goals.first() {
             Some(goal) => goal,
             None => {
@@ -866,13 +1025,6 @@ impl ApplicationState {
 
             let relevant_goals = &successor.goals.goals
                 [..successor.goals.goals.len() + 1 - featured_state.goals.goals.len()];
-            let mut elements: Vec<Element> = Vec::new();
-            if relevant_goals.is_empty() {
-                elements.push(
-                    html! { <ins><pre class="diff">{text!("Current goal solved!")}</pre></ins> },
-                )
-            }
-
             for goal in relevant_goals {
                 let hypotheses_string = goal.hypothesis_strings().join("\n");
                 let conclusion_string = &goal.ty.string;
@@ -897,81 +1049,15 @@ impl ApplicationState {
                     failed_tactics.push(element);
                     continue 'tactics;
                 }
-                let hypotheses_diff =
-                    Changeset::new(&featured_hypotheses_string, &hypotheses_string, "\n");
-                for item in hypotheses_diff.diffs {
-                    match item {
-                        Difference::Add(added) => {
-                            elements.push(html! {
-                                <ins class="line"><pre>{text!("{}", added)}</pre></ins>
-                            });
-                        }
-                        Difference::Rem(removed) => {
-                            elements.push(html! {
-                                <del class="line"><pre>{text!("{}", removed)}</pre></del>
-                            });
-                        }
-                        _ => {}
-                    }
-                }
-                elements.push(html! {
-                    <hr/>
-                });
-                if featured_conclusion_string != conclusion_string {
-                    let conclusion_diff =
-                        Changeset::new(&featured_conclusion_string, conclusion_string, "");
-                    let mut old: Vec<Element> = Vec::new();
-                    let mut new: Vec<Element> = Vec::new();
-                    for item in conclusion_diff.diffs {
-                        match item {
-                            Difference::Add(added) => {
-                                new.push(html! {
-                                    <ins><pre>{text!("{}", added)}</pre></ins>
-                                });
-                            }
-                            Difference::Rem(removed) => {
-                                old.push(html! {
-                                    <del><pre>{text!("{}", removed)}</pre></del>
-                                });
-                            }
-                            Difference::Same(same) => {
-                                new.push(html! {
-                                    <pre>{text!("{}", same)}</pre>
-                                });
-                                old.push(html! {
-                                    <pre>{text!("{}", same)}</pre>
-                                });
-                            }
-                        }
-                    }
-                    elements.push(html! {
-                        <div>{old}</div>
-                    });
-                    elements.push(html! {
-                        <div>{new}</div>
-                    });
-                }
-                elements.push(html! {
-                    <hr/>
-                });
             }
-            elements.pop();
 
-            let mut extended = featured.clone();
-            extended.tactics.truncate(extended.num_tactics_run);
-            extended
-                .tactics
-                .push((tactic.clone(), FeaturedInState::Nothing));
-            extended.num_tactics_run += 1;
-            let onclick = serde_json::to_string(&Input::SetFeatured(extended)).unwrap();
+            let onclick = featured.extended(tactic.clone()).input_string();
             let element = html! {
                 <div class="successful_tactic" data-onclick={onclick}>
                     <div class="tactic">
                         <pre>{text!("{}", tactic)}</pre>
                     </div>
-                    <div class="goal">
-                        {elements}
-                    </div>
+                    {featured_state.goals.diff_html(&successor.goals)}
                 </div>
             };
             successful_tactics.push(element);
@@ -989,8 +1075,8 @@ impl ApplicationState {
         featured: &Featured,
     ) -> Element {
         let (names, def, ty) = &hypothesis;
+        let (featured_state, featured_in_state) = self.featured_state().unwrap();
         let mut elements: Vec<Element> = Vec::new();
-        let mut dropdown: Option<Element> = None;
         for NamesId::Id(name) in names {
             let mut featured_featuring_this = featured.clone();
             *featured_featuring_this.featured_in_current_mut() = FeaturedInState::Hypothesis {
@@ -999,18 +1085,58 @@ impl ApplicationState {
             };
             let onclick =
                 serde_json::to_string(&Input::SetFeatured(featured_featuring_this)).unwrap();
-            let mut class = "hypothesis_name";
+
+            let mut class = "hypothesis_name_wrapper";
+            let mut dropdown: Option<Element> = None;
             if let FeaturedInState::Hypothesis {
                 name: featured_name,
                 subterm,
-            } = featured.featured_in_current()
+            } = featured_in_state
             {
                 if featured_name == name {
-                    class = "hypothesis_name featured";
+                    class = "hypothesis_name_wrapper featured";
+
+                    let mut menu_elements: Vec<Element> = Vec::new();
+                    let mut row_id = 1;
+                    for tactic_h in HYPOTHESIS_TACTICS.split_inclusive(".") {
+                        let tactic = tactic_h.replace("H", name);
+                        if let Some(child) = featured_state.child(&tactic) {
+                            let style = format!("grid-row: {} / span 1", row_id);
+                            row_id += 1;
+                            let diff = featured_state
+                                .goals
+                                .only_difference_in_hypothesis_html(&child.goals, name);
+                            let popup_result = if diff.is_some() {
+                                None
+                            } else {
+                                Some(html! {
+                                    <div class="popup_result">{featured_state.goals.diff_html(&child.goals)}</div>
+                                })
+                            };
+                            menu_elements.push(html! {
+                                <div class="tactic_entry" style={&style}>
+                                    <pre class="tactic">{text!("{}", tactic)}</pre>
+                                    {popup_result}
+                                </div>
+                            });
+                            if let Some(diff) = diff {
+                                menu_elements.push(html! {
+                                    <div class="inline_result" style={&style}>{diff}</div>
+                                });
+                            }
+                        }
+                    }
+                    dropdown = Some(html! {
+                        <div class="tactic_menu">{menu_elements}</div>
+                    });
                 }
             }
+
             elements.push(html! {
-                <pre class={class} data-onclick={onclick}>{text!("{}", name)}</pre>
+                <div class={class} data-onclick={onclick}>
+                    <pre class="hypothesis_name">{text!("{}", name)}</pre>
+                    {dropdown}
+                </div>
             });
             elements.push(html! { <pre>{text!(", ")}</pre> });
         }
@@ -1027,7 +1153,6 @@ impl ApplicationState {
                 <div class="hypothesis_text">
                     {elements}
                 </div>
-                {dropdown}
             </div>
         }
     }
@@ -1040,7 +1165,7 @@ impl ApplicationState {
         };
 
         let featured_state = proof_root.descendant(featured.tactics_path()).unwrap();
-        let attempted_tactics = self.attempted_tactics_html(featured_state, featured);
+        let attempted_tactics = self.attempted_tactics_html(featured);
         let mut prior_tactics: Vec<Element> = Vec::new();
         for (index, (tactic, _)) in featured.tactics.iter().enumerate() {
             let featured_after_this_tactic = Featured {

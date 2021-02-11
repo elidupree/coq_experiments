@@ -45,12 +45,12 @@ h2 {
   flex-flow: row wrap;
 }
 
-.prior_tactic {
+.prior_tactic, .tactic_menu .tactic_entry {
   position: relative;
   z-index: 2;
 }
 
-.prior_tactic .tactic {
+.prior_tactic .tactic, .tactic_menu .tactic_entry .tactic {
   padding: 8px;
   font-weight: bold;
   background-color: white;
@@ -58,14 +58,20 @@ h2 {
   border: 1px solid transparent;
 }
 
-.prior_tactic .goals {
+.prior_tactic .goals, .tactic_menu .tactic_entry .popup_result {
   display: none;
   position: absolute;
   z-index: 4;
   background-color: white;
+  box-shadow: 2px 3px 9px black;
+}
+.prior_tactic .goals, .tactic_menu {
   top: 100%;
   left: 0;
-  box-shadow: 2px 3px 9px black;
+}
+.tactic_menu .tactic_entry .popup_result {
+  left: 100%;
+  top: 0;
 }
 
 .proof_root:hover, .prior_tactic.not_present:hover, .successful_tactic:hover {
@@ -73,7 +79,7 @@ h2 {
   cursor: pointer;
 }
 
-.proof_root:hover, .prior_tactic.not_present:hover .tactic {
+.proof_root:hover, .prior_tactic.not_present:hover .tactic, .tactic_menu .tactic_entry:hover .tactic {
   z-index: 5;
 }
 .proof_root.present .goals, .proof_root.not_present:hover .goals, .prior_tactic.present .tactic, .prior_tactic.not_present:hover .tactic {
@@ -82,7 +88,7 @@ h2 {
   border-color: black;
 }
 
-.prior_tactic.not_present:hover .goals {
+.prior_tactic.not_present:hover .goals, .tactic_menu .tactic_entry:hover .popup_result {
   display: block;
 }
 
@@ -100,13 +106,18 @@ h2 {
 }
 .hypotheses {
   background-color: #eee;
+  flex-shrink: 0;
 }
 .hypothesis {
   background-color: white;
   padding: 6px;
   margin: 6px;
 }
-.hypothesis_name {
+.hypothesis_name_wrapper {
+  display: inline;
+  position: relative;
+}
+.hypothesis_name_wrapper .hypothesis_name {
   background-color: white;
   font-weight: bold;
   font-size: 120%;
@@ -114,11 +125,26 @@ h2 {
   position: relative;
   border: 1px solid transparent;
 }
-.hypothesis_name:hover, .hypothesis_name.featured {
+.hypothesis_name_wrapper:hover .hypothesis_name, .hypothesis_name_wrapper.featured .hypothesis_name {
   box-shadow: 2px 3px 9px black;
   border-color: black;
   cursor: pointer;
 }
+
+.tactic_menu {
+  position: absolute;
+  display: grid;
+}
+.tactic_menu .tactic {
+  grid-column: 1 / span 1;
+}
+.tactic_menu .inline_result {
+  grid-column: 2 / span 1;
+}
+.tactic_menu .inline_result {
+  grid-column: 2 / span 1;
+}
+
 
 
 .successful_tactic .tactic {
@@ -127,7 +153,7 @@ h2 {
   padding: 8px;
 }
 
-.goal {
+.proof_root .goal, .goals_diff {
   padding: 8px;
 }
 
