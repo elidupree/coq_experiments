@@ -1,0 +1,284 @@
+@charset "UTF-8";
+article,aside,figure,footer,header,hgroup,menu,nav,section{display:block;}
+body,div,dl,dt,dd,ol,ul,li,h1,h2,h3,h4,h5,h6,pre,code,form,fieldset,legend,input,button,textarea,select,p,blockquote,th,td{margin:0;padding:0}
+h1,h2,h3,h4,h5,h6{font-size:100%;font-weight:inherit;}
+img{color:transparent;border:0;vertical-align:middle;-ms-interpolation-mode:bicubic;}
+iframe {border:0;}
+
+body {
+  background-color: #ccc;
+}
+
+%big_area {
+  background-color: #eee;
+}
+
+h2 {
+  font-size: 140%;
+  font-weight: bold;
+  font-family: Arial, Helvetica, sans-serif;
+  padding: 12px;
+}
+
+%hover_shadow {
+  box-shadow: 2px 3px 9px black;
+}
+
+%border_candidate {
+  border: 1px solid transparent;
+}
+
+%border_visible {
+  border-color: black;
+}
+
+.proof_root,.prior_tactics_row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.proof_root,.prior_tactics_row {
+  @extend %big_area;
+  margin: 2px;
+}
+.prior_tactics,.attempted_tactics {
+  display: flex;
+  flex-flow: row wrap;
+}
+.main_area {
+ display: flex;
+}
+.hypotheses {
+  @extend %big_area;
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+
+.proof_root {
+  padding: 8px;
+}
+.proof_root .goals,.prior_tactic,.successful_tactic {
+  background-color: white;
+  margin: 6px;
+}
+
+.proof_root .goals, .goals_diff {
+  padding: 8px;
+}
+
+
+%popup_wrapper {
+  position: relative;
+  z-index: 2;
+
+  > %always_visible_part {
+    position: relative;
+    z-index: 4;
+    @extend %border_candidate;
+  }
+
+  > %popup {
+    display: none;
+    position: absolute;
+    z-index: 6;
+    background-color: white;
+    @extend %hover_shadow;
+  }
+
+  &%show_popup {
+    cursor: pointer;
+    z-index: 3;
+    @extend %hover_shadow;
+
+    > %always_visible_part {
+      z-index: 8;
+      @extend %border_visible;
+    }
+
+    > %popup {
+      display: block;
+    }
+  }
+}
+
+
+.prior_tactic, .tactic_menu .tactic_entry, .hypothesis_name_wrapper {
+  @extend %popup_wrapper;
+}
+
+.tactic, .hypothesis_name {
+  @extend %always_visible_part;
+}
+
+.goals, .popup_result, .tactic_menu {
+  @extend %popup;
+}
+
+.prior_tactic .goals {
+  top: 100%;
+  left: 0;
+}
+$hyp_name_padding: 4px;
+.tactic_menu {
+  top: calc(100% + #{$hyp_name_padding});
+  left: 0;
+}
+.tactic_menu .tactic_entry .popup_result {
+  left: 100%;
+  top: 0;
+}
+
+
+
+.prior_tactic.not_present, .tactic_menu .tactic_entry {
+  &:hover {
+    @extend %show_popup;
+  }
+}
+
+.hypothesis_name_wrapper.featured {
+  @extend %show_popup;
+}
+
+.proof_root {
+  position: relative;
+  z-index: 2;
+  .goals {
+    @extend %border_candidate;
+  }
+  &.present .goals {
+    @extend %border_visible;
+  }
+  &.not_present:hover {
+    @extend %hover_shadow;
+    z-index: 6;
+    cursor: pointer;
+    .goals {
+      @extend %border_visible;
+    }
+  }
+}
+.prior_tactic.present .tactic {
+  @extend %border_visible;
+}
+
+%prominent_tactic {
+  font-weight: bold;
+  font-size: 120%;
+  padding: 8px;
+}
+%nonfuture_tactic {
+  font-weight: bold;
+  color: black;
+  background-color: white;
+}
+.prior_tactic .tactic {
+  height: 24px;
+  @extend %prominent_tactic;
+  @extend %nonfuture_tactic;
+}
+
+.prior_tactic.future .tactic, .proof_root:hover ~ .prior_tactics_row .tactic, .prior_tactic:hover ~ .prior_tactic .tactic {
+  background-color: #eee;
+  color: #999;
+  font-weight: normal;
+  border-color: transparent;
+}
+.prior_tactic.future:hover .tactic {
+  @extend %nonfuture_tactic;
+}
+
+.successful_tactic:hover {
+  @extend %hover_shadow;
+  cursor: pointer;
+}
+
+
+
+
+
+.hypothesis {
+  background-color: white;
+  padding: 6px;
+  margin: 6px;
+}
+.hypothesis_name_wrapper {
+  display: inline;
+}
+.hypothesis_name_wrapper .hypothesis_name {
+  background-color: white;
+  font-weight: bold;
+  font-size: 120%;
+  padding: $hyp_name_padding;
+}
+.hypothesis_name_wrapper.not_featured:hover .hypothesis_name {
+  @extend %hover_shadow;
+  @extend %border_visible;
+  cursor: pointer;
+}
+
+.tactic_menu {
+  position: absolute;
+  display: grid;
+}
+.tactic_menu .tactic {
+  display: block;
+  padding: 1px 6px;
+  grid-column: 1 / span 1;
+}
+.tactic_menu .inline_result {
+  grid-column: 2 / span 1;
+}
+.tactic_menu .inline_result {
+  grid-column: 2 / span 1;
+}
+
+
+
+.successful_tactic .tactic {
+  font-weight: bold;
+  font-size: 120%;
+  padding: 8px;
+}
+
+
+
+
+del.line::before {
+  content: '-';
+}
+
+ins.line::before {
+  content: '+';
+}
+
+del.line::before, ins.line::before {
+  position: absolute;
+  left: 8px;
+  font-family: monospace;
+}
+
+del.line, ins.line {
+  display: block;
+}
+del, ins {
+  position: relative;
+  text-decoration: none;
+}
+
+del {
+  background-color: #fcc;
+}
+
+ins {
+  background-color: #dfd;
+}
+
+pre {
+  display: inline;
+}
+.line pre {
+  margin-left: 28px;
+  display: block;
+}

@@ -919,7 +919,7 @@ impl ApplicationState {
             let onclick =
                 serde_json::to_string(&Input::SetFeatured(featured_featuring_this)).unwrap();
 
-            let mut class = "hypothesis_name_wrapper";
+            let mut class = "hypothesis_name_wrapper not_featured";
             let mut dropdown: Option<Element> = None;
             if let FeaturedInState::Hypothesis {
                 name: featured_name,
@@ -1236,6 +1236,19 @@ pub fn processing_thread(application_state: Arc<Mutex<ApplicationState>>) {
 }
 
 pub fn run(root_path: PathBuf, code_path: PathBuf) {
+    // Hack: Compile the scss at the beginning of the main program.
+    // This would be better as some sort of build script, but that's not a big concern right now
+    // TODO: improve on that
+    let mut scss_path = root_path.clone();
+    scss_path.push("style.scss");
+    let mut css_path = root_path.clone();
+    css_path.extend(&["static", "media", "style.css"]);
+    let sass_status = process::Command::new("sass")
+        .args(&[scss_path, css_path])
+        .status()
+        .expect("error getting sass status");
+    assert!(sass_status.success(), "sass failed");
+
     let child = process::Command::new("sertop")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
