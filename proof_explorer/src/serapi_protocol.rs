@@ -94,9 +94,10 @@ pub struct SerGoals<A> {
 pub struct ReifiedGoal<A> {
     pub info: ReifiedGoalInfo,
     pub ty: A,
-    pub hyp: Vec<Hypothesis<A>>,
+    pub hyp: Vec<IdenticalHypotheses<A>>,
 }
-pub type Hypothesis<A> = (Vec<NamesId>, Option<A>, A);
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct IdenticalHypotheses<A>(pub Vec<NamesId>, pub Option<A>, pub A);
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct ReifiedGoalInfo {
     pub evar: NotYetImplemented,
@@ -105,41 +106,6 @@ pub struct ReifiedGoalInfo {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum NamesId {
     Id(String),
-}
-pub type Goals<A> = SerGoals<ReifiedGoal<A>>;
-
-pub fn map_goals<A, B>(goals: Goals<A>, mut convert: impl FnMut(A) -> B) -> Goals<B> {
-    SerGoals {
-        goals: goals
-            .goals
-            .into_iter()
-            .map(|g| map_reified_goal(g, |a| convert(a)))
-            .collect(),
-        stack: goals.stack,
-        shelf: goals.shelf,
-        given_up: goals.given_up,
-        bullet: goals.bullet,
-    }
-}
-
-pub fn map_reified_goal<A, B>(
-    goal: ReifiedGoal<A>,
-    mut convert: impl FnMut(A) -> B,
-) -> ReifiedGoal<B> {
-    ReifiedGoal {
-        info: goal.info,
-        ty: convert(goal.ty),
-        hyp: goal
-            .hyp
-            .into_iter()
-            .map(|h| map_hypothesis(h, |a| convert(a)))
-            .collect(),
-    }
-}
-
-pub fn map_hypothesis<A, B>(goal: Hypothesis<A>, mut convert: impl FnMut(A) -> B) -> Hypothesis<B> {
-    let (name, def, ty) = goal;
-    (name, def.map(|a| convert(a)), convert(ty))
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -150,8 +116,8 @@ pub enum CoqObject {
     CoqLoc(Location),
     CoqConstr(Constr),
     CoqExpr(ConstrExpr),
-    CoqGoal(Goals<Constr>),
-    CoqExtGoal(Goals<ConstrExpr>),
+    CoqGoal(SerGoals<ReifiedGoal<Constr>>),
+    CoqExtGoal(SerGoals<ReifiedGoal<ConstrExpr>>),
     // ...
 }
 

@@ -5,6 +5,7 @@ extern crate rocket;
 
 use std::path::PathBuf;
 
+mod goals_analysis;
 mod interface;
 mod serapi_protocol;
 mod universally_deserializable;
