@@ -161,14 +161,18 @@ impl Goals<CoqValueInfo> {
                     Changeset::new(&parent_conclusion_string, child_conclusion_string, "");
                 let mut old: Vec<Element> = Vec::new();
                 let mut new: Vec<Element> = Vec::new();
+                let mut any_added = false;
+                let mut any_removed = false;
                 for item in conclusion_diff.diffs {
                     match item {
                         Difference::Add(added) => {
+                            any_added = true;
                             new.push(html! {
                                 <ins><pre>{text!("{}", added)}</pre></ins>
                             });
                         }
                         Difference::Rem(removed) => {
+                            any_removed = true;
                             old.push(html! {
                                 <del><pre>{text!("{}", removed)}</pre></del>
                             });
@@ -183,12 +187,16 @@ impl Goals<CoqValueInfo> {
                         }
                     }
                 }
-                elements.push(html! {
-                    <div>{old}</div>
-                });
-                elements.push(html! {
-                    <div>{new}</div>
-                });
+                if any_removed {
+                    elements.push(html! {
+                        <div>{old}</div>
+                    });
+                }
+                if any_added {
+                    elements.push(html! {
+                        <div>{new}</div>
+                    });
+                }
             }
             elements.push(html! {
                 <hr/>
