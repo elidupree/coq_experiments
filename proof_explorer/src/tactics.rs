@@ -47,7 +47,7 @@ const PRIORITY_GLOBAL_TACTICS: &str = "intro.intros.intuition idtac.simpl in *.s
 
 const SLOWER_GLOBAL_TACTICS: &str = "firstorder.easy.auto.eauto.auto with *.eauto with *.";
 
-const HYPOTHESIS_TACTICS: &str = "simpl in H.cbv in H.injection H.apply H.simple apply H.eapply H.rapply H.lapply H.clear H.revert H.decompose sum H.decompose record H.generalize H.generalize dependent H.absurd H.contradiction H.contradict H.destruct H.case H.induction H.dependent destruction H.dependent induction H.inversion H.discriminate H.inversion_clear H.dependent inversion H.symmetry in H.simplify_eq H.rewrite <- H. rewrite -> H.rewrite <- H in *. rewrite -> H in *.dependent rewrite <- H. dependent rewrite -> H.";
+const HYPOTHESIS_TACTICS: &str = "injection H.destruct H.dependent destruction H.induction H.dependent induction H.inversion_clear H.inversion H.dependent inversion H.decompose sum H.decompose record H.apply H.simple apply H.eapply H.rapply H.lapply H.simpl in H.cbv in H.clear H.revert H.generalize H.generalize dependent H.absurd H.contradiction H.contradict H.case H.discriminate H.symmetry in H.simplify_eq H.rewrite <- H. rewrite -> H.rewrite <- H in *. rewrite -> H in *.dependent rewrite <- H. dependent rewrite -> H.";
 
 pub fn generate_exploratory_tactics(
     featured_state: &ProofState,
