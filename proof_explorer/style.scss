@@ -13,6 +13,8 @@ body {
   background-color: #eee;
 }
 
+$ins_green: #dfd;
+
 h2 {
   font-size: 140%;
   font-weight: bold;
@@ -250,6 +252,17 @@ $hyp_padding: 6px;
 
 
 
+.solvers {
+  background-color: $ins_green;
+  padding: 10px;
+}
+.solving_tactic {
+  margin: 6px;
+  padding: 6px;
+  font-weight: bold;
+  background-color: white;
+}
+
 .successful_tactic .tactic {
   font-weight: bold;
   font-size: 120%;
@@ -286,7 +299,7 @@ del {
 }
 
 ins {
-  background-color: #dfd;
+  background-color: $ins_green;
 }
 
 pre {

@@ -290,6 +290,60 @@ impl ApplicationState {
 
         let mut successful_tactics = Vec::new();
         let mut failed_tactics = Vec::new();
+        let mut solvers: Vec<_> = featured_node
+            .attempted_tactics
+            .iter()
+            .filter_map(|t| {
+                if let (
+                    tactic,
+                    TacticResult::Success {
+                        duration,
+                        result_node,
+                        ..
+                    },
+                ) = t
+                {
+                    if result_node.state.goals.goals.len() < featured_node.state.goals.goals.len() {
+                        return Some((tactic, duration, result_node));
+                    }
+                }
+                None
+            })
+            .collect();
+        let solved: Option<Element> = if solvers.len() > 0 {
+            solvers.sort_by_key(|(_tactic, duration, result_node)| {
+                result_node
+                    .state
+                    .proof_string
+                    .as_ref()
+                    .map_or(1 << 30, String::len)
+                    + duration.as_millis() as usize
+            });
+            let solving_tactics = solvers.into_iter().map(|(tactic, duration, result_node)| {
+                let onclick = featured.extended(tactic.clone()).input_string();
+                html! {
+                    <div class="solving_tactic" data-onclick={onclick}>
+                        <pre>{text!("{} ({}ms, {} size)", tactic.human_string(), duration.as_millis(), result_node
+                    .state
+                    .proof_string
+                    .as_ref()
+                    .map_or(1 << 30, String::len))}</pre>
+                    </div>
+                }
+            });
+            Some(html! {
+                <div class="solvers">
+                    <h2>
+                        {text!("This goal is immediately solved by:")}
+                    </h2>
+                    <div class="solving_tactics">
+                        {solving_tactics}
+                    </div>
+                </div>
+            })
+        } else {
+            None
+        };
         for tactic in tactics::all_global_tactics() {
             if let Some(result) = featured_node.attempted_tactics.get(&tactic) {
                 guard!(let TacticResult::Success { duration, result_node: successor, } = result else {continue});
@@ -337,6 +391,7 @@ impl ApplicationState {
         }
         html! {
             <div class="attempted_tactics">
+                {solved}
                 {successful_tactics}
                 {failed_tactics}
             </div>
