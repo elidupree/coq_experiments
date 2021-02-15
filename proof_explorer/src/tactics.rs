@@ -1,4 +1,4 @@
-use crate::interface::{FeaturedInState, ProofState};
+use crate::interface::{FeaturedInNode, ProofNode};
 use crate::serapi_protocol::{IdenticalHypotheses, NamesId};
 use serde::{Deserialize, Serialize};
 
@@ -31,15 +31,15 @@ impl Tactic {
             format!("progress {}.", self.tactic)
         }
     }
-    pub fn useless(&self, state: &ProofState) -> bool {
-        let child = if let Some(c) = state.child(self) {
+    pub fn useless(&self, node: &ProofNode) -> bool {
+        let child = if let Some(c) = node.child(self) {
             c
         } else {
             return true;
         };
         self.tactic != "clear"
             && self.tactic != "rename"
-            && state.goals.useless_change(&child.goals)
+            && node.state.goals.useless_change(&child.state.goals)
     }
 }
 
@@ -50,26 +50,26 @@ const SLOWER_GLOBAL_TACTICS: &str = "firstorder.easy.auto.eauto.auto with *.eaut
 const HYPOTHESIS_TACTICS: &str = "injection H.destruct H.dependent destruction H.induction H.dependent induction H.inversion_clear H.inversion H.dependent inversion H.decompose sum H.decompose record H.apply H.simple apply H.eapply H.rapply H.lapply H.simpl in H.cbv in H.clear H.revert H.generalize H.generalize dependent H.absurd H.contradiction H.contradict H.case H.discriminate H.symmetry in H.simplify_eq H.rewrite <- H. rewrite -> H.rewrite <- H in *. rewrite -> H in *.dependent rewrite <- H. dependent rewrite -> H.";
 
 pub fn generate_exploratory_tactics(
-    featured_state: &ProofState,
-    featured_in_state: &FeaturedInState,
+    featured_node: &ProofNode,
+    featured_in_node: &FeaturedInNode,
 ) -> Vec<Tactic> {
     let mut result = Vec::new();
-    let first_goal = if let Some(g) = featured_state.goals.goals.first() {
+    let first_goal = if let Some(g) = featured_node.state.goals.goals.first() {
         g
     } else {
         return result;
     };
 
     let mut push = |tactic| {
-        if featured_state.attempted_tactics.get(&tactic).is_none() {
+        if featured_node.attempted_tactics.get(&tactic).is_none() {
             result.push(tactic);
         }
     };
 
-    if let FeaturedInState::Hypothesis {
+    if let FeaturedInNode::Hypothesis {
         name: featured_name,
         subterm: _,
-    } = featured_in_state
+    } = featured_in_node
     {
         for tactic in hypothesis_tactics(featured_name) {
             push(tactic);

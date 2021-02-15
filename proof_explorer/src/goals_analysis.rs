@@ -9,38 +9,51 @@ use typed_html::{html, text};
 pub type Goals<A> = SerGoals<ReifiedGoal<A>>;
 
 impl<A> Goals<A> {
-    pub fn map_values<B>(self, mut convert: impl FnMut(A) -> B) -> Goals<B> {
-        SerGoals {
+    pub fn map_values<B, E>(
+        self,
+        mut convert: impl FnMut(A) -> Result<B, E>,
+    ) -> Result<Goals<B>, E> {
+        Ok(SerGoals {
             goals: self
                 .goals
                 .into_iter()
                 .map(|g| g.map_values(|a| convert(a)))
-                .collect(),
+                .collect::<Result<_, _>>()?,
             stack: self.stack,
             shelf: self.shelf,
             given_up: self.given_up,
             bullet: self.bullet,
-        }
+        })
     }
 }
 impl<A> ReifiedGoal<A> {
-    pub fn map_values<B>(self, mut convert: impl FnMut(A) -> B) -> ReifiedGoal<B> {
-        ReifiedGoal {
+    pub fn map_values<B, E>(
+        self,
+        mut convert: impl FnMut(A) -> Result<B, E>,
+    ) -> Result<ReifiedGoal<B>, E> {
+        Ok(ReifiedGoal {
             info: self.info,
-            ty: convert(self.ty),
+            ty: convert(self.ty)?,
             hyp: self
                 .hyp
                 .into_iter()
                 .map(|h| h.map_values(|a| convert(a)))
-                .collect(),
-        }
+                .collect::<Result<_, _>>()?,
+        })
     }
 }
 
 impl<A> IdenticalHypotheses<A> {
-    pub fn map_values<B>(self, mut convert: impl FnMut(A) -> B) -> IdenticalHypotheses<B> {
+    pub fn map_values<B, E>(
+        self,
+        mut convert: impl FnMut(A) -> Result<B, E>,
+    ) -> Result<IdenticalHypotheses<B>, E> {
         let IdenticalHypotheses(name, def, ty) = self;
-        IdenticalHypotheses(name, def.map(|a| convert(a)), convert(ty))
+        Ok(IdenticalHypotheses(
+            name,
+            def.map(|a| convert(a)).transpose()?,
+            convert(ty)?,
+        ))
     }
 }
 
