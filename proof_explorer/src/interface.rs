@@ -25,10 +25,11 @@ use typed_html::{html, text};
 //use rocket::response::content::Json;
 
 use crate::goals_analysis::{CoqValueInfo, Goals};
+use crate::serapi_protocol::Command::Query;
 use crate::serapi_protocol::{
-    AddOptions, Answer, AnswerKind, Command, ConstrExpr, CoqObject, ExnInfo, FeedbackContent,
-    FormatOptions, IdenticalHypotheses, NamesId, PrintFormat, PrintOptions, QueryCommand,
-    QueryOptions, ReifiedGoal, SerGoals, StateId,
+    AddOptions, Answer, AnswerKind, Command, ConstrExpr, CoqObject, ExnInfo, Feedback,
+    FeedbackContent, FormatOptions, IdenticalHypotheses, NamesId, PrettyPrint, PrintFormat,
+    PrintOptions, QueryCommand, QueryOptions, ReifiedGoal, SerGoals, StateId,
 };
 use crate::tactics::{self, Tactic};
 
@@ -85,6 +86,10 @@ pub struct SertopState {
 #[derive(PartialEq, Eq, Debug)]
 pub struct ProofState {
     pub goals: Goals<CoqValueInfo>,
+    // This doesn't really want to be an Option; None is here to represent the case where
+    // serde_lexpr hit its hard-coded recursion limit and couldn't parse the Pp
+    // that sertop sends along with the string
+    pub proof_string: Option<String>,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -1013,10 +1018,36 @@ impl SertopThread {
             .transpose()
     }
 
+    pub fn show_proof(&mut self) -> Result<Option<(PrettyPrint, String)>, Interrupted> {
+        let mut result = None;
+        self.run_command(
+            Command::Query(
+                QueryOptions {
+                    sid: self.sertop_state.last_added().unwrap_or(0),
+                    ..default()
+                },
+                QueryCommand::Vernac("Show Proof. ".to_string()),
+            ),
+            |answer, _sertop_thread, _application| {
+                if let Answer::Feedback(Feedback {
+                    contents: FeedbackContent::Message { pp, str, .. },
+                    ..
+                }) = answer
+                {
+                    result = Some((pp, str));
+                };
+            },
+        )?;
+        Ok(result)
+    }
+
     pub fn query_proof_state(&mut self) -> Result<Option<ProofState>, Interrupted> {
-        Ok(self
-            .query_goals_coqvalueinfo()?
-            .map(|goals| ProofState { goals }))
+        guard!(let Some(goals) = self.query_goals_coqvalueinfo()? else {return Ok(None)});
+        let proof_string = self.show_proof()?.map(|(_p, s)| s);
+        Ok(Some(ProofState {
+            goals,
+            proof_string,
+        }))
     }
 
     pub fn run_tactic(&mut self, tactic: Tactic) -> Result<(), Interrupted> {
