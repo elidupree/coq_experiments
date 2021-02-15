@@ -281,40 +281,42 @@ impl ApplicationState {
 
         let mut successful_tactics = Vec::new();
         let mut failed_tactics = Vec::new();
-        for (tactic, result) in &featured_node.attempted_tactics {
-            let successor = match result {
-                TacticResult::Success(successor) => successor,
-                TacticResult::Failure => {
+        for tactic in tactics::all_global_tactics() {
+            if let Some(result) = featured_node.attempted_tactics.get(&tactic) {
+                let successor = match result {
+                    TacticResult::Success(successor) => successor,
+                    TacticResult::Failure => {
+                        let element = html! {
+                            <div class="failed_tactic">
+                                <pre>{text!("{}: failed", tactic.human_string())}</pre>
+                            </div>
+                        };
+                        failed_tactics.push(element);
+                        continue;
+                    }
+                };
+
+                if tactic.useless(featured_node) {
                     let element = html! {
                         <div class="failed_tactic">
-                            <pre>{text!("{}: failed", tactic.human_string())}</pre>
+                            <pre>{text!("{}: useless", tactic.human_string())}</pre>
                         </div>
                     };
                     failed_tactics.push(element);
                     continue;
                 }
-            };
 
-            if tactic.useless(featured_node) {
+                let onclick = featured.extended(tactic.clone()).input_string();
                 let element = html! {
-                    <div class="failed_tactic">
-                        <pre>{text!("{}: useless", tactic.human_string())}</pre>
+                    <div class="successful_tactic" data-onclick={onclick}>
+                        <div class="tactic">
+                            <pre>{text!("{}", tactic.human_string())}</pre>
+                        </div>
+                        {featured_node.state.goals.diff_html(&successor.state.goals)}
                     </div>
                 };
-                failed_tactics.push(element);
-                continue;
+                successful_tactics.push(element);
             }
-
-            let onclick = featured.extended(tactic.clone()).input_string();
-            let element = html! {
-                <div class="successful_tactic" data-onclick={onclick}>
-                    <div class="tactic">
-                        <pre>{text!("{}", tactic.human_string())}</pre>
-                    </div>
-                    {featured_node.state.goals.diff_html(&successor.state.goals)}
-                </div>
-            };
-            successful_tactics.push(element);
         }
         html! {
             <div class="attempted_tactics">

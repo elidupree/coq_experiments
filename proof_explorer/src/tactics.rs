@@ -107,3 +107,13 @@ pub fn hypothesis_tactics(name: &str) -> impl Iterator<Item = Tactic> + '_ {
         }
     })
 }
+
+pub fn all_global_tactics() -> impl Iterator<Item = Tactic> {
+    PRIORITY_GLOBAL_TACTICS
+        .split('.')
+        .chain(SLOWER_GLOBAL_TACTICS.split('.'))
+        .map(|tactic| Tactic {
+            tactic: tactic.to_owned(),
+            arguments: None,
+        })
+}
