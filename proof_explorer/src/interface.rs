@@ -25,7 +25,6 @@ use typed_html::{html, text};
 //use rocket::response::content::Json;
 
 use crate::goals_analysis::{CoqValueInfo, Goals};
-use crate::serapi_protocol::Command::Query;
 use crate::serapi_protocol::{
     AddOptions, Answer, AnswerKind, Command, ConstrExpr, CoqObject, ExnInfo, Feedback,
     FeedbackContent, FormatOptions, IdenticalHypotheses, NamesId, PrettyPrint, PrintFormat,
