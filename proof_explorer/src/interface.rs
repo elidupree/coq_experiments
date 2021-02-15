@@ -2,6 +2,7 @@
 
 use derivative::Derivative;
 use difference::{Changeset, Difference};
+use guard::guard;
 use parking_lot::{Mutex, MutexGuard};
 use rocket::config::{Config, Environment, LoggingLevel};
 use rocket::response::NamedFile;
@@ -16,7 +17,7 @@ use std::ops::Range;
 use std::path::PathBuf;
 use std::process::{self, ChildStdin, ChildStdout, Stdio};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 use std::{fs, iter, mem};
 use typed_html::dom::DOMTree;
 use typed_html::elements::FlowContent;
@@ -94,8 +95,12 @@ pub struct ProofNode {
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum TacticResult {
-    Success(ProofNode),
-    Failure,
+    Success {
+        duration: Duration,
+        result_node: ProofNode,
+    },
+    Timeout(Duration),
+    Failure(ExnInfo),
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Derivative)]
@@ -203,13 +208,13 @@ impl Featured {
 impl ProofNode {
     pub fn child(&self, tactic: &Tactic) -> Option<&ProofNode> {
         match self.attempted_tactics.get(tactic) {
-            Some(TacticResult::Success(child)) => Some(child),
+            Some(TacticResult::Success { result_node, .. }) => Some(result_node),
             _ => None,
         }
     }
     pub fn child_mut(&mut self, tactic: &Tactic) -> Option<&mut ProofNode> {
         match self.attempted_tactics.get_mut(tactic) {
-            Some(TacticResult::Success(child)) => Some(child),
+            Some(TacticResult::Success { result_node, .. }) => Some(result_node),
             _ => None,
         }
     }
@@ -283,18 +288,17 @@ impl ApplicationState {
         let mut failed_tactics = Vec::new();
         for tactic in tactics::all_global_tactics() {
             if let Some(result) = featured_node.attempted_tactics.get(&tactic) {
-                let successor = match result {
-                    TacticResult::Success(successor) => successor,
-                    TacticResult::Failure => {
-                        let element = html! {
-                            <div class="failed_tactic">
-                                <pre>{text!("{}: failed", tactic.human_string())}</pre>
-                            </div>
-                        };
-                        failed_tactics.push(element);
-                        continue;
-                    }
-                };
+                guard!(let TacticResult::Success { duration, result_node: successor, } = result else {continue});
+
+                // TacticResult::Failure(_exn) => {
+                //     let element = html! {
+                //         <div class="failed_tactic">
+                //             <pre>{text!("{}: failed", tactic.human_string())}</pre>
+                //         </div>
+                //     };
+                //     failed_tactics.push(element);
+                //     continue;
+                // }
 
                 if tactic.useless(featured_node) {
                     let element = html! {
@@ -306,11 +310,20 @@ impl ApplicationState {
                     continue;
                 }
 
+                let duration: Option<Element> = if duration > &Duration::from_millis(10) {
+                    Some(text!("Took {}ms", duration.as_millis()))
+                } else {
+                    None
+                };
+
                 let onclick = featured.extended(tactic.clone()).input_string();
                 let element = html! {
                     <div class="successful_tactic" data-onclick={onclick}>
                         <div class="tactic">
                             <pre>{text!("{}", tactic.human_string())}</pre>
+                        </div>
+                        <div class="duration">
+                            {duration}
                         </div>
                         {featured_node.state.goals.diff_html(&successor.state.goals)}
                     </div>
@@ -365,36 +378,35 @@ impl ApplicationState {
                     let mut menu_elements: Vec<Element> = Vec::new();
                     let mut row_id = 1;
                     for tactic in tactics::hypothesis_tactics(name) {
-                        if let Some(child) = featured_node.child(&tactic) {
-                            if tactic.useless(featured_node) {
-                                continue;
-                            }
+                        guard!(let Some(child) = featured_node.child(&tactic) else {continue});
+                        if tactic.useless(featured_node) {
+                            continue;
+                        }
 
-                            let style = format!("grid-row: {} / span 1", row_id);
-                            row_id += 1;
-                            let diff = featured_node
-                                .state
-                                .goals
-                                .only_difference_in_hypothesis_html(&child.state.goals, name);
-                            let popup_result = if diff.is_some() {
-                                None
-                            } else {
-                                Some(html! {
-                                    <div class="popup_result">{featured_node.state.goals.diff_html(&child.state.goals)}</div>
-                                })
-                            };
-                            let onclick = featured.extended(tactic.clone()).input_string();
+                        let style = format!("grid-row: {} / span 1", row_id);
+                        row_id += 1;
+                        let diff = featured_node
+                            .state
+                            .goals
+                            .only_difference_in_hypothesis_html(&child.state.goals, name);
+                        let popup_result = if diff.is_some() {
+                            None
+                        } else {
+                            Some(html! {
+                                <div class="popup_result">{featured_node.state.goals.diff_html(&child.state.goals)}</div>
+                            })
+                        };
+                        let onclick = featured.extended(tactic.clone()).input_string();
+                        menu_elements.push(html! {
+                            <div class="tactic_entry" style={&style} data-onclick={onclick}>
+                                <pre class="tactic">{text!("{}", tactic.human_string())}</pre>
+                                {popup_result}
+                            </div>
+                        });
+                        if let Some(diff) = diff {
                             menu_elements.push(html! {
-                                <div class="tactic_entry" style={&style} data-onclick={onclick}>
-                                    <pre class="tactic">{text!("{}", tactic.human_string())}</pre>
-                                    {popup_result}
-                                </div>
+                                <div class="inline_result" style={&style}>{diff}</div>
                             });
-                            if let Some(diff) = diff {
-                                menu_elements.push(html! {
-                                    <div class="inline_result" style={&style}>{diff}</div>
-                                });
-                            }
                         }
                     }
                     dropdown = Some(html! {
@@ -1025,6 +1037,7 @@ impl SertopThread {
         }
 
         let mut exception_happened = false;
+        let tactic_start_time = Instant::now();
         self.run_command(
             Command::Add(
                 AddOptions {
@@ -1043,7 +1056,7 @@ impl SertopThread {
                             state_id,
                         });
                 }
-                Answer::Answer(_, AnswerKind::CoqExn(_exn)) => {
+                Answer::Answer(_, AnswerKind::CoqExn(exn)) => {
                     exception_happened = true;
                     assert_eq!(
                         sertop_thread.sertop_state.num_executed_synthetic,
@@ -1052,7 +1065,7 @@ impl SertopThread {
                     let insert_result = latest_proof_node_mut(sertop_thread, application)
                         .unwrap()
                         .attempted_tactics
-                        .insert(tactic.clone(), TacticResult::Failure);
+                        .insert(tactic.clone(), TacticResult::Failure(exn));
                     assert!(
                         insert_result.is_none(),
                         "shouldn't have added a tactic that was already tested and failed"
@@ -1071,7 +1084,7 @@ impl SertopThread {
                     .state_id,
             ),
             |answer, sertop_thread, application| {
-                if let Answer::Answer(_, AnswerKind::CoqExn(_exn)) = answer {
+                if let Answer::Answer(_, AnswerKind::CoqExn(exn)) = answer {
                     exception_happened = true;
                     assert_eq!(
                         sertop_thread.sertop_state.num_executed_synthetic + 1,
@@ -1080,7 +1093,7 @@ impl SertopThread {
                     let insert_result = latest_proof_node_mut(sertop_thread, application)
                         .unwrap()
                         .attempted_tactics
-                        .insert(tactic.clone(), TacticResult::Failure);
+                        .insert(tactic.clone(), TacticResult::Failure(exn));
                     assert!(
                         insert_result.is_none(),
                         "shouldn't have queried goals for a tactic that was already tested"
@@ -1091,6 +1104,7 @@ impl SertopThread {
         if exception_happened {
             return Ok(());
         }
+        let tactic_duration = Instant::now() - tactic_start_time;
 
         self.sertop_state.num_executed_synthetic += 1;
         let application_arc = self.application.clone();
@@ -1113,7 +1127,7 @@ impl SertopThread {
                         // Note: can't use latest_proof_node_mut() here because the application would believe we have already gotten to this spot
                         let tactics : &[AddedSynthetic] = &self.sertop_state.added_synthetic;
                         let p2 = p.descendant_mut (tactics [..tactics.len()-1].iter().map(|t|&t.tactic)).unwrap();
-                        let insert_result = p2.attempted_tactics.insert(tactic,TacticResult::Success(new_proof_node));
+                        let insert_result = p2.attempted_tactics.insert(tactic,TacticResult::Success{duration: tactic_duration, result_node: new_proof_node});
                         assert!(insert_result.is_none(), "shouldn't have queried goals for a tactic that was already tested");
                     }
                 }
