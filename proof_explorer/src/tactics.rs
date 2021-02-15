@@ -61,9 +61,7 @@ pub fn generate_exploratory_tactics(
     };
 
     let mut push = |tactic| {
-        if featured_node.attempted_tactics.get(&tactic).is_none() {
-            result.push(tactic);
-        }
+        result.push(tactic);
     };
 
     if let FeaturedInNode::Hypothesis {

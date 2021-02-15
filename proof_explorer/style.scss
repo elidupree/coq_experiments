@@ -21,6 +21,12 @@ h2 {
   font-family: Arial, Helvetica, sans-serif;
   padding: 12px;
 }
+h3 {
+  font-size: 130%;
+  font-weight: bold;
+  font-family: Arial, Helvetica, sans-serif;
+  padding: 10px;
+}
 
 %hover_shadow {
   box-shadow: 2px 3px 9px black;
@@ -123,7 +129,7 @@ h2 {
   left: 0;
 }
 $hyp_name_padding: 4px;
-.tactic_menu {
+.hypothesis_name_wrapper>.tactic_menu {
   top: calc(100% + #{$hyp_name_padding});
   left: 12px;
 }
@@ -235,8 +241,6 @@ $hyp_padding: 6px;
 }
 
 .tactic_menu {
-  position: absolute;
-  display: grid;
 }
 .tactic_menu .tactic {
   display: block;

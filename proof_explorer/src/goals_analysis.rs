@@ -2,7 +2,6 @@ use crate::interface::Element;
 use crate::serapi_protocol::{ConstrExpr, IdenticalHypotheses, NamesId, ReifiedGoal, SerGoals};
 use difference::{Changeset, Difference};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fmt;
 use typed_html::{html, text};
 
@@ -226,42 +225,42 @@ impl Goals<CoqValueInfo> {
         }
     }
 
-    pub fn only_difference_in_hypothesis_html(
-        &self,
-        child: &Goals<CoqValueInfo>,
-        hypothesis_name: &str,
-    ) -> Option<Element> {
-        if child.goals.is_empty() || child.goals.len() != self.goals.len() {
-            return None;
-        }
-        if child.goals[self.goals.len() - 1] != self.goals[self.goals.len() - 1] {
-            return None;
-        }
-        let parent = self.goals.last().unwrap();
-        let child = child.goals.last().unwrap();
-        let parent_hypotheses: HashMap<&str, _> = parent
-            .hyp
-            .iter()
-            .flat_map(move |IdenticalHypotheses(names, def, ty)| {
-                names
-                    .iter()
-                    .map(move |NamesId::Id(name)| (name.as_str(), (def, ty)))
-            })
-            .collect();
-        let mut result: Option<Element> = None;
-        for h in &child.hyp {
-            let IdenticalHypotheses(names, def, ty) = h;
-            for NamesId::Id(name) in names {
-                if name != hypothesis_name
-                    && parent_hypotheses.get(name.as_str()) != Some(&(def, ty))
-                {
-                    return None;
-                }
-                if name == hypothesis_name {
-                    result = Some(html! { <pre>{text!("{}", h)}</pre>});
-                }
-            }
-        }
-        result
-    }
+    // pub fn only_difference_in_hypothesis_html(
+    //     &self,
+    //     child: &Goals<CoqValueInfo>,
+    //     hypothesis_name: &str,
+    // ) -> Option<Element> {
+    //     if child.goals.is_empty() || child.goals.len() != self.goals.len() {
+    //         return None;
+    //     }
+    //     if child.goals[self.goals.len() - 1] != self.goals[self.goals.len() - 1] {
+    //         return None;
+    //     }
+    //     let parent = self.goals.last().unwrap();
+    //     let child = child.goals.last().unwrap();
+    //     let parent_hypotheses: HashMap<&str, _> = parent
+    //         .hyp
+    //         .iter()
+    //         .flat_map(move |IdenticalHypotheses(names, def, ty)| {
+    //             names
+    //                 .iter()
+    //                 .map(move |NamesId::Id(name)| (name.as_str(), (def, ty)))
+    //         })
+    //         .collect();
+    //     let mut result: Option<Element> = None;
+    //     for h in &child.hyp {
+    //         let IdenticalHypotheses(names, def, ty) = h;
+    //         for NamesId::Id(name) in names {
+    //             if name != hypothesis_name
+    //                 && parent_hypotheses.get(name.as_str()) != Some(&(def, ty))
+    //             {
+    //                 return None;
+    //             }
+    //             if name == hypothesis_name {
+    //                 result = Some(html! { <pre>{text!("{}", h)}</pre>});
+    //             }
+    //         }
+    //     }
+    //     result
+    // }
 }

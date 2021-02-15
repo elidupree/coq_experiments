@@ -265,10 +265,7 @@ impl ApplicationState {
     }
 
     fn featured_node(&self) -> Option<(&ProofNode, &FeaturedInNode)> {
-        let (proof_root, featured): (&ProofNode, &Featured) = match &self.known_mode {
-            Some(Mode::ProofMode(p, f)) => (p, f),
-            _ => return None,
-        };
+        guard!(let Some(Mode::ProofMode(proof_root, featured)) = &self.known_mode else {return None});
         Some((
             proof_root.descendant(featured.tactics_path()).unwrap(),
             featured.featured_in_current(),
@@ -277,7 +274,40 @@ impl ApplicationState {
 }
 
 impl ApplicationState {
-    fn attempted_tactics_html(&self, featured: &Featured) -> Element {
+    fn tactic_menu_html(&self, tactics: impl IntoIterator<Item = Tactic>) -> Element {
+        guard!(let Some(Mode::ProofMode(_proof_root, featured)) = &self.known_mode else {unreachable!()});
+        let (featured_node, _) = self.featured_node().unwrap();
+        let entries = tactics.into_iter().map(|tactic| {
+            guard!(let Some(TacticResult::Success { duration, result_node })
+                = featured_node.attempted_tactics.get(&tactic) else {panic!("tactic_menu_html doesn't support entries for failing tactics yet")});
+            let name = tactic.human_string();
+            let onclick = featured.extended(tactic).input_string();
+
+            let duration: Option<Element> = if duration > &Duration::from_millis(50) {
+                Some(html! {
+                    <div class="duration">
+                        {text!("Took {}ms", duration.as_millis())}
+                    </div>
+                })
+            } else {
+                None
+            };
+            html! {
+                <div class="tactic_entry" data-onclick={onclick}>
+                    <pre class="tactic">{text!("{}", name)}</pre>
+                    <div class="popup_result">
+                        {duration}
+                        {featured_node.state.goals.diff_html(&result_node.state.goals)}
+                    </div>
+                </div>
+            }
+        });
+        html! {
+            <div class="tactic_menu">{entries}</div>
+        }
+    }
+
+    fn attempted_tactics_html(&self) -> Element {
         let (featured_node, _) = self.featured_node().unwrap();
         let _first_goal = match featured_node.state.goals.goals.first() {
             Some(goal) => goal,
@@ -288,112 +318,70 @@ impl ApplicationState {
             }
         };
 
-        let mut successful_tactics = Vec::new();
-        let mut failed_tactics = Vec::new();
-        let mut solvers: Vec<_> = featured_node
-            .attempted_tactics
-            .iter()
-            .filter_map(|t| {
-                if let (
-                    tactic,
-                    TacticResult::Success {
-                        duration,
-                        result_node,
-                        ..
-                    },
-                ) = t
-                {
-                    if result_node.state.goals.goals.len() < featured_node.state.goals.goals.len() {
-                        return Some((tactic, duration, result_node));
-                    }
-                }
-                None
-            })
-            .collect();
-        let solved: Option<Element> = if solvers.len() > 0 {
-            solvers.sort_by_key(|(_tactic, duration, result_node)| {
-                result_node
+        let mut solvers: Vec<_> =
+            tactics::generate_exploratory_tactics(featured_node, &FeaturedInNode::Nothing)
+                .into_iter()
+                .filter(|tactic| !tactic.useless(featured_node))
+                .filter(|tactic| {
+                    featured_node
+                        .child(tactic)
+                        .expect("unsuccessful tactics should've been useless")
+                        .state
+                        .goals
+                        .goals
+                        .len()
+                        < featured_node.state.goals.goals.len()
+                })
+                .collect();
+        let solved: Option<Element> = if !solvers.is_empty() {
+            fn proof_length_fn(featured_node: &ProofNode, tactic: &Tactic) -> usize {
+                featured_node
+                    .child(tactic)
+                    .unwrap()
                     .state
                     .proof_string
                     .as_ref()
                     .map_or(1 << 30, String::len)
-                    + duration.as_millis() as usize
-            });
-            let solving_tactics = solvers.into_iter().map(|(tactic, duration, result_node)| {
-                let onclick = featured.extended(tactic.clone()).input_string();
-                html! {
-                    <div class="solving_tactic" data-onclick={onclick}>
-                        <pre>{text!("{} ({}ms, {} size)", tactic.human_string(), duration.as_millis(), result_node
-                    .state
-                    .proof_string
-                    .as_ref()
-                    .map_or(1 << 30, String::len))}</pre>
-                    </div>
-                }
-            });
+            }
+            solvers.sort_by_key(|t| (proof_length_fn)(featured_node, t));
+            let best_size = (proof_length_fn)(featured_node, &solvers[0]);
+            let (best_solvers, worse_solvers): (Vec<_>, Vec<_>) = solvers
+                .into_iter()
+                .partition(|tactic| (proof_length_fn)(featured_node, tactic) == best_size);
+            let best_solvers = self.tactic_menu_html(best_solvers);
+            let worse_solvers: Vec<Element> = if worse_solvers.is_empty() {
+                Vec::new()
+            } else {
+                vec![
+                    html! {
+                        <h3>
+                            {text!("These also solve it, but they make larger proofs:")}
+                        </h3>
+                    },
+                    self.tactic_menu_html(worse_solvers),
+                ]
+            };
             Some(html! {
                 <div class="solvers">
                     <h2>
                         {text!("This goal is immediately solved by:")}
                     </h2>
-                    <div class="solving_tactics">
-                        {solving_tactics}
-                    </div>
+                    {best_solvers}
+                    {worse_solvers}
                 </div>
             })
         } else {
             None
         };
-        for tactic in tactics::all_global_tactics() {
-            if let Some(result) = featured_node.attempted_tactics.get(&tactic) {
-                guard!(let TacticResult::Success { duration, result_node: successor, } = result else {continue});
 
-                // TacticResult::Failure(_exn) => {
-                //     let element = html! {
-                //         <div class="failed_tactic">
-                //             <pre>{text!("{}: failed", tactic.human_string())}</pre>
-                //         </div>
-                //     };
-                //     failed_tactics.push(element);
-                //     continue;
-                // }
+        let global_tactics = self.tactic_menu_html(
+            tactics::all_global_tactics().filter(|tactic| !tactic.useless(featured_node)),
+        );
 
-                if tactic.useless(featured_node) {
-                    let element = html! {
-                        <div class="failed_tactic">
-                            <pre>{text!("{}: useless", tactic.human_string())}</pre>
-                        </div>
-                    };
-                    failed_tactics.push(element);
-                    continue;
-                }
-
-                let duration: Option<Element> = if duration > &Duration::from_millis(10) {
-                    Some(text!("Took {}ms", duration.as_millis()))
-                } else {
-                    None
-                };
-
-                let onclick = featured.extended(tactic.clone()).input_string();
-                let element = html! {
-                    <div class="successful_tactic" data-onclick={onclick}>
-                        <div class="tactic">
-                            <pre>{text!("{}", tactic.human_string())}</pre>
-                        </div>
-                        <div class="duration">
-                            {duration}
-                        </div>
-                        {featured_node.state.goals.diff_html(&successor.state.goals)}
-                    </div>
-                };
-                successful_tactics.push(element);
-            }
-        }
         html! {
             <div class="attempted_tactics">
                 {solved}
-                {successful_tactics}
-                {failed_tactics}
+                {global_tactics}
             </div>
         }
     }
@@ -434,43 +422,12 @@ impl ApplicationState {
                 if featured_name == name {
                     class = "hypothesis_name_wrapper featured";
 
-                    let mut menu_elements: Vec<Element> = Vec::new();
-                    let mut row_id = 1;
-                    for tactic in tactics::hypothesis_tactics(name) {
-                        guard!(let Some(child) = featured_node.child(&tactic) else {continue});
-                        if tactic.useless(featured_node) {
-                            continue;
-                        }
-
-                        let style = format!("grid-row: {} / span 1", row_id);
-                        row_id += 1;
-                        let diff = featured_node
-                            .state
-                            .goals
-                            .only_difference_in_hypothesis_html(&child.state.goals, name);
-                        let popup_result = if diff.is_some() {
-                            None
-                        } else {
-                            Some(html! {
-                                <div class="popup_result">{featured_node.state.goals.diff_html(&child.state.goals)}</div>
-                            })
-                        };
-                        let onclick = featured.extended(tactic.clone()).input_string();
-                        menu_elements.push(html! {
-                            <div class="tactic_entry" style={&style} data-onclick={onclick}>
-                                <pre class="tactic">{text!("{}", tactic.human_string())}</pre>
-                                {popup_result}
-                            </div>
-                        });
-                        if let Some(diff) = diff {
-                            menu_elements.push(html! {
-                                <div class="inline_result" style={&style}>{diff}</div>
-                            });
-                        }
-                    }
-                    dropdown = Some(html! {
-                        <div class="tactic_menu">{menu_elements}</div>
-                    });
+                    dropdown = Some(
+                        self.tactic_menu_html(
+                            tactics::hypothesis_tactics(name)
+                                .filter(|tactic| !tactic.useless(featured_node)),
+                        ),
+                    );
                 }
             }
 
@@ -513,7 +470,7 @@ impl ApplicationState {
         };
 
         let featured_node = proof_root.descendant(featured.tactics_path()).unwrap();
-        let attempted_tactics = self.attempted_tactics_html(featured);
+        let attempted_tactics = self.attempted_tactics_html();
         let mut prior_tactics: Vec<Element> = Vec::new();
         for (index, (tactic, _)) in featured.tactics.iter().enumerate() {
             let featured_after_this_tactic = Featured {
@@ -1237,7 +1194,7 @@ impl SertopThread {
             });
             application_arc.lock().known_mode = new_mode;
         }
-        let mut application = application_arc.lock();
+        let application = application_arc.lock();
         let (_proof_root, featured): (&ProofNode, &Featured) = match &application.known_mode {
             None => unreachable!(),
             Some(Mode::NotProofMode) => return Ok(()),
