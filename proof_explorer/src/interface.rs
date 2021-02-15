@@ -307,14 +307,14 @@ impl ApplicationState {
         }
     }
 
-    fn attempted_tactics_html(&self) -> Element {
+    fn attempted_tactics_html(&self) -> Vec<Element> {
         let (featured_node, _) = self.featured_node().unwrap();
-        let _first_goal = match featured_node.state.goals.goals.first() {
+        let first_goal = match featured_node.state.goals.goals.first() {
             Some(goal) => goal,
             None => {
-                return text!(
+                return vec![text!(
                 "All goals solved! (Except maybe shelved goals, I haven't implemented that yet)."
-            )
+            )]
             }
         };
 
@@ -333,7 +333,9 @@ impl ApplicationState {
                         < featured_node.state.goals.goals.len()
                 })
                 .collect();
-        let solved: Option<Element> = if !solvers.is_empty() {
+        let mut results: Vec<Element> = Vec::new();
+        let solved = !solvers.is_empty();
+        if solved {
             fn proof_length_fn(featured_node: &ProofNode, tactic: &Tactic) -> usize {
                 featured_node
                     .child(tactic)
@@ -361,7 +363,7 @@ impl ApplicationState {
                     self.tactic_menu_html(worse_solvers),
                 ]
             };
-            Some(html! {
+            results.push(html! {
                 <div class="solvers">
                     <h2>
                         {text!("This goal is immediately solved by:")}
@@ -370,20 +372,54 @@ impl ApplicationState {
                     {worse_solvers}
                 </div>
             })
-        } else {
-            None
-        };
+        }
 
         let global_tactics = self.tactic_menu_html(
-            tactics::all_global_tactics().filter(|tactic| !tactic.useless(featured_node)),
+            tactics::all_global_tactics()
+                .filter(|tactic| !tactic.useless(featured_node))
+                .filter(|tactic| {
+                    featured_node
+                        .child(tactic)
+                        .expect("unsuccessful tactics should've been useless")
+                        .state
+                        .goals
+                        .goals
+                        .len()
+                        >= featured_node.state.goals.goals.len()
+                }),
         );
-
-        html! {
-            <div class="attempted_tactics">
-                {solved}
-                {global_tactics}
-            </div>
+        let hyp_note = if first_goal.hyp.is_empty() {
+            None
+        } else {
+            Some(html! {
+                <div class="click_hypotheses_note">
+                    {text!("(Or click one of the hypothesis names to the left, to see tactics related to that hypothesis.)")}
+                </div>
+            })
+        };
+        if solved {
+            results.push(html! {
+                <div class="global_tactics">
+                    <h2 class="deemphasize">
+                        {text!("(These don't solve it:)")}
+                    </h2>
+                    {global_tactics}
+                    {hyp_note}
+                </div>
+            });
+        } else {
+            results.push(html! {
+                <div class="global_tactics">
+                    <h2>
+                        {text!("Try one of these tactics:")}
+                    </h2>
+                    {global_tactics}
+                    {hyp_note}
+                </div>
+            });
         }
+
+        results
     }
     fn hypothesis_html(
         &self,

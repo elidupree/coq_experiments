@@ -56,7 +56,7 @@ h3 {
 .main_area {
  display: flex;
 }
-.current_goal {
+.current_goal, .solvers, .global_tactics {
   @extend %big_area;
   flex-shrink: 0;
   margin: 0 2px;
@@ -240,7 +240,12 @@ $hyp_padding: 6px;
   cursor: pointer;
 }
 
-.tactic_menu {
+.solvers, .global_tactics, {
+  .tactic_menu {
+    font-size: 110%;
+    background-color: white;
+    margin: 8px;
+  }
 }
 .tactic_menu .tactic {
   display: block;
@@ -267,10 +272,14 @@ $hyp_padding: 6px;
   background-color: white;
 }
 
-.successful_tactic .tactic {
-  font-weight: bold;
-  font-size: 120%;
-  padding: 8px;
+.deemphasize {
+  color: #444;
+}
+.click_hypotheses_note {
+  @extend .deemphasize;
+  font-size: 110%;
+  margin: 24px;
+  font-family: monospace;
 }
 
 
