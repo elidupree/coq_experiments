@@ -31,6 +31,7 @@ use crate::serapi_protocol::{
     PrintOptions, QueryCommand, QueryOptions, ReifiedGoal, SerGoals, StateId,
 };
 use crate::tactics::{self, Tactic};
+use rocket_contrib::serve::StaticFiles;
 
 pub type Element = Box<dyn FlowContent<String>>;
 
@@ -149,7 +150,6 @@ pub struct ApplicationState {
 
 pub struct RocketState {
     application_state: Arc<Mutex<ApplicationState>>,
-    root_path: PathBuf,
 }
 
 pub fn first_difference_index<T: PartialEq>(a: &[T], b: &[T]) -> Option<usize> {
@@ -615,13 +615,8 @@ impl ApplicationState {
 }
 
 #[get("/")]
-fn index(rocket_state: State<RocketState>) -> Option<NamedFile> {
-    NamedFile::open(rocket_state.root_path.join("static/index.html")).ok()
-}
-
-#[get("/media/<file..>")]
-fn media(file: PathBuf, rocket_state: State<RocketState>) -> Option<NamedFile> {
-    NamedFile::open(rocket_state.root_path.join("static/media/").join(file)).ok()
+fn index(_rocket_state: State<RocketState>) -> Option<NamedFile> {
+    NamedFile::open("./static/index.html").ok()
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
@@ -1306,14 +1301,12 @@ pub fn processing_thread(application_state: Arc<Mutex<ApplicationState>>) {
     }
 }
 
-pub fn run(root_path: PathBuf, code_path: PathBuf) {
+pub fn run(code_path: PathBuf) {
     // Hack: Compile the scss at the beginning of the main program.
     // This would be better as some sort of build script, but that's not a big concern right now
     // TODO: improve on that
-    let mut scss_path = root_path.clone();
-    scss_path.push("style.scss");
-    let mut css_path = root_path.clone();
-    css_path.extend(&["static", "media", "style.css"]);
+    let scss_path = "./style.scss";
+    let css_path = "./static/media/style.css";
     let sass_status = process::Command::new("sass")
         .args(&[scss_path, css_path])
         .status()
@@ -1372,10 +1365,8 @@ pub fn run(root_path: PathBuf, code_path: PathBuf) {
             .log_level(LoggingLevel::Off)
             .unwrap(),
     )
-    .mount("/", routes![index, media, input, content])
-    .manage(RocketState {
-        application_state,
-        root_path,
-    })
+    .mount("/media/", StaticFiles::from("./static/media"))
+    .mount("/", routes![index, input, content])
+    .manage(RocketState { application_state })
     .launch();
 }

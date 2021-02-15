@@ -13,8 +13,5 @@ mod universally_deserializable;
 
 fn main() {
     let arguments: Vec<String> = std::env::args().collect();
-    interface::run(
-        PathBuf::from(arguments[1].clone()),
-        PathBuf::from(arguments[2].clone()),
-    );
+    interface::run(PathBuf::from(arguments[1].clone()));
 }
