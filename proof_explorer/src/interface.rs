@@ -474,16 +474,16 @@ pub enum InputFromFrontend {
 #[post("/input", data = "<input>")]
 fn input(input: Json<InputFromFrontend>, rocket_state: State<RocketState>) {
     let Json(input) = input;
-    let mut guard = rocket_state.application_state.lock();
-    let application: &mut SharedState = &mut *guard;
+    let mut guard = rocket_state.shared_state.lock();
+    let shared: &mut SharedState = &mut *guard;
 
     // assume every input might cause a UI change
-    application.last_ui_change_serial_number += 1;
+    shared.last_ui_change_serial_number += 1;
 
     match input {
         InputFromFrontend::SetFeatured(new_featured) => {
             // gotta check if this input wasn't delayed across a file reload
-            if let Some(Mode::ProofMode(p, f)) = &mut application.known_mode {
+            if let Some(Mode::ProofMode(p, f)) = &mut shared.known_mode {
                 if p.descendant(new_featured.tactics_path_all()).is_some() {
                     *f = new_featured;
                 }
@@ -507,17 +507,17 @@ fn content(
     parameters: Json<ContentRequestParameters>,
     rocket_state: State<RocketState>,
 ) -> Json<ContentResponse> {
-    let mut guard = rocket_state.application_state.lock();
-    let application: &mut SharedState = &mut *guard;
+    let mut guard = rocket_state.shared_state.lock();
+    let shared: &mut SharedState = &mut *guard;
 
-    if parameters.last_ui_change_serial_number == Some(application.last_ui_change_serial_number) {
+    if parameters.last_ui_change_serial_number == Some(shared.last_ui_change_serial_number) {
         return Json(ContentResponse {
-            last_ui_change_serial_number: application.last_ui_change_serial_number,
+            last_ui_change_serial_number: shared.last_ui_change_serial_number,
             ui_replacement: None,
         });
     }
 
-    let whole_interface_html = application.whole_interface_html();
+    let whole_interface_html = shared.whole_interface_html();
 
     let document: DOMTree<String> = html! {
         <div id="content">
@@ -527,7 +527,7 @@ fn content(
     let document = document.to_string();
     //eprintln!("Sending to frontend: {}", document);
     Json(ContentResponse {
-        last_ui_change_serial_number: application.last_ui_change_serial_number,
+        last_ui_change_serial_number: shared.last_ui_change_serial_number,
         ui_replacement: Some(document),
     })
 }
@@ -543,7 +543,7 @@ pub struct SertopThreadState {
     child_stdin: ChildStdin,
     lines_iterator: std::io::Lines<BufReader<ChildStdout>>,
     sertop_state: SertopState,
-    application: Arc<Mutex<SharedState>>,
+    shared: Arc<Mutex<SharedState>>,
     last_added_file_code: String,
     end_of_first_added_from_file_that_failed_to_execute: Option<usize>,
 }
@@ -613,12 +613,12 @@ impl SertopThreadState {
                         }
                     }
 
-                    let application_arc = self.application.clone();
-                    let mut application = application_arc.lock();
+                    let shared_arc = self.shared.clone();
+                    let mut shared = shared_arc.lock();
 
                     if let Answer::Answer(_, AnswerKind::Completed) = answer {
                         // assume every completed command might cause a UI change
-                        application.last_ui_change_serial_number += 1;
+                        shared.last_ui_change_serial_number += 1;
                         if interrupted {
                             return Err(Interrupted);
                         } else {
@@ -627,7 +627,7 @@ impl SertopThreadState {
                     }
 
                     if !interrupted {
-                        (handler)(answer, self, &mut *application);
+                        (handler)(answer, self, &mut *shared);
                     }
                 }
             }
@@ -638,7 +638,7 @@ impl SertopThreadState {
     pub fn cancel(&mut self, canceled: Vec<StateId>) -> Result<(), Interrupted> {
         self.run_command(
             Command::Cancel(canceled),
-            |answer, sertop_thread, application| {
+            |answer, sertop_thread, shared| {
                 if let Answer::Answer(_, AnswerKind::Canceled(state_ids)) = answer {
                     sertop_thread.sertop_state.added_from_file.retain(|added| {
                         state_ids.iter().all(|canceled| &added.state_id != canceled)
@@ -652,7 +652,7 @@ impl SertopThreadState {
                         sertop_thread.sertop_state.num_executed_from_file =
                             sertop_thread.sertop_state.added_from_file.len();
                         sertop_thread.end_of_first_added_from_file_that_failed_to_execute = None;
-                        application.known_mode = None;
+                        shared.known_mode = None;
                     }
                     if sertop_thread.sertop_state.added_synthetic.len()
                         < sertop_thread.sertop_state.num_executed_synthetic
@@ -675,7 +675,7 @@ impl SertopThreadState {
                 self.sertop_state.added_from_file[self.sertop_state.num_executed_from_file]
                     .state_id,
             ),
-            |answer, sertop_thread, _application| {
+            |answer, sertop_thread, _shared| {
                 if let Answer::Answer(_, AnswerKind::CoqExn(_)) = answer {
                     sertop_thread.end_of_first_added_from_file_that_failed_to_execute = Some(
                         sertop_thread.sertop_state.added_from_file
@@ -687,29 +687,28 @@ impl SertopThreadState {
             },
         )?;
 
-        let mut application = self.application.lock();
+        let mut shared = self.shared.lock();
         if self
             .end_of_first_added_from_file_that_failed_to_execute
             .is_none()
         {
             self.sertop_state.num_executed_from_file += 1;
-            application.known_mode = None;
+            shared.known_mode = None;
         }
         Ok(())
     }
 
     pub fn add_rest_of_file(&mut self) -> Result<(), Interrupted> {
-        let application = self.application.lock();
+        let shared = self.shared.lock();
         let (unhandled_file_offset, last_added_id) = self
             .sertop_state
             .added_from_file
             .last()
             .map_or((0, None), |a| (a.location_in_file.end, Some(a.state_id)));
-        let unhandled_file_contents =
-            application.current_file_code[unhandled_file_offset..].to_owned();
-        self.last_added_file_code = application.current_file_code.clone();
+        let unhandled_file_contents = shared.current_file_code[unhandled_file_offset..].to_owned();
+        self.last_added_file_code = shared.current_file_code.clone();
 
-        drop(application);
+        drop(shared);
         self.run_command(
             Command::Add(
                 AddOptions {
@@ -718,7 +717,7 @@ impl SertopThreadState {
                 },
                 unhandled_file_contents,
             ),
-            |answer, sertop_thread, _application| {
+            |answer, sertop_thread, _shared| {
                 if let Answer::Answer(_, AnswerKind::Added(state_id, location, _extra)) = answer {
                     sertop_thread
                         .sertop_state
@@ -734,12 +733,12 @@ impl SertopThreadState {
     }
 
     pub fn update_to_match_file(&mut self) -> Result<(), Interrupted> {
-        let application = self.application.lock();
+        let shared = self.shared.lock();
         let first_difference_offset = first_difference_index(
-            application.current_file_code.as_bytes(),
+            shared.current_file_code.as_bytes(),
             self.last_added_file_code.as_bytes(),
         );
-        drop(application);
+        drop(shared);
 
         // First, if a file change has invalidated any commands that were
         // actually executed, cancel them.
@@ -811,7 +810,7 @@ impl SertopThreadState {
             }
         }
 
-        self.application.lock().sertop_up_to_date_with_file = true;
+        self.shared.lock().sertop_up_to_date_with_file = true;
 
         Ok(())
     }
@@ -831,7 +830,7 @@ impl SertopThreadState {
                 },
                 QueryCommand::EGoals,
             ),
-            |answer, _sertop_thread, application| {
+            |answer, _sertop_thread, shared| {
                 let mut objects = if let Answer::Answer(_, AnswerKind::ObjList(objects)) = answer {
                     objects
                 } else {
@@ -839,9 +838,9 @@ impl SertopThreadState {
                 };
                 match objects.pop() {
                     Some(CoqObject::CoqExtGoal(goals)) => received_goals = Some(goals),
-                    _ => match application.known_mode {
+                    _ => match shared.known_mode {
                         None => {
-                            application.known_mode = Some(Mode::NotProofMode);
+                            shared.known_mode = Some(Mode::NotProofMode);
                         }
                         Some(Mode::NotProofMode) => panic!(
                             "shouldn't have queried goals when known not to be in proof mode"
@@ -875,7 +874,7 @@ impl SertopThreadState {
                 },
                 CoqObject::CoqExpr(constr_expr),
             ),
-            |answer, _sertop_thread, _application| {
+            |answer, _sertop_thread, _shared| {
                 let mut objects = if let Answer::Answer(_, AnswerKind::ObjList(objects)) = answer {
                     objects
                 } else {
@@ -917,7 +916,7 @@ impl SertopThreadState {
                 },
                 QueryCommand::Vernac("Show Proof. ".to_string()),
             ),
-            |answer, _sertop_thread, _application| {
+            |answer, _sertop_thread, _shared| {
                 if let Answer::Feedback(Feedback {
                     contents: FeedbackContent::Message { pp, str, .. },
                     ..
@@ -942,9 +941,9 @@ impl SertopThreadState {
     pub fn run_tactic(&mut self, tactic: Tactic) -> Result<(), Interrupted> {
         fn latest_proof_node_mut<'a>(
             sertop_thread: &mut SertopThreadState,
-            application: &'a mut SharedState,
+            shared: &'a mut SharedState,
         ) -> Option<&'a mut ProofNode> {
-            let root = match &mut application.known_mode {
+            let root = match &mut shared.known_mode {
                 Some(Mode::ProofMode(p, _)) => p,
                 _ => return None,
             };
@@ -966,7 +965,7 @@ impl SertopThreadState {
                 },
                 tactic.coq_string(),
             ),
-            |answer, sertop_thread, application| match answer {
+            |answer, sertop_thread, shared| match answer {
                 Answer::Answer(_, AnswerKind::Added(state_id, _location, _extra)) => {
                     sertop_thread
                         .sertop_state
@@ -982,7 +981,7 @@ impl SertopThreadState {
                         sertop_thread.sertop_state.num_executed_synthetic,
                         sertop_thread.sertop_state.added_synthetic.len()
                     );
-                    let insert_result = latest_proof_node_mut(sertop_thread, application)
+                    let insert_result = latest_proof_node_mut(sertop_thread, shared)
                         .unwrap()
                         .attempted_tactics
                         .insert(tactic.clone(), TacticResult::Failure(exn));
@@ -1003,14 +1002,14 @@ impl SertopThreadState {
                 self.sertop_state.added_synthetic[self.sertop_state.num_executed_synthetic]
                     .state_id,
             ),
-            |answer, sertop_thread, application| {
+            |answer, sertop_thread, shared| {
                 if let Answer::Answer(_, AnswerKind::CoqExn(exn)) = answer {
                     exception_happened = true;
                     assert_eq!(
                         sertop_thread.sertop_state.num_executed_synthetic + 1,
                         sertop_thread.sertop_state.added_synthetic.len()
                     );
-                    let insert_result = latest_proof_node_mut(sertop_thread, application)
+                    let insert_result = latest_proof_node_mut(sertop_thread, shared)
                         .unwrap()
                         .attempted_tactics
                         .insert(tactic.clone(), TacticResult::Failure(exn));
@@ -1027,24 +1026,24 @@ impl SertopThreadState {
         let tactic_duration = Instant::now() - tactic_start_time;
 
         self.sertop_state.num_executed_synthetic += 1;
-        let application_arc = self.application.clone();
-        if latest_proof_node_mut(self, &mut *application_arc.lock()).is_none() {
+        let shared_arc = self.shared.clone();
+        if latest_proof_node_mut(self, &mut *shared_arc.lock()).is_none() {
             if let Some(state) = self.query_proof_state()? {
                 let new_proof_node = ProofNode {
                     state,
                     attempted_tactics: HashMap::new(),
                 };
-                let mut application = application_arc.lock();
-                match &mut application.known_mode {
+                let mut shared = shared_arc.lock();
+                match &mut shared.known_mode {
                     None => {
-                        application.known_mode = Some(Mode::ProofMode(new_proof_node, Featured::default()));
+                        shared.known_mode = Some(Mode::ProofMode(new_proof_node, Featured::default()));
                     }
                     Some(Mode::NotProofMode) => {
                         panic!("shouldn't have even gotten to entering a proof node when known not to be in proof mode")
                     }
                     Some(Mode::ProofMode(p,_)) => {
                         assert_eq!(self.sertop_state.num_executed_synthetic, self.sertop_state.added_synthetic.len());
-                        // Note: can't use latest_proof_node_mut() here because the application would believe we have already gotten to this spot
+                        // Note: can't use latest_proof_node_mut() here because the shared would believe we have already gotten to this spot
                         let tactics : &[AddedSynthetic] = &self.sertop_state.added_synthetic;
                         let p2 = p.descendant_mut (tactics [..tactics.len()-1].iter().map(|t|&t.tactic)).unwrap();
                         let insert_result = p2.attempted_tactics.insert(tactic,TacticResult::Success{duration: tactic_duration, result_node: new_proof_node});
@@ -1058,8 +1057,8 @@ impl SertopThreadState {
     }
 
     fn do_proof_exploration(&mut self) -> Result<(), Interrupted> {
-        let application_arc = self.application.clone();
-        if application_arc.lock().known_mode.is_none() {
+        let shared_arc = self.shared.clone();
+        if shared_arc.lock().known_mode.is_none() {
             let new_mode = Some(if let Some(state) = self.query_proof_state()? {
                 let new_proof_node = ProofNode {
                     state,
@@ -1070,10 +1069,10 @@ impl SertopThreadState {
             } else {
                 Mode::NotProofMode
             });
-            application_arc.lock().known_mode = new_mode;
+            shared_arc.lock().known_mode = new_mode;
         }
-        let application = application_arc.lock();
-        let (_proof_root, featured): (&ProofNode, &Featured) = match &application.known_mode {
+        let shared = shared_arc.lock();
+        let (_proof_root, featured): (&ProofNode, &Featured) = match &shared.known_mode {
             None => unreachable!(),
             Some(Mode::NotProofMode) => return Ok(()),
             Some(Mode::ProofMode(p, f)) => (p, f),
@@ -1089,7 +1088,7 @@ impl SertopThreadState {
             .skip_while(|(i, a)| tactics_path.get(*i) == Some(&a.tactic))
             .map(|(_, a)| a.state_id)
             .collect();
-        drop(application);
+        drop(shared);
 
         if !canceled.is_empty() {
             self.cancel(canceled)?;
@@ -1098,18 +1097,18 @@ impl SertopThreadState {
             self.run_tactic(catchup_tactic.to_owned())?;
         }
 
-        let application = application_arc.lock();
+        let shared = shared_arc.lock();
         let (featured_node, featured_in_node): (&ProofNode, &FeaturedInNode) =
-            application.featured_node().unwrap();
+            shared.featured_node().unwrap();
         let exploratory_tactics =
             tactics::generate_exploratory_tactics(featured_node, featured_in_node);
-        drop(application);
+        drop(shared);
         for tactic in exploratory_tactics {
-            let application = application_arc.lock();
+            let shared = shared_arc.lock();
             let (featured_node, _featured_in_node): (&ProofNode, &FeaturedInNode) =
-                application.featured_node().unwrap();
+                shared.featured_node().unwrap();
             if featured_node.attempted_tactics.get(&tactic).is_none() {
-                drop(application);
+                drop(shared);
                 self.run_tactic(tactic)?;
                 // TODO: don't be inefficient, keep going unless featured was actually change
                 // or something like that
@@ -1121,7 +1120,7 @@ impl SertopThreadState {
     }
 
     pub fn run_once(&mut self) -> Result<(), Interrupted> {
-        while !self.application.lock().sertop_up_to_date_with_file {
+        while !self.shared.lock().sertop_up_to_date_with_file {
             self.update_to_match_file()?
         }
 
@@ -1139,9 +1138,9 @@ impl SertopThreadState {
     }
 }
 
-pub fn processing_thread(application_state: Arc<Mutex<SharedState>>) {
+pub fn processing_thread(shared_state: Arc<Mutex<SharedState>>) {
     loop {
-        let mut guard = application_state.lock();
+        let mut guard = shared_state.lock();
         guard.frequent_update();
         std::mem::drop(guard);
         std::thread::sleep(Duration::from_millis(10));
@@ -1168,7 +1167,7 @@ pub fn run(code_path: PathBuf) {
     let child_stdout = child.stdout.expect("no stdout?");
     let child_stdin = child.stdin.expect("no stdin?");
 
-    let application_state = SharedState {
+    let shared_state = SharedState {
         code_path,
         current_file_code: String::new(),
         sertop_up_to_date_with_file: false, // maybe theoretically it's already up to date with the null file, but there's no need to be clever
@@ -1177,7 +1176,7 @@ pub fn run(code_path: PathBuf) {
         last_ui_change_serial_number: 0,
     };
 
-    let application_state = Arc::new(Mutex::new(application_state));
+    let shared_state = Arc::new(Mutex::new(shared_state));
 
     std::thread::spawn({
         let mut sertop_thread = SertopThreadState {
@@ -1189,7 +1188,7 @@ pub fn run(code_path: PathBuf) {
                 num_executed_from_file: 0,
                 num_executed_synthetic: 0,
             },
-            application: application_state.clone(),
+            shared: shared_state.clone(),
             last_added_file_code: String::new(),
             end_of_first_added_from_file_that_failed_to_execute: None,
         };
@@ -1199,9 +1198,9 @@ pub fn run(code_path: PathBuf) {
     });
 
     std::thread::spawn({
-        let application_state = application_state.clone();
+        let shared_state = shared_state.clone();
         move || {
-            processing_thread(application_state);
+            processing_thread(shared_state);
         }
     });
 
@@ -1214,6 +1213,6 @@ pub fn run(code_path: PathBuf) {
     )
     .mount("/media/", StaticFiles::from("./static/media"))
     .mount("/", routes![index, input, content])
-    .manage(RocketState { application_state })
+    .manage(RocketState { shared_state })
     .launch();
 }

@@ -30,14 +30,14 @@ pub struct SharedState {
 }
 
 pub struct RocketState {
-    pub application_state: Arc<Mutex<SharedState>>,
+    pub shared_state: Arc<Mutex<SharedState>>,
 }
 
 pub struct SertopThread {
     pub child_stdin: ChildStdin,
     pub lines_iterator: std::io::Lines<BufReader<ChildStdout>>,
     pub sertop_state: SertopState,
-    pub application: Arc<Mutex<SharedState>>,
+    pub shared: Arc<Mutex<SharedState>>,
     pub last_added_file_code: String,
     pub end_of_first_added_from_file_that_failed_to_execute: Option<usize>,
 }
