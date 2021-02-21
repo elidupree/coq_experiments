@@ -136,7 +136,7 @@ pub enum Mode {
     NotProofMode,
 }
 
-pub struct ApplicationState {
+pub struct SharedState {
     code_path: PathBuf,
     current_file_code: String,
     sertop_up_to_date_with_file: bool,
@@ -149,7 +149,7 @@ pub struct ApplicationState {
 }
 
 pub struct RocketState {
-    application_state: Arc<Mutex<ApplicationState>>,
+    application_state: Arc<Mutex<SharedState>>,
 }
 
 pub fn first_difference_index<T: PartialEq>(a: &[T], b: &[T]) -> Option<usize> {
@@ -246,7 +246,7 @@ impl ProofNode {
     }
 }
 
-impl ApplicationState {
+impl SharedState {
     pub fn frequent_update(&mut self) {
         // If the code file has been modified, update it.
         if fs::metadata(&self.code_path)
@@ -273,7 +273,7 @@ impl ApplicationState {
     }
 }
 
-impl ApplicationState {
+impl SharedState {
     fn tactic_menu_html(&self, tactics: impl IntoIterator<Item = Tactic>) -> Element {
         guard!(let Some(Mode::ProofMode(_proof_root, featured)) = &self.known_mode else {unreachable!()});
         let (featured_node, _) = self.featured_node().unwrap();
@@ -628,7 +628,7 @@ pub enum Input {
 fn input(input: Json<Input>, rocket_state: State<RocketState>) {
     let Json(input) = input;
     let mut guard = rocket_state.application_state.lock();
-    let application: &mut ApplicationState = &mut *guard;
+    let application: &mut SharedState = &mut *guard;
 
     // assume every input might cause a UI change
     application.last_ui_change_serial_number += 1;
@@ -661,7 +661,7 @@ fn content(
     rocket_state: State<RocketState>,
 ) -> Json<ContentResponse> {
     let mut guard = rocket_state.application_state.lock();
-    let application: &mut ApplicationState = &mut *guard;
+    let application: &mut SharedState = &mut *guard;
 
     if parameters.last_ui_change_serial_number == Some(application.last_ui_change_serial_number) {
         return Json(ContentResponse {
@@ -696,7 +696,7 @@ pub struct SertopThread {
     child_stdin: ChildStdin,
     lines_iterator: std::io::Lines<BufReader<ChildStdout>>,
     sertop_state: SertopState,
-    application: Arc<Mutex<ApplicationState>>,
+    application: Arc<Mutex<SharedState>>,
     last_added_file_code: String,
     end_of_first_added_from_file_that_failed_to_execute: Option<usize>,
 }
@@ -742,7 +742,7 @@ impl SertopThread {
     pub fn run_command(
         &mut self,
         command: Command,
-        mut handler: impl FnMut(Answer, &mut SertopThread, &mut ApplicationState),
+        mut handler: impl FnMut(Answer, &mut SertopThread, &mut SharedState),
     ) -> Result<(), Interrupted> {
         let text = serde_lexpr::to_string(&command).unwrap();
         eprintln!("sending command to sertop: {}\n", text);
@@ -1095,7 +1095,7 @@ impl SertopThread {
     pub fn run_tactic(&mut self, tactic: Tactic) -> Result<(), Interrupted> {
         fn latest_proof_node_mut<'a>(
             sertop_thread: &mut SertopThread,
-            application: &'a mut ApplicationState,
+            application: &'a mut SharedState,
         ) -> Option<&'a mut ProofNode> {
             let root = match &mut application.known_mode {
                 Some(Mode::ProofMode(p, _)) => p,
@@ -1292,7 +1292,7 @@ impl SertopThread {
     }
 }
 
-pub fn processing_thread(application_state: Arc<Mutex<ApplicationState>>) {
+pub fn processing_thread(application_state: Arc<Mutex<SharedState>>) {
     loop {
         let mut guard = application_state.lock();
         guard.frequent_update();
@@ -1321,7 +1321,7 @@ pub fn run(code_path: PathBuf) {
     let child_stdout = child.stdout.expect("no stdout?");
     let child_stdin = child.stdin.expect("no stdin?");
 
-    let application_state = ApplicationState {
+    let application_state = SharedState {
         code_path,
         current_file_code: String::new(),
         sertop_up_to_date_with_file: false, // maybe theoretically it's already up to date with the null file, but there's no need to be clever
