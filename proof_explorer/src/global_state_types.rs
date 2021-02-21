@@ -30,7 +30,7 @@ pub struct SharedState {
 }
 
 pub struct RocketState {
-    pub shared_state: Arc<Mutex<SharedState>>,
+    pub shared: Arc<Mutex<SharedState>>,
 }
 
 pub struct SertopThread {

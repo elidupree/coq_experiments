@@ -474,7 +474,7 @@ pub enum InputFromFrontend {
 #[post("/input", data = "<input>")]
 fn input(input: Json<InputFromFrontend>, rocket_state: State<RocketState>) {
     let Json(input) = input;
-    let mut guard = rocket_state.shared_state.lock();
+    let mut guard = rocket_state.shared.lock();
     let shared: &mut SharedState = &mut *guard;
 
     // assume every input might cause a UI change
@@ -507,7 +507,7 @@ fn content(
     parameters: Json<ContentRequestParameters>,
     rocket_state: State<RocketState>,
 ) -> Json<ContentResponse> {
-    let mut guard = rocket_state.shared_state.lock();
+    let mut guard = rocket_state.shared.lock();
     let shared: &mut SharedState = &mut *guard;
 
     if parameters.last_ui_change_serial_number == Some(shared.last_ui_change_serial_number) {
@@ -1138,9 +1138,9 @@ impl SertopThreadState {
     }
 }
 
-pub fn processing_thread(shared_state: Arc<Mutex<SharedState>>) {
+pub fn processing_thread(shared: Arc<Mutex<SharedState>>) {
     loop {
-        let mut guard = shared_state.lock();
+        let mut guard = shared.lock();
         guard.frequent_update();
         std::mem::drop(guard);
         std::thread::sleep(Duration::from_millis(10));
@@ -1167,7 +1167,7 @@ pub fn run(code_path: PathBuf) {
     let child_stdout = child.stdout.expect("no stdout?");
     let child_stdin = child.stdin.expect("no stdin?");
 
-    let shared_state = SharedState {
+    let shared = SharedState {
         code_path,
         current_file_code: String::new(),
         sertop_up_to_date_with_file: false, // maybe theoretically it's already up to date with the null file, but there's no need to be clever
@@ -1176,7 +1176,7 @@ pub fn run(code_path: PathBuf) {
         last_ui_change_serial_number: 0,
     };
 
-    let shared_state = Arc::new(Mutex::new(shared_state));
+    let shared = Arc::new(Mutex::new(shared));
 
     std::thread::spawn({
         let mut sertop_thread = SertopThreadState {
@@ -1188,7 +1188,7 @@ pub fn run(code_path: PathBuf) {
                 num_executed_from_file: 0,
                 num_executed_synthetic: 0,
             },
-            shared: shared_state.clone(),
+            shared: shared.clone(),
             last_added_file_code: String::new(),
             end_of_first_added_from_file_that_failed_to_execute: None,
         };
@@ -1198,9 +1198,9 @@ pub fn run(code_path: PathBuf) {
     });
 
     std::thread::spawn({
-        let shared_state = shared_state.clone();
+        let shared = shared.clone();
         move || {
-            processing_thread(shared_state);
+            processing_thread(shared);
         }
     });
 
@@ -1213,6 +1213,6 @@ pub fn run(code_path: PathBuf) {
     )
     .mount("/media/", StaticFiles::from("./static/media"))
     .mount("/", routes![index, input, content])
-    .manage(RocketState { shared_state })
+    .manage(RocketState { shared })
     .launch();
 }
