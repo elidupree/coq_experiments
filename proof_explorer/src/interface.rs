@@ -88,7 +88,7 @@ impl SertopState {
 
 impl Featured {
     fn input_string(self) -> String {
-        serde_json::to_string(&Input::SetFeatured(self)).unwrap()
+        serde_json::to_string(&InputFromFrontend::SetFeatured(self)).unwrap()
     }
 }
 
@@ -363,7 +363,8 @@ impl SharedState {
                 .descendant(featured_after_this_tactic.tactics_path())
                 .unwrap();
             let onclick =
-                serde_json::to_string(&Input::SetFeatured(featured_after_this_tactic)).unwrap();
+                serde_json::to_string(&InputFromFrontend::SetFeatured(featured_after_this_tactic))
+                    .unwrap();
             let class = if index + 1 < featured.num_tactics_run {
                 "prior_tactic past not_present"
             } else if index + 1 == featured.num_tactics_run {
@@ -431,7 +432,7 @@ impl SharedState {
             ..featured.clone()
         };
         let onclick_root =
-            serde_json::to_string(&Input::SetFeatured(onclick_root_featured)).unwrap();
+            serde_json::to_string(&InputFromFrontend::SetFeatured(onclick_root_featured)).unwrap();
         let proof_root_class = if featured.num_tactics_run > 0 {
             "proof_root past not_present"
         } else {
@@ -466,12 +467,12 @@ fn index(_rocket_state: State<RocketState>) -> Option<NamedFile> {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub enum Input {
+pub enum InputFromFrontend {
     SetFeatured(Featured),
 }
 
 #[post("/input", data = "<input>")]
-fn input(input: Json<Input>, rocket_state: State<RocketState>) {
+fn input(input: Json<InputFromFrontend>, rocket_state: State<RocketState>) {
     let Json(input) = input;
     let mut guard = rocket_state.application_state.lock();
     let application: &mut SharedState = &mut *guard;
@@ -480,7 +481,7 @@ fn input(input: Json<Input>, rocket_state: State<RocketState>) {
     application.last_ui_change_serial_number += 1;
 
     match input {
-        Input::SetFeatured(new_featured) => {
+        InputFromFrontend::SetFeatured(new_featured) => {
             // gotta check if this input wasn't delayed across a file reload
             if let Some(Mode::ProofMode(p, f)) = &mut application.known_mode {
                 if p.descendant(new_featured.tactics_path_all()).is_some() {
