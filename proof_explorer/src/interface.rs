@@ -151,7 +151,6 @@ pub struct SharedState {
 pub struct RocketState {
     application_state: Arc<Mutex<SharedState>>,
 }
-
 pub fn first_difference_index<T: PartialEq>(a: &[T], b: &[T]) -> Option<usize> {
     a.iter().zip(b).position(|(a, b)| a != b).or_else(|| {
         if a.len() == b.len() {
@@ -692,7 +691,7 @@ pub enum AnswersStreamItem {
     Invalid,
     Answer(Answer),
 }
-pub struct SertopThread {
+pub struct SertopThreadState {
     child_stdin: ChildStdin,
     lines_iterator: std::io::Lines<BufReader<ChildStdout>>,
     sertop_state: SertopState,
@@ -738,11 +737,11 @@ pub fn interpret_sertop_line(line: String) -> AnswersStreamItem {
     AnswersStreamItem::Answer(interpreted)
 }
 
-impl SertopThread {
+impl SertopThreadState {
     pub fn run_command(
         &mut self,
         command: Command,
-        mut handler: impl FnMut(Answer, &mut SertopThread, &mut SharedState),
+        mut handler: impl FnMut(Answer, &mut SertopThreadState, &mut SharedState),
     ) -> Result<(), Interrupted> {
         let text = serde_lexpr::to_string(&command).unwrap();
         eprintln!("sending command to sertop: {}\n", text);
@@ -1094,7 +1093,7 @@ impl SertopThread {
 
     pub fn run_tactic(&mut self, tactic: Tactic) -> Result<(), Interrupted> {
         fn latest_proof_node_mut<'a>(
-            sertop_thread: &mut SertopThread,
+            sertop_thread: &mut SertopThreadState,
             application: &'a mut SharedState,
         ) -> Option<&'a mut ProofNode> {
             let root = match &mut application.known_mode {
@@ -1333,7 +1332,7 @@ pub fn run(code_path: PathBuf) {
     let application_state = Arc::new(Mutex::new(application_state));
 
     std::thread::spawn({
-        let mut sertop_thread = SertopThread {
+        let mut sertop_thread = SertopThreadState {
             lines_iterator: BufReader::new(child_stdout).lines(),
             child_stdin,
             sertop_state: SertopState {
