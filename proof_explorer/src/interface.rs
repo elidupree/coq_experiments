@@ -35,6 +35,7 @@ use crate::serapi_protocol::{
     PrintOptions, QueryCommand, QueryOptions, ReifiedGoal, SerGoals, StateId,
 };
 use crate::tactics::{self, Tactic};
+use crate::webserver_glue;
 use rocket_contrib::serve::StaticFiles;
 
 pub type Element = Box<dyn FlowContent<String>>;
@@ -83,12 +84,6 @@ impl SertopState {
             .last()
             .map(|a| a.state_id)
             .or_else(|| self.added_from_file.last().map(|a| a.state_id))
-    }
-}
-
-impl Featured {
-    fn input_string(self) -> String {
-        serde_json::to_string(&InputFromFrontend::SetFeatured(self)).unwrap()
     }
 }
 
@@ -344,7 +339,7 @@ impl SharedState {
         }
     }
 
-    fn whole_interface_html(&self) -> Element {
+    pub fn whole_interface_html(&self) -> Element {
         let (proof_root, featured): (&ProofNode, &Featured) = match &self.known_mode {
             None => return text!("Processing..."),
             Some(Mode::NotProofMode) => return text!("Not in proof mode"),
@@ -362,9 +357,7 @@ impl SharedState {
             let node = proof_root
                 .descendant(featured_after_this_tactic.tactics_path())
                 .unwrap();
-            let onclick =
-                serde_json::to_string(&InputFromFrontend::SetFeatured(featured_after_this_tactic))
-                    .unwrap();
+            let onclick = featured_after_this_tactic.input_string();
             let class = if index + 1 < featured.num_tactics_run {
                 "prior_tactic past not_present"
             } else if index + 1 == featured.num_tactics_run {
@@ -431,8 +424,7 @@ impl SharedState {
             num_tactics_run: 0,
             ..featured.clone()
         };
-        let onclick_root =
-            serde_json::to_string(&InputFromFrontend::SetFeatured(onclick_root_featured)).unwrap();
+        let onclick_root = onclick_root_featured.input_string();
         let proof_root_class = if featured.num_tactics_run > 0 {
             "proof_root past not_present"
         } else {
@@ -459,77 +451,6 @@ impl SharedState {
             </div>
         }
     }
-}
-
-#[get("/")]
-fn index(_rocket_state: State<RocketState>) -> Option<NamedFile> {
-    NamedFile::open("./static/index.html").ok()
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub enum InputFromFrontend {
-    SetFeatured(Featured),
-}
-
-#[post("/input", data = "<input>")]
-fn input(input: Json<InputFromFrontend>, rocket_state: State<RocketState>) {
-    let Json(input) = input;
-    let mut guard = rocket_state.shared.lock();
-    let shared: &mut SharedState = &mut *guard;
-
-    // assume every input might cause a UI change
-    shared.last_ui_change_serial_number += 1;
-
-    match input {
-        InputFromFrontend::SetFeatured(new_featured) => {
-            // gotta check if this input wasn't delayed across a file reload
-            if let Some(Mode::ProofMode(p, f)) = &mut shared.known_mode {
-                if p.descendant(new_featured.tactics_path_all()).is_some() {
-                    *f = new_featured;
-                }
-            }
-        }
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub struct ContentRequestParameters {
-    last_ui_change_serial_number: Option<u64>,
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub struct ContentResponse {
-    last_ui_change_serial_number: u64,
-    ui_replacement: Option<String>,
-}
-#[post("/content", data = "<parameters>")]
-fn content(
-    parameters: Json<ContentRequestParameters>,
-    rocket_state: State<RocketState>,
-) -> Json<ContentResponse> {
-    let mut guard = rocket_state.shared.lock();
-    let shared: &mut SharedState = &mut *guard;
-
-    if parameters.last_ui_change_serial_number == Some(shared.last_ui_change_serial_number) {
-        return Json(ContentResponse {
-            last_ui_change_serial_number: shared.last_ui_change_serial_number,
-            ui_replacement: None,
-        });
-    }
-
-    let whole_interface_html = shared.whole_interface_html();
-
-    let document: DOMTree<String> = html! {
-        <div id="content">
-            {whole_interface_html}
-        </div>
-    };
-    let document = document.to_string();
-    //eprintln!("Sending to frontend: {}", document);
-    Json(ContentResponse {
-        last_ui_change_serial_number: shared.last_ui_change_serial_number,
-        ui_replacement: Some(document),
-    })
 }
 
 pub struct Interrupted;
@@ -1204,15 +1125,5 @@ pub fn run(code_path: PathBuf) {
         }
     });
 
-    rocket::custom(
-        Config::build(Environment::Development)
-            .address("localhost")
-            .port(3508)
-            .log_level(LoggingLevel::Off)
-            .unwrap(),
-    )
-    .mount("/media/", StaticFiles::from("./static/media"))
-    .mount("/", routes![index, input, content])
-    .manage(RocketState { shared })
-    .launch();
+    webserver_glue::launch(shared);
 }

@@ -11,6 +11,7 @@ mod interface;
 mod serapi_protocol;
 mod tactics;
 mod universally_deserializable;
+mod webserver_glue;
 
 fn main() {
     let arguments: Vec<String> = std::env::args().collect();
