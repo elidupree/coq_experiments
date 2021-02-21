@@ -6,6 +6,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::BufReader;
+use std::iter;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::process::{ChildStdin, ChildStdout};
@@ -100,6 +101,43 @@ pub enum TacticResult {
     Failure(ExnInfo),
 }
 
+impl ProofNode {
+    pub fn child(&self, tactic: &Tactic) -> Option<&ProofNode> {
+        match self.attempted_tactics.get(tactic) {
+            Some(TacticResult::Success { result_node, .. }) => Some(result_node),
+            _ => None,
+        }
+    }
+    pub fn child_mut(&mut self, tactic: &Tactic) -> Option<&mut ProofNode> {
+        match self.attempted_tactics.get_mut(tactic) {
+            Some(TacticResult::Success { result_node, .. }) => Some(result_node),
+            _ => None,
+        }
+    }
+    pub fn descendant<'a>(
+        &self,
+        mut tactics: impl Iterator<Item = &'a Tactic>,
+    ) -> Option<&ProofNode> {
+        match tactics.next() {
+            None => Some(self),
+            Some(tactic) => self
+                .child(tactic)
+                .and_then(|child| child.descendant(tactics)),
+        }
+    }
+    pub fn descendant_mut<'a>(
+        &mut self,
+        mut tactics: impl Iterator<Item = &'a Tactic>,
+    ) -> Option<&mut ProofNode> {
+        match tactics.next() {
+            None => Some(self),
+            Some(tactic) => self
+                .child_mut(tactic)
+                .and_then(|child| child.descendant_mut(tactics)),
+        }
+    }
+}
+
 //////////////////////////////////////////////////////////////////
 //     Types for UI state that is controlled by the user        //
 // (part of SharedState because it influences where to explore) //
@@ -125,4 +163,38 @@ pub struct Featured {
     pub featured_in_root: FeaturedInNode,
     pub tactics: Vec<(Tactic, FeaturedInNode)>,
     pub num_tactics_run: usize,
+}
+
+impl Featured {
+    pub fn tactics_path(&self) -> impl Iterator<Item = &Tactic> {
+        self.tactics_path_all().take(self.num_tactics_run)
+    }
+    pub fn tactics_path_all(&self) -> impl Iterator<Item = &Tactic> {
+        self.tactics.iter().map(|(t, _)| t)
+    }
+    pub fn featured_in_current(&self) -> &FeaturedInNode {
+        match self.num_tactics_run.checked_sub(1) {
+            Some(i) => &self.tactics[i].1,
+            None => &self.featured_in_root,
+        }
+    }
+    pub fn featured_in_current_mut(&mut self) -> &mut FeaturedInNode {
+        match self.num_tactics_run.checked_sub(1) {
+            Some(i) => &mut self.tactics[i].1,
+            None => &mut self.featured_in_root,
+        }
+    }
+    pub fn extended(&self, tactic: Tactic) -> Featured {
+        Featured {
+            tactics: self
+                .tactics
+                .iter()
+                .take(self.num_tactics_run)
+                .cloned()
+                .chain(iter::once((tactic, FeaturedInNode::Nothing)))
+                .collect(),
+            num_tactics_run: self.num_tactics_run + 1,
+            ..self.clone()
+        }
+    }
 }
