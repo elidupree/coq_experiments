@@ -1,4 +1,4 @@
-use crate::interface::{FeaturedInNode, ProofNode};
+use crate::global_state_types::{FeaturedInNode, ProofNode};
 use crate::serapi_protocol::{IdenticalHypotheses, NamesId};
 use serde::{Deserialize, Serialize};
 

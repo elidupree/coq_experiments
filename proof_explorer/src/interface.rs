@@ -24,6 +24,10 @@ use typed_html::elements::FlowContent;
 use typed_html::{html, text};
 //use rocket::response::content::Json;
 
+use crate::global_state_types::{
+    AddedFromFile, AddedSynthetic, Featured, FeaturedInNode, Mode, ProofNode, ProofState,
+    RocketState, SertopState, SharedState, TacticResult,
+};
 use crate::goals_analysis::{CoqValueInfo, Goals};
 use crate::serapi_protocol::{
     AddOptions, Answer, AnswerKind, Command, ConstrExpr, CoqObject, ExnInfo, Feedback,
@@ -63,94 +67,6 @@ Separately, any time the collection of executed statements *changes*, we need to
 
  */
 
-#[derive(Debug)]
-pub struct AddedFromFile {
-    location_in_file: Range<usize>,
-    state_id: StateId,
-}
-
-#[derive(Debug)]
-pub struct AddedSynthetic {
-    tactic: Tactic,
-    state_id: StateId,
-}
-
-#[derive(Debug)]
-pub struct SertopState {
-    added_from_file: Vec<AddedFromFile>,
-    added_synthetic: Vec<AddedSynthetic>,
-    num_executed_from_file: usize,
-    num_executed_synthetic: usize,
-}
-
-#[derive(PartialEq, Eq, Debug)]
-pub struct ProofState {
-    pub goals: Goals<CoqValueInfo>,
-    // This doesn't really want to be an Option; None is here to represent the case where
-    // serde_lexpr hit its hard-coded recursion limit and couldn't parse the Pp
-    // that sertop sends along with the string
-    pub proof_string: Option<String>,
-}
-
-#[derive(PartialEq, Eq, Debug)]
-pub struct ProofNode {
-    pub state: ProofState,
-    pub attempted_tactics: HashMap<Tactic, TacticResult>,
-}
-
-#[derive(PartialEq, Eq, Debug)]
-pub enum TacticResult {
-    Success {
-        duration: Duration,
-        result_node: ProofNode,
-    },
-    Timeout(Duration),
-    Failure(ExnInfo),
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Derivative)]
-#[derivative(Default)]
-pub enum FeaturedInNode {
-    #[derivative(Default)]
-    Nothing,
-    Hypothesis {
-        name: String,
-        subterm: Option<Range<usize>>,
-    },
-    Conclusion {
-        subterm: Option<Range<usize>>,
-    },
-}
-
-// I was going to call this "focused", but that term is already used
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
-pub struct Featured {
-    pub featured_in_root: FeaturedInNode,
-    pub tactics: Vec<(Tactic, FeaturedInNode)>,
-    pub num_tactics_run: usize,
-}
-
-#[derive(PartialEq, Eq, Debug)]
-pub enum Mode {
-    ProofMode(ProofNode, Featured),
-    NotProofMode,
-}
-
-pub struct SharedState {
-    code_path: PathBuf,
-    current_file_code: String,
-    sertop_up_to_date_with_file: bool,
-    // TODO : this isn't the most efficient file watcher system, figure out what is?
-    last_code_modified: Option<SystemTime>,
-
-    known_mode: Option<Mode>,
-
-    last_ui_change_serial_number: u64,
-}
-
-pub struct RocketState {
-    application_state: Arc<Mutex<SharedState>>,
-}
 pub fn first_difference_index<T: PartialEq>(a: &[T], b: &[T]) -> Option<usize> {
     a.iter().zip(b).position(|(a, b)| a != b).or_else(|| {
         if a.len() == b.len() {
