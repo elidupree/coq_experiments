@@ -16,18 +16,18 @@ fn index(_rocket_state: State<RocketState>) -> Option<NamedFile> {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub enum InputFromFrontend {
+pub enum MessageFromFrontend {
     SetFeatured(Featured),
 }
 
 impl Featured {
     pub fn input_string(self) -> String {
-        serde_json::to_string(&InputFromFrontend::SetFeatured(self)).unwrap()
+        serde_json::to_string(&MessageFromFrontend::SetFeatured(self)).unwrap()
     }
 }
 
 #[post("/input", data = "<input>")]
-fn input(input: Json<InputFromFrontend>, rocket_state: State<RocketState>) {
+fn input(input: Json<MessageFromFrontend>, rocket_state: State<RocketState>) {
     let Json(input) = input;
     let mut guard = rocket_state.shared.lock();
     let shared: &mut SharedState = &mut *guard;
@@ -36,7 +36,7 @@ fn input(input: Json<InputFromFrontend>, rocket_state: State<RocketState>) {
     shared.last_ui_change_serial_number += 1;
 
     match input {
-        InputFromFrontend::SetFeatured(new_featured) => {
+        MessageFromFrontend::SetFeatured(new_featured) => {
             // gotta check if this input wasn't delayed across a file reload
             if let Some(Mode::ProofMode(p, f)) = &mut shared.known_mode {
                 if p.descendant(new_featured.tactics_path_all()).is_some() {
