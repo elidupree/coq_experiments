@@ -9,6 +9,7 @@ mod global_state_types;
 mod goals_analysis;
 mod interface;
 mod serapi_protocol;
+mod startup;
 mod supervisor_thread;
 mod tactics;
 mod universally_deserializable;
@@ -17,5 +18,5 @@ mod webserver_glue;
 
 fn main() {
     let arguments: Vec<String> = std::env::args().collect();
-    interface::run(PathBuf::from(arguments[1].clone()));
+    startup::run(PathBuf::from(arguments[1].clone()));
 }
