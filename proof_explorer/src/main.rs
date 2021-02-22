@@ -14,6 +14,7 @@ mod serapi_protocol;
 mod startup;
 mod supervisor_thread;
 mod tactics;
+mod ui_html_generation;
 mod universally_deserializable;
 mod webserver_glue;
 

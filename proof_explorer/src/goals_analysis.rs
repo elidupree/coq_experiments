@@ -1,5 +1,5 @@
-use crate::interface::Element;
 use crate::serapi_protocol::{ConstrExpr, IdenticalHypotheses, NamesId, ReifiedGoal, SerGoals};
+use crate::ui_html_generation::Element;
 use difference::{Changeset, Difference};
 use serde::{Deserialize, Serialize};
 use std::fmt;
