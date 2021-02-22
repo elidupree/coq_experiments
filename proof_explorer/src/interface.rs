@@ -872,8 +872,8 @@ impl SertopThreadState {
             let insert_result = latest_proof_node_mut(&self.sertop_state, &mut *shared)
                 .attempted_tactics
                 .insert(tactic.clone(), TacticResult::Failure(exn));
-            assert!(
-                insert_result.is_none(),
+            assert_eq!(
+                insert_result, None,
                 "shouldn't have added a tactic that was already tested and failed (on Exec)"
             );
 
