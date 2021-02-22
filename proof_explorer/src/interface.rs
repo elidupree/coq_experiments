@@ -36,7 +36,7 @@ use crate::serapi_protocol::{
 };
 use crate::tactics::{self, Tactic};
 use crate::utils::first_difference_index;
-use crate::webserver_glue;
+use crate::{supervisor_thread, webserver_glue};
 use rocket_contrib::serve::StaticFiles;
 
 pub type Element = Box<dyn FlowContent<String>>;
@@ -68,25 +68,6 @@ Thus, the priorities are:
 Separately, any time the collection of executed statements *changes*, we need to forget what we know about the proof state. That happens unconditionally in (3), and might happen in (1) (but can be deferred until we know the execution didn't error).
 
  */
-
-impl SharedState {
-    pub fn frequent_update(&mut self) {
-        // If the code file has been modified, update it.
-        if fs::metadata(&self.code_path)
-            .and_then(|m| m.modified())
-            .ok()
-            != self.last_code_modified
-        {
-            if let Ok(mut code) = fs::read_to_string(&self.code_path) {
-                if let Some(index) = code.find("STOP") {
-                    code.truncate(index);
-                }
-                self.current_file_code = code;
-                self.sertop_up_to_date_with_file = false;
-            }
-        }
-    }
-}
 
 impl SharedState {
     fn tactic_menu_html(&self, tactics: impl IntoIterator<Item = Tactic>) -> Element {
@@ -1025,15 +1006,6 @@ impl SertopThreadState {
     }
 }
 
-pub fn processing_thread(shared: Arc<Mutex<SharedState>>) {
-    loop {
-        let mut guard = shared.lock();
-        guard.frequent_update();
-        std::mem::drop(guard);
-        std::thread::sleep(Duration::from_millis(10));
-    }
-}
-
 pub fn run(code_path: PathBuf) {
     // Hack: Compile the scss at the beginning of the main program.
     // This would be better as some sort of build script, but that's not a big concern right now
@@ -1073,7 +1045,7 @@ pub fn run(code_path: PathBuf) {
     std::thread::spawn({
         let shared = shared.clone();
         move || {
-            processing_thread(shared);
+            supervisor_thread::run(shared);
         }
     });
 

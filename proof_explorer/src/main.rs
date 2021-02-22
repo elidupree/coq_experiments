@@ -9,6 +9,7 @@ mod global_state_types;
 mod goals_analysis;
 mod interface;
 mod serapi_protocol;
+mod supervisor_thread;
 mod tactics;
 mod universally_deserializable;
 mod utils;
