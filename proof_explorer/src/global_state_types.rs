@@ -2,6 +2,7 @@ use crate::goals_analysis::{CoqValueInfo, Goals};
 use crate::serapi_protocol::{ExnInfo, StateId};
 use crate::tactics::Tactic;
 use derivative::Derivative;
+use guard::guard;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -33,13 +34,34 @@ pub struct RocketState {
     pub shared: Arc<Mutex<SharedState>>,
 }
 
-pub struct SertopThread {
+pub struct SertopThreadState {
     pub child_stdin: ChildStdin,
     pub lines_iterator: std::io::Lines<BufReader<ChildStdout>>,
     pub sertop_state: SertopState,
     pub shared: Arc<Mutex<SharedState>>,
     pub last_added_file_code: String,
     pub end_of_first_added_from_file_that_failed_to_execute: Option<usize>,
+}
+
+impl SharedState {
+    pub fn new(code_path: PathBuf) -> Self {
+        SharedState {
+            code_path,
+            current_file_code: String::new(),
+            sertop_up_to_date_with_file: false, // maybe theoretically it's already up to date with the null file, but there's no need to be clever
+            last_code_modified: None,
+            known_mode: None,
+            last_ui_change_serial_number: 0,
+        }
+    }
+
+    pub fn featured_node(&self) -> Option<(&ProofNode, &FeaturedInNode)> {
+        guard!(let Some(Mode::ProofMode(proof_root, featured)) = &self.known_mode else {return None});
+        Some((
+            proof_root.descendant(featured.tactics_path()).unwrap(),
+            featured.featured_in_current(),
+        ))
+    }
 }
 
 ///////////////////////////////////////////////////////////////////
@@ -58,12 +80,21 @@ pub struct AddedSynthetic {
     pub state_id: StateId,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct SertopState {
     pub added_from_file: Vec<AddedFromFile>,
     pub added_synthetic: Vec<AddedSynthetic>,
     pub num_executed_from_file: usize,
     pub num_executed_synthetic: usize,
+}
+
+impl SertopState {
+    pub fn last_added(&self) -> Option<StateId> {
+        self.added_synthetic
+            .last()
+            .map(|a| a.state_id)
+            .or_else(|| self.added_from_file.last().map(|a| a.state_id))
+    }
 }
 
 ///////////////////////////////////////////////////////////////////

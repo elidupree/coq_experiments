@@ -11,6 +11,7 @@ mod interface;
 mod serapi_protocol;
 mod tactics;
 mod universally_deserializable;
+mod utils;
 mod webserver_glue;
 
 fn main() {

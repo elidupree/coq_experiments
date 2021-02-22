@@ -26,7 +26,7 @@ use typed_html::{html, text};
 
 use crate::global_state_types::{
     AddedFromFile, AddedSynthetic, Featured, FeaturedInNode, Mode, ProofNode, ProofState,
-    RocketState, SertopState, SharedState, TacticResult,
+    RocketState, SertopState, SertopThreadState, SharedState, TacticResult,
 };
 use crate::goals_analysis::{CoqValueInfo, Goals};
 use crate::serapi_protocol::{
@@ -35,6 +35,7 @@ use crate::serapi_protocol::{
     PrintOptions, QueryCommand, QueryOptions, ReifiedGoal, SerGoals, StateId,
 };
 use crate::tactics::{self, Tactic};
+use crate::utils::first_difference_index;
 use crate::webserver_glue;
 use rocket_contrib::serve::StaticFiles;
 
@@ -68,25 +69,6 @@ Separately, any time the collection of executed statements *changes*, we need to
 
  */
 
-pub fn first_difference_index<T: PartialEq>(a: &[T], b: &[T]) -> Option<usize> {
-    a.iter().zip(b).position(|(a, b)| a != b).or_else(|| {
-        if a.len() == b.len() {
-            None
-        } else {
-            Some(std::cmp::min(a.len(), b.len()))
-        }
-    })
-}
-
-impl SertopState {
-    fn last_added(&self) -> Option<StateId> {
-        self.added_synthetic
-            .last()
-            .map(|a| a.state_id)
-            .or_else(|| self.added_from_file.last().map(|a| a.state_id))
-    }
-}
-
 impl SharedState {
     pub fn frequent_update(&mut self) {
         // If the code file has been modified, update it.
@@ -103,14 +85,6 @@ impl SharedState {
                 self.sertop_up_to_date_with_file = false;
             }
         }
-    }
-
-    fn featured_node(&self) -> Option<(&ProofNode, &FeaturedInNode)> {
-        guard!(let Some(Mode::ProofMode(proof_root, featured)) = &self.known_mode else {return None});
-        Some((
-            proof_root.descendant(featured.tactics_path()).unwrap(),
-            featured.featured_in_current(),
-        ))
     }
 }
 
@@ -459,14 +433,6 @@ pub enum AnswersStreamItem {
     InterruptedWhileNoCommandRunning,
     Invalid,
     Answer(Answer),
-}
-pub struct SertopThreadState {
-    child_stdin: ChildStdin,
-    lines_iterator: std::io::Lines<BufReader<ChildStdout>>,
-    sertop_state: SertopState,
-    shared: Arc<Mutex<SharedState>>,
-    last_added_file_code: String,
-    end_of_first_added_from_file_that_failed_to_execute: Option<usize>,
 }
 
 pub fn interpret_sertop_line(line: String) -> AnswersStreamItem {
@@ -1088,27 +1054,13 @@ pub fn run(code_path: PathBuf) {
     let child_stdout = child.stdout.expect("no stdout?");
     let child_stdin = child.stdin.expect("no stdin?");
 
-    let shared = SharedState {
-        code_path,
-        current_file_code: String::new(),
-        sertop_up_to_date_with_file: false, // maybe theoretically it's already up to date with the null file, but there's no need to be clever
-        last_code_modified: None,
-        known_mode: None,
-        last_ui_change_serial_number: 0,
-    };
-
-    let shared = Arc::new(Mutex::new(shared));
+    let shared = Arc::new(Mutex::new(SharedState::new(code_path)));
 
     std::thread::spawn({
         let mut sertop_thread = SertopThreadState {
             lines_iterator: BufReader::new(child_stdout).lines(),
             child_stdin,
-            sertop_state: SertopState {
-                added_from_file: Vec::new(),
-                added_synthetic: Vec::new(),
-                num_executed_from_file: 0,
-                num_executed_synthetic: 0,
-            },
+            sertop_state: default(),
             shared: shared.clone(),
             last_added_file_code: String::new(),
             end_of_first_added_from_file_that_failed_to_execute: None,
