@@ -38,6 +38,7 @@ use crate::tactics::{self, Tactic};
 use crate::utils::first_difference_index;
 use crate::{supervisor_thread, webserver_glue};
 use rocket_contrib::serve::StaticFiles;
+use std::collections::hash_map::Entry;
 
 pub type Element = Box<dyn FlowContent<String>>;
 
@@ -675,6 +676,14 @@ impl SertopThreadState {
             }
         }
 
+        if self.shared.lock().known_mode.is_none() {
+            let state = self.query_proof_state()?;
+            self.shared.lock().known_mode = Some(match state {
+                Some(state) => Mode::ProofMode(ProofNode::new(state), Featured::default()),
+                None => Mode::NotProofMode,
+            })
+        }
+
         self.shared.lock().sertop_up_to_date_with_file = true;
 
         Ok(())
@@ -683,7 +692,6 @@ impl SertopThreadState {
     pub fn query_goals_constr_expr(&mut self) -> Result<Option<Goals<ConstrExpr>>, Interrupted> {
         let mut received_goals = None;
 
-        capture_fields_mut!(self.shared);
         self.command_runner.run(
             Command::Query(
                 QueryOptions {
@@ -702,21 +710,9 @@ impl SertopThreadState {
                 } else {
                     return;
                 };
-                match objects.pop() {
-                    Some(CoqObject::CoqExtGoal(goals)) => received_goals = Some(goals),
-                    _ => match &mut shared.lock().known_mode {
-                        known_mode @ None => {
-                            *known_mode = Some(Mode::NotProofMode);
-                        }
-                        Some(Mode::NotProofMode) => panic!(
-                            "shouldn't have queried goals when known not to be in proof mode"
-                        ),
-                        Some(Mode::ProofMode(_, _)) => panic!(
-                            "sertop was supposed to send goals as a CoqString, but sent {:?}",
-                            objects
-                        ),
-                    },
-                };
+                if let Some(CoqObject::CoqExtGoal(goals)) = objects.pop() {
+                    received_goals = Some(goals)
+                }
             },
         )?;
 
@@ -808,16 +804,17 @@ impl SertopThreadState {
         fn latest_proof_node_mut<'a>(
             sertop_state: &SertopState,
             shared: &'a mut SharedState,
-        ) -> Option<&'a mut ProofNode> {
+        ) -> &'a mut ProofNode {
             let root = match &mut shared.known_mode {
                 Some(Mode::ProofMode(p, _)) => p,
-                _ => return None,
+                _ => panic!("shouldn't have run a tactic when not in proof mode"),
             };
             root.descendant_mut(
                 sertop_state.added_synthetic[..sertop_state.num_executed_synthetic]
                     .iter()
                     .map(|t| &t.tactic),
             )
+            .expect("sertop_state claims to be ahead of ProofNode tree?")
         }
 
         let mut exception_happened = false;
@@ -847,7 +844,6 @@ impl SertopThreadState {
                     let shared_arc = shared.clone();
                     let mut shared = shared_arc.lock();
                     let insert_result = latest_proof_node_mut(sertop_state, &mut *shared)
-                        .unwrap()
                         .attempted_tactics
                         .insert(tactic.clone(), TacticResult::Failure(exn));
                     assert!(
@@ -874,7 +870,6 @@ impl SertopThreadState {
                 self.sertop_state.added_synthetic.len()
             );
             let insert_result = latest_proof_node_mut(&self.sertop_state, &mut *shared)
-                .unwrap()
                 .attempted_tactics
                 .insert(tactic.clone(), TacticResult::Failure(exn));
             assert!(
@@ -887,35 +882,41 @@ impl SertopThreadState {
 
         let tactic_duration = Instant::now() - tactic_start_time;
 
-        self.sertop_state.num_executed_synthetic += 1;
+        // If we haven't tried this tactic before, create a proof note for it.
+        // Unfortunately we have to do the whole lookup twice, because we don't
+        // want to run self.query_proof_state() if it doesn't already exist,
+        // but we can't hold the reference across the query call because it's
+        // inside the Mutex.
         let shared_arc = self.shared.clone();
-        if latest_proof_node_mut(&self.sertop_state, &mut *shared_arc.lock()).is_none() {
-            if let Some(state) = self.query_proof_state()? {
-                let new_proof_node = ProofNode {
-                    state,
-                    attempted_tactics: HashMap::new(),
-                };
-                let mut shared = shared_arc.lock();
-                match &mut shared.known_mode {
-                    None => {
-                        shared.known_mode = Some(Mode::ProofMode(new_proof_node, Featured::default()));
-                    }
-                    Some(Mode::NotProofMode) => {
-                        panic!("shouldn't have even gotten to entering a proof node when known not to be in proof mode")
-                    }
-                    Some(Mode::ProofMode(p,_)) => {
-                        assert_eq!(self.sertop_state.num_executed_synthetic, self.sertop_state.added_synthetic.len());
-                        // Note: can't use latest_proof_node_mut() here because the shared would believe we have already gotten to this spot
-                        let tactics : &[AddedSynthetic] = &self.sertop_state.added_synthetic;
-                        let p2 = p.descendant_mut (tactics [..tactics.len()-1].iter().map(|t|&t.tactic)).unwrap();
-                        let insert_result = p2.attempted_tactics.insert(tactic,TacticResult::Success{duration: tactic_duration, result_node: new_proof_node});
-                        assert!(insert_result.is_none(), "shouldn't have queried goals for a tactic that was already tested");
-                    }
+        if latest_proof_node_mut(&self.sertop_state, &mut *shared_arc.lock())
+            .attempted_tactics
+            .get(&tactic)
+            .is_none()
+        {
+            // if query_proof_state gets interrupted, we still want to
+            // increment num_executed_synthetic, so don't use ?:
+            match self.query_proof_state() {
+                Ok(new_state) => {
+                    latest_proof_node_mut(&self.sertop_state, &mut *shared_arc.lock()).attempted_tactics.insert(
+                        tactic,
+                        TacticResult::Success {
+                            duration: tactic_duration,
+                            result_node: ProofNode::new(new_state.expect(
+                                "after a successful tactic, we should be able to get a proof state",
+                            )),
+                        },
+                    );
+                }
+                Err(Interrupted) => {
+                    self.sertop_state.num_executed_synthetic += 1;
+                    return Err(Interrupted);
                 }
             }
         }
+        self.sertop_state.num_executed_synthetic += 1;
 
-        assert!(latest_proof_node_mut(&self.sertop_state, &mut *shared_arc.lock()).is_some());
+        // basically an assertion that the node exists, one way or another:
+        latest_proof_node_mut(&self.sertop_state, &mut *shared_arc.lock());
 
         Ok(())
     }

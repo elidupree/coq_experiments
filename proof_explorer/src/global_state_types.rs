@@ -144,6 +144,12 @@ pub enum TacticResult {
 }
 
 impl ProofNode {
+    pub fn new(state: ProofState) -> Self {
+        ProofNode {
+            state,
+            attempted_tactics: HashMap::new(),
+        }
+    }
     pub fn child(&self, tactic: &Tactic) -> Option<&ProofNode> {
         match self.attempted_tactics.get(tactic) {
             Some(TacticResult::Success { result_node, .. }) => Some(result_node),
