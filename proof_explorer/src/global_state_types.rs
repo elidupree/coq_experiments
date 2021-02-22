@@ -35,12 +35,23 @@ pub struct RocketState {
 }
 
 pub struct SertopThreadState {
-    pub child_stdin: ChildStdin,
-    pub lines_iterator: std::io::Lines<BufReader<ChildStdout>>,
+    pub command_runner: CommandRunner,
     pub sertop_state: SertopState,
     pub shared: Arc<Mutex<SharedState>>,
     pub last_added_file_code: String,
     pub end_of_first_added_from_file_that_failed_to_execute: Option<usize>,
+}
+
+/// A sub-struct of SertopThreadState, responsible for raw IO with sertop.
+/// Wants to be a separate substruct so you can take an &mut CommandRunner
+/// without hogging up &mut references to the rest of SertopThreadState.
+pub struct CommandRunner {
+    pub child_stdin: ChildStdin,
+    pub lines_iterator: std::io::Lines<BufReader<ChildStdout>>,
+    // why a duplicate pointer to SharedState, you ask?
+    // again, it's about reference lifetimes. Before I separated out CommandRunner,
+    // I had to make a copy of the Arc on the stack; having it here is no worse
+    pub shared: Arc<Mutex<SharedState>>,
 }
 
 impl SharedState {

@@ -25,8 +25,8 @@ use typed_html::{html, text};
 //use rocket::response::content::Json;
 
 use crate::global_state_types::{
-    AddedFromFile, AddedSynthetic, Featured, FeaturedInNode, Mode, ProofNode, ProofState,
-    RocketState, SertopState, SertopThreadState, SharedState, TacticResult,
+    AddedFromFile, AddedSynthetic, CommandRunner, Featured, FeaturedInNode, Mode, ProofNode,
+    ProofState, RocketState, SertopState, SertopThreadState, SharedState, TacticResult,
 };
 use crate::goals_analysis::{CoqValueInfo, Goals};
 use crate::serapi_protocol::{
@@ -453,11 +453,11 @@ pub fn interpret_sertop_line(line: String) -> AnswersStreamItem {
     AnswersStreamItem::Answer(interpreted)
 }
 
-impl SertopThreadState {
-    pub fn run_command(
+impl CommandRunner {
+    pub fn run(
         &mut self,
         command: Command,
-        mut handler: impl FnMut(Answer, &mut SertopThreadState, &mut SharedState),
+        mut handler: impl FnMut(Answer),
     ) -> Result<(), Interrupted> {
         let text = serde_lexpr::to_string(&command).unwrap();
         eprintln!("sending command to sertop: {}\n", text);
@@ -481,12 +481,9 @@ impl SertopThreadState {
                         }
                     }
 
-                    let shared_arc = self.shared.clone();
-                    let mut shared = shared_arc.lock();
-
                     if let Answer::Answer(_, AnswerKind::Completed) = answer {
                         // assume every completed command might cause a UI change
-                        shared.last_ui_change_serial_number += 1;
+                        self.shared.lock().last_ui_change_serial_number += 1;
                         if interrupted {
                             return Err(Interrupted);
                         } else {
@@ -495,55 +492,51 @@ impl SertopThreadState {
                     }
 
                     if !interrupted {
-                        (handler)(answer, self, &mut *shared);
+                        (handler)(answer);
                     }
                 }
             }
         }
         panic!("looks like sertop crashed or something")
     }
+}
 
+impl SertopThreadState {
     pub fn cancel(&mut self, canceled: Vec<StateId>) -> Result<(), Interrupted> {
-        self.run_command(
-            Command::Cancel(canceled),
-            |answer, sertop_thread, shared| {
+        capture_fields_mut!(self.{
+          sertop_state,
+          shared,
+          end_of_first_added_from_file_that_failed_to_execute
+        });
+        self.command_runner
+            .run(Command::Cancel(canceled), |answer| {
                 if let Answer::Answer(_, AnswerKind::Canceled(state_ids)) = answer {
-                    sertop_thread.sertop_state.added_from_file.retain(|added| {
+                    sertop_state.added_from_file.retain(|added| {
                         state_ids.iter().all(|canceled| &added.state_id != canceled)
                     });
-                    sertop_thread.sertop_state.added_synthetic.retain(|added| {
+                    sertop_state.added_synthetic.retain(|added| {
                         state_ids.iter().all(|canceled| &added.state_id != canceled)
                     });
-                    if sertop_thread.sertop_state.added_from_file.len()
-                        < sertop_thread.sertop_state.num_executed_from_file
-                    {
-                        sertop_thread.sertop_state.num_executed_from_file =
-                            sertop_thread.sertop_state.added_from_file.len();
-                        sertop_thread.end_of_first_added_from_file_that_failed_to_execute = None;
-                        shared.known_mode = None;
+                    if sertop_state.added_from_file.len() < sertop_state.num_executed_from_file {
+                        sertop_state.num_executed_from_file = sertop_state.added_from_file.len();
+                        *end_of_first_added_from_file_that_failed_to_execute = None;
+                        shared.lock().known_mode = None;
                     }
-                    if sertop_thread.sertop_state.added_synthetic.len()
-                        < sertop_thread.sertop_state.num_executed_synthetic
-                    {
-                        sertop_thread.sertop_state.num_executed_synthetic =
-                            sertop_thread.sertop_state.added_synthetic.len();
+                    if sertop_state.added_synthetic.len() < sertop_state.num_executed_synthetic {
+                        sertop_state.num_executed_synthetic = sertop_state.added_synthetic.len();
                     }
                 }
-            },
-        )
+            })
     }
 
     pub fn exec(&mut self, state_id: StateId) -> Result<Result<(), ExnInfo>, Interrupted> {
         let mut result = Ok(());
 
-        self.run_command(
-            Command::Exec(state_id),
-            |answer, _sertop_thread, _shared| {
-                if let Answer::Answer(_, AnswerKind::CoqExn(exn)) = answer {
-                    result = Err(exn);
-                }
-            },
-        )?;
+        self.command_runner.run(Command::Exec(state_id), |answer| {
+            if let Answer::Answer(_, AnswerKind::CoqExn(exn)) = answer {
+                result = Err(exn);
+            }
+        })?;
 
         Ok(result)
     }
@@ -583,7 +576,8 @@ impl SertopThreadState {
         self.last_added_file_code = shared.current_file_code.clone();
 
         drop(shared);
-        self.run_command(
+        capture_fields_mut!(self.sertop_state);
+        self.command_runner.run(
             Command::Add(
                 AddOptions {
                     ontop: last_added_id,
@@ -591,16 +585,13 @@ impl SertopThreadState {
                 },
                 unhandled_file_contents,
             ),
-            |answer, sertop_thread, _shared| {
+            |answer| {
                 if let Answer::Answer(_, AnswerKind::Added(state_id, location, _extra)) = answer {
-                    sertop_thread
-                        .sertop_state
-                        .added_from_file
-                        .push(AddedFromFile {
-                            location_in_file: unhandled_file_offset + location.bp as usize
-                                ..unhandled_file_offset + location.ep as usize,
-                            state_id,
-                        });
+                    sertop_state.added_from_file.push(AddedFromFile {
+                        location_in_file: unhandled_file_offset + location.bp as usize
+                            ..unhandled_file_offset + location.ep as usize,
+                        state_id,
+                    });
                 }
             },
         )
@@ -692,7 +683,8 @@ impl SertopThreadState {
     pub fn query_goals_constr_expr(&mut self) -> Result<Option<Goals<ConstrExpr>>, Interrupted> {
         let mut received_goals = None;
 
-        self.run_command(
+        capture_fields_mut!(self.shared);
+        self.command_runner.run(
             Command::Query(
                 QueryOptions {
                     sid: self.sertop_state.last_added().unwrap_or(0),
@@ -704,7 +696,7 @@ impl SertopThreadState {
                 },
                 QueryCommand::EGoals,
             ),
-            |answer, _sertop_thread, shared| {
+            |answer| {
                 let mut objects = if let Answer::Answer(_, AnswerKind::ObjList(objects)) = answer {
                     objects
                 } else {
@@ -712,9 +704,9 @@ impl SertopThreadState {
                 };
                 match objects.pop() {
                     Some(CoqObject::CoqExtGoal(goals)) => received_goals = Some(goals),
-                    _ => match shared.known_mode {
-                        None => {
-                            shared.known_mode = Some(Mode::NotProofMode);
+                    _ => match &mut shared.lock().known_mode {
+                        known_mode @ None => {
+                            *known_mode = Some(Mode::NotProofMode);
                         }
                         Some(Mode::NotProofMode) => panic!(
                             "shouldn't have queried goals when known not to be in proof mode"
@@ -736,7 +728,7 @@ impl SertopThreadState {
         constr_expr: ConstrExpr,
     ) -> Result<Option<String>, Interrupted> {
         let mut result = None;
-        self.run_command(
+        self.command_runner.run(
             Command::Print(
                 PrintOptions {
                     sid: self.sertop_state.last_added().unwrap_or(0),
@@ -748,7 +740,7 @@ impl SertopThreadState {
                 },
                 CoqObject::CoqExpr(constr_expr),
             ),
-            |answer, _sertop_thread, _shared| {
+            |answer| {
                 let mut objects = if let Answer::Answer(_, AnswerKind::ObjList(objects)) = answer {
                     objects
                 } else {
@@ -782,7 +774,7 @@ impl SertopThreadState {
 
     pub fn show_proof(&mut self) -> Result<Option<(PrettyPrint, String)>, Interrupted> {
         let mut result = None;
-        self.run_command(
+        self.command_runner.run(
             Command::Query(
                 QueryOptions {
                     sid: self.sertop_state.last_added().unwrap_or(0),
@@ -790,7 +782,7 @@ impl SertopThreadState {
                 },
                 QueryCommand::Vernac("Show Proof. ".to_string()),
             ),
-            |answer, _sertop_thread, _shared| {
+            |answer| {
                 if let Answer::Feedback(Feedback {
                     contents: FeedbackContent::Message { pp, str, .. },
                     ..
@@ -814,7 +806,7 @@ impl SertopThreadState {
 
     pub fn run_tactic(&mut self, tactic: Tactic) -> Result<(), Interrupted> {
         fn latest_proof_node_mut<'a>(
-            sertop_thread: &mut SertopThreadState,
+            sertop_state: &SertopState,
             shared: &'a mut SharedState,
         ) -> Option<&'a mut ProofNode> {
             let root = match &mut shared.known_mode {
@@ -822,8 +814,7 @@ impl SertopThreadState {
                 _ => return None,
             };
             root.descendant_mut(
-                sertop_thread.sertop_state.added_synthetic
-                    [..sertop_thread.sertop_state.num_executed_synthetic]
+                sertop_state.added_synthetic[..sertop_state.num_executed_synthetic]
                     .iter()
                     .map(|t| &t.tactic),
             )
@@ -831,37 +822,37 @@ impl SertopThreadState {
 
         let mut exception_happened = false;
         let tactic_start_time = Instant::now();
-        self.run_command(
+        capture_fields_mut!(self.{sertop_state, shared});
+        self.command_runner.run(
             Command::Add(
                 AddOptions {
-                    ontop: self.sertop_state.last_added(),
+                    ontop: sertop_state.last_added(),
                     ..default()
                 },
                 tactic.coq_string(),
             ),
-            |answer, sertop_thread, shared| match answer {
+            |answer| match answer {
                 Answer::Answer(_, AnswerKind::Added(state_id, _location, _extra)) => {
-                    sertop_thread
-                        .sertop_state
-                        .added_synthetic
-                        .push(AddedSynthetic {
-                            tactic: tactic.clone(),
-                            state_id,
-                        });
+                    sertop_state.added_synthetic.push(AddedSynthetic {
+                        tactic: tactic.clone(),
+                        state_id,
+                    });
                 }
                 Answer::Answer(_, AnswerKind::CoqExn(exn)) => {
                     exception_happened = true;
                     assert_eq!(
-                        sertop_thread.sertop_state.num_executed_synthetic,
-                        sertop_thread.sertop_state.added_synthetic.len()
+                        sertop_state.num_executed_synthetic,
+                        sertop_state.added_synthetic.len()
                     );
-                    let insert_result = latest_proof_node_mut(sertop_thread, shared)
+                    let shared_arc = shared.clone();
+                    let mut shared = shared_arc.lock();
+                    let insert_result = latest_proof_node_mut(sertop_state, &mut *shared)
                         .unwrap()
                         .attempted_tactics
                         .insert(tactic.clone(), TacticResult::Failure(exn));
                     assert!(
                         insert_result.is_none(),
-                        "shouldn't have added a tactic that was already tested and failed"
+                        "shouldn't have added a tactic that was already tested and failed (on Add)"
                     );
                 }
                 _ => {}
@@ -882,13 +873,13 @@ impl SertopThreadState {
                 self.sertop_state.num_executed_synthetic + 1,
                 self.sertop_state.added_synthetic.len()
             );
-            let insert_result = latest_proof_node_mut(self, &mut *shared)
+            let insert_result = latest_proof_node_mut(&self.sertop_state, &mut *shared)
                 .unwrap()
                 .attempted_tactics
                 .insert(tactic.clone(), TacticResult::Failure(exn));
             assert!(
                 insert_result.is_none(),
-                "shouldn't have queried goals for a tactic that was already tested"
+                "shouldn't have added a tactic that was already tested and failed (on Exec)"
             );
 
             return Ok(());
@@ -898,7 +889,7 @@ impl SertopThreadState {
 
         self.sertop_state.num_executed_synthetic += 1;
         let shared_arc = self.shared.clone();
-        if latest_proof_node_mut(self, &mut *shared_arc.lock()).is_none() {
+        if latest_proof_node_mut(&self.sertop_state, &mut *shared_arc.lock()).is_none() {
             if let Some(state) = self.query_proof_state()? {
                 let new_proof_node = ProofNode {
                     state,
@@ -923,6 +914,8 @@ impl SertopThreadState {
                 }
             }
         }
+
+        assert!(latest_proof_node_mut(&self.sertop_state, &mut *shared_arc.lock()).is_some());
 
         Ok(())
     }

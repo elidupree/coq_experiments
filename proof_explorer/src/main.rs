@@ -5,6 +5,8 @@ extern crate rocket;
 
 use std::path::PathBuf;
 
+#[macro_use]
+mod utils;
 mod global_state_types;
 mod goals_analysis;
 mod interface;
@@ -13,7 +15,6 @@ mod startup;
 mod supervisor_thread;
 mod tactics;
 mod universally_deserializable;
-mod utils;
 mod webserver_glue;
 
 fn main() {

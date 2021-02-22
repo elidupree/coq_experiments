@@ -1,4 +1,4 @@
-use crate::global_state_types::{SertopThreadState, SharedState};
+use crate::global_state_types::{CommandRunner, SertopThreadState, SharedState};
 use crate::{supervisor_thread, webserver_glue};
 use parking_lot::Mutex;
 use std::default::default;
@@ -32,8 +32,11 @@ pub fn run(code_path: PathBuf) {
 
     std::thread::spawn({
         let mut sertop_thread = SertopThreadState {
-            lines_iterator: BufReader::new(child_stdout).lines(),
-            child_stdin,
+            command_runner: CommandRunner {
+                lines_iterator: BufReader::new(child_stdout).lines(),
+                child_stdin,
+                shared: shared.clone(),
+            },
             sertop_state: default(),
             shared: shared.clone(),
             last_added_file_code: String::new(),

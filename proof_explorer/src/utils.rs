@@ -7,3 +7,15 @@ pub fn first_difference_index<T: PartialEq>(a: &[T], b: &[T]) -> Option<usize> {
         }
     })
 }
+
+macro_rules! capture_fields_mut {
+    ($object: ident.{$($field: ident,)*}) => {
+        $(let $field = &mut $object.$field;)*
+    };
+    ($object: ident.{$($field: ident),*}) => {
+        capture_fields_mut!($object.{$($field,)*})
+    };
+    ($object: ident.$field: ident) => {
+        capture_fields_mut!($object.{$field,})
+    };
+}
