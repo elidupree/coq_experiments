@@ -533,36 +533,42 @@ impl SertopThreadState {
         )
     }
 
+    pub fn exec(&mut self, state_id: StateId) -> Result<Result<(), ExnInfo>, Interrupted> {
+        let mut result = Ok(());
+
+        self.run_command(
+            Command::Exec(state_id),
+            |answer, _sertop_thread, _shared| {
+                if let Answer::Answer(_, AnswerKind::CoqExn(exn)) = answer {
+                    result = Err(exn);
+                }
+            },
+        )?;
+
+        Ok(result)
+    }
+
     pub fn exec_next_from_file(&mut self) -> Result<(), Interrupted> {
         // There should never be synthetic commands while there are
         // still unexecuted ones from the file. Make sure of this.
         assert!(self.sertop_state.added_synthetic.is_empty());
 
-        self.run_command(
-            Command::Exec(
-                self.sertop_state.added_from_file[self.sertop_state.num_executed_from_file]
-                    .state_id,
-            ),
-            |answer, sertop_thread, _shared| {
-                if let Answer::Answer(_, AnswerKind::CoqExn(_)) = answer {
-                    sertop_thread.end_of_first_added_from_file_that_failed_to_execute = Some(
-                        sertop_thread.sertop_state.added_from_file
-                            [sertop_thread.sertop_state.num_executed_from_file]
-                            .location_in_file
-                            .end,
-                    );
-                }
-            },
-        )?;
-
-        let mut shared = self.shared.lock();
-        if self
-            .end_of_first_added_from_file_that_failed_to_execute
-            .is_none()
-        {
-            self.sertop_state.num_executed_from_file += 1;
-            shared.known_mode = None;
+        let state_id =
+            self.sertop_state.added_from_file[self.sertop_state.num_executed_from_file].state_id;
+        match self.exec(state_id)? {
+            Ok(()) => {
+                self.sertop_state.num_executed_from_file += 1;
+                self.shared.lock().known_mode = None;
+            }
+            Err(_exn) => {
+                self.end_of_first_added_from_file_that_failed_to_execute = Some(
+                    self.sertop_state.added_from_file[self.sertop_state.num_executed_from_file]
+                        .location_in_file
+                        .end,
+                );
+            }
         }
+
         Ok(())
     }
 
@@ -865,32 +871,29 @@ impl SertopThreadState {
         if exception_happened {
             return Ok(());
         }
-        self.run_command(
-            Command::Exec(
-                self.sertop_state.added_synthetic[self.sertop_state.num_executed_synthetic]
-                    .state_id,
-            ),
-            |answer, sertop_thread, shared| {
-                if let Answer::Answer(_, AnswerKind::CoqExn(exn)) = answer {
-                    exception_happened = true;
-                    assert_eq!(
-                        sertop_thread.sertop_state.num_executed_synthetic + 1,
-                        sertop_thread.sertop_state.added_synthetic.len()
-                    );
-                    let insert_result = latest_proof_node_mut(sertop_thread, shared)
-                        .unwrap()
-                        .attempted_tactics
-                        .insert(tactic.clone(), TacticResult::Failure(exn));
-                    assert!(
-                        insert_result.is_none(),
-                        "shouldn't have queried goals for a tactic that was already tested"
-                    );
-                }
-            },
-        )?;
-        if exception_happened {
+
+        let state_id =
+            self.sertop_state.added_synthetic[self.sertop_state.num_executed_synthetic].state_id;
+        let exec_result = self.exec(state_id)?;
+        if let Err(exn) = exec_result {
+            let shared_arc = self.shared.clone();
+            let mut shared = shared_arc.lock();
+            assert_eq!(
+                self.sertop_state.num_executed_synthetic + 1,
+                self.sertop_state.added_synthetic.len()
+            );
+            let insert_result = latest_proof_node_mut(self, &mut *shared)
+                .unwrap()
+                .attempted_tactics
+                .insert(tactic.clone(), TacticResult::Failure(exn));
+            assert!(
+                insert_result.is_none(),
+                "shouldn't have queried goals for a tactic that was already tested"
+            );
+
             return Ok(());
         }
+
         let tactic_duration = Instant::now() - tactic_start_time;
 
         self.sertop_state.num_executed_synthetic += 1;
