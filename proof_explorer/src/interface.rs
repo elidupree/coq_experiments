@@ -34,7 +34,7 @@ use crate::serapi_protocol::{
     FeedbackContent, FormatOptions, IdenticalHypotheses, NamesId, PrettyPrint, PrintFormat,
     PrintOptions, QueryCommand, QueryOptions, ReifiedGoal, SerGoals, StateId,
 };
-use crate::sertop_glue::{interpret_sertop_line, AnswersStreamItem, Interrupted};
+use crate::sertop_glue::{interpret_sertop_line, Interrupted, MessageFromSertop};
 use crate::tactics::{self, Tactic};
 use crate::utils::first_difference_index;
 use crate::{supervisor_thread, webserver_glue};
@@ -83,11 +83,11 @@ impl CommandRunner {
         while let Some(line) = self.lines_iterator.next() {
             let line = line.expect("IO error receiving from sertop?");
             match interpret_sertop_line(line) {
-                AnswersStreamItem::InterruptedWhileNoCommandRunning => {
+                MessageFromSertop::InterruptedWhileNoCommandRunning => {
                     panic!("something went wrong if we got Sys.Break when we thought a command was running");
                 }
-                AnswersStreamItem::Invalid => {}
-                AnswersStreamItem::Answer(answer) => {
+                MessageFromSertop::Invalid => {}
+                MessageFromSertop::Answer(answer) => {
                     if let Answer::Answer(_, AnswerKind::CoqExn(ExnInfo { str, .. })) = &answer {
                         if str.trim() == "User interrupt." {
                             // rather than return Err immediately,
