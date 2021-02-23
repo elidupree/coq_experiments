@@ -308,7 +308,7 @@ impl MainThreadState {
         )
     }
 
-    pub fn execute_from_file(
+    pub fn execute_from_file_until_changed_part(
         &mut self,
         first_difference_offset: Option<usize>,
     ) -> Result<(), Interrupted> {
@@ -373,7 +373,7 @@ impl MainThreadState {
 
         // Otherwise, execute anything we've already added, as long as it's still
         // consistent with the file and hasn't already hit an execution error.
-        self.execute_from_file(first_difference_offset);
+        self.execute_from_file_until_changed_part(first_difference_offset);
 
         // Finally, if the file has changed, then we need to Add the remaining part,
         // UNLESS that part is after the first execution error from the file,
@@ -383,6 +383,9 @@ impl MainThreadState {
                 .end_of_first_added_from_file_that_failed_to_execute
                 .map_or(true, |i| first_difference_offset < i)
             {
+                // if we're adding new commands, this'll need to be recomputed:
+                self.end_of_first_added_from_file_that_failed_to_execute = None;
+
                 // Assume that synthetic commands must be canceled before we can even
                 // attempt adding new ones from the file
                 let canceled = self
@@ -393,7 +396,7 @@ impl MainThreadState {
                     .collect();
                 self.cancel(canceled)?;
                 self.add_rest_of_file()?;
-                self.execute_from_file(None);
+                self.execute_from_file_until_changed_part(None);
             }
         }
 
