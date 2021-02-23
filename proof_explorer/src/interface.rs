@@ -50,7 +50,7 @@ Autorun design:
 
 The default proof exploration root is the last command from the file that successfully executes.
 
-Before we can try commands one at a time, we must parse them; in order to post them, we must Add all of them. Some of them may have parse errors, meaning the "Added commands" don't cover the entire file; subsequent to Adding them, some of them may fail to execute. Thus, the proof exploration root may before the last Added command.
+Before we can try commands one at a time, we must parse them; in order to parse them, we must Add all of them. Some of them may have parse errors, meaning the "Added commands" don't cover the entire file; subsequent to Adding them, some of them may fail to execute. Thus, the proof exploration root may before the last Added command.
 
 I don't currently understand the parallelism or DAG nature of the API, so I'm going to proceed with the simple assumptions that (1) commands must be executed in file order, and (2) we have to Cancel any failed-to-execute commands before we can Add exploratory commands the precede them. Thus, proof exploration can only proceed if the set of Added commands equals the set of executed commands.
 
@@ -211,6 +211,9 @@ impl MainThreadState {
     }
 
     pub fn cancel(&mut self, canceled: Vec<StateId>) -> Result<(), Interrupted> {
+        if canceled.is_empty() {
+            return Ok(());
+        }
         capture_fields_mut!(self.{
           sertop_state,
           shared,
@@ -305,6 +308,29 @@ impl MainThreadState {
         )
     }
 
+    pub fn execute_from_file(
+        &mut self,
+        first_difference_offset: Option<usize>,
+    ) -> Result<(), Interrupted> {
+        while let Some(next) = self
+            .sertop_state
+            .added_from_file
+            .get(self.sertop_state.num_executed_from_file)
+        {
+            if self
+                .end_of_first_added_from_file_that_failed_to_execute
+                .is_none()
+                && first_difference_offset.map_or(true, |i| next.location_in_file.end <= i)
+            {
+                self.exec_next_from_file()?;
+            } else {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn update_to_match_file(&mut self) -> Result<(), Interrupted> {
         let shared = self.shared.lock();
         let first_difference_offset = first_difference_index(
@@ -338,21 +364,7 @@ impl MainThreadState {
 
         // Otherwise, execute anything we've already added, as long as it's still
         // consistent with the file and hasn't already hit an execution error.
-        while let Some(next) = self
-            .sertop_state
-            .added_from_file
-            .get(self.sertop_state.num_executed_from_file)
-        {
-            if self
-                .end_of_first_added_from_file_that_failed_to_execute
-                .is_none()
-                && first_difference_offset.map_or(true, |i| next.location_in_file.end <= i)
-            {
-                self.exec_next_from_file()?;
-            } else {
-                break;
-            }
-        }
+        self.execute_from_file(first_difference_offset);
 
         // After the above, if there are any unexecuted commands from the file, cancel them.
         // (Since they either threw errors or are inconsistent with the current file.)
@@ -377,9 +389,17 @@ impl MainThreadState {
                 .end_of_first_added_from_file_that_failed_to_execute
                 .map_or(true, |i| first_difference_offset < i)
             {
+                // Assume that synthetic commands must be canceled before we can even
+                // attempt adding new ones from the file
+                let canceled = self
+                    .sertop_state
+                    .added_synthetic
+                    .iter()
+                    .map(|a| a.state_id)
+                    .collect();
+                self.cancel(canceled)?;
                 self.add_rest_of_file()?;
-                // hack: go back and execute
-                return Ok(());
+                self.execute_from_file(None);
             }
         }
 
