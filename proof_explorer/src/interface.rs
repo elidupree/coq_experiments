@@ -328,6 +328,15 @@ impl MainThreadState {
             }
         }
 
+        // After the above, if there are any unexecuted commands from the file, cancel them.
+        // (Since they either threw errors or are inconsistent with the current file.)
+        let canceled: Vec<_> = self.sertop_state.added_from_file
+            [self.sertop_state.num_executed_from_file..]
+            .iter()
+            .map(|a| a.state_id)
+            .collect();
+        self.cancel(canceled)?;
+
         Ok(())
     }
 
@@ -366,25 +375,10 @@ impl MainThreadState {
         // consistent with the file and hasn't already hit an execution error.
         self.execute_from_file(first_difference_offset);
 
-        // After the above, if there are any unexecuted commands from the file, cancel them.
-        // (Since they either threw errors or are inconsistent with the current file.)
+        // Finally, if the file has changed, then we need to Add the remaining part,
+        // UNLESS that part is after the first execution error from the file,
+        // in which case we don't have to care about it yet.
         if let Some(first_difference_offset) = first_difference_offset {
-            let canceled: Vec<_> = self.sertop_state.added_from_file
-                [self.sertop_state.num_executed_from_file..]
-                .iter()
-                .map(|a| a.state_id)
-                .collect();
-            if !canceled.is_empty() {
-                // There should never be synthetic commands while there are
-                // still unexecuted ones from the file. Make sure of this.
-                assert!(self.sertop_state.added_synthetic.is_empty());
-
-                self.cancel(canceled)?;
-            }
-
-            // Finally, if the file has changed, then we need to Add the remaining part,
-            // UNLESS that part is after the first execution error from the file,
-            // in which case we don't have to care about it yet.
             if self
                 .end_of_first_added_from_file_that_failed_to_execute
                 .map_or(true, |i| first_difference_offset < i)
@@ -401,14 +395,6 @@ impl MainThreadState {
                 self.add_rest_of_file()?;
                 self.execute_from_file(None);
             }
-        }
-
-        if self.shared.lock().known_mode.is_none() {
-            let state = self.query_proof_state()?;
-            self.shared.lock().known_mode = Some(match state {
-                Some(state) => Mode::ProofMode(ProofNode::new(state), Featured::default()),
-                None => Mode::NotProofMode,
-            })
         }
 
         self.shared.lock().sertop_up_to_date_with_file = true;
@@ -651,17 +637,11 @@ impl MainThreadState {
     fn do_proof_exploration(&mut self) -> Result<(), Interrupted> {
         let shared_arc = self.shared.clone();
         if shared_arc.lock().known_mode.is_none() {
-            let new_mode = Some(if let Some(state) = self.query_proof_state()? {
-                let new_proof_node = ProofNode {
-                    state,
-                    attempted_tactics: HashMap::new(),
-                };
-
-                Mode::ProofMode(new_proof_node, Featured::default())
-            } else {
-                Mode::NotProofMode
-            });
-            shared_arc.lock().known_mode = new_mode;
+            let state = self.query_proof_state()?;
+            shared_arc.lock().known_mode = Some(match state {
+                Some(state) => Mode::ProofMode(ProofNode::new(state), Featured::default()),
+                None => Mode::NotProofMode,
+            })
         }
         let shared = shared_arc.lock();
         let (_proof_root, featured): (&ProofNode, &Featured) = match &shared.known_mode {
