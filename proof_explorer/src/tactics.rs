@@ -1,5 +1,6 @@
-use crate::global_state_types::{FeaturedInNode, ProofNode};
+use crate::global_state_types::{Featured, FeaturedInNode, MainThreadState, Mode, ProofNode};
 use crate::serapi_protocol::{IdenticalHypotheses, NamesId};
+use crate::sertop_glue::Interrupted;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
@@ -114,4 +115,62 @@ pub fn all_global_tactics() -> impl Iterator<Item = Tactic> {
             tactic: tactic.to_owned(),
             arguments: None,
         })
+}
+
+impl MainThreadState {
+    pub fn do_proof_exploration(&mut self) -> Result<(), Interrupted> {
+        let shared_arc = self.shared.clone();
+        if shared_arc.lock().known_mode.is_none() {
+            let state = self.query_proof_state()?;
+            shared_arc.lock().known_mode = Some(match state {
+                Some(state) => Mode::ProofMode(ProofNode::new(state), Featured::default()),
+                None => Mode::NotProofMode,
+            })
+        }
+        let shared = shared_arc.lock();
+        let (_proof_root, featured): (&ProofNode, &Featured) = match &shared.known_mode {
+            None => unreachable!(),
+            Some(Mode::NotProofMode) => return Ok(()),
+            Some(Mode::ProofMode(p, f)) => (p, f),
+        };
+        let tactics_path: Vec<_> = featured.tactics_path().cloned().collect();
+
+        // make sure we are currently at the featured proof path before exploring
+        let canceled: Vec<_> = self
+            .sertop_state
+            .added_synthetic
+            .iter()
+            .enumerate()
+            .skip_while(|(i, a)| tactics_path.get(*i) == Some(&a.tactic))
+            .map(|(_, a)| a.state_id)
+            .collect();
+        drop(shared);
+
+        if !canceled.is_empty() {
+            self.cancel(canceled)?;
+        }
+        for catchup_tactic in &tactics_path[self.sertop_state.added_synthetic.len()..] {
+            self.run_tactic(catchup_tactic.to_owned())?;
+        }
+
+        let shared = shared_arc.lock();
+        let (featured_node, featured_in_node): (&ProofNode, &FeaturedInNode) =
+            shared.featured_node().unwrap();
+        let exploratory_tactics = generate_exploratory_tactics(featured_node, featured_in_node);
+        drop(shared);
+        for tactic in exploratory_tactics {
+            let shared = shared_arc.lock();
+            let (featured_node, _featured_in_node): (&ProofNode, &FeaturedInNode) =
+                shared.featured_node().unwrap();
+            if featured_node.attempted_tactics.get(&tactic).is_none() {
+                drop(shared);
+                self.run_tactic(tactic)?;
+                // TODO: don't be inefficient, keep going unless featured was actually change
+                // or something like that
+                return Ok(());
+            }
+        }
+
+        Ok(())
+    }
 }

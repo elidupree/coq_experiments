@@ -2,7 +2,6 @@ use crate::global_state_types::{CommandRunner, MainThreadState, RocketState, Sha
 use crate::{sertop_glue, supervisor_thread, webserver_glue};
 use parking_lot::Mutex;
 use std::default::default;
-use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process;
 use std::process::Stdio;

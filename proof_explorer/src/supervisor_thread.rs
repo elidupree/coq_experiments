@@ -1,9 +1,7 @@
-use crate::global_state_types::{MessageFromOutsideSertop, MessageToMainThread, SharedState};
-use parking_lot::Mutex;
+use crate::global_state_types::{MessageFromOutsideSertop, MessageToMainThread};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
-use std::sync::Arc;
 use std::time::Duration;
 
 pub enum MessageFromSupervisor {

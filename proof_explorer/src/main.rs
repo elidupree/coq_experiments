@@ -9,7 +9,7 @@ use std::path::PathBuf;
 mod utils;
 mod global_state_types;
 mod goals_analysis;
-mod interface;
+mod main_thread_infrastructure;
 mod serapi_protocol;
 mod sertop_glue;
 mod startup;

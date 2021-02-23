@@ -1,14 +1,12 @@
 use crate::global_state_types::{
-    Featured, MessageFromOutsideSertop, MessageToMainThread, Mode, RocketState, SharedState,
+    Featured, MessageFromOutsideSertop, MessageToMainThread, RocketState, SharedState,
 };
-use parking_lot::Mutex;
 use rocket::config::{Environment, LoggingLevel};
 use rocket::response::NamedFile;
 use rocket::{Config, State};
 use rocket_contrib::json::Json;
 use rocket_contrib::serve::StaticFiles;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use typed_html::dom::DOMTree;
 use typed_html::html;
 

@@ -1,49 +1,3 @@
-#![allow(unused_imports, clippy::collapsible_else_if)]
-
-use derivative::Derivative;
-use difference::{Changeset, Difference};
-use guard::guard;
-use parking_lot::{Mutex, MutexGuard};
-use rocket::config::{Config, Environment, LoggingLevel};
-use rocket::response::NamedFile;
-use rocket::State;
-use rocket_contrib::json::Json;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::default::default;
-use std::fmt::Debug;
-use std::io::{BufRead, BufReader, Write};
-use std::ops::Range;
-use std::path::PathBuf;
-use std::process::{self, ChildStdin, ChildStdout, Stdio};
-use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime};
-use std::{fs, iter, mem};
-use typed_html::dom::DOMTree;
-use typed_html::elements::FlowContent;
-use typed_html::{html, text};
-//use rocket::response::content::Json;
-
-use crate::global_state_types::{
-    AddedFromFile, AddedSynthetic, CommandRunner, Featured, FeaturedInNode, MainThreadState,
-    MessageFromOutsideSertop, MessageToMainThread, Mode, ProofNode, ProofState, RocketState,
-    SertopState, SharedState, TacticResult,
-};
-use crate::goals_analysis::{CoqValueInfo, Goals};
-use crate::serapi_protocol::{
-    AddOptions, Answer, AnswerKind, Command, ConstrExpr, CoqObject, ExnInfo, Feedback,
-    FeedbackContent, FormatOptions, IdenticalHypotheses, NamesId, PrettyPrint, PrintFormat,
-    PrintOptions, QueryCommand, QueryOptions, ReifiedGoal, SerGoals, StateId,
-};
-use crate::sertop_glue::{Interrupted, MessageFromSertop};
-use crate::supervisor_thread::MessageFromSupervisor;
-use crate::tactics::{self, Tactic};
-use crate::utils::first_difference_index;
-use crate::webserver_glue::MessageFromFrontend;
-use crate::{supervisor_thread, webserver_glue};
-use rocket_contrib::serve::StaticFiles;
-use std::collections::hash_map::Entry;
-
 /*
 
 Autorun design:
@@ -71,6 +25,27 @@ Thus, the priorities are:
 Separately, any time the collection of executed statements *changes*, we need to forget what we know about the proof state. That happens unconditionally in (3), and might happen in (1) (but can be deferred until we know the execution didn't error).
 
  */
+
+use crate::global_state_types::{
+    AddedFromFile, AddedSynthetic, CommandRunner, MainThreadState, MessageFromOutsideSertop,
+    MessageToMainThread, Mode, ProofNode, ProofState, SertopState, SharedState, TacticResult,
+};
+use crate::goals_analysis::{CoqValueInfo, Goals};
+use crate::serapi_protocol::{
+    AddOptions, Answer, AnswerKind, Command, ConstrExpr, CoqObject, ExnInfo, Feedback,
+    FeedbackContent, FormatOptions, PrettyPrint, PrintFormat, PrintOptions, QueryCommand,
+    QueryOptions, StateId,
+};
+use crate::sertop_glue::{Interrupted, MessageFromSertop};
+use crate::supervisor_thread::MessageFromSupervisor;
+use crate::tactics::Tactic;
+use crate::utils;
+use crate::webserver_glue::MessageFromFrontend;
+use guard::guard;
+use std::default::default;
+use std::io::Write;
+use std::mem;
+use std::time::{Duration, Instant};
 
 impl CommandRunner {
     pub fn run(
@@ -342,7 +317,7 @@ impl MainThreadState {
 
     pub fn update_to_match_file(&mut self) -> Result<(), Interrupted> {
         let shared = self.shared.lock();
-        let first_difference_offset = first_difference_index(
+        let first_difference_offset = utils::first_difference_index(
             shared.current_file_code.as_bytes(),
             self.last_added_file_code.as_bytes(),
         );
@@ -633,63 +608,6 @@ impl MainThreadState {
 
         // basically an assertion that the node exists, one way or another:
         latest_proof_node_mut(&self.sertop_state, &mut *shared_arc.lock());
-
-        Ok(())
-    }
-
-    fn do_proof_exploration(&mut self) -> Result<(), Interrupted> {
-        let shared_arc = self.shared.clone();
-        if shared_arc.lock().known_mode.is_none() {
-            let state = self.query_proof_state()?;
-            shared_arc.lock().known_mode = Some(match state {
-                Some(state) => Mode::ProofMode(ProofNode::new(state), Featured::default()),
-                None => Mode::NotProofMode,
-            })
-        }
-        let shared = shared_arc.lock();
-        let (_proof_root, featured): (&ProofNode, &Featured) = match &shared.known_mode {
-            None => unreachable!(),
-            Some(Mode::NotProofMode) => return Ok(()),
-            Some(Mode::ProofMode(p, f)) => (p, f),
-        };
-        let tactics_path: Vec<_> = featured.tactics_path().cloned().collect();
-
-        // make sure we are currently at the featured proof path before exploring
-        let canceled: Vec<_> = self
-            .sertop_state
-            .added_synthetic
-            .iter()
-            .enumerate()
-            .skip_while(|(i, a)| tactics_path.get(*i) == Some(&a.tactic))
-            .map(|(_, a)| a.state_id)
-            .collect();
-        drop(shared);
-
-        if !canceled.is_empty() {
-            self.cancel(canceled)?;
-        }
-        for catchup_tactic in &tactics_path[self.sertop_state.added_synthetic.len()..] {
-            self.run_tactic(catchup_tactic.to_owned())?;
-        }
-
-        let shared = shared_arc.lock();
-        let (featured_node, featured_in_node): (&ProofNode, &FeaturedInNode) =
-            shared.featured_node().unwrap();
-        let exploratory_tactics =
-            tactics::generate_exploratory_tactics(featured_node, featured_in_node);
-        drop(shared);
-        for tactic in exploratory_tactics {
-            let shared = shared_arc.lock();
-            let (featured_node, _featured_in_node): (&ProofNode, &FeaturedInNode) =
-                shared.featured_node().unwrap();
-            if featured_node.attempted_tactics.get(&tactic).is_none() {
-                drop(shared);
-                self.run_tactic(tactic)?;
-                // TODO: don't be inefficient, keep going unless featured was actually change
-                // or something like that
-                return Ok(());
-            }
-        }
 
         Ok(())
     }
