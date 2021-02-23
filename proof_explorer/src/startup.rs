@@ -1,11 +1,12 @@
-use crate::global_state_types::{CommandRunner, SertopThreadState, SharedState};
-use crate::{supervisor_thread, webserver_glue};
+use crate::global_state_types::{CommandRunner, MainThreadState, RocketState, SharedState};
+use crate::{sertop_glue, supervisor_thread, webserver_glue};
 use parking_lot::Mutex;
 use std::default::default;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process;
 use std::process::Stdio;
+use std::sync::mpsc::channel;
 use std::sync::Arc;
 
 pub fn run(code_path: PathBuf) {
@@ -28,14 +29,25 @@ pub fn run(code_path: PathBuf) {
     let child_stdout = child.stdout.expect("no stdout?");
     let child_stdin = child.stdin.expect("no stdin?");
 
-    let shared = Arc::new(Mutex::new(SharedState::new(code_path)));
+    let shared = Arc::new(Mutex::new(SharedState::new(code_path.clone())));
+    let (sender, receiver) = channel();
 
     std::thread::spawn({
-        let mut sertop_thread = SertopThreadState {
+        let sender = sender.clone();
+        move || supervisor_thread::run(code_path, sender)
+    });
+    std::thread::spawn({
+        let sender = sender.clone();
+        move || sertop_glue::listen(child_stdout, sender)
+    });
+
+    std::thread::spawn({
+        let mut main_thread = MainThreadState {
             command_runner: CommandRunner {
-                lines_iterator: BufReader::new(child_stdout).lines(),
+                receiver,
                 child_stdin,
                 shared: shared.clone(),
+                messages_from_outside_sertop_queue: default(),
             },
             sertop_state: default(),
             shared: shared.clone(),
@@ -43,16 +55,12 @@ pub fn run(code_path: PathBuf) {
             end_of_first_added_from_file_that_failed_to_execute: None,
         };
         move || {
-            sertop_thread.run();
+            main_thread.run();
         }
     });
 
-    std::thread::spawn({
-        let shared = shared.clone();
-        move || {
-            supervisor_thread::run(shared);
-        }
+    webserver_glue::launch(RocketState {
+        shared,
+        sender: Mutex::new(sender),
     });
-
-    webserver_glue::launch(shared);
 }

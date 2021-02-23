@@ -25,8 +25,9 @@ use typed_html::{html, text};
 //use rocket::response::content::Json;
 
 use crate::global_state_types::{
-    AddedFromFile, AddedSynthetic, CommandRunner, Featured, FeaturedInNode, Mode, ProofNode,
-    ProofState, RocketState, SertopState, SertopThreadState, SharedState, TacticResult,
+    AddedFromFile, AddedSynthetic, CommandRunner, Featured, FeaturedInNode, MainThreadState,
+    MessageFromOutsideSertop, MessageToMainThread, Mode, ProofNode, ProofState, RocketState,
+    SertopState, SharedState, TacticResult,
 };
 use crate::goals_analysis::{CoqValueInfo, Goals};
 use crate::serapi_protocol::{
@@ -34,9 +35,11 @@ use crate::serapi_protocol::{
     FeedbackContent, FormatOptions, IdenticalHypotheses, NamesId, PrettyPrint, PrintFormat,
     PrintOptions, QueryCommand, QueryOptions, ReifiedGoal, SerGoals, StateId,
 };
-use crate::sertop_glue::{interpret_sertop_line, Interrupted, MessageFromSertop};
+use crate::sertop_glue::{Interrupted, MessageFromSertop};
+use crate::supervisor_thread::MessageFromSupervisor;
 use crate::tactics::{self, Tactic};
 use crate::utils::first_difference_index;
+use crate::webserver_glue::MessageFromFrontend;
 use crate::{supervisor_thread, webserver_glue};
 use rocket_contrib::serve::StaticFiles;
 use std::collections::hash_map::Entry;
@@ -75,49 +78,138 @@ impl CommandRunner {
         command: Command,
         mut handler: impl FnMut(Answer),
     ) -> Result<(), Interrupted> {
+        // If a previous command sent an interrupt JUST before the command was completed,
+        // then the command might have completed, resulting in us returning Ok.
+        // But we really do want to interrupt whatever comes next in that case, so
+        // here we return Err immediately (as if the command was immediately interrupted
+        // before it could make any progress).
+        if let Ok(message) = self.receiver.try_recv() {
+            match message {
+                MessageToMainThread::FromOutsideSertop(message) => {
+                    self.messages_from_outside_sertop_queue.push_back(message);
+                }
+                MessageToMainThread::FromSertop(_message) => {}
+            }
+        }
+        if !self.messages_from_outside_sertop_queue.is_empty() {
+            eprintln!("skipping a command due to previous interrupt");
+            return Err(Interrupted);
+        }
+
         let text = serde_lexpr::to_string(&command).unwrap();
         eprintln!("sending command to sertop: {}\n", text);
         writeln!(self.child_stdin, "{}", text).unwrap();
-        let mut interrupted = false;
+        let mut sertop_acknowledged_interrupt = false;
 
-        while let Some(line) = self.lines_iterator.next() {
-            let line = line.expect("IO error receiving from sertop?");
-            match interpret_sertop_line(line) {
-                MessageFromSertop::InterruptedWhileNoCommandRunning => {
-                    panic!("something went wrong if we got Sys.Break when we thought a command was running");
+        while let Ok(message) = self.receiver.recv() {
+            match message {
+                MessageToMainThread::FromOutsideSertop(message) => {
+                    self.messages_from_outside_sertop_queue.push_back(message);
+                    // TODO send interrupt
                 }
-                MessageFromSertop::Invalid => {}
-                MessageFromSertop::Answer(answer) => {
-                    if let Answer::Answer(_, AnswerKind::CoqExn(ExnInfo { str, .. })) = &answer {
-                        if str.trim() == "User interrupt." {
-                            // rather than return Err immediately,
-                            // we also want to consume the Completed
-                            interrupted = true;
-                            continue;
+                MessageToMainThread::FromSertop(message) => match message {
+                    MessageFromSertop::InterruptedWhileNoCommandRunning => {
+                        panic!("something went wrong if we got Sys.Break when we thought a command was running");
+                    }
+                    MessageFromSertop::Invalid => {}
+                    MessageFromSertop::Answer(answer) => {
+                        if let Answer::Answer(_, AnswerKind::CoqExn(ExnInfo { str, .. })) = &answer
+                        {
+                            if str.trim() == "User interrupt." {
+                                // rather than return Err immediately,
+                                // we also want to consume the Completed
+                                sertop_acknowledged_interrupt = true;
+                                continue;
+                            }
+                        }
+
+                        if let Answer::Answer(_, AnswerKind::Completed) = answer {
+                            // assume every completed command might cause a UI change
+                            self.shared.lock().last_ui_change_serial_number += 1;
+                            if sertop_acknowledged_interrupt {
+                                return Err(Interrupted);
+                            } else {
+                                return Ok(());
+                            }
+                        }
+
+                        if !sertop_acknowledged_interrupt {
+                            (handler)(answer);
                         }
                     }
-
-                    if let Answer::Answer(_, AnswerKind::Completed) = answer {
-                        // assume every completed command might cause a UI change
-                        self.shared.lock().last_ui_change_serial_number += 1;
-                        if interrupted {
-                            return Err(Interrupted);
-                        } else {
-                            return Ok(());
-                        }
-                    }
-
-                    if !interrupted {
-                        (handler)(answer);
-                    }
-                }
+                },
             }
         }
         panic!("looks like sertop crashed or something")
     }
 }
 
-impl SertopThreadState {
+impl MainThreadState {
+    pub fn run(&mut self) {
+        loop {
+            if let Ok(()) = self.run_once() {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+    }
+
+    pub fn run_once(&mut self) -> Result<(), Interrupted> {
+        self.handle_messages_from_outside();
+
+        if !self.shared.lock().sertop_up_to_date_with_file {
+            self.update_to_match_file()?
+        }
+
+        self.do_proof_exploration()?;
+
+        Ok(())
+    }
+
+    pub fn handle_message_from_frontend(&mut self, message: MessageFromFrontend) {
+        match message {
+            MessageFromFrontend::SetFeatured(new_featured) => {
+                // gotta check if this input wasn't delayed across a file reload
+                if let Some(Mode::ProofMode(p, f)) = &mut self.shared.lock().known_mode {
+                    if p.descendant(new_featured.tactics_path_all()).is_some() {
+                        *f = new_featured;
+                    }
+                }
+            }
+        }
+    }
+    pub fn handle_message_from_supervisor(&mut self, message: MessageFromSupervisor) {
+        match message {
+            MessageFromSupervisor::ReplaceFile(code) => {
+                let mut shared = self.shared.lock();
+                shared.sertop_up_to_date_with_file = false;
+                shared.current_file_code = code;
+            }
+        }
+    }
+    pub fn handle_message_from_outside(&mut self, message: MessageFromOutsideSertop) {
+        match message {
+            MessageFromOutsideSertop::FromFrontend(message) => {
+                self.handle_message_from_frontend(message)
+            }
+            MessageFromOutsideSertop::FromSupervisor(message) => {
+                self.handle_message_from_supervisor(message)
+            }
+        }
+    }
+    pub fn handle_messages_from_outside(&mut self) {
+        for message in mem::take(&mut self.command_runner.messages_from_outside_sertop_queue) {
+            self.handle_message_from_outside(message);
+        }
+        while let Ok(message) = self.command_runner.receiver.try_recv() {
+            match message {
+                MessageToMainThread::FromOutsideSertop(message) => {
+                    self.handle_message_from_outside(message);
+                }
+                MessageToMainThread::FromSertop(_message) => {}
+            }
+        }
+    }
+
     pub fn cancel(&mut self, canceled: Vec<StateId>) -> Result<(), Interrupted> {
         capture_fields_mut!(self.{
           sertop_state,
@@ -597,23 +689,5 @@ impl SertopThreadState {
         }
 
         Ok(())
-    }
-
-    pub fn run_once(&mut self) -> Result<(), Interrupted> {
-        while !self.shared.lock().sertop_up_to_date_with_file {
-            self.update_to_match_file()?
-        }
-
-        self.do_proof_exploration()?;
-
-        Ok(())
-    }
-
-    pub fn run(&mut self) {
-        loop {
-            if let Ok(()) = self.run_once() {
-                std::thread::sleep(Duration::from_millis(10));
-            }
-        }
     }
 }

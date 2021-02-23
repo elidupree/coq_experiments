@@ -1,4 +1,6 @@
-use crate::global_state_types::{Featured, Mode, RocketState, SharedState};
+use crate::global_state_types::{
+    Featured, MessageFromOutsideSertop, MessageToMainThread, Mode, RocketState, SharedState,
+};
 use parking_lot::Mutex;
 use rocket::config::{Environment, LoggingLevel};
 use rocket::response::NamedFile;
@@ -29,22 +31,15 @@ impl Featured {
 #[post("/input", data = "<input>")]
 fn input(input: Json<MessageFromFrontend>, rocket_state: State<RocketState>) {
     let Json(input) = input;
-    let mut guard = rocket_state.shared.lock();
-    let shared: &mut SharedState = &mut *guard;
 
     // assume every input might cause a UI change
-    shared.last_ui_change_serial_number += 1;
-
-    match input {
-        MessageFromFrontend::SetFeatured(new_featured) => {
-            // gotta check if this input wasn't delayed across a file reload
-            if let Some(Mode::ProofMode(p, f)) = &mut shared.known_mode {
-                if p.descendant(new_featured.tactics_path_all()).is_some() {
-                    *f = new_featured;
-                }
-            }
-        }
-    }
+    rocket_state.shared.lock().last_ui_change_serial_number += 1;
+    rocket_state
+        .sender
+        .lock()
+        .send(MessageToMainThread::FromOutsideSertop(
+            MessageFromOutsideSertop::FromFrontend(input),
+        ));
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
@@ -87,7 +82,7 @@ fn content(
     })
 }
 
-pub fn launch(shared: Arc<Mutex<SharedState>>) {
+pub fn launch(state: RocketState) {
     rocket::custom(
         Config::build(Environment::Development)
             .address("localhost")
@@ -97,6 +92,6 @@ pub fn launch(shared: Arc<Mutex<SharedState>>) {
     )
     .mount("/media/", StaticFiles::from("./static/media"))
     .mount("/", routes![index, input, content])
-    .manage(RocketState { shared })
+    .manage(state)
     .launch();
 }

@@ -1,16 +1,20 @@
 use crate::goals_analysis::{CoqValueInfo, Goals};
 use crate::serapi_protocol::{ExnInfo, StateId};
+use crate::sertop_glue::MessageFromSertop;
+use crate::supervisor_thread::MessageFromSupervisor;
 use crate::tactics::Tactic;
+use crate::webserver_glue::MessageFromFrontend;
 use derivative::Derivative;
 use guard::guard;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::BufReader;
 use std::iter;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::process::{ChildStdin, ChildStdout};
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
@@ -22,8 +26,6 @@ pub struct SharedState {
     pub code_path: PathBuf,
     pub current_file_code: String,
     pub sertop_up_to_date_with_file: bool,
-    // TODO : this isn't the most efficient file watcher system, figure out what is?
-    pub last_code_modified: Option<SystemTime>,
 
     pub known_mode: Option<Mode>,
 
@@ -32,9 +34,10 @@ pub struct SharedState {
 
 pub struct RocketState {
     pub shared: Arc<Mutex<SharedState>>,
+    pub sender: Mutex<Sender<MessageToMainThread>>,
 }
 
-pub struct SertopThreadState {
+pub struct MainThreadState {
     pub command_runner: CommandRunner,
     pub sertop_state: SertopState,
     pub shared: Arc<Mutex<SharedState>>,
@@ -44,14 +47,25 @@ pub struct SertopThreadState {
 
 /// A sub-struct of SertopThreadState, responsible for raw IO with sertop.
 /// Wants to be a separate substruct so you can take an &mut CommandRunner
-/// without hogging up &mut references to the rest of SertopThreadState.
+/// without hogging up &mut references to the rest of MainThreadState.
 pub struct CommandRunner {
     pub child_stdin: ChildStdin,
-    pub lines_iterator: std::io::Lines<BufReader<ChildStdout>>,
+    pub receiver: Receiver<MessageToMainThread>,
+    pub messages_from_outside_sertop_queue: VecDeque<MessageFromOutsideSertop>,
     // why a duplicate pointer to SharedState, you ask?
     // again, it's about reference lifetimes. Before I separated out CommandRunner,
     // I had to make a copy of the Arc on the stack; having it here is no worse
     pub shared: Arc<Mutex<SharedState>>,
+}
+
+pub enum MessageToMainThread {
+    FromSertop(MessageFromSertop),
+    FromOutsideSertop(MessageFromOutsideSertop),
+}
+
+pub enum MessageFromOutsideSertop {
+    FromFrontend(MessageFromFrontend),
+    FromSupervisor(MessageFromSupervisor),
 }
 
 impl SharedState {
@@ -60,7 +74,6 @@ impl SharedState {
             code_path,
             current_file_code: String::new(),
             sertop_up_to_date_with_file: false, // maybe theoretically it's already up to date with the null file, but there's no need to be clever
-            last_code_modified: None,
             known_mode: None,
             last_ui_change_serial_number: 0,
         }
