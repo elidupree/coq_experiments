@@ -26,6 +26,7 @@ impl Featured {
     }
 }
 
+#[allow(clippy::unit_arg)] // why is this needed? no idea, probably rocket proc macro stuff
 #[post("/input", data = "<input>")]
 fn input(input: Json<MessageFromFrontend>, rocket_state: State<RocketState>) {
     let Json(input) = input;
@@ -37,7 +38,8 @@ fn input(input: Json<MessageFromFrontend>, rocket_state: State<RocketState>) {
         .lock()
         .send(MessageToMainThread::FromOutsideSertop(
             MessageFromOutsideSertop::FromFrontend(input),
-        ));
+        ))
+        .expect("main thread should never drop receiver");
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]

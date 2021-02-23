@@ -348,7 +348,7 @@ impl MainThreadState {
 
         // Otherwise, execute anything we've already added, as long as it's still
         // consistent with the file and hasn't already hit an execution error.
-        self.execute_from_file_until_changed_part(first_difference_offset);
+        self.execute_from_file_until_changed_part(first_difference_offset)?;
 
         // Finally, if the file has changed, then we need to Add the remaining part,
         // UNLESS that part is after the first execution error from the file,
@@ -371,7 +371,7 @@ impl MainThreadState {
                     .collect();
                 self.cancel(canceled)?;
                 self.add_rest_of_file()?;
-                self.execute_from_file_until_changed_part(None);
+                self.execute_from_file_until_changed_part(None)?;
             }
         }
 
@@ -562,7 +562,7 @@ impl MainThreadState {
             );
             let insert_result = latest_proof_node_mut(&self.sertop_state, &mut *shared)
                 .attempted_tactics
-                .insert(tactic.clone(), TacticResult::Failure(exn));
+                .insert(tactic, TacticResult::Failure(exn));
             assert_eq!(
                 insert_result, None,
                 "shouldn't have added a tactic that was already tested and failed (on Exec)"

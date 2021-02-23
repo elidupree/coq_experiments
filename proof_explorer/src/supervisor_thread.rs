@@ -23,11 +23,13 @@ pub fn run(code_path: PathBuf, sender: Sender<MessageToMainThread>) {
                 }
                 if code != last_observed_code {
                     last_observed_code = code.clone();
-                    sender.send(MessageToMainThread::FromOutsideSertop(
-                        MessageFromOutsideSertop::FromSupervisor(
-                            MessageFromSupervisor::ReplaceFile(code),
-                        ),
-                    ));
+                    sender
+                        .send(MessageToMainThread::FromOutsideSertop(
+                            MessageFromOutsideSertop::FromSupervisor(
+                                MessageFromSupervisor::ReplaceFile(code),
+                            ),
+                        ))
+                        .expect("main thread should never drop receiver");
                 }
             }
         }

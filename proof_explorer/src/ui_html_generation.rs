@@ -5,6 +5,7 @@ use crate::serapi_protocol::{IdenticalHypotheses, NamesId};
 use crate::tactics;
 use crate::tactics::Tactic;
 use guard::guard;
+use std::cmp::Ordering;
 use std::time::Duration;
 use typed_html::elements::FlowContent;
 use typed_html::{html, text};
@@ -255,12 +256,10 @@ impl SharedState {
                 .descendant(featured_after_this_tactic.tactics_path())
                 .unwrap();
             let onclick = featured_after_this_tactic.input_string();
-            let class = if index + 1 < featured.num_tactics_run {
-                "prior_tactic past not_present"
-            } else if index + 1 == featured.num_tactics_run {
-                "prior_tactic present"
-            } else {
-                "prior_tactic future not_present"
+            let class = match (index + 1).cmp(&featured.num_tactics_run) {
+                Ordering::Less => "prior_tactic past not_present",
+                Ordering::Equal => "prior_tactic present",
+                Ordering::Greater => "prior_tactic future not_present",
             };
             prior_tactics.push(html! {
                 <div class={class} data-onclick={onclick}>

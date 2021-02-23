@@ -52,6 +52,8 @@ fn interpret_sertop_line(line: String) -> MessageFromSertop {
 pub fn listen(child_stdout: ChildStdout, sender: Sender<MessageToMainThread>) {
     for line in BufReader::new(child_stdout).lines() {
         let line = line.expect("IO error receiving from sertop?");
-        sender.send(MessageToMainThread::FromSertop(interpret_sertop_line(line)));
+        sender
+            .send(MessageToMainThread::FromSertop(interpret_sertop_line(line)))
+            .expect("main thread should never drop receiver");
     }
 }
