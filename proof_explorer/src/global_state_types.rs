@@ -57,11 +57,13 @@ pub struct CommandRunner {
     pub shared: Arc<Mutex<SharedState>>,
 }
 
+#[derive(Debug)]
 pub enum MessageToMainThread {
     FromSertop(MessageFromSertop),
     FromOutsideSertop(MessageFromOutsideSertop),
 }
 
+#[derive(Debug)]
 pub enum MessageFromOutsideSertop {
     FromFrontend(MessageFromFrontend),
     FromSupervisor(MessageFromSupervisor),

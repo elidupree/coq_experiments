@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
+#[derive(Debug)]
 pub enum MessageFromSupervisor {
     ReplaceFile(String),
 }

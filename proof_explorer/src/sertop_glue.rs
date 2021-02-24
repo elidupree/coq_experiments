@@ -6,6 +6,7 @@ use std::sync::mpsc::Sender;
 
 pub struct Interrupted;
 #[allow(clippy::large_enum_variant)] // it's expected that it will *usually* be the large variant
+#[derive(Debug)]
 pub enum MessageFromSertop {
     InterruptedWhileNoCommandRunning,
     Invalid,
