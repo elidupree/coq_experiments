@@ -153,7 +153,6 @@ pub enum TacticResult {
         duration: Duration,
         result_node: ProofNode,
     },
-    Timeout(Duration),
     Failure(ExnInfo),
 }
 

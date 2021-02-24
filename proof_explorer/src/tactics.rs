@@ -27,9 +27,9 @@ impl Tactic {
     }
     pub fn coq_string(&self) -> String {
         if let Some(arguments) = &self.arguments {
-            format!("progress {} {}.", self.tactic, arguments)
+            format!("timeout 1 progress {} {}.", self.tactic, arguments)
         } else {
-            format!("progress {}.", self.tactic)
+            format!("timeout 1 progress {}.", self.tactic)
         }
     }
     pub fn useless(&self, node: &ProofNode) -> bool {
