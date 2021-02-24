@@ -17,6 +17,7 @@ fn interpret_sertop_line(line: String) -> MessageFromSertop {
     // Sys.Break if there is no command running;
     // (Answer N(CoqExn ... str"\nUser interrupt")))) if there is a command running.
     if line.trim() == "Sys.Break" {
+        eprintln!("received Sys.Break from sertop\n");
         return MessageFromSertop::InterruptedWhileNoCommandRunning;
     }
     let parsed = serde_lexpr::parse::from_str(&line);
