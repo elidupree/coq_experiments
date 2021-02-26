@@ -162,7 +162,11 @@ impl MainThreadState {
             let shared = shared_arc.lock();
             let (featured_node, _featured_in_node): (&ProofNode, &FeaturedInNode) =
                 shared.featured_node().unwrap();
-            if featured_node.attempted_tactics.get(&tactic).is_none() {
+            if featured_node
+                .attempted_tactics
+                .get(&tactic.coq_string())
+                .is_none()
+            {
                 drop(shared);
                 self.run_tactic(tactic)?;
                 // TODO: don't be inefficient, keep going unless featured was actually change

@@ -536,7 +536,7 @@ impl MainThreadState {
                     let mut shared = shared_arc.lock();
                     let insert_result = latest_proof_node_mut(sertop_state, &mut *shared)
                         .attempted_tactics
-                        .insert(tactic.clone(), TacticResult::Failure(exn));
+                        .insert(tactic.coq_string(), TacticResult::Failure(exn));
                     assert!(
                         insert_result.is_none(),
                         "shouldn't have added a tactic that was already tested and failed (on Add)"
@@ -562,7 +562,7 @@ impl MainThreadState {
             );
             let insert_result = latest_proof_node_mut(&self.sertop_state, &mut *shared)
                 .attempted_tactics
-                .insert(tactic, TacticResult::Failure(exn));
+                .insert(tactic.coq_string(), TacticResult::Failure(exn));
             assert_eq!(
                 insert_result, None,
                 "shouldn't have added a tactic that was already tested and failed (on Exec)"
@@ -581,7 +581,7 @@ impl MainThreadState {
         let shared_arc = self.shared.clone();
         if latest_proof_node_mut(&self.sertop_state, &mut *shared_arc.lock())
             .attempted_tactics
-            .get(&tactic)
+            .get(&tactic.coq_string())
             .is_none()
         {
             // if query_proof_state gets interrupted, we still want to
@@ -589,7 +589,7 @@ impl MainThreadState {
             match self.query_proof_state() {
                 Ok(new_state) => {
                     latest_proof_node_mut(&self.sertop_state, &mut *shared_arc.lock()).attempted_tactics.insert(
-                        tactic,
+                        tactic.coq_string(),
                         TacticResult::Success {
                             duration: tactic_duration,
                             result_node: ProofNode::new(new_state.expect(

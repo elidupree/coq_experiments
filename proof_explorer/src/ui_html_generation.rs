@@ -18,7 +18,7 @@ impl SharedState {
         let (featured_node, _) = self.featured_node().unwrap();
         let entries = tactics.into_iter().map(|tactic| {
             guard!(let Some(TacticResult::Success { duration, result_node })
-                = featured_node.attempted_tactics.get(&tactic) else {panic!("tactic_menu_html doesn't support entries for failing tactics yet")});
+                = featured_node.attempted_tactics.get(&tactic.coq_string()) else {panic!("tactic_menu_html doesn't support entries for failing tactics yet")});
             let name = tactic.human_string();
             let onclick = featured.extended(tactic).input_string();
 

@@ -135,7 +135,7 @@ pub enum Mode {
 #[derive(PartialEq, Eq, Debug)]
 pub struct ProofNode {
     pub state: ProofState,
-    pub attempted_tactics: HashMap<Tactic, TacticResult>,
+    pub attempted_tactics: HashMap<String, TacticResult>,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -164,13 +164,13 @@ impl ProofNode {
         }
     }
     pub fn child(&self, tactic: &Tactic) -> Option<&ProofNode> {
-        match self.attempted_tactics.get(tactic) {
+        match self.attempted_tactics.get(&tactic.coq_string()) {
             Some(TacticResult::Success { result_node, .. }) => Some(result_node),
             _ => None,
         }
     }
     pub fn child_mut(&mut self, tactic: &Tactic) -> Option<&mut ProofNode> {
-        match self.attempted_tactics.get_mut(tactic) {
+        match self.attempted_tactics.get_mut(&tactic.coq_string()) {
             Some(TacticResult::Success { result_node, .. }) => Some(result_node),
             _ => None,
         }
