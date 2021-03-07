@@ -2,6 +2,8 @@ Set Implicit Arguments.
 Set Asymmetric Patterns.
 
 Require Import Unicode.Utf8.
+Require Import List.
+Require Import Fin.
 Require Import Coq.Program.Equality.
 Notation "x × y" := (prod x y) (at level 60, right associativity) : type_scope.
 
@@ -37,3 +39,69 @@ Theorem m2: ∀P Q R:Prop,P→Q→R→Q.
   multimatch goal with|[H : _ |- _] => let k := (type of H) in idtac k end.
   assumption.
 Qed.
+
+
+Fixpoint lookup A (l : list A) : Fin.t (length l) → A.
+  refine(match l return Fin.t (length l) → A with
+    | nil => λ i, Fin.case0 (λ _, A) i
+    | x :: xs => λ i, match i in Fin.t n return (n = S (length xs)) → A with
+      | F1 _ => λ _, x
+      | FS _ p => λ eq, _
+    end eq_refl
+  end).
+  injection eq as ->.
+  exact (lookup A xs p).
+Defined.
+(* Notation "l [ i ]" := (lookup l i) (at level 70). *)
+
+
+Reserved Notation "l [ i ]" (at level 70).
+Inductive listIndex A : list A → Type :=
+| here (head: A) (tail: list A) : listIndex (head::tail)
+| there head tail (intexInTail : listIndex tail) : listIndex (head::tail)
+where "l [ i ]"  := (listIndex l i).
+
+Fixpoint valueAt A (l : list A) (i : listIndex l) : A :=
+  match i with
+  | here head _ => head
+  | there _ _ indexInTail => valueAt indexInTail
+  end.
+
+Fixpoint positionOf A (l : list A) (i : listIndex l) : nat :=
+  match i with
+  | here _ _ => 0
+  | there _ _ indexInTail => S (positionOf indexInTail)
+  end.
+
+Fixpoint replaceAt A (l : list A) (i : listIndex l) (new : A) : list A :=
+  match i with
+  | here _ tail => new :: tail
+  | there head _ indexInTail => head :: replaceAt indexInTail new
+  end.
+
+Lemma replaceRetainsLength A (l : list A) (i : listIndex l) (new : A) : length (replaceAt i new) = length l.
+  induction i.
+  easy.
+  unfold length in *; cbn; rewrite IHi; reflexivity.
+Qed.
+
+(*
+Notation "l [ i ] ; P" := (sigT i P) (at level 70).
+  
+Notation "l [ i ] [ j ]" := { x : l[i] & (valueAt x) [j] } (at level 70).
+
+Reserved Notation "l [ i ] = v" (at level 70).
+Inductive index A : list A → nat → A → Prop :=
+| here (head: A) (tail: list A) : (head::tail)[0] = head
+| there head tail i v (inTail : tail[i] = v) : (head::tail)[S i] = v
+where "l [ i ] = v"  := (index l i v).
+
+Definition foo : (0:: nil)[0] = 0 := here 0 nil.
+
+Reserved Notation "l [ i ] = v" (at level 70).
+Inductive index2 A : list (list A) → nat → nat → A → Prop :=
+| here (head: list A) (tail: list (list A)) : (head::tail)[0] = head
+| there head tail i j v (inTail : tail[i][j] = v) : (head::tail)[S i] = v
+where "l [ i ] [ j ] = v"  := (index2 l i j v).
+*)
+
