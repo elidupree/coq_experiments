@@ -55,11 +55,11 @@ Defined.
 (* Notation "l [ i ]" := (lookup l i) (at level 70). *)
 
 
-Reserved Notation "l [ i ]" (at level 70).
+(*Reserved Notation "l [ i ]" (at level 70).*)
 Inductive listIndex A : list A → Type :=
 | here (head: A) (tail: list A) : listIndex (head::tail)
-| there head tail (intexInTail : listIndex tail) : listIndex (head::tail)
-where "l [ i ]"  := (listIndex l i).
+| there head tail (intexInTail : listIndex tail) : listIndex (head::tail).
+(*where "l [ i ]"  := (listIndex l i).*)
 
 Fixpoint valueAt A (l : list A) (i : listIndex l) : A :=
   match i with
@@ -83,6 +83,10 @@ Lemma replaceRetainsLength A (l : list A) (i : listIndex l) (new : A) : length (
   induction i.
   easy.
   unfold length in *; cbn; rewrite IHi; reflexivity.
+Qed.
+
+Lemma listIndex_In A (l : list A) (i : listIndex l) : In (valueAt i) l.
+  induction i; cbn; tauto.
 Qed.
 
 (*
