@@ -2,13 +2,14 @@ use crate::global_state_types::{CommandRunner, MainThreadState, RocketState, Sha
 use crate::{sertop_glue, supervisor_thread, webserver_glue};
 use parking_lot::Mutex;
 use std::default::default;
+use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::process;
 use std::process::Stdio;
 use std::sync::mpsc::channel;
 use std::sync::Arc;
 
-pub fn run(code_path: PathBuf) {
+pub fn run(code_path: PathBuf, sertop_args: &[&OsStr]) {
     // Hack: Compile the scss at the beginning of the main program.
     // This would be better as some sort of build script, but that's not a big concern right now
     // TODO: improve on that
@@ -21,6 +22,7 @@ pub fn run(code_path: PathBuf) {
     assert!(sass_status.success(), "sass failed");
 
     let child = process::Command::new("sertop")
+        .args(sertop_args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
