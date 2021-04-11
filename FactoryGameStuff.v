@@ -63,9 +63,21 @@ Lemma PartialTopoSort_is_topological
 Qed.
   
 Search "fold".
-Definition InEdgeCount_one n (edges : list (Fin.t n)) i := fold_left (λ count edge, if eq_dec edge i then S count else count) edges 0.
+Definition InEdgeCount_one n (edges : list (Fin.t n)) i := fold_left (λ count dst, if eq_dec dst i then S count else count) edges 0.
 Definition InEdgeCount n (graph : Graph n) partial_result i := Vector.fold_left (λ count edges, if in_dec eq_dec i partial_result then count else count + InEdgeCount_one edges i) 0 graph.
 Definition InEdgeCounts n (graph : Graph n) (counts : Vector.t nat n) partial_result := ∀ i, counts[i] = InEdgeCount graph partial_result i.
+
+Lemma InEdgeCount_nonzero_HasPredecessorLeft n (graph : Graph n) partial_result i (nonzero : InEdgeCount graph partial_result i ≠ 0) : HasPredecessorLeft graph partial_result i.
+  unfold Graph in graph.
+  refine((fix iH n2 (v: Vector.t (list (Fin.t n)) n2) := _) n graph).
+  
+  (*; destruct v.
+  admit.
+  induction graph.
+  unfold InEdgeCount in nonzero.
+  induction graph.*)
+  admit.
+Admitted.
 
 Record TopoSortAlgo_State n := mkTopoSortAlgo_State
   { in_edge_counts : Vector.t nat n
@@ -125,6 +137,9 @@ Lemma TopoSortAlgo_step_valid
   split.
   assumption.
   intros.
+  specialize (unrecorded_correct node); destruct unrecorded_correct as [node_in_edge_count_nonzero _].
+  specialize (counts_valid node).
+  rewrite counts_valid in node_in_edge_count_nonzero.
   
   admit.
   
