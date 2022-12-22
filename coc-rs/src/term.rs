@@ -42,8 +42,9 @@ VVVVVV is the top 6 bits of the (0-indexed) variable index. If the present term 
  */
 
 use std::collections::HashMap;
+use std::fmt;
+use std::fmt::{Display, Formatter};
 use std::hash::Hash;
-use std::num::NonZeroU8;
 use arrayvec::ArrayVec;
 use bitmatch::bitmatch;
 use siphasher::sip128::{Hasher128, SipHasher};
@@ -54,7 +55,10 @@ use siphasher::sip128::{Hasher128, SipHasher};
 ///
 /// Actually I've added the value to the Variable variant, making this more into "1 layer of term"
 /// rather than a "kind" of term. better rename it later
-pub enum TermKind<'a> { Prop, Type, Variable(u64), Lambda([SubTerm<'a>; 2]), ForAll([SubTerm<'a>; 2]), Apply([SubTerm<'a>; 2]) }
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub enum RecursiveTermKind { Lambda, ForAll, Apply }
+
+pub enum TermKind<'a> { Prop, Type, Variable(u64), Recursive(RecursiveTermKind, [SubTerm<'a>; 2]) }
 
 pub enum SubTerm<'a> { Embedded(TermRef<'a>), Reference(TermId) }
 
@@ -93,6 +97,7 @@ impl<'a> TermRef<'a> {
     #[bitmatch]
     pub fn kind(self) -> TermKind<'a> {
         use TermKind::*;
+        use RecursiveTermKind::*;
         let (&first, rest) = self.0.split_first().unwrap();
         #[bitmatch]
         match first {
@@ -106,15 +111,18 @@ impl<'a> TermRef<'a> {
                 }
                 Variable(result)
             }
-            "01xxxxxy" => Lambda(sub_terms(x, y, rest)),
-            "10xxxxxy" => ForAll(sub_terms(x, y, rest)),
-            "11xxxxxy" => Apply(sub_terms(x, y, rest)),
+            "01xxxxxy" => Recursive(Lambda, sub_terms(x, y, rest)),
+            "10xxxxxy" => Recursive(ForAll, sub_terms(x, y, rest)),
+            "11xxxxxy" => Recursive(Apply, sub_terms(x, y, rest)),
         }
     }
     fn id(self) -> TermId {
         let mut hasher = SipHasher::new_with_keys(0xf9b1a3338349fa34, 0x24aa9b72e6020897);
         self.0.hash(&mut hasher);
         TermId(hasher.finish128().as_u128())
+    }
+    pub fn to_term_array_vec(&self) -> TermArrayVec {
+        TermArrayVec(self.0.iter().copied().collect())
     }
 }
 
@@ -134,19 +142,72 @@ impl TermArrayVec {
     }
 }
 
+#[derive(Default)]
 pub struct TermEnvironment {
     long_term_data: Vec<u8>,
     long_term_start_indices: HashMap<TermId, usize>,
 }
 
+#[derive(Clone, Default)]
+pub struct FormatTermOptions {
+    pub depth: usize,
+    pub parens_if_recursive: bool,
+}
+
+pub struct DisplayTerm<'a> {
+    term: TermRef<'a>,
+    options: FormatTermOptions,
+    environment: &'a TermEnvironment,
+}
+
+impl Display for DisplayTerm<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.environment.format_term(f, &self.options, self.term)
+    }
+}
+
 impl TermEnvironment {
-    fn record_long_term(&mut self, term: TermRef) {
-        self.long_term_start_indices.entry(term.id()).or_insert_with(|| {
+    pub fn new() -> Self { Self::default() }
+    fn record_long_term(&mut self, id: TermId, term: TermRef) {
+        self.long_term_start_indices.entry(id).or_insert_with(|| {
             let start = self.long_term_data.len();
             self.long_term_data.push(term.0.len().try_into().unwrap());
             self.long_term_data.extend_from_slice(term.0);
             start
         });
+    }
+    #[bitmatch]
+    pub fn make_recursive_term(&mut self, kind: RecursiveTermKind, sub_terms: [TermRef; 2]) -> TermArrayVec {
+        let [first, second] = sub_terms;
+        let mut result = ArrayVec::new();
+        result.push(0);
+
+        let h = match kind {
+            RecursiveTermKind::Lambda => 0b01,
+            RecursiveTermKind::ForAll => 0b10,
+            RecursiveTermKind::Apply => 0b11,
+        };
+        let x = if first.0.len() >= 31 {
+            let id = first.id();
+            self.record_long_term(id, first);
+            result.extend(id.0.to_le_bytes());
+            0
+        } else {
+            result.extend(first.0.iter().copied());
+            u8::try_from(first.0.len()).unwrap()
+        };
+        let y = if second.0.len() >= 31 {
+            let id = second.id();
+            self.record_long_term(id, second);
+            result.extend(id.0.to_le_bytes());
+            0
+        } else {
+            result.extend(second.0.iter().copied());
+            u8::try_from(second.0.len()).unwrap()
+        };
+
+        result[0] = bitpack!("hhxxxxxy");
+        TermArrayVec(result)
     }
     pub fn get_term(&self, id: TermId) -> Option<TermRef> {
         let index = *self.long_term_start_indices.get(&id)?;
@@ -157,6 +218,43 @@ impl TermEnvironment {
         match sub_term {
             SubTerm::Embedded(term) => { Some(term) }
             SubTerm::Reference(id) => { self.get_term(id) }
+        }
+    }
+    fn format_term(&self, f: &mut Formatter, options: &FormatTermOptions, term: TermRef) -> Result<(), fmt::Error> {
+        use RecursiveTermKind::*;
+        if options.depth == 0 { return Ok(()); }
+        match term.kind() {
+            TermKind::Prop => { f.write_str("P") }
+            TermKind::Type => { f.write_str("T") }
+            TermKind::Variable(index) => { write!(f, "{}", index) }
+            TermKind::Recursive(kind, children) => {
+                if options.parens_if_recursive {
+                    f.write_str("(")?
+                }
+                match kind {
+                    Lambda => { f.write_str("λ")? }
+                    ForAll => { f.write_str("∀")? }
+                    Apply => {}
+                };
+                let [a, b] = children.map(|c| self.get_sub_term(c).unwrap());
+                let child_options = FormatTermOptions { parens_if_recursive: true, depth: options.depth - 1, ..*options };
+                self.format_term(f, &child_options, a)?;
+                if kind == Apply {
+                    f.write_str(" ")?;
+                } else { f.write_str(",")?; }
+                self.format_term(f, &child_options, b)?;
+                if options.parens_if_recursive {
+                    f.write_str(")")?
+                }
+                Ok(())
+            }
+        }
+    }
+    pub fn display_term<'a>(&'a self, options: FormatTermOptions, term: TermRef<'a>) -> DisplayTerm<'a> {
+        DisplayTerm {
+            term,
+            options,
+            environment: self,
         }
     }
 }

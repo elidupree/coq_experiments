@@ -40,3 +40,5 @@ makefile.conf
 CoqMakefile
 CoqMakefile.conf
 modify_noticer
+
+coc-rs/Cargo.lock
