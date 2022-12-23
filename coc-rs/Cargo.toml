@@ -9,3 +9,7 @@ edition = "2021"
 bitmatch = "0.1.1"
 siphasher = "0.3.10"
 arrayvec = "0.7.2"
+
+[profile.dev]
+opt-level = 3
+
