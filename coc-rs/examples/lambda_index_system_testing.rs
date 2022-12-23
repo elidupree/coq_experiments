@@ -1,7 +1,7 @@
 #![feature(array_methods)]
 #![feature(array_zip)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
 use std::{iter, mem};
@@ -105,6 +105,7 @@ impl IdentifiableIndices {
         if self.classes[c1.0].must_not_equal.contains(&c2) {
             return Err(());
         }
+        println!("Identifying ({} == {})", r1.0, r2.0);
         let cl = IndexClassId(self.classes.len() - 1);
         self.move_backrefs(c2, c1);
         let taken = self.classes[c2.0].must_not_equal.clone();
@@ -330,9 +331,11 @@ impl Expression {
         &self,
         other: &Expression,
         indices: &mut IdentifiableIndices,
-    ) -> Result<(), ()> {
+    ) -> Result<(), (OpaqueIndexRepresentative, OpaqueIndexRepresentative)> {
         match (self, other) {
-            (Expression::Variable(a), Expression::Variable(b)) => indices.try_identify(*a, *b),
+            (Expression::Variable(a), Expression::Variable(b)) => {
+                indices.try_identify(*a, *b).map_err(|_| (*a, *b))
+            }
             (Expression::Apply(cs1), Expression::Apply(cs2)) => {
                 for (a, b) in cs1.each_ref().zip(cs2.each_ref()) {
                     a.identify_with(b, indices)?;
@@ -340,7 +343,7 @@ impl Expression {
                 Ok(())
             }
             (Expression::Lambda(v1, body1), Expression::Lambda(v2, body2)) => {
-                indices.try_identify(*v1, *v2)?;
+                indices.try_identify(*v1, *v2).map_err(|_| (*v1, *v2))?;
                 body1.identify_with(body2, indices)?;
                 Ok(())
             }
@@ -349,7 +352,7 @@ impl Expression {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct CanonicalExpressions {
     indices: IdentifiableIndices,
     expressions: HashMap<DeBruijnExpression, Rc<Expression>>,
@@ -374,6 +377,7 @@ impl CanonicalExpressions {
                 for &j in &variable_indices[..v] {
                     // all of these indices are fresh and haven't been identified with anything yet,
                     // so exclusion should never fail
+                    println!("Excluding ({} == {})", i.0, j.0);
                     self.indices.try_exclude(i, j).unwrap();
                 }
                 Expression::Variable(i)
@@ -409,14 +413,49 @@ impl CanonicalExpressions {
         let result = self.make_fresh_canonical_part(source, variable_indices, false);
         //dbg!((source, &result));
         assert_eq!(&*result.to_de_bruijn(&HashMap::new()), source);
+
+        println!("Setting canonical form of {:?} := {:?}", source, &result);
         self.expressions.insert(source.clone(), result.clone());
         result
     }
 
-    fn identify_with_canonical_form(&mut self, expression: &Expression) -> Result<(), ()> {
+    fn identify_with_canonical_form(
+        &mut self,
+        expression: &Expression,
+    ) -> Result<(), (OpaqueIndexRepresentative, OpaqueIndexRepresentative)> {
         let de = expression.to_de_bruijn(&HashMap::new());
         let canonical = self.require_canonical_form(&de, &[]);
         expression.identify_with(&canonical, &mut self.indices)
+    }
+
+    fn try_reductions_recursively(
+        &mut self,
+        expression: Rc<DeBruijnExpression>,
+        already_tried: &mut HashSet<Rc<DeBruijnExpression>>,
+    ) {
+        if !already_tried.insert(expression.clone()) {
+            return;
+        }
+        let expression = self.require_canonical_form(&*expression, &[]);
+        println!("{:?}", expression);
+        let reductions = expression.all_single_step_beta_reductions();
+        for reduction in &reductions {
+            let red_de = reduction.to_de_bruijn(&HashMap::new());
+            let red_can = self.require_canonical_form(&red_de, &[]);
+            if red_can != *reduction {
+                println!("->β {:?} === {:?}", &reduction, &red_can);
+                if let Err((m1, m2)) = self.identify_with_canonical_form(&reduction) {
+                    println!("Cannot unify {} with {}", m1.0, m2.0);
+                    println!("{:?}", &expression);
+                    println!("! {:?}", &red_de);
+                    dbg!(&self.expressions);
+                    panic!()
+                }
+            }
+        }
+        for reduction in &reductions {
+            self.try_reductions_recursively(reduction.to_de_bruijn(&HashMap::new()), already_tried);
+        }
     }
 }
 
@@ -442,7 +481,24 @@ fn main() {
         )
     );
 
+    let spooky = {
+        use DeBruijnExpression::*;
+        let id = Rc::new(Lambda(Rc::new(Variable(0))));
+        //let a = Rc::new(Apply([id.clone(), id.clone()]));
+        //let b = Rc::new(Apply([a.clone(), a.clone()]));
+        //let c = Rc::new(Apply([b.clone(), b.clone()]));
+        Rc::new(Apply([
+            Rc::new(Lambda(Rc::new(Apply([
+                Rc::new(Lambda(id.clone())),
+                Rc::new(Lambda(Rc::new(Variable(1)))),
+            ])))),
+            id.clone(),
+        ]))
+    };
+
     let mut canonical = CanonicalExpressions::default();
+    canonical.try_reductions_recursively(spooky, &mut HashSet::new());
+
     for max_depth in 0..6 {
         for expression in DeBruijnExpression::all_short(max_depth, 0) {
             println!("{}, {:?}", canonical.indices.classes.len(), expression);
