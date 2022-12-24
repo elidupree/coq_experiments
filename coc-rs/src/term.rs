@@ -46,6 +46,7 @@ use bitmatch::bitmatch;
 use siphasher::sip128::{Hasher128, SipHasher};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::default::default;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::hash::Hash;
@@ -145,10 +146,29 @@ impl<'a> TermRef<'a> {
     pub fn to_term_array_vec(&self) -> TermArrayVec {
         TermArrayVec(self.0.iter().copied().collect())
     }
+    pub fn to_owned(&self) -> Term {
+        Term(self.to_term_array_vec())
+    }
     pub fn display(self, options: FormatTermOptions) -> DisplayTerm<'a> {
         DisplayTerm {
             term: self,
             options,
+        }
+    }
+}
+
+impl TermId {
+    pub fn get_term(self) -> Term {
+        CURRENT_ENVIRONMENT
+            .with(|environment| environment.borrow_mut().get_term(self).unwrap().to_owned())
+    }
+}
+
+impl<'a> SubTerm<'a> {
+    pub fn get(self) -> Term {
+        match self {
+            SubTerm::Embedded(t) => t.to_owned(),
+            SubTerm::Reference(id) => id.get_term(),
         }
     }
 }
@@ -332,5 +352,111 @@ impl TermEnvironment {
                 Ok(())
             }
         }
+    }
+}
+
+/// Something that can be computed about terms recursively, based on the values in the subterms.
+pub trait TermAugmentationCore: Clone {
+    fn of_prop() -> Self;
+    fn of_type() -> Self;
+    fn of_variable(index: u64) -> Self;
+    fn of_recursive_term(kind: RecursiveTermKind, children: [&Self; 2]) -> Self;
+    fn with_cache<R>(callback: impl FnOnce(&mut TermAugmentationCache<Self>) -> R) -> R;
+}
+
+pub trait TermAugmentation {
+    fn of(term: TermRef) -> Self;
+}
+
+impl<T: TermAugmentationCore> TermAugmentation for T {
+    fn of(term: TermRef) -> Self {
+        fn of_impl<S: TermAugmentationCore>(
+            term: TermRef,
+            cache: &mut TermAugmentationCache<S>,
+        ) -> S {
+            match term.kind() {
+                TermKind::Prop => S::of_prop(),
+                TermKind::Type => S::of_type(),
+                TermKind::Variable(index) => S::of_variable(index),
+                TermKind::Recursive(kind, children) => {
+                    let children = children.map(|c| match c {
+                        SubTerm::Embedded(s) => of_impl(s, cache),
+                        SubTerm::Reference(id) => match cache.values.get(&id) {
+                            Some(preexisting) => preexisting.clone(),
+                            None => {
+                                let term = id.get_term();
+                                let result = of_impl(term.as_term_ref(), cache);
+                                cache.values.insert(id, result.clone());
+                                result
+                            }
+                        },
+                    });
+                    S::of_recursive_term(kind, children.each_ref())
+                }
+            }
+        }
+        Self::with_cache(|cache| of_impl::<Self>(term, cache))
+    }
+}
+
+pub struct TermAugmentationCache<T> {
+    values: HashMap<TermId, T>,
+}
+
+impl<T> Default for TermAugmentationCache<T> {
+    fn default() -> Self {
+        TermAugmentationCache { values: default() }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TermCheapInfo {
+    height: u64,
+    naive_size: u64,
+    low_free_variable_indices: u64,
+}
+
+impl TermAugmentationCore for TermCheapInfo {
+    fn of_prop() -> Self {
+        TermCheapInfo {
+            height: 0,
+            naive_size: 1,
+            low_free_variable_indices: 0,
+        }
+    }
+
+    fn of_type() -> Self {
+        Self::of_prop()
+    }
+
+    fn of_variable(index: u64) -> Self {
+        TermCheapInfo {
+            height: 0,
+            naive_size: 1,
+            low_free_variable_indices: 1 << index,
+        }
+    }
+
+    fn of_recursive_term(kind: RecursiveTermKind, children: [&Self; 2]) -> Self {
+        let mut low_free_variable_indices = children[0].low_free_variable_indices;
+        if kind == RecursiveTermKind::Apply {
+            low_free_variable_indices |= children[1].low_free_variable_indices;
+        } else {
+            low_free_variable_indices |= children[1].low_free_variable_indices >> 1;
+        }
+        TermCheapInfo {
+            height: 1 + children.iter().map(|c| c.height).max().unwrap(),
+            naive_size: 1u64
+                .saturating_add(children[0].naive_size)
+                .saturating_add(children[1].naive_size),
+            low_free_variable_indices,
+        }
+    }
+
+    fn with_cache<R>(callback: impl FnOnce(&mut TermAugmentationCache<Self>) -> R) -> R {
+        thread_local! {
+            static CACHE: RefCell<TermAugmentationCache<TermCheapInfo>> =RefCell:: new (TermAugmentationCache::default());
+        }
+        CACHE.with(|c| callback(&mut c.borrow_mut()))
     }
 }

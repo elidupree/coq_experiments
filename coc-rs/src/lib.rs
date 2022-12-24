@@ -1,3 +1,5 @@
+#![feature(default_free_fn, array_methods)]
+
 pub mod term;
 
 #[cfg(test)]
