@@ -1,6 +1,7 @@
 #![feature(default_free_fn, array_methods)]
 
 pub mod term;
+pub mod types;
 
 #[cfg(test)]
 mod tests {

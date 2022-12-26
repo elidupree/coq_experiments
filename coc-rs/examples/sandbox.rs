@@ -1,6 +1,7 @@
 #![feature(default_free_fn)]
 
 use coc_rs::term::{FormatTermOptions, RecursiveTermKind, Term};
+use coc_rs::types::{naive_type_check, TypeCheckResult};
 use std::collections::HashMap;
 use std::default::default;
 use std::rc::Rc;
@@ -13,20 +14,20 @@ struct TermExtremity {
 
 #[derive(Default)]
 struct TermGenerator {
-    terms: HashMap<TermExtremity, Rc<Vec<Term>>>,
+    terms: HashMap<TermExtremity, Rc<Vec<(Term, Option<Term>)>>>,
 }
 
 impl TermGenerator {
-    fn all_of_extremity(&mut self, extremity: TermExtremity) -> Rc<Vec<Term>> {
+    fn all_of_extremity(&mut self, extremity: TermExtremity) -> Rc<Vec<(Term, Option<Term>)>> {
         if let Some(result) = self.terms.get(&extremity) {
             return result.clone();
         }
         let mut result = Vec::new();
         if extremity.height == 0 {
             if extremity.max_index_overflow == 0 {
-                result = vec![Term::prop(), Term::t()]
+                result = vec![(Term::prop(), Some(Term::t())), (Term::t(), None)]
             } else {
-                result = vec![Term::variable(extremity.max_index_overflow - 1)]
+                result = vec![(Term::variable(extremity.max_index_overflow - 1), None)]
             }
         } else {
             use RecursiveTermKind::*;
@@ -53,12 +54,20 @@ impl TermGenerator {
                                     };
                                     let ts1 = self.all_of_extremity(e1);
                                     let ts2 = self.all_of_extremity(e2);
-                                    for t1 in &*ts1 {
-                                        for t2 in &*ts2 {
-                                            result.push(Term::recursive(
+                                    for (t1, _) in &*ts1 {
+                                        for (t2, _) in &*ts2 {
+                                            let term = Term::recursive(
                                                 kind,
                                                 [t1.as_term_ref(), t2.as_term_ref()],
-                                            ));
+                                            );
+                                            let ty = naive_type_check(term.as_term_ref(), &[]);
+                                            match ty {
+                                                Some(TypeCheckResult::HasType(ty)) => {
+                                                    result.push((term, Some(ty)))
+                                                }
+                                                None => result.push((term, None)),
+                                                Some(TypeCheckResult::NoType) => {}
+                                            }
                                         }
                                     }
                                 }
@@ -78,8 +87,8 @@ impl TermGenerator {
 fn main() {
     // enumerate all terms lol
     let mut generator = TermGenerator::default();
-    for height in 0..2 {
-        for term in &*generator.all_of_extremity(TermExtremity {
+    for height in 0..4 {
+        for (term, ty) in &*generator.all_of_extremity(TermExtremity {
             height,
             max_index_overflow: 0,
         }) {
@@ -87,7 +96,15 @@ fn main() {
                 depth: 5,
                 ..default()
             });
-            println!("{}", term);
+            print!("{}", term);
+            if let Some(ty) = ty {
+                let ty = ty.display(FormatTermOptions {
+                    depth: 5,
+                    ..default()
+                });
+                print!(" : {}", ty);
+            }
+            println!();
         }
     }
 }

@@ -71,6 +71,7 @@ pub enum TermKind<'a> {
     Recursive(RecursiveTermKind, [SubTerm<'a>; 2]),
 }
 
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum SubTerm<'a> {
     Embedded(TermRef<'a>),
     Reference(TermId),
@@ -103,10 +104,10 @@ fn sub_terms(x: u8, y: u8, rest: &[u8]) -> [SubTerm; 2] {
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct TermRef<'a>(&'a [u8]);
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub struct TermArrayVec(ArrayVec<u8, 63>);
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub struct Term(TermArrayVec);
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
