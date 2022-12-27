@@ -1,5 +1,6 @@
 #![feature(default_free_fn, array_methods)]
 
+pub mod incomplete_term;
 pub mod term;
 pub mod types;
 
