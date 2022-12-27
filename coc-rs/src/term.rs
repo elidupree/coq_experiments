@@ -158,6 +158,12 @@ impl<'a> TermRef<'a> {
     }
 }
 
+impl<'a> Display for TermRef<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.display(default()).fmt(f)
+    }
+}
+
 impl TermId {
     pub fn get_term(self) -> Term {
         CURRENT_ENVIRONMENT
@@ -218,6 +224,12 @@ impl Term {
     }
 }
 
+impl Display for Term {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.display(default()).fmt(f)
+    }
+}
+
 #[derive(Default)]
 pub struct TermEnvironment {
     long_term_data: Vec<u8>,
@@ -228,10 +240,19 @@ thread_local! {
     static CURRENT_ENVIRONMENT: RefCell<TermEnvironment> =RefCell:: new (TermEnvironment::default());
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct FormatTermOptions {
     pub depth: usize,
     pub parens_if_recursive: bool,
+}
+
+impl Default for FormatTermOptions {
+    fn default() -> Self {
+        FormatTermOptions {
+            depth: 5,
+            parens_if_recursive: false,
+        }
+    }
 }
 
 pub struct DisplayTerm<'a> {

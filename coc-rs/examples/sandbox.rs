@@ -1,7 +1,7 @@
 #![feature(default_free_fn)]
 
 use coc_rs::term::{FormatTermOptions, RecursiveTermKind, Term};
-use coc_rs::types::{naive_type_check, TypeCheckResult};
+use coc_rs::types::{is_fully_reduced, naive_fully_reduce, naive_type_check, TypeCheckResult};
 use std::collections::HashMap;
 use std::default::default;
 use std::rc::Rc;
@@ -60,13 +60,15 @@ impl TermGenerator {
                                                 kind,
                                                 [t1.as_term_ref(), t2.as_term_ref()],
                                             );
-                                            let ty = naive_type_check(term.as_term_ref(), &[]);
-                                            match ty {
-                                                Some(TypeCheckResult::HasType(ty)) => {
-                                                    result.push((term, Some(ty)))
+                                            if is_fully_reduced(term.as_term_ref()) {
+                                                let ty = naive_type_check(term.as_term_ref(), &[]);
+                                                match ty {
+                                                    Some(TypeCheckResult::HasType(ty)) => {
+                                                        result.push((term, Some(ty)))
+                                                    }
+                                                    None => result.push((term, None)),
+                                                    Some(TypeCheckResult::NoType) => {}
                                                 }
-                                                None => result.push((term, None)),
-                                                Some(TypeCheckResult::NoType) => {}
                                             }
                                         }
                                     }
@@ -92,19 +94,15 @@ fn main() {
             height,
             max_index_overflow: 0,
         }) {
-            let term = term.display(FormatTermOptions {
-                depth: 5,
-                ..default()
-            });
             print!("{}", term);
             if let Some(ty) = ty {
-                let ty = ty.display(FormatTermOptions {
-                    depth: 5,
-                    ..default()
-                });
                 print!(" : {}", ty);
             }
             println!();
+            let reduced = naive_fully_reduce(term.as_term_ref());
+            if &reduced != term {
+                println!("->β {}", reduced);
+            }
         }
     }
 }

@@ -67,6 +67,35 @@ pub fn substitute_one(term: TermRef, replaced_index: u64, replacement: TermRef) 
     }
 }
 
+pub fn naive_fully_reduce(term: TermRef) -> Term {
+    use RecursiveTermKind::*;
+    use TermKind::*;
+    match term.kind() {
+        Prop | Type | Variable(_) => term.to_owned(),
+        Recursive(kind, children) => {
+            if kind == Apply {
+                if let Recursive(Lambda, [_, lambda_body]) = children[0].get().kind() {
+                    return naive_fully_reduce(
+                        substitute_one(
+                            lambda_body.get().as_term_ref(),
+                            0,
+                            children[1].get().as_term_ref(),
+                        )
+                        .as_term_ref(),
+                    );
+                }
+            }
+            Term::recursive(
+                kind,
+                [
+                    naive_fully_reduce(children[0].get().as_term_ref()).as_term_ref(),
+                    naive_fully_reduce(children[1].get().as_term_ref()).as_term_ref(),
+                ],
+            )
+        }
+    }
+}
+
 pub fn naive_type_check(term: TermRef, context: &[TermRef]) -> Option<TypeCheckResult> {
     use RecursiveTermKind::*;
     use TermKind::*;

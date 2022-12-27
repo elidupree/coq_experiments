@@ -57,4 +57,36 @@ Definition EveryInductiveNaturalIsInductive : ∀ n, InductiveNaturalIsInductive
      
  ). *)
  
- 
+ Definition ChurchTerm := ∀ (P : Prop),
+   ∀ (PropReduce : P) ,
+   ∀ (TypeReduce : P) ,
+   ∀ (PopReduce : P → P) ,
+   ∀ (LambdaReduce : P → P → P) ,
+   ∀ (ForAllReduce : P → P → P) ,
+   ∀ (ApplyReduce : P → P → P) ,
+   P.
+Definition churchProp : ChurchTerm := λ p pr t po l f a , pr.
+Definition churchApply : ChurchTerm → ChurchTerm → ChurchTerm := λ m n p pr t po l f a , a (m p pr t po l f a) (n p pr t po l f a) .
+
+Definition InductiveTerm := λ (t : ChurchTerm) , ∀ (P : ChurchTerm → Prop) ,
+   ∀ (PropReduce : P churchProp) ,
+   ∀ (TypeReduce : P) ,
+   ∀ (PopReduce : P) ,
+   ∀ (LambdaReduce : P) ,
+   ∀ (ForAllReduce : P) ,
+   ∀ (ApplyReduce : ∀(m n : ChurchTerm), P (churchApply m n)) ,
+   P.
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
