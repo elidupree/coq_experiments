@@ -34,6 +34,43 @@ Definition inductiveSuccessor : InductiveNatural →InductiveNatural := λ prede
       InductiveNaturalConstructor (churchSuccessor churchPredecessor) (churchSuccessorIsInductive churchPredecessor churchPredecessorIsInductive)
   ).
 
+Definition ChurchNaturalIsInductiveRequiringInduction := λ (n : ChurchNatural), ∀
+  (P : ChurchNatural → Prop)
+  (zeroCase : P churchZero)
+  (successorCase : ∀ (m : ChurchNatural), ChurchNaturalIsInductive m → P m → P (churchSuccessor m)),
+  P n.
+  
+Lemma ChurchNaturalIsInductiveRequiringInduction_Implies_IsInductive : ∀
+  (n : ChurchNatural), ChurchNaturalIsInductiveRequiringInduction n →ChurchNaturalIsInductive n.
+  intros.
+  unfold ChurchNaturalIsInductiveRequiringInduction in H.
+  unfold ChurchNaturalIsInductive; unfold GenericNaturalIsInductive; intros.
+  refine (H P zeroCase _).
+  intro; intro.
+  apply successorCase.
+Qed.
+
+Lemma CanProveInductionRequiringInduction : ∀
+  (n : ChurchNatural)
+  (nIsInductive : ChurchNaturalIsInductive n),
+  ChurchNaturalIsInductiveRequiringInduction n.
+  intros.
+  refine (nIsInductive ChurchNaturalIsInductiveRequiringInduction _ _).
+  
+  unfold ChurchNaturalIsInductiveRequiringInduction; intros; assumption.
+  
+  intros.
+  
+  pose (c := ChurchNaturalIsInductiveRequiringInduction_Implies_IsInductive m H).
+  
+  refine (λ P zeroCase successorCase, successorCase m _ _).
+  assumption.
+  apply H.
+  assumption.
+  assumption.
+Qed.
+  
+
 (* Definition InductiveNaturalIsInductive := λ(n : InductiveNatural),∀ (P : InductiveNatural →Prop) (zeroCase :P inductiveZero)(successorCase :∀ (m : InductiveNatural) ,P m →P (inductiveSuccessor m)),P n.
 Definition inductiveZeroIsInductive : InductiveNaturalIsInductive inductiveZero := λ P inductiveZeroCase inductiveSuccessorCase, inductiveZeroCase.
 Definition inductiveSuccessorIsInductive : ∀(n : InductiveNatural), InductiveNaturalIsInductive n →InductiveNaturalIsInductive (inductiveSuccessor n):= λ n nIsInductive, (λ P zeroCase successorCase, successorCase n (nIsInductive P zeroCase successorCase)).
@@ -102,7 +139,7 @@ Definition pop : Term → Term := λ m p pr t v po l f a , po (m p pr t v po l f
 Definition lambda : Term → Term → Term := λ m n p pr t v po l f a , l (m p pr t v po l f a) (n p pr t v po l f a) .
 Definition forAll : Term → Term → Term := λ m n p pr t v po l f a , f (m p pr t v po l f a) (n p pr t v po l f a) .
 Definition apply : Term → Term → Term := λ m n p pr t v po l f a , a (m p pr t v po l f a) (n p pr t v po l f a) .
-
+Print eq_ind.
 Definition TermIsInductive : Term → Prop := λ (t : Term) , ∀ (P : Term → Prop) ,
    ∀ (PropReduce : P prop) ,
    ∀ (TypeReduce : P type) ,
