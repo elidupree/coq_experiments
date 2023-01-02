@@ -1,9 +1,9 @@
 #![feature(default_free_fn, array_methods)]
 
-pub mod incomplete_term;
+//pub mod incomplete_term;
 pub mod inductive_type;
 pub mod term;
-//pub mod types;
+pub mod types;
 
 #[cfg(test)]
 mod tests {

@@ -1,7 +1,4 @@
-use crate::term::RecursiveTermKind::*;
-use crate::term::{RecursiveTermKind, Term, TermRef};
 use extend::ext;
-use std::collections::HashMap;
 use std::iter;
 
 pub trait ConstructUsingNames {
@@ -20,7 +17,7 @@ impl<T: ConstructUsingNames> T {
         return_type: Self,
     ) -> Self {
         let mut result = return_type;
-        for (name, ty) in arguments.collect::<Vec<_>>().into_iter().rev() {
+        for (name, ty) in arguments.into_iter().collect::<Vec<_>>().into_iter().rev() {
             result = Self::forall(name, ty, result)
         }
         result
@@ -30,7 +27,7 @@ impl<T: ConstructUsingNames> T {
         return_value: Self,
     ) -> Self {
         let mut result = return_value;
-        for (name, ty) in arguments.collect::<Vec<_>>().into_iter().rev() {
+        for (name, ty) in arguments.into_iter().collect::<Vec<_>>().into_iter().rev() {
             result = Self::lambda(name, ty, result)
         }
         result
@@ -43,38 +40,7 @@ impl<T: ConstructUsingNames> T {
         result
     }
     fn variable(name: impl Into<String>) -> Self {
-        Self::variable_impl(name)
-    }
-}
-
-pub trait TermBuilder {
-    fn build(&self, context: &HashMap<String, Term>) -> Term;
-}
-
-pub struct Apply {
-    f: Box<dyn TermBuilder>,
-    args: Vec<Box<dyn TermBuilder>>,
-}
-
-pub struct Lambda {
-    args: Vec<(String, Box<dyn TermBuilder>)>,
-    body: Box<dyn TermBuilder>,
-}
-
-macro_rules! apply {
-    ($f:tt $args:tt+) => {
-        Apply{
-            f: Box::new($f),
-            args: vec![$(Box::new ($args))*]
-        }
-    }
-}
-
-macro_rules! lambda {
-    ($f:tt $body:tt+) => {
-        Lambda {
-            args: vec![$(Box::new ($args))*]
-        }
+        Self::variable_impl(name.into())
     }
 }
 
@@ -106,8 +72,8 @@ pub struct TypeDefinitionGeneratedTerms<T> {
     raw_constructors: Vec<(String, T)>,
     induction_predicate: T,
     induction_predicate_constructors: Vec<(String, T)>,
-    inductive_type: T,
-    inductive_constructors: Vec<(String, T)>,
+    // inductive_type: T,
+    // inductive_constructors: Vec<(String, T)>,
 }
 
 pub struct InductivePredicateDefinitionGeneratedTerms<T> {
@@ -120,27 +86,33 @@ impl<T: ConstructUsingNames + Clone> TypeConstructorDefinition<T> {
         T::forall_chain(
             self.nonrecursive_arguments
                 .iter()
-                .map(|(name, ty)| (None, ty.clone()))
+                .map(|(_name, ty)| (None, ty.clone()))
                 .chain(
-                    self.recursive_argument_indices
+                    self.recursive_arguments
                         .iter()
-                        .map(|_| T::variable("P")),
+                        .map(|_| (None, T::variable("P"))),
                 ),
             T::variable("P"),
         )
     }
     pub fn constructor(&self, raw_type: &T, reducers: impl IntoIterator<Item = (String, T)>) -> T {
-        let args = self.nonrecursive_arguments.cloned().chain(
-            self.recursive_argument_indices
-                .map(|(name, _ty)| (Some(name.clone()), raw_type.clone())),
-        );
+        let args: Vec<_> = self
+            .nonrecursive_arguments
+            .iter()
+            .cloned()
+            .chain(
+                self.recursive_arguments
+                    .iter()
+                    .map(|name| (name.clone(), raw_type.clone())),
+            )
+            .collect();
         T::lambda_chain(
             args.iter()
                 .map(|(name, ty)| (Some(name.clone()), ty.clone()))
                 .chain(reducers.into_iter().map(|(name, ty)| (Some(name), ty))),
             T::apply_chain(
                 T::variable(&self.name),
-                args.into_iter().map(|name, _ty| T::variable(name)),
+                args.iter().map(|(name, _ty)| T::variable(name)),
             ),
         )
     }
@@ -152,11 +124,14 @@ impl<T: ConstructUsingNames + Clone> TypeConstructorDefinition<T> {
         let arguments: Vec<_> = self
             .nonrecursive_arguments
             .iter()
-            .map(|(name, ty)| (Some(name.clone()), ty.clone()))
+            .map(|(name, ty)| (name.clone(), ty.clone()))
             .chain(self.recursive_arguments.iter().flat_map(|name| {
                 [
-                    (Some(name.clone()), raw_type.clone()),
-                    (None, T::apply(T::variable("P"), T::variable(name))),
+                    (name.clone(), raw_type.clone()),
+                    (
+                        format!("P{}", name),
+                        T::apply(T::variable("P"), T::variable(name)),
+                    ),
                 ]
             }))
             .collect();
@@ -174,7 +149,7 @@ impl<T: ConstructUsingNames + Clone> TypeConstructorDefinition<T> {
             arguments,
             return_type: T::apply(
                 T::variable("P"),
-                T::apply_chain(raw_constructor, return_arguments),
+                T::apply_chain(raw_constructor.clone(), return_arguments),
             ),
         }
     }
@@ -186,7 +161,7 @@ impl<T: ConstructUsingNames + Clone> InductivePredicateConstructorDefinition<T> 
             self.arguments
                 .iter()
                 .map(|(name, ty)| (Some(name.clone()), ty.clone())),
-            T::variable("P"),
+            self.return_type.clone(),
         )
     }
     pub fn constructor(&self, reducers: impl IntoIterator<Item = (String, T)>) -> T {
@@ -211,35 +186,51 @@ impl<T: ConstructUsingNames + Clone> TypeDefinition<T> {
             .map(TypeConstructorDefinition::reducer_type)
             .collect();
         let raw_type = T::forall_chain(
-            iter::once((Some("P".into()), T::ty())).chain(raw_reducer_types.clone()),
+            iter::once((Some("P".into()), T::ty())).chain(
+                iter::zip(&self.constructors, &raw_reducer_types)
+                    .map(|(c, ty)| (Some(c.name.clone()), ty.clone())),
+            ),
             T::variable("P"),
         );
 
         let raw_constructors: Vec<_> = self
             .constructors
             .iter()
-            .map(|c: &InductiveConstructor<T>| {
-                c.raw_constructor(
+            .map(|c| {
+                c.constructor(
                     &raw_type,
                     iter::zip(&self.constructors, &raw_reducer_types)
-                        .map(|(c, ty)| (c.name.clone(), ty)),
+                        .map(|(c, ty)| (c.name.clone(), ty.clone())),
                 )
             })
             .collect();
 
-        let induction_predicate_constructor_definitions: Vec<_> = self
-            .constructors
-            .iter()
-            .map(TypeConstructorDefinition::inductive_predicate_constructor)
-            .collect();
+        let induction_predicate_constructor_definitions: Vec<_> =
+            iter::zip(&self.constructors, &raw_constructors)
+                .map(|(c, raw_constructor)| {
+                    c.inductive_predicate_constructor(&raw_type, raw_constructor)
+                })
+                .collect();
+
+        let induction_predicate_definition = InductivePredicateDefinition {
+            constructors: induction_predicate_constructor_definitions,
+            indices: vec![("v".into(), raw_type.clone())],
+        };
+
+        let InductivePredicateDefinitionGeneratedTerms {
+            induction_predicate,
+            induction_predicate_constructors,
+        } = induction_predicate_definition.generate_terms();
 
         TypeDefinitionGeneratedTerms {
             raw_type,
-            raw_constructors,
-            induction_predicate: (),
-            induction_predicate_constructors: vec![],
-            inductive_type: (),
-            inductive_constructors: vec![],
+            raw_constructors: iter::zip(
+                self.constructors.iter().map(|c| c.name.clone()),
+                raw_constructors,
+            )
+            .collect(),
+            induction_predicate,
+            induction_predicate_constructors,
         }
     }
 
@@ -305,7 +296,7 @@ impl<T: ConstructUsingNames + Clone> InductivePredicateDefinition<T> {
                 ))
                 .chain(iter::zip(
                     self.constructors.iter().map(|c| Some(c.name.clone())),
-                    induction_predicate_reducer_types,
+                    induction_predicate_reducer_types.iter().cloned(),
                 )),
                 T::apply_chain(
                     T::variable("P"),
