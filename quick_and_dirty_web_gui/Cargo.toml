@@ -1,0 +1,14 @@
+[package]
+name = "quick_and_dirty_web_gui"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+actix = "0.13.0"
+actix-web = "4.2.1"
+actix-web-actors = "4.1.0"
+actix-files = "0.6.2"
+serde = { version = "1.0.152", features = ["derive"] }
+serde_json = "1.0.91"

@@ -10,6 +10,8 @@ bitmatch = "0.1.1"
 siphasher = "0.3.10"
 arrayvec = "0.7.2"
 extend = "1.1.2"
+quick_and_dirty_web_gui = { path = "../quick_and_dirty_web_gui" }
+actix-web = "4.2.1"
 
 [profile.dev]
 opt-level = 3
