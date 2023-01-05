@@ -10,14 +10,22 @@ use std::sync::LazyLock;
 
 struct Manager {
     current_html: String,
-    callbacks: HashMap<u64, Box<dyn FnMut(String)>>,
+    current_callbacks: HashMap<String, Box<dyn FnMut(String)>>,
+    new_callbacks: HashMap<String, Box<dyn FnMut(String)>>,
     clients: Vec<Addr<Session>>,
 }
 
 #[derive(Debug, Message)]
 #[rtype(result = "()")]
 struct NewClient {
-    pub(crate) session: Addr<Session>,
+    session: Addr<Session>,
+}
+
+#[derive(Debug, Message)]
+#[rtype(result = "()")]
+struct NewCallback {
+    id: String,
+    callback: Box<dyn FnMut(String)>,
 }
 
 #[derive(Clone, Serialize, Debug, Message)]
@@ -30,7 +38,7 @@ enum MessageToClient {
 #[derive(Clone, Serialize, Deserialize, Debug, Message)]
 #[rtype(result = "()")]
 enum MessageFromClient {
-    RunCallback(u64, String),
+    RunCallback(String, String),
 }
 
 impl Actor for Manager {
@@ -54,10 +62,20 @@ impl Handler<MessageToClient> for Manager {
     fn handle(&mut self, message: MessageToClient, _context: &mut Self::Context) -> Self::Result {
         if let MessageToClient::ReplaceDom(html) = &message {
             self.current_html = html.clone();
+            std::mem::swap(&mut self.current_callbacks, &mut self.new_callbacks);
+            self.new_callbacks.clear();
         }
         for client in &self.clients {
             client.do_send(message.clone());
         }
+    }
+}
+
+impl Handler<NewCallback> for Manager {
+    type Result = ();
+
+    fn handle(&mut self, message: NewCallback, _context: &mut Self::Context) -> Self::Result {
+        self.new_callbacks.insert(message.id, message.callback);
     }
 }
 
@@ -67,7 +85,7 @@ impl Handler<MessageFromClient> for Manager {
     fn handle(&mut self, message: MessageFromClient, _context: &mut Self::Context) -> Self::Result {
         match message {
             MessageFromClient::RunCallback(id, data) => {
-                if let Some(callback) = self.callbacks.get_mut(&id) {
+                if let Some(callback) = self.current_callbacks.get_mut(&id) {
                     callback(data)
                 }
             }
@@ -180,4 +198,18 @@ pub fn send_app_message(message: &impl Serialize) {
     MANAGER.do_send(MessageToClient::AppMessage(
         serde_json::to_string(message).unwrap(),
     ));
+}
+
+pub fn callback(f: impl FnMut()) -> String {
+    let id = Uuid::new_v4().simple().to_string();
+    MANAGER.do_send(NewCallback(Box::new(move |_| f())));
+    format!(r##"send_to_socket("RunCallback",[{},""]);"##, id)
+}
+
+pub fn callback_with<D: Deserialize>(js: impl Into<String>, f: impl FnMut(D)) -> String {
+    let id = Uuid::new_v4().simple().to_string();
+    MANAGER.do_send(NewCallback(Box::new(move |argument| {
+        f(serde_json::from_str(&argument).unwrap())
+    })));
+    format!(r##"send_to_socket("RunCallback",[{},{}]);"##, id, js)
 }

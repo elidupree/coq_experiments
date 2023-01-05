@@ -12,6 +12,7 @@ arrayvec = "0.7.2"
 extend = "1.1.2"
 quick_and_dirty_web_gui = { path = "../quick_and_dirty_web_gui" }
 actix-web = "4.2.1"
+typed-html = { git = "https://github.com/bodil/typed-html/", version = "0.2.2" }
 
 [profile.dev]
 opt-level = 3
