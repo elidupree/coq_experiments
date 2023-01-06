@@ -64,14 +64,19 @@ impl Environment {
         &self,
         id: TermVariableId,
     ) -> (TermVariableId, Option<&TermTypeAndValue>) {
-        let mut id = id;
-        loop {
-            match &self.get_term(id).contents {
-                TermContents::Nothing => return (id, None),
-                TermContents::Reference(id2) => id = *id2,
-                TermContents::Term(t) => return (id, Some(t)),
+        let mut walking_id = id;
+        for _ in 0..10000 {
+            match &self.get_term(walking_id).contents {
+                TermContents::Nothing => return (walking_id, None),
+                TermContents::Reference(id2) => walking_id = *id2,
+                TermContents::Term(t) => return (walking_id, Some(t)),
             }
         }
+        println!(
+            "Warning: Excess depth, probably recursive variable reference, in {:?}",
+            id
+        );
+        return (id, None);
     }
     pub fn unrolled_variable_with_substitution(
         &self,
@@ -79,27 +84,25 @@ impl Environment {
         replaced: TermVariableId,
         replacement: TermVariableId,
     ) -> (TermVariableId, Option<&TermTypeAndValue>) {
-        let mut id = id;
-        loop {
-            if id == replaced {
-                id = replacement;
+        let mut walking_id = id;
+        for _ in 0..10000 {
+            if walking_id == replaced {
+                walking_id = replacement;
             }
-            match &self.get_term(id).contents {
-                TermContents::Nothing => return (id, None),
-                TermContents::Reference(id2) => id = *id2,
-                TermContents::Term(t) => return (id, Some(t)),
+            match &self.get_term(walking_id).contents {
+                TermContents::Nothing => return (walking_id, None),
+                TermContents::Reference(id2) => walking_id = *id2,
+                TermContents::Term(t) => return (walking_id, Some(t)),
             }
         }
+        println!(
+            "Warning: Excess depth, probably recursive variable reference, in {:?}[{:?} := {:?}]",
+            id, replaced, replacement
+        );
+        return (id, None);
     }
     pub fn get_type_and_value(&self, id: TermVariableId) -> Option<&TermTypeAndValue> {
-        let mut id = id;
-        loop {
-            match &self.get_term(id).contents {
-                TermContents::Nothing => return None,
-                TermContents::Reference(id2) => id = *id2,
-                TermContents::Term(t) => return Some(t),
-            }
-        }
+        self.unrolled_variable(id).1
     }
     pub fn get_context(&self, id: ContextVariableId) -> &ContextVariable {
         self.contexts.get(&id).unwrap()
