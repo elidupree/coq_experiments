@@ -4,14 +4,16 @@ use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, StreamHandler}
 use actix_files::NamedFile;
 use actix_web::{get, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder};
 use actix_web_actors::ws;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::LazyLock;
+use uuid::Uuid;
 
 struct Manager {
     current_html: String,
-    current_callbacks: HashMap<String, Box<dyn FnMut(String)>>,
-    new_callbacks: HashMap<String, Box<dyn FnMut(String)>>,
+    current_callbacks: HashMap<String, Box<dyn FnMut(String) + Send>>,
+    new_callbacks: HashMap<String, Box<dyn FnMut(String) + Send>>,
     clients: Vec<Addr<Session>>,
 }
 
@@ -21,11 +23,11 @@ struct NewClient {
     session: Addr<Session>,
 }
 
-#[derive(Debug, Message)]
+#[derive(Message)]
 #[rtype(result = "()")]
 struct NewCallback {
     id: String,
-    callback: Box<dyn FnMut(String)>,
+    callback: Box<dyn FnMut(String) + Send>,
 }
 
 #[derive(Clone, Serialize, Debug, Message)]
@@ -164,7 +166,8 @@ async fn index() -> impl Responder {
 static MANAGER: LazyLock<Addr<Manager>> = LazyLock::new(|| {
     Manager {
         current_html: "".to_string(),
-        callbacks: HashMap::new(),
+        current_callbacks: HashMap::new(),
+        new_callbacks: HashMap::new(),
         clients: vec![],
     }
     .start()
@@ -200,16 +203,23 @@ pub fn send_app_message(message: &impl Serialize) {
     ));
 }
 
-pub fn callback(f: impl FnMut()) -> String {
+pub fn callback(mut f: impl FnMut() + Send + 'static) -> String {
     let id = Uuid::new_v4().simple().to_string();
-    MANAGER.do_send(NewCallback(Box::new(move |_| f())));
+    MANAGER.do_send(NewCallback {
+        id: id.clone(),
+        callback: Box::new(move |_| f()),
+    });
     format!(r##"send_to_socket("RunCallback",[{},""]);"##, id)
 }
 
-pub fn callback_with<D: Deserialize>(js: impl Into<String>, f: impl FnMut(D)) -> String {
+pub fn callback_with<D: DeserializeOwned>(
+    js: &str,
+    mut f: impl FnMut(D) + Send + 'static,
+) -> String {
     let id = Uuid::new_v4().simple().to_string();
-    MANAGER.do_send(NewCallback(Box::new(move |argument| {
-        f(serde_json::from_str(&argument).unwrap())
-    })));
+    MANAGER.do_send(NewCallback {
+        id: id.clone(),
+        callback: Box::new(move |argument| f(serde_json::from_str(&argument).unwrap())),
+    });
     format!(r##"send_to_socket("RunCallback",[{},{}]);"##, id, js)
 }

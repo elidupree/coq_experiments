@@ -24,7 +24,7 @@ pub enum TermContents {
 pub struct TermTypeAndValue {
     value: TermValue,
     type_id: TermVariableId,
-    context: ContextVariableId,
+    context_id: ContextVariableId,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -33,23 +33,19 @@ pub enum Sort {
     Type,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum TermValue {
     Variable(TermVariableId),
     Sort(Sort),
     Recursive(RecursiveTermKind, [TermVariableId; 2]),
 }
 
-pub struct TermTypeInfo {
-    ty: TermVariableId,
-    context: ContextVariableId,
-}
-
-pub struct ContextVariable {
-    value: ContextValue,
+pub enum ContextVariable {
+    Reference(ContextVariableId),
+    Value(ContextValue),
 }
 
 pub enum ContextValue {
-    Variable(ContextVariableId),
     Nil,
     Cons(TermVariableId, ContextVariableId),
 }
@@ -76,9 +72,61 @@ impl Environment {
     pub fn get_context(&self, id: ContextVariableId) -> &ContextVariable {
         self.contexts.get(&id).unwrap()
     }
+    pub fn get_context_value(&self, id: ContextVariableId) -> &ContextValue {
+        let mut id = id;
+        loop {
+            match self.get_context(id) {
+                ContextVariable::Reference(id2) => id = *id2,
+                ContextVariable::Value(c) => return c,
+            }
+        }
+    }
+    pub fn is_in_context(
+        &self,
+        variable_id: TermVariableId,
+        context_id: ContextVariableId,
+    ) -> bool {
+        let mut context_id = context_id;
+        loop {
+            match self.get_context_value(context_id) {
+                ContextValue::Nil => return false,
+                ContextValue::Cons(head_id, tail_id) => {
+                    // deliberately use variable-identity
+                    if *head_id == variable_id {
+                        return true;
+                    }
+                    context_id = *tail_id;
+                }
+            }
+        }
+    }
+    pub fn is_same_context(&self, a: ContextVariableId, b: ContextVariableId) -> bool {
+        let (mut a, mut b) = (a, b);
+        loop {
+            match (self.get_context_value(a), self.get_context_value(b)) {
+                (ContextValue::Nil, ContextValue::Nil) => return true,
+                (ContextValue::Cons(ah, at), ContextValue::Cons(bh, bt))
+                    // deliberately use variable-identity
+                    if ah == bh => {
+                    a = *at;
+                    b = *bt;
+                }
+                _ => return false,
+            }
+        }
+    }
+    pub fn is_same_term(&self, a: TermVariableId, b: TermVariableId) -> bool {}
+    pub fn is_term_with_substitution(
+        &self,
+        a: TermVariableId,
+        b: TermVariableId,
+        replaced: TermVariableId,
+        replacement: TermVariableId,
+    ) -> bool {
+    }
     pub fn locally_valid(&self, id: TermVariableId) -> bool {
         let variable = self.get_term(id);
-        match &term.contents {
+        match &variable.contents {
             TermContents::Nothing => {
                 // `Nothing` is not intrinsically invalid – it is only invalid to use it as a value
                 true
@@ -91,44 +139,76 @@ impl Environment {
             TermContents::Term(TermTypeAndValue {
                 type_id,
                 value,
-                context,
+                context_id,
             }) => {
-                let Some(TermTypeAndValue { type_id: _, value: ty, context: _ }) = self.get_type_and_value(*type_id) else {
-                    return value == TermValue::Sort(Sort::Type);
+                let Some(TermTypeAndValue { type_id: _, value: ty, context_id: _ }) = self.get_type_and_value(*type_id) else {
+                    return matches!(value, TermValue::Sort(Sort::Type));
                 };
 
                 match value {
                     TermValue::Variable(variable_id) => {
-                        let Some(TermTypeAndValue { ty: _, value: expected_type, context: _ }) = self.get_type_and_value(*variable_id) else {
-                            return false;
-                        };
-                        ty == expected_type && self.is_in_context(variable_id, context)
+                        self.is_same_term(*type_id, *variable_id)
+                            && self.is_in_context(*variable_id, *context_id)
                     }
                     TermValue::Sort(sort) => match sort {
-                        Sort::Prop => ty == TermValue::Sort(Sort::Type),
+                        // note: this allows Prop : Type in any context, not just the empty context
+                        Sort::Prop => matches!(ty, TermValue::Sort(Sort::Type)),
                         Sort::Type => false,
                     },
-                    TermValue::Recursive(kind, children) => {
-                        let child_types = children
+                    TermValue::Recursive(kind, child_ids) => {
+                        let child_info = child_ids
                             .each_ref()
                             .map(|child| self.get_type_and_value(*child));
-                        // argtype can be Type, but that still _exists_, it's just its _type_ that doesn't
-                        let [Some(lhs), Some(rhs)] = child_types else { return false; };
-                        if !self.is_same_context(context, lhs.context) {
+                        let [Some(lhs), Some(rhs)] = child_info else { return false; };
+                        let Some(TermTypeAndValue { type_id: _, value: lhs_type, context_id: _ }) = self.get_type_and_value(lhs.type_id) else {
+                            return false;
+                        };
+                        let Some(TermTypeAndValue { type_id: _, value: rhs_type, context_id: _ }) = self.get_type_and_value(rhs.type_id) else {
+                            return false;
+                        };
+                        if !self.is_same_context(*context_id, lhs.context_id) {
                             return false;
                         }
 
                         use RecursiveTermKind::*;
                         match kind {
                             Lambda | ForAll => {
-                                if !self.is_same_context(context, rhs.context) {
+                                if !matches!(lhs_type, TermValue::Sort(_)) {
                                     return false;
+                                }
+                                let body_context = self.get_context_value(rhs.context_id);
+                                let ContextValue::Cons(body_context_head, body_context_tail) = body_context else { return false; };
+                                if !self.is_same_term(*body_context_head, child_ids[0]) {
+                                    return false;
+                                }
+                                if !self.is_same_context(*context_id, *body_context_tail) {
+                                    return false;
+                                }
+                                match kind {
+                                    Lambda => {
+                                        let TermValue::Recursive(ForAll, [type_lhs_id, type_rhs_id]) = ty else { return false; };
+                                        self.is_same_term(*type_lhs_id, child_ids[0])
+                                            && self.is_same_term(*type_rhs_id, rhs.type_id)
+                                    }
+                                    ForAll => {
+                                        matches!(ty, TermValue::Sort(_))
+                                            && self.is_same_term(*type_id, rhs.type_id)
+                                    }
+                                    Apply => unreachable!(),
                                 }
                             }
                             Apply => {
-                                if !self.is_same_context(context, rhs.context) {
+                                if !self.is_same_context(*context_id, rhs.context_id) {
                                     return false;
                                 }
+                                let TermValue::Recursive(ForAll, [type_lhs_id, type_rhs_id]) = lhs_type else { return false; };
+                                self.is_same_term(*type_lhs_id, rhs.type_id)
+                                    && self.is_term_with_substitution(
+                                        *type_id,
+                                        *type_rhs_id,
+                                        *type_lhs_id,
+                                        child_ids[0],
+                                    )
                             }
                         }
                     }

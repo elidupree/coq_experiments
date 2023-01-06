@@ -1,5 +1,5 @@
 use crate::term::{RecursiveTermKind, Term, TermKind, TermRef};
-use arrayvec::ArrayVec;
+// use arrayvec::ArrayVec;
 use std::iter;
 
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -170,7 +170,7 @@ impl JudgmentContext {
         }
     }
 }
-
+/*
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub struct TypeJudgmentType {
     context: JudgmentContext,
@@ -302,3 +302,4 @@ impl TypeJudgmentType {
 }
 
 impl TypeDecision {}
+*/

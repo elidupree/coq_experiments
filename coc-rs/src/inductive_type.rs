@@ -186,7 +186,7 @@ impl<T: ConstructUsingNames + Clone> TypeDefinition<T> {
             .map(TypeConstructorDefinition::reducer_type)
             .collect();
         let raw_type = T::forall_chain(
-            iter::once((Some("P".into()), T::ty())).chain(
+            iter::once((Some("P".into()), T::prop())).chain(
                 iter::zip(&self.constructors, &raw_reducer_types)
                     .map(|(c, ty)| (Some(c.name.clone()), ty.clone())),
             ),
@@ -291,7 +291,7 @@ impl<T: ConstructUsingNames + Clone> InductivePredicateDefinition<T> {
                         self.indices
                             .iter()
                             .map(|(name, ty)| (Some(name.clone()), ty.clone())),
-                        T::ty(),
+                        T::prop(),
                     ),
                 ))
                 .chain(iter::zip(

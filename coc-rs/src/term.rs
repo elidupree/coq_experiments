@@ -57,7 +57,7 @@ use std::hash::Hash;
 ///
 /// Actually I've added the value to the Variable variant, making this more into "1 layer of term"
 /// rather than a "kind" of term. better rename it later
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub enum RecursiveTermKind {
     Lambda,
     ForAll,
