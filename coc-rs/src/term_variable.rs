@@ -1,5 +1,6 @@
 use crate::term::RecursiveTermKind;
 use std::collections::HashMap;
+use std::iter;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct TermVariableId(usize);
@@ -59,6 +60,37 @@ impl Environment {
     pub fn get_term(&self, id: TermVariableId) -> &TermVariable {
         self.terms.get(&id).unwrap()
     }
+    pub fn unrolled_variable(
+        &self,
+        id: TermVariableId,
+    ) -> (TermVariableId, Option<&TermTypeAndValue>) {
+        let mut id = id;
+        loop {
+            match &self.get_term(id).contents {
+                TermContents::Nothing => return (id, None),
+                TermContents::Reference(id2) => id = *id2,
+                TermContents::Term(t) => return (id, Some(t)),
+            }
+        }
+    }
+    pub fn unrolled_variable_with_substitution(
+        &self,
+        id: TermVariableId,
+        replaced: TermVariableId,
+        replacement: TermVariableId,
+    ) -> (TermVariableId, Option<&TermTypeAndValue>) {
+        let mut id = id;
+        loop {
+            if id == replaced {
+                id = replacement;
+            }
+            match &self.get_term(id).contents {
+                TermContents::Nothing => return (id, None),
+                TermContents::Reference(id2) => id = *id2,
+                TermContents::Term(t) => return (id, Some(t)),
+            }
+        }
+    }
     pub fn get_type_and_value(&self, id: TermVariableId) -> Option<&TermTypeAndValue> {
         let mut id = id;
         loop {
@@ -106,8 +138,8 @@ impl Environment {
             match (self.get_context_value(a), self.get_context_value(b)) {
                 (ContextValue::Nil, ContextValue::Nil) => return true,
                 (ContextValue::Cons(ah, at), ContextValue::Cons(bh, bt))
-                    // deliberately use variable-identity
-                    if ah == bh => {
+                // deliberately use variable-identity
+                if ah == bh => {
                     a = *at;
                     b = *bt;
                 }
@@ -115,7 +147,23 @@ impl Environment {
             }
         }
     }
-    pub fn is_same_term(&self, a: TermVariableId, b: TermVariableId) -> bool {}
+    pub fn is_same_term(&self, a: TermVariableId, b: TermVariableId) -> bool {
+        let (a, av) = self.unrolled_variable(a);
+        let (b, bv) = self.unrolled_variable(b);
+        if a == b {
+            return true;
+        }
+        let Some(TermTypeAndValue { type_id: _, value: a, context_id: _ }) = av else { return false; };
+        let Some(TermTypeAndValue { type_id: _, value: b, context_id: _ }) = bv else { return false; };
+        match (a, b) {
+            (TermValue::Variable(a), TermValue::Variable(b)) => a == b,
+            (TermValue::Sort(a), TermValue::Sort(b)) => a == b,
+            (TermValue::Recursive(ak, ac), TermValue::Recursive(bk, bc)) => {
+                ak == bk && iter::zip(ac, bc).all(|(a, b)| self.is_same_term(*a, *b))
+            }
+            _ => false,
+        }
+    }
     pub fn is_term_with_substitution(
         &self,
         a: TermVariableId,
@@ -123,6 +171,21 @@ impl Environment {
         replaced: TermVariableId,
         replacement: TermVariableId,
     ) -> bool {
+        let (a, av) = self.unrolled_variable_with_substitution(a, replaced, replacement);
+        let (b, bv) = self.unrolled_variable_with_substitution(b, replaced, replacement);
+        if a == b {
+            return true;
+        }
+        let Some(TermTypeAndValue { type_id: _, value: a, context_id: _ }) = av else { return false; };
+        let Some(TermTypeAndValue { type_id: _, value: b, context_id: _ }) = bv else { return false; };
+        match (a, b) {
+            (TermValue::Variable(a), TermValue::Variable(b)) => a == b,
+            (TermValue::Sort(a), TermValue::Sort(b)) => a == b,
+            (TermValue::Recursive(ak, ac), TermValue::Recursive(bk, bc)) => {
+                ak == bk && iter::zip(ac, bc).all(|(a, b)| self.is_same_term(*a, *b))
+            }
+            _ => false,
+        }
     }
     pub fn locally_valid(&self, id: TermVariableId) -> bool {
         let variable = self.get_term(id);
@@ -161,9 +224,6 @@ impl Environment {
                             .map(|child| self.get_type_and_value(*child));
                         let [Some(lhs), Some(rhs)] = child_info else { return false; };
                         let Some(TermTypeAndValue { type_id: _, value: lhs_type, context_id: _ }) = self.get_type_and_value(lhs.type_id) else {
-                            return false;
-                        };
-                        let Some(TermTypeAndValue { type_id: _, value: rhs_type, context_id: _ }) = self.get_type_and_value(rhs.type_id) else {
                             return false;
                         };
                         if !self.is_same_context(*context_id, lhs.context_id) {
