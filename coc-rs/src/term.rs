@@ -43,6 +43,7 @@ VVVVVV is the top 6 bits of the (0-indexed) variable index. If the present term 
 
 use arrayvec::ArrayVec;
 use bitmatch::bitmatch;
+use serde::{Deserialize, Serialize};
 use siphasher::sip128::{Hasher128, SipHasher};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -51,18 +52,19 @@ use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::hash::Hash;
 
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+pub enum RecursiveTermKind {
+    Lambda,
+    ForAll,
+    Apply,
+}
+
 /// Might be more proper to call this "TermConstructor" in the sense of the 6 constructors of Term,
 /// but I currently feel better about this more English-like name: you ask "what kind of term is it?"
 /// and I tell you a "kind of term", i.e. TermKind.
 ///
 /// Actually I've added the value to the Variable variant, making this more into "1 layer of term"
 /// rather than a "kind" of term. better rename it later
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
-pub enum RecursiveTermKind {
-    Lambda,
-    ForAll,
-    Apply,
-}
 
 pub enum TermKind<'a> {
     Prop,

@@ -1,60 +1,42 @@
 use crate::term::RecursiveTermKind;
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::iter;
 use uuid::Uuid;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub struct TermVariableId(Uuid);
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct ContextVariableId(Uuid);
-
+#[derive(Default, Serialize, Deserialize, Debug)]
 pub struct TermVariable {
     pub name: String,
-    pub contents: TermContents,
+    pub type_and_value: Option<TermTypeAndValue>,
 
-    pub parent: Option<TermVariableId>,
     pub back_references: Vec<TermVariableId>,
 }
 
-pub enum TermContents {
-    Nothing,
-    Reference(TermVariableId),
-    Term(TermTypeAndValue),
-}
-
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct TermTypeAndValue {
     pub value: TermValue,
     pub type_id: TermVariableId,
-    pub context_id: ContextVariableId,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub enum Sort {
     Prop,
     Type,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum TermValue {
     VariableUsage(TermVariableId),
     Sort(Sort),
     Recursive(RecursiveTermKind, [TermVariableId; 2]),
 }
 
-pub enum ContextVariable {
-    Reference(ContextVariableId),
-    Value(ContextValue),
-}
-
-pub enum ContextValue {
-    Nil,
-    Cons(TermVariableId, ContextVariableId),
-}
-
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Environment {
     terms: HashMap<TermVariableId, TermVariable>,
-    contexts: HashMap<ContextVariableId, ContextVariable>,
 }
 
 impl Environment {
@@ -64,106 +46,19 @@ impl Environment {
     fn get_term_mut(&mut self, id: TermVariableId) -> &mut TermVariable {
         self.terms.get_mut(&id).unwrap()
     }
-    pub fn unrolled_variable(
-        &self,
-        id: TermVariableId,
-    ) -> (TermVariableId, Option<&TermTypeAndValue>) {
-        let mut walking_id = id;
-        for _ in 0..10000 {
-            match &self.get_term(walking_id).contents {
-                TermContents::Nothing => return (walking_id, None),
-                TermContents::Reference(id2) => walking_id = *id2,
-                TermContents::Term(t) => return (walking_id, Some(t)),
-            }
-        }
-        println!(
-            "Warning: Excess depth, probably recursive variable reference, in {:?}",
-            id
-        );
-        return (id, None);
-    }
-    pub fn unrolled_variable_with_substitution(
-        &self,
-        id: TermVariableId,
-        replaced: TermVariableId,
-        replacement: TermVariableId,
-    ) -> (TermVariableId, Option<&TermTypeAndValue>) {
-        let mut walking_id = id;
-        for _ in 0..10000 {
-            if walking_id == replaced {
-                walking_id = replacement;
-            }
-            match &self.get_term(walking_id).contents {
-                TermContents::Nothing => return (walking_id, None),
-                TermContents::Reference(id2) => walking_id = *id2,
-                TermContents::Term(t) => return (walking_id, Some(t)),
-            }
-        }
-        println!(
-            "Warning: Excess depth, probably recursive variable reference, in {:?}[{:?} := {:?}]",
-            id, replaced, replacement
-        );
-        return (id, None);
-    }
-    pub fn get_type_and_value(&self, id: TermVariableId) -> Option<&TermTypeAndValue> {
-        self.unrolled_variable(id).1
-    }
-    pub fn get_context(&self, id: ContextVariableId) -> &ContextVariable {
-        self.contexts.get(&id).unwrap()
-    }
-    pub fn get_context_value(&self, id: ContextVariableId) -> &ContextValue {
-        let mut id = id;
-        loop {
-            match self.get_context(id) {
-                ContextVariable::Reference(id2) => id = *id2,
-                ContextVariable::Value(c) => return c,
-            }
-        }
-    }
-    pub fn is_in_context(
-        &self,
-        variable_id: TermVariableId,
-        context_id: ContextVariableId,
-    ) -> bool {
-        let mut context_id = context_id;
-        loop {
-            match self.get_context_value(context_id) {
-                ContextValue::Nil => return false,
-                ContextValue::Cons(head_id, tail_id) => {
-                    // deliberately use variable-identity
-                    if *head_id == variable_id {
-                        return true;
-                    }
-                    context_id = *tail_id;
-                }
-            }
-        }
-    }
-    pub fn is_same_context(&self, a: ContextVariableId, b: ContextVariableId) -> bool {
-        let (mut a, mut b) = (a, b);
-        loop {
-            match (self.get_context_value(a), self.get_context_value(b)) {
-                (ContextValue::Nil, ContextValue::Nil) => return true,
-                (ContextValue::Cons(ah, at), ContextValue::Cons(bh, bt))
-                // deliberately use variable-identity
-                if ah == bh => {
-                    a = *at;
-                    b = *bt;
-                }
-                _ => return false,
-            }
-        }
-    }
     pub fn is_same_term(&self, a: TermVariableId, b: TermVariableId) -> bool {
-        let (a, av) = self.unrolled_variable(a);
-        let (b, bv) = self.unrolled_variable(b);
         if a == b {
             return true;
         }
-        let Some(TermTypeAndValue { type_id: _, value: a, context_id: _ }) = av else { return false; };
-        let Some(TermTypeAndValue { type_id: _, value: b, context_id: _ }) = bv else { return false; };
+        // If they're different variables and both None, they don't count as the same
+        let Some(TermTypeAndValue { value: a, .. }) = &self.get_term(a).type_and_value else { return false; };
+        let Some(TermTypeAndValue { value: b, .. }) = &self.get_term(b).type_and_value else { return false; };
         match (a, b) {
-            (TermValue::VariableUsage(a), TermValue::VariableUsage(b)) => a == b,
+            (TermValue::VariableUsage(a), TermValue::VariableUsage(b)) => {
+                // Variable usages have to be exactly the same variable, not merely same-term
+                // (which would end up meaning "the variables are the same type")
+                a == b
+            }
             (TermValue::Sort(a), TermValue::Sort(b)) => a == b,
             (TermValue::Recursive(ak, ac), TermValue::Recursive(bk, bc)) => {
                 ak == bk && iter::zip(ac, bc).all(|(a, b)| self.is_same_term(*a, *b))
@@ -178,79 +73,53 @@ impl Environment {
         replaced: TermVariableId,
         replacement: TermVariableId,
     ) -> bool {
-        let (a, av) = self.unrolled_variable_with_substitution(a, replaced, replacement);
-        let (b, bv) = self.unrolled_variable_with_substitution(b, replaced, replacement);
         if a == b {
             return true;
         }
-        let Some(TermTypeAndValue { type_id: _, value: a, context_id: _ }) = av else { return false; };
-        let Some(TermTypeAndValue { type_id: _, value: b, context_id: _ }) = bv else { return false; };
-        match (a, b) {
-            (TermValue::VariableUsage(a), TermValue::VariableUsage(b)) => a == b,
+        let Some(TermTypeAndValue { value: av, .. }) = &self.get_term(a).type_and_value else { return false; };
+        let Some(TermTypeAndValue { value: bv, .. }) = &self.get_term(b).type_and_value else { return false; };
+        match (av, bv) {
+            (TermValue::VariableUsage(a), TermValue::VariableUsage(b)) if a == b => true,
+            (_, TermValue::VariableUsage(b)) if *b == replaced => self.is_same_term(a, replacement),
             (TermValue::Sort(a), TermValue::Sort(b)) => a == b,
             (TermValue::Recursive(ak, ac), TermValue::Recursive(bk, bc)) => {
-                ak == bk && iter::zip(ac, bc).all(|(a, b)| self.is_same_term(*a, *b))
+                ak == bk
+                    && iter::zip(ac, bc)
+                        .all(|(a, b)| self.is_term_with_substitution(*a, *b, replaced, replacement))
             }
             _ => false,
         }
     }
     pub fn locally_valid(&self, id: TermVariableId) -> bool {
-        let variable = self.get_term(id);
-        let TermTypeAndValue {
-            type_id,
-            value,
-            context_id,
-        } = match &variable.contents {
-            TermContents::Nothing => {
-                // `Nothing` is not intrinsically invalid – it is only invalid to use it as a value
-                return true;
-            }
-            TermContents::Reference(_other_id) => {
-                // we don't need to duplicate the work of checking whether other_id is valid
-                // or the work of checking whether our parent is valid based on what our value is
-                return true;
-            }
-            TermContents::Term(t) => t,
+        let Some(TermTypeAndValue { type_id, value, .. }) = &self.get_term(id).type_and_value else {
+            // `None` is not intrinsically invalid – it is only invalid to use it
+            // as the type of anything but T, or as a subterm of any recursive term
+            return true;
         };
 
-        let Some(TermTypeAndValue { type_id: _, value: ty, context_id: _ }) = self.get_type_and_value(*type_id) else {
+        let Some(TermTypeAndValue { type_id: _, value: ty }) = &self.get_term(*type_id).type_and_value else {
             return matches!(value, TermValue::Sort(Sort::Type));
         };
 
         match value {
-            TermValue::VariableUsage(variable_id) => {
-                self.is_same_term(*type_id, *variable_id)
-                    && self.is_in_context(*variable_id, *context_id)
-            }
+            TermValue::VariableUsage(variable_id) => self.is_same_term(*type_id, *variable_id),
             TermValue::Sort(sort) => match sort {
-                // note: this allows Prop : Type in any context, not just the empty context
                 Sort::Prop => matches!(ty, TermValue::Sort(Sort::Type)),
                 Sort::Type => false,
             },
             TermValue::Recursive(kind, child_ids) => {
                 let child_info = child_ids
                     .each_ref()
-                    .map(|child| self.get_type_and_value(*child));
+                    .map(|child| &self.get_term(*child).type_and_value);
                 let [Some(lhs), Some(rhs)] = child_info else { return false; };
-                let Some(TermTypeAndValue { type_id: _, value: lhs_type, context_id: _ }) = self.get_type_and_value(lhs.type_id) else {
+                let Some(TermTypeAndValue { value: lhs_type, .. }) = &self.get_term(lhs.type_id).type_and_value else {
                     return false;
                 };
-                if !self.is_same_context(*context_id, lhs.context_id) {
-                    return false;
-                }
 
                 use RecursiveTermKind::*;
                 match kind {
                     Lambda | ForAll => {
                         if !matches!(lhs_type, TermValue::Sort(_)) {
-                            return false;
-                        }
-                        let body_context = self.get_context_value(rhs.context_id);
-                        let ContextValue::Cons(body_context_head, body_context_tail) = body_context else { return false; };
-                        if !self.is_same_term(*body_context_head, child_ids[0]) {
-                            return false;
-                        }
-                        if !self.is_same_context(*context_id, *body_context_tail) {
                             return false;
                         }
                         match kind {
@@ -267,9 +136,6 @@ impl Environment {
                         }
                     }
                     Apply => {
-                        if !self.is_same_context(*context_id, rhs.context_id) {
-                            return false;
-                        }
                         let TermValue::Recursive(ForAll, [type_lhs_id, type_rhs_id]) = lhs_type else { return false; };
                         self.is_same_term(*type_lhs_id, rhs.type_id)
                             && self.is_term_with_substitution(
@@ -284,49 +150,142 @@ impl Environment {
         }
     }
 
-    pub fn new() -> Self {
-        todo!()
-    }
-    pub fn clear(&mut self, id: TermVariableId) {
-        let contents =
-            std::mem::replace(&mut self.get_term_mut(id).contents, TermContents::Nothing);
-        let TermTypeAndValue {
-            type_id,
-            value,
-            context_id,
-        } = match contents {
-            TermContents::Nothing => {
-                // Already done
-                return;
-            }
-            TermContents::Reference(other_id) => {
-                self.get_term_mut(other_id)
-                    .back_references
-                    .retain(|i| *i != id);
-                return;
-            }
-            TermContents::Term(t) => t,
+    pub fn with_sorts() -> Self {
+        let mut result = Environment {
+            terms: HashMap::new(),
         };
-        //self.get_term_mut(type_id).parent.retain(|i| *i != id);
+        let empty = result.create_term_variable();
+        let ty = result.create_term_variable();
+        let prop = result.create_term_variable();
+        result.rename(empty, "NoType");
+        result.rename(ty, "Type");
+        result.rename(prop, "Prop");
+        result.set(
+            ty,
+            Some(TermTypeAndValue {
+                value: TermValue::Sort(Sort::Type),
+                type_id: empty,
+            }),
+        );
+        result.set(
+            prop,
+            Some(TermTypeAndValue {
+                value: TermValue::Sort(Sort::Prop),
+                type_id: ty,
+            }),
+        );
+        result
+    }
+    pub fn create_term_variable(&mut self) -> TermVariableId {
+        let id = TermVariableId(Uuid::new_v4());
+        self.terms.insert(id, TermVariable::default());
+        id
+    }
+    pub fn set_to_empty(&mut self, id: TermVariableId) {
+        let contents = self.get_term_mut(id).type_and_value.take();
+        let Some(TermTypeAndValue {
+                     type_id,
+                     value,
+                 }) = contents else { return; };
+
+        self.get_term_mut(type_id)
+            .back_references
+            .retain(|i| *i != id);
 
         match value {
             TermValue::VariableUsage(other_id) => {
                 self.get_term_mut(other_id)
                     .back_references
                     .retain(|i| *i != id);
-                return;
             }
             TermValue::Sort(_) => {}
-            TermValue::Recursive(_, _) => {}
+            TermValue::Recursive(_, children) => {
+                for child_id in children {
+                    self.get_term_mut(child_id)
+                        .back_references
+                        .retain(|i| *i != id);
+                }
+            }
         }
     }
-    pub fn make_reference(&mut self, id: TermVariableId, target: TermVariableId) {
-        self.clear(id);
+    fn populate_back_references(&mut self, id: TermVariableId) {
+        let contents = self.get_term(id).type_and_value.clone();
+        let Some(TermTypeAndValue {
+                     type_id,
+                     value,
+                 }) = contents else { return; };
+        self.get_term_mut(type_id).back_references.push(id);
+        match value {
+            TermValue::VariableUsage(other_id) => {
+                self.get_term_mut(type_id).back_references.push(other_id);
+            }
+            TermValue::Sort(_) => {}
+            TermValue::Recursive(_, children) => {
+                for child_id in children {
+                    self.get_term_mut(child_id)
+                        .back_references
+                        .retain(|i| *i != id);
+                }
+            }
+        }
     }
-    pub fn make_variable_usage(&mut self, id: TermVariableId, target: TermVariableId) {
-        self.clear(id);
+    pub fn set(&mut self, id: TermVariableId, new_contents: Option<TermTypeAndValue>) {
+        self.set_to_empty(id);
+        self.get_term_mut(id).type_and_value = new_contents;
+        self.populate_back_references(id);
     }
-    pub fn make_new_recursive_term(&mut self, id: TermVariableId, kind: RecursiveTermKind) {
-        self.clear(id);
+    pub fn set_to_copy_of(&mut self, id: TermVariableId, target: TermVariableId) {
+        self.set(id, self.get_term(target).type_and_value.clone());
+    }
+    pub fn set_to_variable_usage(&mut self, id: TermVariableId, target: TermVariableId) {
+        self.set(
+            id,
+            Some(TermTypeAndValue {
+                value: TermValue::VariableUsage(target),
+                type_id: target,
+            }),
+        );
+    }
+    pub fn set_to_new_recursive_term(&mut self, id: TermVariableId, kind: RecursiveTermKind) {
+        let type_id = self.create_term_variable();
+        let children = [self.create_term_variable(), self.create_term_variable()];
+        self.set(
+            id,
+            Some(TermTypeAndValue {
+                value: TermValue::Recursive(kind, children),
+                type_id,
+            }),
+        );
+    }
+    pub fn rename(&mut self, id: TermVariableId, new_name: impl Into<String>) {
+        self.get_term_mut(id).name = new_name.into();
+    }
+    pub fn fully_bound(&self, id: TermVariableId) -> bool {
+        self.free_variables(id).is_empty()
+    }
+    pub fn free_variables(&self, id: TermVariableId) -> HashSet<TermVariableId> {
+        let Some(TermTypeAndValue {
+                     value, ..
+                 }) = &self.get_term(id).type_and_value else { return HashSet::new(); };
+
+        match value {
+            TermValue::VariableUsage(other_id) => [*other_id].into_iter().collect(),
+            TermValue::Sort(_) => HashSet::new(),
+            TermValue::Recursive(kind, child_ids) => {
+                let [l, mut r] = child_ids
+                    .each_ref()
+                    .map(|child_id| self.free_variables(*child_id));
+                use RecursiveTermKind::*;
+                if matches!(kind, Lambda | ForAll) {
+                    r.remove(&child_ids[0]);
+                }
+                r.extend(l);
+                r
+            }
+        }
+    }
+
+    pub fn term_variables(&self) -> impl Iterator<Item = (&TermVariableId, &TermVariable)> {
+        self.terms.iter()
     }
 }
