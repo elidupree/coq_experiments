@@ -122,6 +122,12 @@ Eval cbv in (nargs_val
   (churchSuccessorIsInductiveT (churchSuccessorT churchZeroT) (churchSuccessorIsInductiveT churchZeroT churchZeroIsInductiveT))
 ).
 Eval cbv in nargs.
+
+Definition argsucc : ∀ a : Prop, Prop := λ a : Prop, ∀ q : Prop, a.
+Eval cbv in (argsucc (argsucc (argsucc True))).
+Definition ChurchNaturalPropOnly := (Prop → Prop) → Prop → Prop.
+Definition ChurchNaturalPropOnlyIsInductive : ChurchNaturalPropOnly → Prop := λ n,∀ (P : ChurchNaturalPropOnly → Prop) (zeroCase : P zero)(successorCase :∀ (m : Natural) ,P m →P (successor m)),P n.
+Definition ChurchNaturalPropOnlyLower : ChurchNaturalPropOnly → ChurchNatural := λ n, n 
  
  Definition Term : Type := ∀ (P : Type),
    ∀ (PropReduce : P) ,
