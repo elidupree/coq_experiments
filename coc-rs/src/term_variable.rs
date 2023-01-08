@@ -5,7 +5,7 @@ use std::iter;
 use uuid::Uuid;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
-pub struct TermVariableId(Uuid);
+pub struct TermVariableId(pub Uuid);
 
 #[derive(Default, Serialize, Deserialize, Debug)]
 pub struct TermVariable {
