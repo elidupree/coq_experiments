@@ -210,7 +210,10 @@ pub fn callback(mut f: impl FnMut() + Send + 'static) -> String {
         id: id.clone(),
         callback: Box::new(move |_| f()),
     });
-    format!(r##"send_to_socket("RunCallback",["{}",""]);"##, id)
+    format!(
+        r##"send_to_socket("RunCallback",["{}",""]); return false;"##,
+        id
+    )
 }
 
 pub fn callback_with<D: DeserializeOwned>(
@@ -222,5 +225,8 @@ pub fn callback_with<D: DeserializeOwned>(
         id: id.clone(),
         callback: Box::new(move |argument| f(serde_json::from_str(&argument).unwrap())),
     });
-    format!(r##"send_to_socket("RunCallback",["{}",{}]);"##, id, js)
+    format!(
+        r##"send_to_socket("RunCallback",["{}",JSON.stringify({})]);"##,
+        id, js
+    )
 }

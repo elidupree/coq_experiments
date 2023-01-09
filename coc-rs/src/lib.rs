@@ -5,6 +5,7 @@ pub mod inductive_type;
 pub mod term;
 pub mod term_variable;
 pub mod types;
+pub mod utils;
 
 #[cfg(test)]
 mod tests {

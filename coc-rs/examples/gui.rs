@@ -1,11 +1,14 @@
 #![feature(array_chunks)]
 #![feature(once_cell)]
 
+use clap::Parser;
 use coc_rs::term::RecursiveTermKind;
 use coc_rs::term_variable::{Environment, Sort, TermTypeAndValue, TermValue, TermVariableId};
+use coc_rs::utils::{read_json_file, write_json_file};
 use quick_and_dirty_web_gui::{callback, callback_with};
 use std::sync::{LazyLock, Mutex};
 use typed_html::elements::{FlowContent, PhrasingContent};
+use typed_html::types::Id;
 use typed_html::{elements, html, text};
 
 pub type FlowElement = Box<dyn FlowContent<String>>;
@@ -13,6 +16,7 @@ pub type PhrasingElement = Box<dyn PhrasingContent<String>>;
 pub type Span = Box<elements::span<String>>;
 
 struct Interface {
+    file_path: String,
     terms: Environment,
     focus: TermVariableId,
     clipboard: Option<TermTypeAndValue>,
@@ -115,7 +119,26 @@ impl Interface {
                 }
             },
         };
-        body
+        html! {
+            <span onclick={callback(move || focus_term(id))}>
+                {body}
+            </span> : String
+        }
+    }
+    fn copy_buttons(&self, id: TermVariableId) -> FlowElement {
+        html! {
+            <div class="buttons">
+                <button onclick={callback(move || copy_term(id))}>
+                    "Copy"
+                </button>
+                <button onclick={callback(move || use_term(id))}>
+                    "Use"
+                </button>
+                <button onclick={callback(move || use_var(id))}>
+                    "UseVar"
+                </button>
+            </div> : String
+        }
     }
     fn global(&self, id: TermVariableId) -> FlowElement {
         let g = self.terms.get_term(id);
@@ -135,11 +158,7 @@ impl Interface {
                     </span>
                     {ty}
                 </div>
-                <div class="buttons">
-                    <button onclick={callback(move || copy_term(id))}>
-                        "Copy"
-                    </button>
-                </div>
+                {self.copy_buttons(id)}
             </div> : String
         }
     }
@@ -178,13 +197,80 @@ impl Interface {
         }
     }
 
+    fn node_element(&self, id: TermVariableId, focused: bool, depth: usize) -> FlowElement {
+        let term = self.terms.get_term(id);
+        let mut elements: Vec<FlowElement> = Vec::new();
+        // if focused {e
+        //     elements.push(context_element(term));
+        // }
+        let name_element_id = format!("term_{}_name", id.0);
+        elements.push(html! {
+            <input id=Id::new(&*name_element_id) type="text" value=&term.name
+              oninput={callback_with(
+                &format!(r##"document.getElementById("{name_element_id}").value"##),
+                move |name: String| rename_term (id,name)
+            )} /> : String
+        });
+        elements.push(self.inline_term_name_id(id));
+        elements.push(html! {
+            <div class="value">
+                {self.inline_term(id,3)}
+            </div>
+        });
+        if let Some(t) = term.type_and_value.as_ref() {
+            elements.push(html! {
+                <span class="type">
+                    {self.inline_term(t.type_id, 3)}
+                </span>
+            });
+        };
+        if true {
+            elements.push(html! {
+                <button onclick={callback(move || paste_into_term(id))}>
+                    "Paste"
+                </button> : String
+            });
+            elements.push(html! {
+                <button onclick={callback(move || insert_lambda(id))}>
+                    "Lambda"
+                </button> : String
+            });
+            elements.push(html! {
+                <button onclick={callback(move || insert_forall(id))}>
+                    "ForAll"
+                </button> : String
+            });
+            elements.push(html! {
+                <button onclick={callback(move || insert_apply(id))}>
+                    "Apply"
+                </button> : String
+            });
+        }
+        if term.type_and_value.is_some() {
+            elements.push(html! {
+                <button onclick={callback(move || clear_term(id))}>
+                    "Clear"
+                </button> : String
+            });
+        }
+        html! {
+            <div class="node" onclick={callback(move || focus_term(id))}>
+                //{(focused).then(|| node_parents(term))}
+                <div class="self" onclick={callback(move || focus_term(id))}>
+                    {elements}
+                </div>
+                //{(depth > 0).then(|| node_children(term, depth - 1))}
+            </div> : String
+        }
+    }
+
     fn whole_page(&self) -> FlowElement {
         let globals = self.globals();
         //let goals = goals().map(|term| node_element(term, false, 0));
         html! {
             <div class="page">
                 {globals}
-                //{node_element(active_node(), true, 2)}
+                {self.node_element(self.focus, true, 2)}
                 <div class="goals">
                     //{goals}
                 </div>
@@ -198,9 +284,13 @@ impl Interface {
 }
 
 static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
-    let terms = Environment::with_sorts();
+    ();
+    let args = Args::parse();
+    let terms = read_json_file::<_, Environment>(&args.file_path)
+        .unwrap_or_else(|_| Environment::with_sorts());
     let focus = *terms.term_variables().next().unwrap().0;
     Mutex::new(Interface {
+        file_path: args.file_path,
         terms,
         focus,
         clipboard: None,
@@ -211,6 +301,7 @@ fn with_interface(f: impl FnOnce(&mut Interface)) {
     let mut interface = INTERFACE.lock().unwrap();
     f(&mut *interface);
     interface.update_gui();
+    write_json_file(&interface.file_path, &interface.terms).unwrap();
 }
 
 fn focus_term(id: TermVariableId) {
@@ -222,6 +313,63 @@ fn focus_term(id: TermVariableId) {
 fn copy_term(id: TermVariableId) {
     with_interface(|interface| {
         interface.clipboard = interface.terms.get_term(id).type_and_value.clone();
+    });
+}
+
+fn use_term(id: TermVariableId) {
+    with_interface(|interface| {
+        interface.terms.set(
+            interface.focus,
+            interface.terms.get_term(id).type_and_value.clone(),
+        );
+    });
+}
+
+fn rename_term(id: TermVariableId, name: String) {
+    with_interface(|interface| {
+        interface.terms.rename(id, name);
+    });
+}
+
+fn use_var(id: TermVariableId) {
+    with_interface(|interface| {
+        interface.terms.set_to_variable_usage(interface.focus, id);
+    });
+}
+
+fn insert_lambda(id: TermVariableId) {
+    with_interface(|interface| {
+        interface
+            .terms
+            .set_to_new_recursive_term(id, RecursiveTermKind::Lambda);
+    });
+}
+
+fn insert_forall(id: TermVariableId) {
+    with_interface(|interface| {
+        interface
+            .terms
+            .set_to_new_recursive_term(id, RecursiveTermKind::ForAll);
+    });
+}
+
+fn insert_apply(id: TermVariableId) {
+    with_interface(|interface| {
+        interface
+            .terms
+            .set_to_new_recursive_term(id, RecursiveTermKind::Apply);
+    });
+}
+
+fn clear_term(id: TermVariableId) {
+    with_interface(|interface| {
+        interface.terms.set_to_empty(id);
+    });
+}
+
+fn paste_into_term(id: TermVariableId) {
+    with_interface(|interface| {
+        interface.terms.set(id, interface.clipboard.clone());
     });
 }
 
@@ -291,64 +439,19 @@ fn new_global() {
 //     }
 // }
 //
-// fn node_element(term: &Node, focused: bool, depth: usize) -> Element {
-//     let id = term.id;
-//     let mut elements: Vec<Element> = Vec::new();
-//     if focused {
-//         elements.push(context_element(term));
-//     }
-//     elements.push(html! {
-//         <div class="name">
-//             {text!("{}", g.name)}
-//         </div>
-//     });
-//     elements.push(html! {
-//         <div class="value">
-//             {text!("{}", g.value.display())}
-//         </div>
-//     });
-//     elements.push(html! {
-//         <div class="type">
-//             {text!("{}", g.ty.display())}
-//         </div>
-//     });
-//     if something {
-//         elements.push(html! {
-//             <button onclick={callback(move || insert_lambda(id))}>
-//                 Lambda
-//             </button>
-//         });
-//         elements.push(html! {
-//             <button onclick={callback(move || insert_forall(id))}>
-//                 ForAll
-//             </button>
-//         });
-//         elements.push(html! {
-//             <button onclick={callback(move || insert_apply(id))}>
-//                 Apply
-//             </button>
-//         });
-//     }
-//     if something {
-//         elements.push(html! {
-//             <button onclick={callback(move || clear(id))}>
-//                 Clear
-//             </button>
-//         });
-//     }
-//     html! {
-//         <div class="node" onclick={callback(move || focus(id))}>
-//             {(focused).then(|| node_parents(term))}
-//             <div class="self" onclick={callback(move || focus(id))}>
-//                 {elements}
-//             </div>
-//             {(depth > 0).then(|| node_children(term, depth - 1))}
-//         </div>
-//     }
-// }
+
 //
 // fn new_global(name: String) {}
 //
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Path to data file
+    #[arg(short, long)]
+    file_path: String,
+}
+
 #[actix_web::main]
 async fn main() {
     with_interface(|_| {});
