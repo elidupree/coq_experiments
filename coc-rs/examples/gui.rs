@@ -28,11 +28,13 @@ impl Interface {
                 .take(3)
                 .map(|&[a, h, b, bh, bw]| {
                     let h = (h as f64) / 255.0;
-                    let b = ((b as f64) / 255.0).powi(3);
+                    let b = ((b as f64) / 255.0).powi(3) * 100.0;
                     let bh = (bh as f64) / 255.0;
-                    let bw = 0.7 + ((bw as f64) / 255.0).powi(2) * 0.3;
+                    let bw = (0.7 + ((bw as f64) / 255.0).powi(2) * 0.3) * 100.0;
                     let a = char::from_u32(((a as u32) & 63) + 63).unwrap();
-                    let style = format!("color: hwb({h} 0.0 {b}); color: hwb({bh} {bw} 0.0)");
+                    let style = format!(
+                        "color: hwb({h}turn 0.0% {b}%); background-color: hwb({bh}turn {bw}% 0.0%)"
+                    );
                     html! {
                         <span style=style>
                             {text!("{}", a)}
@@ -41,7 +43,7 @@ impl Interface {
                 })
                 .collect();
         html! {
-            <span class="term-name-id">
+            <span class="term_name_id">
                 <span class="name">
                     {text!(name)}
                 </span>
@@ -125,36 +127,71 @@ impl Interface {
     }
     fn global(&self, id: TermVariableId) -> FlowElement {
         let g = self.terms.get_term(id);
-        let ty = g
-            .type_and_value
-            .as_ref()
-            .map(|t| self.inline_term(t.type_id, 3));
+        let ty = g.type_and_value.as_ref().map(|t| {
+            html! {
+                <span class="type">
+                    {self.inline_term(t.type_id, 3)}
+                </span>
+            }
+        });
         html! {
             <div class="global" onclick={callback(move || focus_term(id))}>
-                <div class="name">
-                    {text!(&g.name)}
-                </div>
-                <div class="value">
-                    {self.inline_term(id, 3)}
-                </div>
-                <div class="type">
+                <div class="spec">
+                    {self.inline_term_name_id(id)}
+                    <span class="value">
+                        {self.inline_term(id, 3)}
+                    </span>
                     {ty}
                 </div>
-                <button onclick={callback(move || copy_term(id))}>
-                    "Copy"
-                </button>
+                <div class="buttons">
+                    <button onclick={callback(move || copy_term(id))}>
+                        "Copy"
+                    </button>
+                </div>
+            </div> : String
+        }
+    }
+
+    fn globals(&self) -> FlowElement {
+        let mut named_globals = Vec::new();
+        let mut other_terms = Vec::new();
+        for (&id, term) in self.terms.term_variables() {
+            if term.name != "" {
+                named_globals.push((id, term));
+            } else if term.back_references.is_empty() {
+                other_terms.push((id, term));
+            }
+        }
+        named_globals.sort_by_key(|&(id, term)| (term.name.clone(), id));
+        other_terms.sort_by_key(|&(id, _term)| id);
+        let individual_globals = named_globals
+            .into_iter()
+            .chain(other_terms)
+            .map(|(id, _term)| self.global(id));
+        html! {
+            <div class="globals">
+                {individual_globals}
+                // <div class="new_global">
+                //     <input id="new_global_name" type="text"/>
+                //     <button onclick={callback_with(r##"$("#new_global_name").value"##, new_global)}>
+                //         "Create"
+                //     </button>
+                // </div>
+                <div class="new_global">
+                    <button onclick={callback(new_global)}>
+                        "New global"
+                    </button>
+                </div>
             </div> : String
         }
     }
 
     fn whole_page(&self) -> FlowElement {
-        //let globals = globals();
+        let globals = self.globals();
         //let goals = goals().map(|term| node_element(term, false, 0));
         html! {
             <div class="page">
-                <div class="globals">
-                    //{globals}
-                </div>
+                {globals}
                 //{node_element(active_node(), true, 2)}
                 <div class="goals">
                     //{goals}
@@ -193,6 +230,13 @@ fn focus_term(id: TermVariableId) {
 fn copy_term(id: TermVariableId) {
     with_interface(|interface| {
         interface.clipboard = interface.terms.get_term(id).type_and_value.clone();
+    });
+}
+
+fn new_global() {
+    with_interface(|interface| {
+        let id = interface.terms.create_term_variable();
+        interface.focus = id;
     });
 }
 
@@ -312,21 +356,6 @@ fn copy_term(id: TermVariableId) {
 // }
 //
 // fn new_global(name: String) {}
-//
-// fn globals() -> Element {
-//     let individual_globals = context.globals.iter().map(|g| global(g));
-//     html! {
-//         <div class="globals">
-//             {individual_globals}
-//             <div class="new_global">
-//                 <input id="new_global_name" type="text"/>
-//                 <button onclick={callback_with(r##"$("#new_global_name").value"##, new_global)}>
-//                     Create
-//                 </button>
-//             </div>
-//         </div>
-//     }
-// }
 //
 #[actix_web::main]
 async fn main() {

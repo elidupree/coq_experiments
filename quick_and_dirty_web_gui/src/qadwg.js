@@ -22,10 +22,14 @@ function connect() {
     socket.onmessage = (ev) => {
       //console.log('Received: ' + ev.data)
       const message = JSON.parse(ev.data)
-      //console.log('Received: ', message)
+      // console.log('Received: ', message)
       if (message["ReplaceDom"]) {
         console.log('Replacing DOM');
-        morphdom(document.getElementById(app_options.app_element ?? document.body), data);
+        if (app_options.app_element === undefined) {
+          app_options.app_element = document.createElement("div");
+          document.body.appendChild(app_options.app_element)
+        }
+        morphdom(app_options.app_element, message["ReplaceDom"]);
       }
       else if (message["AppMessage"]) {
         console.log('Got app message');
@@ -37,6 +41,7 @@ function connect() {
 
     socket.onclose = () => {
       console.log('Disconnected')
+      setTimeout(() => connect(), 1000)
     }
 
 }

@@ -1,0 +1,54 @@
+body {
+  font-size: 120%;
+}
+.globals, .goals {
+    display: flex;
+    flex-wrap: wrap;
+}
+.global,.new_global {
+    padding: 0.1em;
+    margin: 0.4em;
+    border: 2px solid transparent;
+}
+.global {
+    cursor: pointer;
+}
+.global:hover {
+  border-color: black;
+}
+.node {
+    display: flex;
+    flex-direction: column;
+    padding: 0.8em;
+}
+.node .parents {
+    display: flex;
+    padding: 0.8em;
+}
+.node .self {
+    display: flex;
+    padding: 0.8em;
+}
+.node .children {
+    display: flex;
+    padding: 0.8em;
+}
+.type {
+  opacity: 0.4;
+}
+.type:before {
+    content: " : ";
+}
+.value:before {
+    content: " := ";
+}
+.sort {
+  font-weight: bold;
+  font-style: italic;
+}
+
+.id {
+  font-size: 80%;
+  font-weight: bold;
+  font-style: italic;
+}

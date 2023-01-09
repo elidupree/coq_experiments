@@ -184,6 +184,7 @@ pub async fn launch(port: u16) {
             .service(index)
             .service(session)
             .service(qadwg_script)
+            .service(actix_files::Files::new("/media", "./static/media"))
     })
     .workers(1)
     .bind(("localhost", port))
@@ -209,7 +210,7 @@ pub fn callback(mut f: impl FnMut() + Send + 'static) -> String {
         id: id.clone(),
         callback: Box::new(move |_| f()),
     });
-    format!(r##"send_to_socket("RunCallback",[{},""]);"##, id)
+    format!(r##"send_to_socket("RunCallback",["{}",""]);"##, id)
 }
 
 pub fn callback_with<D: DeserializeOwned>(
@@ -221,5 +222,5 @@ pub fn callback_with<D: DeserializeOwned>(
         id: id.clone(),
         callback: Box::new(move |argument| f(serde_json::from_str(&argument).unwrap())),
     });
-    format!(r##"send_to_socket("RunCallback",[{},{}]);"##, id, js)
+    format!(r##"send_to_socket("RunCallback",["{}",{}]);"##, id, js)
 }
