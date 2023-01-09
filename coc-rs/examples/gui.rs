@@ -21,35 +21,27 @@ struct Interface {
 impl Interface {
     fn inline_term_name_id(&self, id: TermVariableId) -> Span {
         let name = &self.terms.get_term(id).name;
-        let id_characters: Vec<_> =
-            id.0.as_u128()
-                .to_le_bytes()
-                .array_chunks::<5>()
-                .take(3)
-                .map(|&[a, h, b, bh, bw]| {
-                    let h = (h as f64) / 255.0;
-                    let b = ((b as f64) / 255.0).powi(3) * 100.0;
-                    let bh = (bh as f64) / 255.0;
-                    let bw = (0.7 + ((bw as f64) / 255.0).powi(2) * 0.3) * 100.0;
-                    let a = char::from_u32(((a as u32) & 63) + 63).unwrap();
-                    let style = format!(
-                        "color: hwb({h}turn 0.0% {b}%); background-color: hwb({bh}turn {bw}% 0.0%)"
-                    );
-                    html! {
-                        <span style=style>
-                            {text!("{}", a)}
-                        </span>
-                    }
-                })
-                .collect();
+        let bytes = id.0.as_u128().to_le_bytes();
+        let [h1, h2, b, w, abc @ ..] = bytes;
+        let h1 = (h1 as f64) / 255.0;
+        let h2 = (h1 + 1.0 / 4.0 + ((h2 as f64) / 255.0) / 4.0).fract();
+        let b = (0.6 + ((b as f64) / 255.0).powi(3) * 0.4) * 100.0;
+        let w = (0.7 + ((w as f64) / 255.0).powi(2) * 0.15) * 100.0;
+
+        let mut name = name.to_string();
+        if name.len() < 3 {
+            name.extend(
+                abc.into_iter()
+                    .take(3 - name.len())
+                    .map(|a| char::from_u32(((a as u32) & 63) + 63).unwrap()),
+            );
+        }
+        let style =
+            format!("color: hwb({h1}turn 0.0% {b}%); background-color: hwb({h2}turn {w}% 0.0%)");
+
         html! {
-            <span class="term_name_id">
-                <span class="name">
-                    {text!(name)}
-                </span>
-                <span class="id">
-                    {id_characters}
-                </span>
+            <span class="term_name_id" style=style>
+                {text!(name)}
             </span>
         }
     }
