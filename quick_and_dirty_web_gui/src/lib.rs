@@ -211,7 +211,7 @@ pub fn callback(mut f: impl FnMut() + Send + 'static) -> String {
         callback: Box::new(move |_| f()),
     });
     format!(
-        r##"send_to_socket("RunCallback",["{}",""]); return false;"##,
+        r##"send_to_socket("RunCallback",["{}",""]); event.preventDefault(); event.stopPropagation();"##,
         id
     )
 }
@@ -226,7 +226,7 @@ pub fn callback_with<D: DeserializeOwned>(
         callback: Box::new(move |argument| f(serde_json::from_str(&argument).unwrap())),
     });
     format!(
-        r##"send_to_socket("RunCallback",["{}",JSON.stringify({})]);"##,
+        r##"send_to_socket("RunCallback",["{}",JSON.stringify({})]); event.preventDefault(); event.stopPropagation();"##,
         id, js
     )
 }

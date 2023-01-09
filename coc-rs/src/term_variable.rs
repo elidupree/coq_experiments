@@ -217,14 +217,12 @@ impl Environment {
         self.get_term_mut(type_id).back_references.push(id);
         match value {
             TermValue::VariableUsage(other_id) => {
-                self.get_term_mut(type_id).back_references.push(other_id);
+                self.get_term_mut(other_id).back_references.push(id);
             }
             TermValue::Sort(_) => {}
             TermValue::Recursive(_, children) => {
                 for child_id in children {
-                    self.get_term_mut(child_id)
-                        .back_references
-                        .retain(|i| *i != id);
+                    self.get_term_mut(child_id).back_references.push(id);
                 }
             }
         }

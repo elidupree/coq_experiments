@@ -33,10 +33,10 @@ impl Interface {
         let w = (0.7 + ((w as f64) / 255.0).powi(2) * 0.15) * 100.0;
 
         let mut name = name.to_string();
-        if name.len() < 3 {
+        if name.is_empty() {
             name.extend(
                 abc.into_iter()
-                    .take(3 - name.len())
+                    .take(3)
                     .map(|a| char::from_u32(((a as u32) & 63) + 63).unwrap()),
             );
         }
@@ -44,9 +44,9 @@ impl Interface {
             format!("color: hwb({h1}turn 0.0% {b}%); background-color: hwb({h2}turn {w}% 0.0%)");
 
         html! {
-            <span class="term_name_id" style=style>
+            <span class="term_name_id" style=style onclick={callback(move || focus_term(id))}>
                 {text!(name)}
-            </span>
+            </span> : String
         }
     }
     fn inline_term(&self, id: TermVariableId, depth_limit: usize) -> Span {
@@ -69,8 +69,8 @@ impl Interface {
                 }
                 TermValue::Sort(sort) => {
                     let name = match sort {
-                        Sort::Prop => "P",
-                        Sort::Type => "T",
+                        Sort::Prop => "Prop",
+                        Sort::Type => "Type",
                     };
                     html! {
                         <span class="sort">
