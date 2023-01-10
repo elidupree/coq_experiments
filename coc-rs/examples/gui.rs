@@ -91,11 +91,18 @@ impl Interface {
                                     _ => unreachable!(),
                                 };
                                 let var = self.inline_term_name_id(child_ids[0]);
+                                let var_ty = (depth_limit > 1).then(|| {
+                                    html! {
+                                        <span class="type">
+                                            {self.inline_term(child_ids[0], 1)}
+                                        </span>
+                                    }
+                                });
                                 let body = self.inline_term(child_ids[1], depth_limit - 1);
                                 html! {
                                     <span class="abstraction">
                                         {text!(sigil)}
-                                        {var}
+                                        {var}{var_ty}
                                         ", "
                                         {body}
                                     </span>
@@ -149,8 +156,13 @@ impl Interface {
                 </span>
             }
         });
+        let class = if self.terms.locally_valid(id) {
+            "global"
+        } else {
+            "global invalid"
+        };
         html! {
-            <div class="global" onclick={callback(move || focus_term(id))}>
+            <div class=class onclick={callback(move || focus_term(id))}>
                 <div class="spec">
                     {self.inline_term_name_id(id)}
                     <span class="value">
@@ -165,10 +177,13 @@ impl Interface {
 
     fn globals(&self) -> FlowElement {
         let mut named_globals = Vec::new();
+        let mut goals = Vec::new();
         let mut other_terms = Vec::new();
         for (&id, term) in self.terms.term_variables() {
             if term.name != "" {
                 named_globals.push((id, term));
+            } else if !self.terms.locally_valid(id) {
+                goals.push((id, term));
             } else if term.back_references.is_empty() {
                 other_terms.push((id, term));
             }
@@ -178,6 +193,7 @@ impl Interface {
         let individual_globals = named_globals
             .into_iter()
             .chain(other_terms)
+            .chain(goals)
             .map(|(id, _term)| self.global(id));
         html! {
             <div class="globals">

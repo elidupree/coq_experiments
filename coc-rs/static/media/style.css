@@ -13,6 +13,9 @@ body {
 .global {
     cursor: pointer;
 }
+.invalid {
+  border-color: red;
+}
 .global:hover {
   border-color: black;
 }
