@@ -69,8 +69,8 @@ impl Interface {
                 }
                 TermValue::Sort(sort) => {
                     let name = match sort {
-                        Sort::Prop => "Prop",
-                        Sort::Type => "Type",
+                        Sort::Prop => "𝒫",
+                        Sort::Type => "𝒯",
                     };
                     html! {
                         <span class="sort">
