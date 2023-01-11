@@ -1,5 +1,238 @@
 {
   "terms": {
+    "c8614c47-eb45-4185-acd8-601ce766e931": {
+      "name": "",
+      "type_and_value": {
+        "value": {
+          "Sort": "Prop"
+        },
+        "type_id": "10a6ac7b-f4ed-4fbf-a6ff-fc6274c31269"
+      },
+      "back_references": [
+        "426bdd1a-728b-4f51-a283-c4d12f4c9135"
+      ]
+    },
+    "675def64-d295-43b7-bfd5-dc8097411803": {
+      "name": "",
+      "type_and_value": {
+        "value": {
+          "VariableUsage": "9600a5af-21dc-4d7e-bf38-eba79fd1e62e"
+        },
+        "type_id": "9600a5af-21dc-4d7e-bf38-eba79fd1e62e"
+      },
+      "back_references": [
+        "426bdd1a-728b-4f51-a283-c4d12f4c9135"
+      ]
+    },
+    "5b61d6b5-f614-4de3-95d3-fcacf9808745": {
+      "name": "",
+      "type_and_value": {
+        "value": {
+          "VariableUsage": "ae6a60a4-89a0-4a77-8265-5b1163f2d46f"
+        },
+        "type_id": "ae6a60a4-89a0-4a77-8265-5b1163f2d46f"
+      },
+      "back_references": [
+        "ac969217-4125-4ef8-a92c-4b13d0ce15f0"
+      ]
+    },
+    "91d45b59-6210-4d6e-9a8f-2350dab7ec88": {
+      "name": "",
+      "type_and_value": {
+        "value": {
+          "Sort": "Prop"
+        },
+        "type_id": "10a6ac7b-f4ed-4fbf-a6ff-fc6274c31269"
+      },
+      "back_references": [
+        "dec506b4-448e-4624-aab1-9008fddae0aa",
+        "c042a208-7660-4780-941d-ae303194f32a"
+      ]
+    },
+    "1b1e2b8f-5c25-4737-b06b-4751b7f75dce": {
+      "name": "p",
+      "type_and_value": {
+        "value": {
+          "VariableUsage": "ae6a60a4-89a0-4a77-8265-5b1163f2d46f"
+        },
+        "type_id": "ae6a60a4-89a0-4a77-8265-5b1163f2d46f"
+      },
+      "back_references": [
+        "ac969217-4125-4ef8-a92c-4b13d0ce15f0"
+      ]
+    },
+    "975d4ea6-1bae-42a7-8d16-d9be2cecaf19": {
+      "name": "NoType",
+      "type_and_value": null,
+      "back_references": [
+        "10a6ac7b-f4ed-4fbf-a6ff-fc6274c31269"
+      ]
+    },
+    "426bdd1a-728b-4f51-a283-c4d12f4c9135": {
+      "name": "False",
+      "type_and_value": {
+        "value": {
+          "Recursive": [
+            "ForAll",
+            [
+              "9600a5af-21dc-4d7e-bf38-eba79fd1e62e",
+              "675def64-d295-43b7-bfd5-dc8097411803"
+            ]
+          ]
+        },
+        "type_id": "c8614c47-eb45-4185-acd8-601ce766e931"
+      },
+      "back_references": []
+    },
+    "f2899f01-2cec-485c-b6e3-8ff94abc0d14": {
+      "name": "",
+      "type_and_value": {
+        "value": {
+          "VariableUsage": "585393a5-374c-4316-ab86-cdfe2a0cedd8"
+        },
+        "type_id": "585393a5-374c-4316-ab86-cdfe2a0cedd8"
+      },
+      "back_references": [
+        "748f19a0-e265-40cd-b391-05eb2f823973"
+      ]
+    },
+    "9600a5af-21dc-4d7e-bf38-eba79fd1e62e": {
+      "name": "P",
+      "type_and_value": {
+        "value": {
+          "Sort": "Prop"
+        },
+        "type_id": "10a6ac7b-f4ed-4fbf-a6ff-fc6274c31269"
+      },
+      "back_references": [
+        "675def64-d295-43b7-bfd5-dc8097411803",
+        "9600a5af-21dc-4d7e-bf38-eba79fd1e62e",
+        "426bdd1a-728b-4f51-a283-c4d12f4c9135"
+      ]
+    },
+    "e14152aa-55d2-4d92-a2a2-be5ea4914d2b": {
+      "name": "",
+      "type_and_value": null,
+      "back_references": []
+    },
+    "2fa2ffcd-0180-4111-a4c9-cbe74e71b4be": {
+      "name": "TrueIsTrue",
+      "type_and_value": {
+        "value": {
+          "Recursive": [
+            "Lambda",
+            [
+              "ae6a60a4-89a0-4a77-8265-5b1163f2d46f",
+              "748f19a0-e265-40cd-b391-05eb2f823973"
+            ]
+          ]
+        },
+        "type_id": "c042a208-7660-4780-941d-ae303194f32a"
+      },
+      "back_references": []
+    },
+    "c042a208-7660-4780-941d-ae303194f32a": {
+      "name": "",
+      "type_and_value": {
+        "value": {
+          "Recursive": [
+            "ForAll",
+            [
+              "ff6c1622-8d16-4626-823e-14ed71d8331a",
+              "2651663b-1446-4397-8d65-ac08bbf54ae1"
+            ]
+          ]
+        },
+        "type_id": "91d45b59-6210-4d6e-9a8f-2350dab7ec88"
+      },
+      "back_references": [
+        "2fa2ffcd-0180-4111-a4c9-cbe74e71b4be"
+      ]
+    },
+    "1251cf67-4c4b-40dc-bb26-274434ca58c3": {
+      "name": "_",
+      "type_and_value": {
+        "value": {
+          "VariableUsage": "ff6c1622-8d16-4626-823e-14ed71d8331a"
+        },
+        "type_id": "ff6c1622-8d16-4626-823e-14ed71d8331a"
+      },
+      "back_references": []
+    },
+    "dec506b4-448e-4624-aab1-9008fddae0aa": {
+      "name": "True",
+      "type_and_value": {
+        "value": {
+          "Recursive": [
+            "ForAll",
+            [
+              "ff6c1622-8d16-4626-823e-14ed71d8331a",
+              "2651663b-1446-4397-8d65-ac08bbf54ae1"
+            ]
+          ]
+        },
+        "type_id": "91d45b59-6210-4d6e-9a8f-2350dab7ec88"
+      },
+      "back_references": []
+    },
+    "4cfd284b-c448-4d0f-b951-d6ef554c2dd2": {
+      "name": "",
+      "type_and_value": null,
+      "back_references": []
+    },
+    "8c690f34-4a1d-4bdd-93a0-78f10b2d0223": {
+      "name": "Prop",
+      "type_and_value": {
+        "value": {
+          "Sort": "Prop"
+        },
+        "type_id": "10a6ac7b-f4ed-4fbf-a6ff-fc6274c31269"
+      },
+      "back_references": []
+    },
+    "93d7227d-cb3b-4976-87dc-2bfbaaf1d7e8": {
+      "name": "_",
+      "type_and_value": {
+        "value": {
+          "VariableUsage": "ff6c1622-8d16-4626-823e-14ed71d8331a"
+        },
+        "type_id": "ff6c1622-8d16-4626-823e-14ed71d8331a"
+      },
+      "back_references": [
+        "2651663b-1446-4397-8d65-ac08bbf54ae1"
+      ]
+    },
+    "538e4fdc-15d1-4c1b-9365-257b5d54262c": {
+      "name": "",
+      "type_and_value": {
+        "value": {
+          "VariableUsage": "ff6c1622-8d16-4626-823e-14ed71d8331a"
+        },
+        "type_id": "ff6c1622-8d16-4626-823e-14ed71d8331a"
+      },
+      "back_references": [
+        "2651663b-1446-4397-8d65-ac08bbf54ae1"
+      ]
+    },
+    "10a6ac7b-f4ed-4fbf-a6ff-fc6274c31269": {
+      "name": "Type",
+      "type_and_value": {
+        "value": {
+          "Sort": "Type"
+        },
+        "type_id": "975d4ea6-1bae-42a7-8d16-d9be2cecaf19"
+      },
+      "back_references": [
+        "8c690f34-4a1d-4bdd-93a0-78f10b2d0223",
+        "9600a5af-21dc-4d7e-bf38-eba79fd1e62e",
+        "c8614c47-eb45-4185-acd8-601ce766e931",
+        "ff6c1622-8d16-4626-823e-14ed71d8331a",
+        "91d45b59-6210-4d6e-9a8f-2350dab7ec88",
+        "24f448ea-43ad-4f28-8d7d-fef7695b5f83",
+        "ae6a60a4-89a0-4a77-8265-5b1163f2d46f",
+        "cf9c8e97-5528-4eb8-862c-53160864aa7d"
+      ]
+    },
     "748f19a0-e265-40cd-b391-05eb2f823973": {
       "name": "",
       "type_and_value": {
@@ -16,25 +249,6 @@
       },
       "back_references": [
         "2fa2ffcd-0180-4111-a4c9-cbe74e71b4be"
-      ]
-    },
-    "2651663b-1446-4397-8d65-ac08bbf54ae1": {
-      "name": "",
-      "type_and_value": {
-        "value": {
-          "Recursive": [
-            "ForAll",
-            [
-              "93d7227d-cb3b-4976-87dc-2bfbaaf1d7e8",
-              "538e4fdc-15d1-4c1b-9365-257b5d54262c"
-            ]
-          ]
-        },
-        "type_id": "24f448ea-43ad-4f28-8d7d-fef7695b5f83"
-      },
-      "back_references": [
-        "dec506b4-448e-4624-aab1-9008fddae0aa",
-        "c042a208-7660-4780-941d-ae303194f32a"
       ]
     },
     "ae6a60a4-89a0-4a77-8265-5b1163f2d46f": {
@@ -55,87 +269,15 @@
         "5b61d6b5-f614-4de3-95d3-fcacf9808745"
       ]
     },
-    "9600a5af-21dc-4d7e-bf38-eba79fd1e62e": {
-      "name": "P",
-      "type_and_value": {
-        "value": {
-          "Sort": "Prop"
-        },
-        "type_id": "10a6ac7b-f4ed-4fbf-a6ff-fc6274c31269"
-      },
-      "back_references": [
-        "675def64-d295-43b7-bfd5-dc8097411803",
-        "9600a5af-21dc-4d7e-bf38-eba79fd1e62e",
-        "426bdd1a-728b-4f51-a283-c4d12f4c9135"
-      ]
-    },
-    "5b61d6b5-f614-4de3-95d3-fcacf9808745": {
+    "09a6d065-3f9d-4da4-8731-fd4c984faac7": {
       "name": "",
       "type_and_value": {
         "value": {
-          "VariableUsage": "ae6a60a4-89a0-4a77-8265-5b1163f2d46f"
+          "VariableUsage": "ff6c1622-8d16-4626-823e-14ed71d8331a"
         },
-        "type_id": "ae6a60a4-89a0-4a77-8265-5b1163f2d46f"
+        "type_id": "ff6c1622-8d16-4626-823e-14ed71d8331a"
       },
-      "back_references": [
-        "ac969217-4125-4ef8-a92c-4b13d0ce15f0"
-      ]
-    },
-    "585393a5-374c-4316-ab86-cdfe2a0cedd8": {
-      "name": "p",
-      "type_and_value": {
-        "value": {
-          "VariableUsage": "ae6a60a4-89a0-4a77-8265-5b1163f2d46f"
-        },
-        "type_id": "ae6a60a4-89a0-4a77-8265-5b1163f2d46f"
-      },
-      "back_references": [
-        "748f19a0-e265-40cd-b391-05eb2f823973",
-        "f2899f01-2cec-485c-b6e3-8ff94abc0d14",
-        "f2899f01-2cec-485c-b6e3-8ff94abc0d14"
-      ]
-    },
-    "c042a208-7660-4780-941d-ae303194f32a": {
-      "name": "",
-      "type_and_value": {
-        "value": {
-          "Recursive": [
-            "ForAll",
-            [
-              "ff6c1622-8d16-4626-823e-14ed71d8331a",
-              "2651663b-1446-4397-8d65-ac08bbf54ae1"
-            ]
-          ]
-        },
-        "type_id": "91d45b59-6210-4d6e-9a8f-2350dab7ec88"
-      },
-      "back_references": [
-        "2fa2ffcd-0180-4111-a4c9-cbe74e71b4be"
-      ]
-    },
-    "1b1e2b8f-5c25-4737-b06b-4751b7f75dce": {
-      "name": "p",
-      "type_and_value": {
-        "value": {
-          "VariableUsage": "ae6a60a4-89a0-4a77-8265-5b1163f2d46f"
-        },
-        "type_id": "ae6a60a4-89a0-4a77-8265-5b1163f2d46f"
-      },
-      "back_references": [
-        "ac969217-4125-4ef8-a92c-4b13d0ce15f0"
-      ]
-    },
-    "675def64-d295-43b7-bfd5-dc8097411803": {
-      "name": "",
-      "type_and_value": {
-        "value": {
-          "VariableUsage": "9600a5af-21dc-4d7e-bf38-eba79fd1e62e"
-        },
-        "type_id": "9600a5af-21dc-4d7e-bf38-eba79fd1e62e"
-      },
-      "back_references": [
-        "426bdd1a-728b-4f51-a283-c4d12f4c9135"
-      ]
+      "back_references": []
     },
     "cf9c8e97-5528-4eb8-862c-53160864aa7d": {
       "name": "",
@@ -147,23 +289,6 @@
       },
       "back_references": [
         "ac969217-4125-4ef8-a92c-4b13d0ce15f0"
-      ]
-    },
-    "e14152aa-55d2-4d92-a2a2-be5ea4914d2b": {
-      "name": "",
-      "type_and_value": null,
-      "back_references": []
-    },
-    "538e4fdc-15d1-4c1b-9365-257b5d54262c": {
-      "name": "",
-      "type_and_value": {
-        "value": {
-          "VariableUsage": "ff6c1622-8d16-4626-823e-14ed71d8331a"
-        },
-        "type_id": "ff6c1622-8d16-4626-823e-14ed71d8331a"
-      },
-      "back_references": [
-        "2651663b-1446-4397-8d65-ac08bbf54ae1"
       ]
     },
     "ff6c1622-8d16-4626-823e-14ed71d8331a": {
@@ -187,33 +312,21 @@
         "c042a208-7660-4780-941d-ae303194f32a"
       ]
     },
-    "426bdd1a-728b-4f51-a283-c4d12f4c9135": {
-      "name": "False",
+    "585393a5-374c-4316-ab86-cdfe2a0cedd8": {
+      "name": "p",
       "type_and_value": {
         "value": {
-          "Recursive": [
-            "ForAll",
-            [
-              "9600a5af-21dc-4d7e-bf38-eba79fd1e62e",
-              "675def64-d295-43b7-bfd5-dc8097411803"
-            ]
-          ]
+          "VariableUsage": "ae6a60a4-89a0-4a77-8265-5b1163f2d46f"
         },
-        "type_id": "c8614c47-eb45-4185-acd8-601ce766e931"
+        "type_id": "ae6a60a4-89a0-4a77-8265-5b1163f2d46f"
       },
-      "back_references": []
+      "back_references": [
+        "748f19a0-e265-40cd-b391-05eb2f823973",
+        "f2899f01-2cec-485c-b6e3-8ff94abc0d14",
+        "f2899f01-2cec-485c-b6e3-8ff94abc0d14"
+      ]
     },
-    "09a6d065-3f9d-4da4-8731-fd4c984faac7": {
-      "name": "",
-      "type_and_value": {
-        "value": {
-          "VariableUsage": "ff6c1622-8d16-4626-823e-14ed71d8331a"
-        },
-        "type_id": "ff6c1622-8d16-4626-823e-14ed71d8331a"
-      },
-      "back_references": []
-    },
-    "91d45b59-6210-4d6e-9a8f-2350dab7ec88": {
+    "24f448ea-43ad-4f28-8d7d-fef7695b5f83": {
       "name": "",
       "type_and_value": {
         "value": {
@@ -222,8 +335,7 @@
         "type_id": "10a6ac7b-f4ed-4fbf-a6ff-fc6274c31269"
       },
       "back_references": [
-        "dec506b4-448e-4624-aab1-9008fddae0aa",
-        "c042a208-7660-4780-941d-ae303194f32a"
+        "2651663b-1446-4397-8d65-ac08bbf54ae1"
       ]
     },
     "8f5cd90b-af22-46b4-ab79-1ce835b01332": {
@@ -231,51 +343,23 @@
       "type_and_value": null,
       "back_references": []
     },
-    "10a6ac7b-f4ed-4fbf-a6ff-fc6274c31269": {
-      "name": "Type",
-      "type_and_value": {
-        "value": {
-          "Sort": "Type"
-        },
-        "type_id": "975d4ea6-1bae-42a7-8d16-d9be2cecaf19"
-      },
-      "back_references": [
-        "8c690f34-4a1d-4bdd-93a0-78f10b2d0223",
-        "9600a5af-21dc-4d7e-bf38-eba79fd1e62e",
-        "c8614c47-eb45-4185-acd8-601ce766e931",
-        "ff6c1622-8d16-4626-823e-14ed71d8331a",
-        "91d45b59-6210-4d6e-9a8f-2350dab7ec88",
-        "24f448ea-43ad-4f28-8d7d-fef7695b5f83",
-        "ae6a60a4-89a0-4a77-8265-5b1163f2d46f",
-        "cf9c8e97-5528-4eb8-862c-53160864aa7d"
-      ]
-    },
-    "dec506b4-448e-4624-aab1-9008fddae0aa": {
-      "name": "True",
+    "2651663b-1446-4397-8d65-ac08bbf54ae1": {
+      "name": "",
       "type_and_value": {
         "value": {
           "Recursive": [
             "ForAll",
             [
-              "ff6c1622-8d16-4626-823e-14ed71d8331a",
-              "2651663b-1446-4397-8d65-ac08bbf54ae1"
+              "93d7227d-cb3b-4976-87dc-2bfbaaf1d7e8",
+              "538e4fdc-15d1-4c1b-9365-257b5d54262c"
             ]
           ]
         },
-        "type_id": "91d45b59-6210-4d6e-9a8f-2350dab7ec88"
-      },
-      "back_references": []
-    },
-    "f2899f01-2cec-485c-b6e3-8ff94abc0d14": {
-      "name": "",
-      "type_and_value": {
-        "value": {
-          "VariableUsage": "585393a5-374c-4316-ab86-cdfe2a0cedd8"
-        },
-        "type_id": "585393a5-374c-4316-ab86-cdfe2a0cedd8"
+        "type_id": "24f448ea-43ad-4f28-8d7d-fef7695b5f83"
       },
       "back_references": [
-        "748f19a0-e265-40cd-b391-05eb2f823973"
+        "dec506b4-448e-4624-aab1-9008fddae0aa",
+        "c042a208-7660-4780-941d-ae303194f32a"
       ]
     },
     "ac969217-4125-4ef8-a92c-4b13d0ce15f0": {
@@ -294,90 +378,6 @@
       },
       "back_references": [
         "748f19a0-e265-40cd-b391-05eb2f823973"
-      ]
-    },
-    "24f448ea-43ad-4f28-8d7d-fef7695b5f83": {
-      "name": "",
-      "type_and_value": {
-        "value": {
-          "Sort": "Prop"
-        },
-        "type_id": "10a6ac7b-f4ed-4fbf-a6ff-fc6274c31269"
-      },
-      "back_references": [
-        "2651663b-1446-4397-8d65-ac08bbf54ae1"
-      ]
-    },
-    "2fa2ffcd-0180-4111-a4c9-cbe74e71b4be": {
-      "name": "TrueIsTrue",
-      "type_and_value": {
-        "value": {
-          "Recursive": [
-            "Lambda",
-            [
-              "ae6a60a4-89a0-4a77-8265-5b1163f2d46f",
-              "748f19a0-e265-40cd-b391-05eb2f823973"
-            ]
-          ]
-        },
-        "type_id": "c042a208-7660-4780-941d-ae303194f32a"
-      },
-      "back_references": []
-    },
-    "975d4ea6-1bae-42a7-8d16-d9be2cecaf19": {
-      "name": "NoType",
-      "type_and_value": null,
-      "back_references": [
-        "10a6ac7b-f4ed-4fbf-a6ff-fc6274c31269"
-      ]
-    },
-    "4cfd284b-c448-4d0f-b951-d6ef554c2dd2": {
-      "name": "",
-      "type_and_value": null,
-      "back_references": []
-    },
-    "1251cf67-4c4b-40dc-bb26-274434ca58c3": {
-      "name": "_",
-      "type_and_value": {
-        "value": {
-          "VariableUsage": "ff6c1622-8d16-4626-823e-14ed71d8331a"
-        },
-        "type_id": "ff6c1622-8d16-4626-823e-14ed71d8331a"
-      },
-      "back_references": []
-    },
-    "c8614c47-eb45-4185-acd8-601ce766e931": {
-      "name": "",
-      "type_and_value": {
-        "value": {
-          "Sort": "Prop"
-        },
-        "type_id": "10a6ac7b-f4ed-4fbf-a6ff-fc6274c31269"
-      },
-      "back_references": [
-        "426bdd1a-728b-4f51-a283-c4d12f4c9135"
-      ]
-    },
-    "8c690f34-4a1d-4bdd-93a0-78f10b2d0223": {
-      "name": "Prop",
-      "type_and_value": {
-        "value": {
-          "Sort": "Prop"
-        },
-        "type_id": "10a6ac7b-f4ed-4fbf-a6ff-fc6274c31269"
-      },
-      "back_references": []
-    },
-    "93d7227d-cb3b-4976-87dc-2bfbaaf1d7e8": {
-      "name": "_",
-      "type_and_value": {
-        "value": {
-          "VariableUsage": "ff6c1622-8d16-4626-823e-14ed71d8331a"
-        },
-        "type_id": "ff6c1622-8d16-4626-823e-14ed71d8331a"
-      },
-      "back_references": [
-        "2651663b-1446-4397-8d65-ac08bbf54ae1"
       ]
     }
   }

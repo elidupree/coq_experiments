@@ -180,7 +180,7 @@ impl Interface {
         let mut goals = Vec::new();
         let mut other_terms = Vec::new();
         for (&id, term) in self.terms.term_variables() {
-            if term.name != "" {
+            if term.name != "" && self.terms.fully_bound(id) {
                 named_globals.push((id, term));
             } else if !self.terms.locally_valid(id) {
                 goals.push((id, term));
