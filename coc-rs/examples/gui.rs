@@ -106,7 +106,7 @@ impl Interface {
                                 html! {
                                     <span class="abstraction">
                                         {text!(sigil)}
-                                        {var}{var_ty}
+                                        "("{var}{var_ty}")"
                                         ", "
                                         {body}
                                     </span>
@@ -117,11 +117,7 @@ impl Interface {
                                 let arg = self.inline_term(child_ids[1], 1);
                                 html! {
                                     <span class="application">
-                                        "("
-                                        {f}
-                                        " "
-                                        {arg}
-                                        ")"
+                                        "("{f}" "{arg}")"
                                     </span>
                                 }
                             }
@@ -143,7 +139,7 @@ impl Interface {
                     "Copy"
                 </button>
                 <button onclick={callback(move || use_term(id))}>
-                    "Use"
+                    "UseRef"
                 </button>
                 <button onclick={callback(move || use_var(id))}>
                     "UseVar"
@@ -152,7 +148,6 @@ impl Interface {
         }
     }
     fn global(&self, id: TermVariableId) -> FlowElement {
-        let g = self.terms.get_term(id);
         let ty = self.terms.get_type_id(id).map(|type_id| {
             html! {
                 <span class="type">
@@ -175,6 +170,27 @@ impl Interface {
                     {ty}
                 </div>
                 {self.copy_buttons(id)}
+            </div> : String
+        }
+    }
+    fn context_element(&self, id: TermVariableId) -> FlowElement {
+        html! {
+            <div class="context_element" onclick={callback(move || focus_term(id))}>
+                {self.inline_term_name_id(id)}
+                <span class="type">
+                    {self.inline_term(id, 3)}
+                </span>
+                <button onclick={callback(move || use_var(id))}>
+                    "UseVar"
+                </button>
+            </div> : String
+        }
+    }
+    fn context(&self, id: TermVariableId) -> FlowElement {
+        let elements = self.terms.context(id).map(|i| self.context_element(i));
+        html! {
+            <div class="context">
+                {elements}
             </div> : String
         }
     }
@@ -219,55 +235,57 @@ impl Interface {
 
     fn node_element(&self, id: TermVariableId, focused: bool, depth: usize) -> FlowElement {
         let term = self.terms.get_term(id);
-        let mut elements: Vec<FlowElement> = Vec::new();
-        // if focused {e
-        //     elements.push(context_element(term));
-        // }
+        let mut self_elements: Vec<FlowElement> = Vec::new();
+        let mut context_elements: Vec<FlowElement> = Vec::new();
+        let mut button_elements: Vec<FlowElement> = Vec::new();
         let name_element_id = format!("term_{}_name", id.0);
-        elements.push(html! {
+        if focused {
+            context_elements.push(self.context(id));
+        }
+        self_elements.push(html! {
             <input id=Id::new(&*name_element_id) type="text" value=&term.name
               oninput={callback_with(
                 &format!(r##"document.getElementById("{name_element_id}").value"##),
                 move |name: String| rename_term (id,name)
             )} /> : String
         });
-        elements.push(self.inline_term_name_id(id));
-        elements.push(html! {
+        self_elements.push(self.inline_term_name_id(id));
+        self_elements.push(html! {
             <div class="value">
                 {self.inline_term(id,3)}
             </div>
         });
         if let Some(type_id) = self.terms.get_type_id(id) {
-            elements.push(html! {
+            self_elements.push(html! {
                 <span class="type">
                     {self.inline_term(type_id, 3)}
                 </span>
             });
         };
         if true {
-            elements.push(html! {
+            button_elements.push(html! {
                 <button onclick={callback(move || paste_as_reference(id))}>
                     "Paste (ref)"
                 </button> : String
             });
-            elements.push(html! {
+            button_elements.push(html! {
                 <button onclick={callback(move || insert_lambda(id))}>
                     "Lambda"
                 </button> : String
             });
-            elements.push(html! {
+            button_elements.push(html! {
                 <button onclick={callback(move || insert_forall(id))}>
                     "ForAll"
                 </button> : String
             });
-            elements.push(html! {
+            button_elements.push(html! {
                 <button onclick={callback(move || insert_apply(id))}>
                     "Apply"
                 </button> : String
             });
         }
         if !matches!(term.contents, TermContents::Nothing) {
-            elements.push(html! {
+            button_elements.push(html! {
                 <button onclick={callback(move || clear_term(id))}>
                     "Clear"
                 </button> : String
@@ -276,8 +294,12 @@ impl Interface {
         html! {
             <div class="node" onclick={callback(move || focus_term(id))}>
                 //{(focused).then(|| node_parents(term))}
-                <div class="self" onclick={callback(move || focus_term(id))}>
-                    {elements}
+                    {context_elements}
+                <div class="self">
+                    {self_elements}
+                </div>
+                <div class="buttons">
+                    {button_elements}
                 </div>
                 //{(depth > 0).then(|| node_children(term, depth - 1))}
             </div> : String

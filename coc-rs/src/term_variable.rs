@@ -461,6 +461,21 @@ impl Environment {
             }
         }
     }
+    pub fn context(&self, id: TermVariableId) -> impl Iterator<Item = TermVariableId> + '_ {
+        let mut walking_id = id;
+        iter::from_fn(move || loop {
+            walking_id = self.get_term(walking_id).parent?;
+            if let Some(TermValue::Recursive {
+                kind, child_ids, ..
+            }) = self.get_value(walking_id)
+            {
+                use RecursiveTermKind::*;
+                if matches!(kind, Lambda | ForAll) {
+                    return Some(child_ids[0]);
+                }
+            }
+        })
+    }
 
     pub fn term_variables(&self) -> impl Iterator<Item = (&TermVariableId, &TermVariable)> {
         self.terms.iter()

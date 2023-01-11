@@ -1,10 +1,8 @@
 {
-  "ad797a1b-3c0a-4924-bfab-b803e95b6666": {
-    "name": "Prop",
+  "7066bb77-be69-4b11-bdd2-642373127cde": {
+    "name": "P",
     "contents": {
-      "Term": {
-        "Sort": "Prop"
-      }
+      "Reference": "ad797a1b-3c0a-4924-bfab-b803e95b6666"
     }
   },
   "6231fdac-00f3-476e-a98e-0db82a7328cf": {
@@ -15,15 +13,27 @@
       }
     }
   },
-  "7066bb77-be69-4b11-bdd2-642373127cde": {
-    "name": "P",
+  "96217d93-efa8-4c1b-a244-d504dc8f0a17": {
+    "name": "",
     "contents": {
       "Reference": "ad797a1b-3c0a-4924-bfab-b803e95b6666"
     }
   },
-  "96217d93-efa8-4c1b-a244-d504dc8f0a17": {
+  "ad797a1b-3c0a-4924-bfab-b803e95b6666": {
+    "name": "Prop",
+    "contents": {
+      "Term": {
+        "Sort": "Prop"
+      }
+    }
+  },
+  "77c41c8d-2b13-445f-a38d-b2f0abd61048": {
     "name": "",
-    "contents": "Nothing"
+    "contents": {
+      "Term": {
+        "VariableUsage": "7066bb77-be69-4b11-bdd2-642373127cde"
+      }
+    }
   },
   "7850f2dc-ce64-43e7-967f-b7d69bb53fbd": {
     "name": "False",
@@ -39,9 +49,5 @@
         }
       }
     }
-  },
-  "77c41c8d-2b13-445f-a38d-b2f0abd61048": {
-    "name": "",
-    "contents": "Nothing"
   }
 }
