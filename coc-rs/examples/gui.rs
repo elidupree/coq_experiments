@@ -3,7 +3,7 @@
 
 use clap::Parser;
 use coc_rs::term::RecursiveTermKind;
-use coc_rs::term_variable::{Environment, Sort, TermTypeAndValue, TermValue, TermVariableId};
+use coc_rs::term_variable::{Environment, Sort, TermContents, TermValue, TermVariableId};
 use coc_rs::utils::{read_json_file, write_json_file};
 use quick_and_dirty_web_gui::{callback, callback_with};
 use std::sync::{LazyLock, Mutex};
@@ -19,7 +19,7 @@ struct Interface {
     file_path: String,
     terms: Environment,
     focus: TermVariableId,
-    clipboard: Option<TermTypeAndValue>,
+    clipboard: TermVariableId,
 }
 
 impl Interface {
@@ -50,7 +50,7 @@ impl Interface {
         }
     }
     fn inline_term(&self, id: TermVariableId, depth_limit: usize) -> Span {
-        let body: Span = match &self.terms.get_term(id).type_and_value {
+        let body: Span = match self.terms.get_value(id) {
             None => {
                 html! {
                     <span class="hole">
@@ -58,19 +58,19 @@ impl Interface {
                     </span>
                 }
             }
-            Some(TermTypeAndValue { value, .. }) => match value {
+            Some(value) => match *value {
                 TermValue::VariableUsage(v) => {
                     html! {
                         <span class="variable-usage">
                             "$"
-                            {self.inline_term_name_id(*v)}
+                            {self.inline_term_name_id(v)}
                         </span>
                     }
                 }
                 TermValue::Sort(sort) => {
                     let name = match sort {
-                        Sort::Prop => "𝒫",
-                        Sort::Type => "𝒯",
+                        Sort::Prop => "ℙ",
+                        Sort::Type => "𝕋",
                     };
                     html! {
                         <span class="sort">
@@ -78,7 +78,11 @@ impl Interface {
                         </span>
                     }
                 }
-                TermValue::Recursive(kind, child_ids) => {
+                TermValue::Recursive {
+                    kind,
+                    child_ids,
+                    type_id: _,
+                } => {
                     if depth_limit == 0 {
                         self.inline_term_name_id(id)
                     } else {
@@ -149,17 +153,17 @@ impl Interface {
     }
     fn global(&self, id: TermVariableId) -> FlowElement {
         let g = self.terms.get_term(id);
-        let ty = g.type_and_value.as_ref().map(|t| {
+        let ty = self.terms.get_type_id(id).map(|type_id| {
             html! {
                 <span class="type">
-                    {self.inline_term(t.type_id, 3)}
+                    {self.inline_term(type_id, 3)}
                 </span>
             }
         });
-        let class = if self.terms.locally_valid(id) {
-            "global"
-        } else {
+        let class = if self.terms.local_validity(id).is_invalid() {
             "global invalid"
+        } else {
+            "global"
         };
         html! {
             <div class=class onclick={callback(move || focus_term(id))}>
@@ -180,11 +184,11 @@ impl Interface {
         let mut goals = Vec::new();
         let mut other_terms = Vec::new();
         for (&id, term) in self.terms.term_variables() {
-            if term.name != "" && self.terms.fully_bound(id) {
+            if term.name != "" && term.parent.is_none() {
                 named_globals.push((id, term));
-            } else if !self.terms.locally_valid(id) {
+            } else if self.terms.local_validity(id).is_invalid() {
                 goals.push((id, term));
-            } else if term.back_references.is_empty() {
+            } else if term.parent.is_none() {
                 other_terms.push((id, term));
             }
         }
@@ -233,17 +237,17 @@ impl Interface {
                 {self.inline_term(id,3)}
             </div>
         });
-        if let Some(t) = term.type_and_value.as_ref() {
+        if let Some(type_id) = self.terms.get_type_id(id) {
             elements.push(html! {
                 <span class="type">
-                    {self.inline_term(t.type_id, 3)}
+                    {self.inline_term(type_id, 3)}
                 </span>
             });
         };
         if true {
             elements.push(html! {
-                <button onclick={callback(move || paste_into_term(id))}>
-                    "Paste"
+                <button onclick={callback(move || paste_as_reference(id))}>
+                    "Paste (ref)"
                 </button> : String
             });
             elements.push(html! {
@@ -262,7 +266,7 @@ impl Interface {
                 </button> : String
             });
         }
-        if term.type_and_value.is_some() {
+        if !matches!(term.contents, TermContents::Nothing) {
             elements.push(html! {
                 <button onclick={callback(move || clear_term(id))}>
                     "Clear"
@@ -300,7 +304,6 @@ impl Interface {
 }
 
 static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
-    ();
     let args = Args::parse();
     let terms = read_json_file::<_, Environment>(&args.file_path)
         .unwrap_or_else(|_| Environment::with_sorts());
@@ -309,7 +312,7 @@ static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
         file_path: args.file_path,
         terms,
         focus,
-        clipboard: None,
+        clipboard: focus,
     })
 });
 
@@ -328,16 +331,13 @@ fn focus_term(id: TermVariableId) {
 
 fn copy_term(id: TermVariableId) {
     with_interface(|interface| {
-        interface.clipboard = interface.terms.get_term(id).type_and_value.clone();
+        interface.clipboard = id;
     });
 }
 
 fn use_term(id: TermVariableId) {
     with_interface(|interface| {
-        interface.terms.set(
-            interface.focus,
-            interface.terms.get_term(id).type_and_value.clone(),
-        );
+        interface.terms.set_to_reference_to(interface.focus, id);
     });
 }
 
@@ -383,9 +383,9 @@ fn clear_term(id: TermVariableId) {
     });
 }
 
-fn paste_into_term(id: TermVariableId) {
+fn paste_as_reference(id: TermVariableId) {
     with_interface(|interface| {
-        interface.terms.set(id, interface.clipboard.clone());
+        interface.terms.set_to_reference_to(id, interface.clipboard);
     });
 }
 

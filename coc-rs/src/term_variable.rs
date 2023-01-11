@@ -1,11 +1,13 @@
 use crate::term::RecursiveTermKind;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{HashMap, HashSet};
+use std::default::default;
 use std::iter;
-use std::iter::Take;
 use uuid::Uuid;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default, Debug,
+)]
 pub struct TermVariableId(pub Uuid);
 
 #[derive(Default, Serialize, Deserialize, Debug)]
@@ -13,7 +15,9 @@ pub struct TermVariable {
     pub name: String,
     pub contents: TermContents,
 
+    #[serde(skip)]
     pub parent: Option<TermVariableId>,
+    #[serde(skip)]
     pub back_references: Vec<TermVariableId>,
 }
 
@@ -21,19 +25,13 @@ pub struct TermVariable {
 pub enum TermContents {
     Nothing,
     Reference(TermVariableId),
-    Term(TermTypeAndValue),
+    Term(TermValue),
 }
 
 impl Default for TermContents {
     fn default() -> Self {
         TermContents::Nothing
     }
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct TermTypeAndValue {
-    pub value: TermValue,
-    pub type_id: TermVariableId,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
@@ -46,25 +44,21 @@ pub enum Sort {
 pub enum TermValue {
     VariableUsage(TermVariableId),
     Sort(Sort),
-    Recursive(RecursiveTermKind, [TermVariableId; 2]),
+    Recursive {
+        kind: RecursiveTermKind,
+        child_ids: [TermVariableId; 2],
+        type_id: TermVariableId,
+    },
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug)]
 pub struct Environment {
     terms: HashMap<TermVariableId, TermVariable>,
+    id_of_t: TermVariableId,
 }
 
 pub enum ElementaryDisproofsOfElementaryJudgments {
-    NotAnActualTerm,
-    Type {
-        has_type: bool,
-    },
-    Prop {
-        type_is_not_t: bool,
-    },
-    Variable {
-        type_not_known_to_be_definitionally_equal_to_binding_type: bool,
-    },
+    TriviallyConsistent,
     ForAll {
         argument_type_type_is_not_sort: bool,
         type_is_not_sort: bool,
@@ -85,14 +79,9 @@ pub enum ElementaryDisproofsOfElementaryJudgments {
 }
 
 impl ElementaryDisproofsOfElementaryJudgments {
-    fn is_invalid(&self) -> bool {
+    pub fn is_invalid(&self) -> bool {
         match *self {
-            ElementaryDisproofsOfElementaryJudgments::NotAnActualTerm => false,
-            ElementaryDisproofsOfElementaryJudgments::Type { has_type } => has_type,
-            ElementaryDisproofsOfElementaryJudgments::Prop { type_is_not_t } => type_is_not_t,
-            ElementaryDisproofsOfElementaryJudgments::Variable {
-                type_not_known_to_be_definitionally_equal_to_binding_type,
-            } => type_not_known_to_be_definitionally_equal_to_binding_type,
+            ElementaryDisproofsOfElementaryJudgments::TriviallyConsistent => false,
             ElementaryDisproofsOfElementaryJudgments::ForAll {
                 argument_type_type_is_not_sort,
                 type_is_not_sort,
@@ -140,7 +129,7 @@ impl Environment {
     pub fn unrolled_variable(
         &self,
         id: TermVariableId,
-    ) -> Option<(TermVariableId, Option<&TermTypeAndValue>)> {
+    ) -> Option<(TermVariableId, Option<&TermValue>)> {
         let mut walking_id = id;
         for _ in 0..10000 {
             match &self.get_term(walking_id).contents {
@@ -153,30 +142,26 @@ impl Environment {
             "Warning: Excess depth, probably recursive variable reference, in {:?}",
             id
         );
-        return None;
-    }
-    pub fn get_type_and_value(&self, id: TermVariableId) -> Option<&TermTypeAndValue> {
-        self.unrolled_variable(id).and_then(|(a, b)| b)
+        None
     }
     pub fn get_value(&self, id: TermVariableId) -> Option<&TermValue> {
-        self.get_type_and_value(id).map(|t| &t.value)
+        self.unrolled_variable(id).and_then(|(_id, v)| v)
     }
     pub fn get_type_id(&self, id: TermVariableId) -> Option<TermVariableId> {
-        self.get_type_and_value(id).map(|t| t.type_id)
+        self.get_value(id).and_then(|t| match *t {
+            TermValue::Sort(Sort::Type) => None,
+            TermValue::Sort(Sort::Prop) => Some(self.id_of_t),
+            TermValue::VariableUsage(target) => Some(target),
+            TermValue::Recursive { type_id, .. } => Some(type_id),
+        })
     }
     pub fn is_sort(&self, id: TermVariableId) -> bool {
-        matches!(
-            self.get_type_and_value(id),
-            Some(TermTypeAndValue {
-                value: TermValue::Sort(_),
-                ..
-            })
-        )
+        matches!(self.get_value(id), Some(TermValue::Sort(_)))
     }
     pub fn has_type_that_is_sort(&self, id: TermVariableId) -> bool {
-        match self.get_type_and_value(id) {
+        match self.get_type_id(id) {
             None => false,
-            Some(TermTypeAndValue { type_id, .. }) => self.is_sort(*type_id),
+            Some(type_id) => self.is_sort(type_id),
         }
     }
     pub fn known_to_be_definitionally_equal(&self, a: TermVariableId, b: TermVariableId) -> bool {
@@ -227,12 +212,12 @@ impl Environment {
         // }
     }
     pub fn local_validity(&self, id: TermVariableId) -> ElementaryDisproofsOfElementaryJudgments {
-        let &TermContents::Term(TermTypeAndValue { type_id, ref value, .. }) = &self.get_term(id).contents else {
+        let TermContents::Term(value) = &self.get_term(id).contents else {
             // `Nothing` is not intrinsically invalid – it is only invalid to use it
             // as the type of anything but T, or as a subterm of any recursive term.
             // For references, we don't need to duplicate the work of checking whether the target is valid
             // or the work of checking whether our parent is valid based on what our value is
-            return ElementaryDisproofsOfElementaryJudgments::NotAnActualTerm;
+            return ElementaryDisproofsOfElementaryJudgments::TriviallyConsistent;
         };
         //
         // let Some(TermTypeAndValue { type_id: _, value: ty }) = &self.get_type_and_value(*type_id) else {
@@ -241,51 +226,23 @@ impl Environment {
         // };
 
         match value {
-            TermValue::VariableUsage(variable_id) => {
-                ElementaryDisproofsOfElementaryJudgments::Variable {
-                    type_not_known_to_be_definitionally_equal_to_binding_type: !self
-                        .known_to_be_definitionally_equal(type_id, *variable_id),
-                }
+            TermValue::VariableUsage(_) => {
+                // the type is *defined* to be equal to the type of the variable binding
+                ElementaryDisproofsOfElementaryJudgments::TriviallyConsistent
             }
-            TermValue::Sort(sort) => match sort {
-                Sort::Prop => ElementaryDisproofsOfElementaryJudgments::Prop {
-                    type_is_not_t: !matches!(
-                        self.get_value(type_id),
-                        Some(TermValue::Sort(Sort::Type))
-                    ),
-                },
-                Sort::Type => ElementaryDisproofsOfElementaryJudgments::Type {
-                    has_type: self.get_value(type_id).is_some(),
-                },
-            },
-            TermValue::Recursive(kind, child_ids) => {
-                // let child_info = child_ids
-                //     .each_ref()
-                //     .map(|child| &self.get_term(*child).type_and_value);
-                // let [Some(lhs), Some(rhs)] = child_info else { return false; };
-                // let Some(TermTypeAndValue { value: lhs_type, .. }) = &self.get_term(lhs.type_id).type_and_value else {
-                //     return false;
-                // };
-
+            TermValue::Sort(_) => {
+                // the type (or lack thereof) is immediately known by the axioms
+                ElementaryDisproofsOfElementaryJudgments::TriviallyConsistent
+            }
+            &TermValue::Recursive {
+                kind,
+                child_ids,
+                type_id,
+            } => {
                 use RecursiveTermKind::*;
                 match kind {
                     ForAll => {
-                        // if !matches!(lhs_type, TermValue::Sort(_)) {
-                        //     return false;
-                        // }
-                        // match kind {
-                        //     Lambda => {
-                        //         let TermValue::Recursive(ForAll, [type_lhs_id, type_rhs_id]) = ty else { return false; };
-                        //         self.is_same_term(*type_lhs_id, child_ids[0])
-                        //             && self.is_same_term(*type_rhs_id, rhs.type_id)
-                        //     }
-                        //     ForAll => {
-                        //         matches!(ty, TermValue::Sort(_))
-                        //             && self.is_same_term(*type_id, rhs.type_id)
-                        //     }
-                        //     Apply => unreachable!(),
-                        // }
-                        let &[argument_type_id, return_type_id] = child_ids;
+                        let [argument_type_id, return_type_id] = child_ids;
                         let type_not_known_to_be_definitionally_equal_to_return_type_type =
                             match self.get_type_id(return_type_id) {
                                 None => true,
@@ -302,17 +259,17 @@ impl Environment {
                         }
                     }
                     Lambda => {
-                        let &[argument_type_id, body_id] = child_ids;
+                        let [argument_type_id, body_id] = child_ids;
                         let (
                             type_is_not_forall,
                             argument_type_not_known_to_be_definitionally_equal_to_type_argument_type,
                             body_type_not_known_to_be_definitionally_equal_to_type_return_type,
                         ) = match self.get_value(type_id) {
-                            None => (true, true, true),
-                            Some(&TermValue::Recursive(
-                                ForAll,
-                                [type_argument_type_id, type_return_type_id],
-                            )) => (
+                            Some(&TermValue::Recursive {
+                                kind: ForAll,
+                                child_ids: [type_argument_type_id, type_return_type_id],
+                                ..
+                            }) => (
                                 false,
                                 !self.known_to_be_definitionally_equal(
                                     argument_type_id,
@@ -326,6 +283,7 @@ impl Environment {
                                     ),
                                 },
                             ),
+                            _ => (true, true, true),
                         };
                         ElementaryDisproofsOfElementaryJudgments::Lambda {
                             argument_type_type_is_not_sort: !self
@@ -336,9 +294,13 @@ impl Environment {
                         }
                     }
                     Apply => {
-                        let &[lhs_id, rhs_id] = child_ids;
+                        let [lhs_id, rhs_id] = child_ids;
                         match self.get_type_id(lhs_id).and_then(|lhs_type_id| self.get_value(lhs_type_id)) {
-                            Some(&TermValue::Recursive(ForAll, [lhs_argument_type, lhs_return_type])) => ElementaryDisproofsOfElementaryJudgments::Apply {
+                            Some(&TermValue::Recursive {
+                                kind: ForAll,
+                                child_ids: [lhs_argument_type, lhs_return_type],
+                                ..
+                            }) => ElementaryDisproofsOfElementaryJudgments::Apply {
                                 lhs_type_is_not_forall: false,
                                 lhs_argument_type_not_known_to_be_definitionally_equal_to_rhs_type: match self.get_type_id(rhs_id) {
                                     None => true,
@@ -368,27 +330,17 @@ impl Environment {
     pub fn with_sorts() -> Self {
         let mut result = Environment {
             terms: HashMap::new(),
+            id_of_t: default(),
         };
-        let empty = result.create_term_variable();
-        let ty = result.create_term_variable();
+        result.id_of_t = result.create_term_variable();
         let prop = result.create_term_variable();
-        result.rename(empty, "NoType");
-        result.rename(ty, "Type");
+        result.rename(result.id_of_t, "Type");
         result.rename(prop, "Prop");
         result.set(
-            ty,
-            Some(TermTypeAndValue {
-                value: TermValue::Sort(Sort::Type),
-                type_id: empty,
-            }),
+            result.id_of_t,
+            TermContents::Term(TermValue::Sort(Sort::Type)),
         );
-        result.set(
-            prop,
-            Some(TermTypeAndValue {
-                value: TermValue::Sort(Sort::Prop),
-                type_id: ty,
-            }),
-        );
+        result.set(prop, TermContents::Term(TermValue::Sort(Sort::Prop)));
         result
     }
     pub fn create_term_variable(&mut self) -> TermVariableId {
@@ -404,7 +356,7 @@ impl Environment {
     }
     pub fn set_to_empty(&mut self, id: TermVariableId) {
         let contents = std::mem::take(&mut self.get_term_mut(id).contents);
-        let TermTypeAndValue { type_id, value } = match contents {
+        let value = match contents {
             TermContents::Nothing => return,
             TermContents::Reference(target) => {
                 self.get_term_mut(target)
@@ -415,8 +367,6 @@ impl Environment {
             TermContents::Term(t) => t,
         };
 
-        self.remove_parent(type_id);
-
         match value {
             TermValue::VariableUsage(target) => {
                 self.get_term_mut(target)
@@ -424,16 +374,19 @@ impl Environment {
                     .retain(|i| *i != id);
             }
             TermValue::Sort(_) => {}
-            TermValue::Recursive(_, children) => {
-                for child_id in children {
+            TermValue::Recursive {
+                child_ids, type_id, ..
+            } => {
+                for child_id in child_ids {
                     self.remove_parent(child_id);
                 }
+                self.remove_parent(type_id);
             }
         }
     }
     fn populate_back_references(&mut self, id: TermVariableId) {
         let contents = self.get_term(id).contents.clone();
-        let TermTypeAndValue { type_id, value } = match contents {
+        let value = match contents {
             TermContents::Nothing => return,
             TermContents::Reference(target) => {
                 self.get_term_mut(target).back_references.push(id);
@@ -442,16 +395,19 @@ impl Environment {
             TermContents::Term(t) => t,
         };
 
-        self.add_parent(type_id, id);
         match value {
             TermValue::VariableUsage(target) => {
                 self.get_term_mut(target).back_references.push(id);
             }
-            TermValue::Sort(_) => {}
-            TermValue::Recursive(_, children) => {
-                for child_id in children {
+            TermValue::Sort(Sort::Prop) => {}
+            TermValue::Sort(Sort::Type) => self.id_of_t = id,
+            TermValue::Recursive {
+                child_ids, type_id, ..
+            } => {
+                for child_id in child_ids {
                     self.add_parent(child_id, id);
                 }
+                self.add_parent(type_id, id);
             }
         }
     }
@@ -464,21 +420,16 @@ impl Environment {
         self.set(id, TermContents::Reference(target));
     }
     pub fn set_to_variable_usage(&mut self, id: TermVariableId, target: TermVariableId) {
-        self.set(
-            id,
-            TermContents::Term(TermTypeAndValue {
-                value: TermValue::VariableUsage(target),
-                type_id: target,
-            }),
-        );
+        self.set(id, TermContents::Term(TermValue::VariableUsage(target)));
     }
     pub fn set_to_new_recursive_term(&mut self, id: TermVariableId, kind: RecursiveTermKind) {
         let type_id = self.create_term_variable();
-        let children = [self.create_term_variable(), self.create_term_variable()];
+        let child_ids = [self.create_term_variable(), self.create_term_variable()];
         self.set(
             id,
-            Some(TermTypeAndValue {
-                value: TermValue::Recursive(kind, children),
+            TermContents::Term(TermValue::Recursive {
+                kind,
+                child_ids,
                 type_id,
             }),
         );
@@ -495,7 +446,9 @@ impl Environment {
         match value {
             TermValue::VariableUsage(other_id) => [*other_id].into_iter().collect(),
             TermValue::Sort(_) => HashSet::new(),
-            TermValue::Recursive(kind, child_ids) => {
+            TermValue::Recursive {
+                kind, child_ids, ..
+            } => {
                 let [l, mut r] = child_ids
                     .each_ref()
                     .map(|child_id| self.free_variables(*child_id));
@@ -511,5 +464,31 @@ impl Environment {
 
     pub fn term_variables(&self) -> impl Iterator<Item = (&TermVariableId, &TermVariable)> {
         self.terms.iter()
+    }
+}
+
+impl Serialize for Environment {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.terms.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Environment {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let terms = HashMap::<TermVariableId, TermVariable>::deserialize(deserializer)?;
+        let mut result = Environment {
+            terms,
+            id_of_t: default(),
+        };
+        for id in result.terms.keys().copied().collect::<Vec<_>>() {
+            result.populate_back_references(id);
+        }
+        Ok(result)
     }
 }
