@@ -1,11 +1,17 @@
 #![feature(array_chunks)]
 #![feature(once_cell)]
+#![feature(default_free_fn)]
 
+use arrayvec::ArrayVec;
 use clap::Parser;
 use coc_rs::term::RecursiveTermKind;
-use coc_rs::term_variable::{Environment, Sort, TermContents, TermValue, TermVariableId};
+use coc_rs::term_variable::{
+    ElementaryDisproofsOfElementaryJudgments, Environment, Sort, TermContents, TermValue,
+    TermVariableId,
+};
 use coc_rs::utils::{read_json_file, write_json_file};
 use quick_and_dirty_web_gui::{callback, callback_with};
+use std::default::default;
 use std::sync::{LazyLock, Mutex};
 use typed_html::elements::{FlowContent, PhrasingContent};
 use typed_html::types::Id;
@@ -20,6 +26,23 @@ struct Interface {
     terms: Environment,
     focus: TermVariableId,
     clipboard: TermVariableId,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum WhichChild {
+    Lhs,
+    Rhs,
+}
+
+type InvalidPaths = ArrayVec<ArrayVec<WhichChild, 2>, 3>;
+
+fn sub_paths(paths: &InvalidPaths, child: WhichChild) -> InvalidPaths {
+    paths
+        .iter()
+        .filter_map(|path| {
+            (path.first() == Some(&child)).then(|| path.iter().copied().skip(1).collect())
+        })
+        .collect()
 }
 
 impl Interface {
@@ -50,6 +73,14 @@ impl Interface {
         }
     }
     fn inline_term(&self, id: TermVariableId, depth_limit: usize) -> Span {
+        self.inline_term_with_invalid_paths(id, depth_limit, default())
+    }
+    fn inline_term_with_invalid_paths(
+        &self,
+        id: TermVariableId,
+        depth_limit: usize,
+        invalid_paths: InvalidPaths,
+    ) -> Span {
         let body: Span = match self.terms.get_value(id) {
             None => {
                 html! {
@@ -98,11 +129,15 @@ impl Interface {
                                 let var_ty = (depth_limit > 1).then(|| {
                                     html! {
                                         <span class="type">
-                                            {self.inline_term(child_ids[0], 1)}
+                                            {self.inline_term_with_invalid_paths(child_ids[0], 1, sub_paths(&invalid_paths, WhichChild::Lhs))}
                                         </span>
                                     }
                                 });
-                                let body = self.inline_term(child_ids[1], depth_limit - 1);
+                                let body = self.inline_term_with_invalid_paths(
+                                    child_ids[1],
+                                    depth_limit - 1,
+                                    sub_paths(&invalid_paths, WhichChild::Rhs),
+                                );
                                 html! {
                                     <span class="abstraction">
                                         {text!(sigil)}
@@ -113,8 +148,16 @@ impl Interface {
                                 }
                             }
                             Apply => {
-                                let f = self.inline_term(child_ids[0], depth_limit - 1);
-                                let arg = self.inline_term(child_ids[1], 1);
+                                let f = self.inline_term_with_invalid_paths(
+                                    child_ids[0],
+                                    depth_limit - 1,
+                                    sub_paths(&invalid_paths, WhichChild::Lhs),
+                                );
+                                let arg = self.inline_term_with_invalid_paths(
+                                    child_ids[1],
+                                    1,
+                                    sub_paths(&invalid_paths, WhichChild::Rhs),
+                                );
                                 html! {
                                     <span class="application">
                                         "("{f}" "{arg}")"
@@ -126,8 +169,13 @@ impl Interface {
                 }
             },
         };
+        let class = if invalid_paths.contains(&ArrayVec::new()) {
+            "invalid"
+        } else {
+            ""
+        };
         html! {
-            <span onclick={callback(move || focus_term(id))}>
+            <span class=class onclick={callback(move || focus_term(id))}>
                 {body}
             </span> : String
         }
@@ -144,32 +192,6 @@ impl Interface {
                 <button onclick={callback(move || use_var(id))}>
                     "UseVar"
                 </button>
-            </div> : String
-        }
-    }
-    fn global(&self, id: TermVariableId) -> FlowElement {
-        let ty = self.terms.get_type_id(id).map(|type_id| {
-            html! {
-                <span class="type">
-                    {self.inline_term(type_id, 3)}
-                </span>
-            }
-        });
-        let class = if self.terms.local_validity(id).is_invalid() {
-            "global invalid"
-        } else {
-            "global"
-        };
-        html! {
-            <div class=class onclick={callback(move || focus_term(id))}>
-                <div class="spec">
-                    {self.inline_term_name_id(id)}
-                    <span class="value">
-                        {self.inline_term(id, 3)}
-                    </span>
-                    {ty}
-                </div>
-                {self.copy_buttons(id)}
             </div> : String
         }
     }
@@ -195,6 +217,58 @@ impl Interface {
         }
     }
 
+    fn global(&self, id: TermVariableId) -> FlowElement {
+        let validity = self.terms.local_validity(id);
+        let class = if validity.is_invalid() {
+            "global invalid"
+        } else {
+            "global"
+        };
+        let mut type_invalid = false;
+        let mut invalid_paths: InvalidPaths = ArrayVec::new();
+        match validity {
+            ElementaryDisproofsOfElementaryJudgments::TriviallyConsistent => {}
+            ElementaryDisproofsOfElementaryJudgments::ForAll {
+                argument_type_type_is_not_sort,
+                type_is_not_sort,
+                return_type_type_is_not_sort,
+                type_not_known_to_be_definitionally_equal_to_return_type_type,
+            } => {
+                type_invalid = type_is_not_sort
+                    || type_not_known_to_be_definitionally_equal_to_return_type_type;
+                if argument_type_type_is_not_sort {
+                    invalid_paths.push([WhichChild::Lhs].into_iter().collect());
+                }
+                if return_type_type_is_not_sort
+                    || type_not_known_to_be_definitionally_equal_to_return_type_type
+                {
+                    invalid_paths.push([WhichChild::Rhs].into_iter().collect());
+                }
+            }
+            ElementaryDisproofsOfElementaryJudgments::Lambda { .. } => {}
+            ElementaryDisproofsOfElementaryJudgments::Apply { .. } => {}
+        }
+        let ty = self.terms.get_type_id(id).map(|type_id| {
+            let ty_class = if type_invalid { "type invalid" } else { "type" };
+            html! {
+                <span class=ty_class>
+                    {self.inline_term(type_id, 3)}
+                </span>
+            }
+        });
+        html! {
+            <div class=class onclick={callback(move || focus_term(id))}>
+                <div class="spec">
+                    {self.inline_term_name_id(id)}
+                    <span class="value">
+                        {self.inline_term_with_invalid_paths(id, 3, invalid_paths)}
+                    </span>
+                    {ty}
+                </div>
+                {self.copy_buttons(id)}
+            </div> : String
+        }
+    }
     fn globals(&self) -> FlowElement {
         let mut named_globals = Vec::new();
         let mut goals = Vec::new();
@@ -251,9 +325,9 @@ impl Interface {
         });
         self_elements.push(self.inline_term_name_id(id));
         self_elements.push(html! {
-            <div class="value">
+            <span class="value">
                 {self.inline_term(id,3)}
-            </div>
+            </span>
         });
         if let Some(type_id) = self.terms.get_type_id(id) {
             self_elements.push(html! {

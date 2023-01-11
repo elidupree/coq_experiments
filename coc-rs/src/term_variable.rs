@@ -57,6 +57,7 @@ pub struct Environment {
     id_of_t: TermVariableId,
 }
 
+#[derive(Debug)]
 pub enum ElementaryDisproofsOfElementaryJudgments {
     TriviallyConsistent,
     ForAll {
@@ -166,7 +167,8 @@ impl Environment {
     }
     pub fn known_to_be_definitionally_equal(&self, a: TermVariableId, b: TermVariableId) -> bool {
         // let (a, av) =
-        if a == b {
+        if matches!((self.unrolled_variable(a), self.unrolled_variable(b)), (Some((a,_)),Some((b,_))) if a == b)
+        {
             return true;
         }
         false
@@ -193,7 +195,8 @@ impl Environment {
         _replaced: TermVariableId,
         _replacement: TermVariableId,
     ) -> bool {
-        if a == b {
+        if matches!((self.unrolled_variable(a), self.unrolled_variable(b)), (Some((a,_)),Some((b,_))) if a == b)
+        {
             return true;
         }
         false
