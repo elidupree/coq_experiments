@@ -2,6 +2,7 @@ use crate::term::RecursiveTermKind;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::iter;
+use std::iter::Take;
 use uuid::Uuid;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
@@ -336,7 +337,7 @@ impl Environment {
                     }
                     Apply => {
                         let &[lhs_id, rhs_id] = child_ids;
-                        match self.get_type_id(lhs_id).and_then (|lhs_type_id| self.get_value (lhs_type_id)) {
+                        match self.get_type_id(lhs_id).and_then(|lhs_type_id| self.get_value(lhs_type_id)) {
                             Some(&TermValue::Recursive(ForAll, [lhs_argument_type, lhs_return_type])) => ElementaryDisproofsOfElementaryJudgments::Apply {
                                 lhs_type_is_not_forall: false,
                                 lhs_argument_type_not_known_to_be_definitionally_equal_to_rhs_type: match self.get_type_id(rhs_id) {
@@ -395,64 +396,77 @@ impl Environment {
         self.terms.insert(id, TermVariable::default());
         id
     }
+    fn remove_parent(&mut self, id: TermVariableId) {
+        assert!(self.get_term_mut(id).parent.take().is_some());
+    }
+    fn add_parent(&mut self, id: TermVariableId, parent: TermVariableId) {
+        assert!(self.get_term_mut(id).parent.replace(parent).is_none());
+    }
     pub fn set_to_empty(&mut self, id: TermVariableId) {
-        let contents = self.get_term_mut(id).type_and_value.take();
-        let Some(TermTypeAndValue {
-                     type_id,
-                     value,
-                 }) = contents else { return; };
+        let contents = std::mem::take(&mut self.get_term_mut(id).contents);
+        let TermTypeAndValue { type_id, value } = match contents {
+            TermContents::Nothing => return,
+            TermContents::Reference(target) => {
+                self.get_term_mut(target)
+                    .back_references
+                    .retain(|i| *i != id);
+                return;
+            }
+            TermContents::Term(t) => t,
+        };
 
-        self.get_term_mut(type_id)
-            .back_references
-            .retain(|i| *i != id);
+        self.remove_parent(type_id);
 
         match value {
-            TermValue::VariableUsage(other_id) => {
-                self.get_term_mut(other_id)
+            TermValue::VariableUsage(target) => {
+                self.get_term_mut(target)
                     .back_references
                     .retain(|i| *i != id);
             }
             TermValue::Sort(_) => {}
             TermValue::Recursive(_, children) => {
                 for child_id in children {
-                    self.get_term_mut(child_id)
-                        .back_references
-                        .retain(|i| *i != id);
+                    self.remove_parent(child_id);
                 }
             }
         }
     }
     fn populate_back_references(&mut self, id: TermVariableId) {
-        let contents = self.get_term(id).type_and_value.clone();
-        let Some(TermTypeAndValue {
-                     type_id,
-                     value,
-                 }) = contents else { return; };
-        self.get_term_mut(type_id).back_references.push(id);
+        let contents = self.get_term(id).contents.clone();
+        let TermTypeAndValue { type_id, value } = match contents {
+            TermContents::Nothing => return,
+            TermContents::Reference(target) => {
+                self.get_term_mut(target).back_references.push(id);
+                return;
+            }
+            TermContents::Term(t) => t,
+        };
+
+        self.add_parent(type_id, id);
         match value {
-            TermValue::VariableUsage(other_id) => {
-                self.get_term_mut(other_id).back_references.push(id);
+            TermValue::VariableUsage(target) => {
+                self.get_term_mut(target).back_references.push(id);
             }
             TermValue::Sort(_) => {}
             TermValue::Recursive(_, children) => {
                 for child_id in children {
-                    self.get_term_mut(child_id).back_references.push(id);
+                    self.add_parent(child_id, id);
                 }
             }
         }
     }
-    pub fn set(&mut self, id: TermVariableId, new_contents: Option<TermTypeAndValue>) {
+    fn set(&mut self, id: TermVariableId, new_contents: TermContents) {
         self.set_to_empty(id);
-        self.get_term_mut(id).type_and_value = new_contents;
+        self.get_term_mut(id).contents = new_contents;
         self.populate_back_references(id);
     }
-    pub fn set_to_copy_of(&mut self, id: TermVariableId, target: TermVariableId) {
-        self.set(id, self.get_term(target).type_and_value.clone());
+    pub fn set_to_reference_to(&mut self, id: TermVariableId, target: TermVariableId) {
+        self.set(id, TermContents::Reference(target));
     }
     pub fn set_to_variable_usage(&mut self, id: TermVariableId, target: TermVariableId) {
         self.set(
             id,
-            Some(TermTypeAndValue {
+            TermContents::Term(TermTypeAndValue {
                 value: TermValue::VariableUsage(target),
                 type_id: target,
             }),
