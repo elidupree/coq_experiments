@@ -75,100 +75,113 @@ impl Interface {
     fn inline_term(&self, id: TermVariableId, depth_limit: usize) -> Span {
         self.inline_term_with_invalid_paths(id, depth_limit, default())
     }
+    fn inline_term_with_invalid_paths_body(
+        &self,
+        id: TermVariableId,
+        depth_limit: usize,
+        invalid_paths: InvalidPaths,
+    ) -> Span {
+        if let TermContents::Reference(target) = self.terms.get_term(id).contents {
+            if !self.terms.is_sort(target) {
+                return self.inline_term_name_id(target);
+            }
+        }
+
+        let Some(value) = self.terms.get_value(id) else {
+            return html! {
+                    <span class="hole">
+                        "_"
+                    </span>
+                };
+        };
+
+        match *value {
+            TermValue::VariableUsage(v) => {
+                html! {
+                    <span class="variable-usage">
+                        "$"
+                        {self.inline_term_name_id(v)}
+                    </span>
+                }
+            }
+            TermValue::Sort(sort) => {
+                let name = match sort {
+                    Sort::Prop => "ℙ",
+                    Sort::Type => "𝕋",
+                };
+                html! {
+                    <span class="sort">
+                        {text!(name)}
+                    </span>
+                }
+            }
+            TermValue::Recursive {
+                kind,
+                child_ids,
+                type_id: _,
+            } => {
+                if depth_limit == 0 {
+                    self.inline_term_name_id(id)
+                } else {
+                    use RecursiveTermKind::*;
+                    match kind {
+                        Lambda | ForAll => {
+                            let sigil = match kind {
+                                Lambda => "λ",
+                                ForAll => "∀",
+                                _ => unreachable!(),
+                            };
+                            let var = self.inline_term_name_id(child_ids[0]);
+                            let var_ty = (depth_limit > 1).then(|| {
+                                html! {
+                                        <span class="type">
+                                            {self.inline_term_with_invalid_paths(child_ids[0], 1, sub_paths(&invalid_paths, WhichChild::Lhs))}
+                                        </span>
+                                    }
+                            });
+                            let body = self.inline_term_with_invalid_paths(
+                                child_ids[1],
+                                depth_limit - 1,
+                                sub_paths(&invalid_paths, WhichChild::Rhs),
+                            );
+                            html! {
+                                <span class="abstraction">
+                                    {text!(sigil)}
+                                    "("{var}{var_ty}"), "
+                                    {body}
+                                </span>
+                            }
+                        }
+                        Apply => {
+                            let f = self.inline_term_with_invalid_paths(
+                                child_ids[0],
+                                depth_limit - 1,
+                                sub_paths(&invalid_paths, WhichChild::Lhs),
+                            );
+                            let arg = self.inline_term_with_invalid_paths(
+                                child_ids[1],
+                                1,
+                                sub_paths(&invalid_paths, WhichChild::Rhs),
+                            );
+                            html! {
+                                <span class="application">
+                                    "("{f}" "{arg}")"
+                                </span>
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     fn inline_term_with_invalid_paths(
         &self,
         id: TermVariableId,
         depth_limit: usize,
         invalid_paths: InvalidPaths,
     ) -> Span {
-        let body: Span = match self.terms.get_value(id) {
-            None => {
-                html! {
-                    <span class="hole">
-                        "_"
-                    </span>
-                }
-            }
-            Some(value) => match *value {
-                TermValue::VariableUsage(v) => {
-                    html! {
-                        <span class="variable-usage">
-                            "$"
-                            {self.inline_term_name_id(v)}
-                        </span>
-                    }
-                }
-                TermValue::Sort(sort) => {
-                    let name = match sort {
-                        Sort::Prop => "ℙ",
-                        Sort::Type => "𝕋",
-                    };
-                    html! {
-                        <span class="sort">
-                            {text!(name)}
-                        </span>
-                    }
-                }
-                TermValue::Recursive {
-                    kind,
-                    child_ids,
-                    type_id: _,
-                } => {
-                    if depth_limit == 0 {
-                        self.inline_term_name_id(id)
-                    } else {
-                        use RecursiveTermKind::*;
-                        match kind {
-                            Lambda | ForAll => {
-                                let sigil = match kind {
-                                    Lambda => "λ",
-                                    ForAll => "∀",
-                                    _ => unreachable!(),
-                                };
-                                let var = self.inline_term_name_id(child_ids[0]);
-                                let var_ty = (depth_limit > 1).then(|| {
-                                    html! {
-                                        <span class="type">
-                                            {self.inline_term_with_invalid_paths(child_ids[0], 1, sub_paths(&invalid_paths, WhichChild::Lhs))}
-                                        </span>
-                                    }
-                                });
-                                let body = self.inline_term_with_invalid_paths(
-                                    child_ids[1],
-                                    depth_limit - 1,
-                                    sub_paths(&invalid_paths, WhichChild::Rhs),
-                                );
-                                html! {
-                                    <span class="abstraction">
-                                        {text!(sigil)}
-                                        "("{var}{var_ty}")"
-                                        ", "
-                                        {body}
-                                    </span>
-                                }
-                            }
-                            Apply => {
-                                let f = self.inline_term_with_invalid_paths(
-                                    child_ids[0],
-                                    depth_limit - 1,
-                                    sub_paths(&invalid_paths, WhichChild::Lhs),
-                                );
-                                let arg = self.inline_term_with_invalid_paths(
-                                    child_ids[1],
-                                    1,
-                                    sub_paths(&invalid_paths, WhichChild::Rhs),
-                                );
-                                html! {
-                                    <span class="application">
-                                        "("{f}" "{arg}")"
-                                    </span>
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-        };
+        let body: Span =
+            self.inline_term_with_invalid_paths_body(id, depth_limit, invalid_paths.clone());
         let class = if invalid_paths.contains(&ArrayVec::new()) {
             "invalid"
         } else {
@@ -245,7 +258,22 @@ impl Interface {
                     invalid_paths.push([WhichChild::Rhs].into_iter().collect());
                 }
             }
-            ElementaryDisproofsOfElementaryJudgments::Lambda { .. } => {}
+            ElementaryDisproofsOfElementaryJudgments::Lambda {
+                argument_type_type_is_not_sort,
+                type_is_not_forall,
+                argument_type_not_known_to_be_definitionally_equal_to_type_argument_type,
+                body_type_not_known_to_be_definitionally_equal_to_type_return_type,
+            } => {
+                type_invalid = type_is_not_forall;
+                if argument_type_type_is_not_sort
+                    || argument_type_not_known_to_be_definitionally_equal_to_type_argument_type
+                {
+                    invalid_paths.push([WhichChild::Lhs].into_iter().collect());
+                }
+                if body_type_not_known_to_be_definitionally_equal_to_type_return_type {
+                    invalid_paths.push([WhichChild::Rhs].into_iter().collect());
+                }
+            }
             ElementaryDisproofsOfElementaryJudgments::Apply { .. } => {}
         }
         let ty = self.terms.get_type_id(id).map(|type_id| {

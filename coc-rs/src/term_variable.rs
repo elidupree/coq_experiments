@@ -40,7 +40,7 @@ pub enum Sort {
     Type,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub enum TermValue {
     VariableUsage(TermVariableId),
     Sort(Sort),
@@ -166,9 +166,13 @@ impl Environment {
         }
     }
     pub fn known_to_be_definitionally_equal(&self, a: TermVariableId, b: TermVariableId) -> bool {
-        // let (a, av) =
-        if matches!((self.unrolled_variable(a), self.unrolled_variable(b)), (Some((a,_)),Some((b,_))) if a == b)
-        {
+        if a == b {
+            return true;
+        }
+        // If they're different variables and both Nothing, they don't count as the same
+        let Some((a, Some(av))) = self.unrolled_variable(a) else { return false; };
+        let Some((b, Some(bv))) = self.unrolled_variable(a) else { return false; };
+        if a == b || av == bv {
             return true;
         }
         false
@@ -195,11 +199,11 @@ impl Environment {
         _replaced: TermVariableId,
         _replacement: TermVariableId,
     ) -> bool {
-        if matches!((self.unrolled_variable(a), self.unrolled_variable(b)), (Some((a,_)),Some((b,_))) if a == b)
-        {
-            return true;
-        }
-        false
+        self.known_to_be_definitionally_equal(a, b)
+        // if matches!((self.unrolled_variable(a), self.unrolled_variable(b)), (Some((a,_)),Some((b,_))) if a == b)
+        // {
+        //     return true;
+        // }
         // let Some(TermTypeAndValue { value: av, .. }) = &self.get_term(a).type_and_value else { return false; };
         // let Some(TermTypeAndValue { value: bv, .. }) = &self.get_term(b).type_and_value else { return false; };
         // match (av, bv) {
@@ -272,20 +276,26 @@ impl Environment {
                                 kind: ForAll,
                                 child_ids: [type_argument_type_id, type_return_type_id],
                                 ..
-                            }) => (
-                                false,
-                                !self.known_to_be_definitionally_equal(
-                                    argument_type_id,
-                                    type_argument_type_id,
-                                ),
-                                match self.get_type_id(body_id) {
-                                    None => true,
-                                    Some(body_type_id) => !self.known_to_be_definitionally_equal(
-                                        body_type_id,
-                                        type_return_type_id,
+                            }) => {
+                                // if self.get_term(id).name == "true" {
+                                //     dbg!((body_id, type_return_type_id, self.get_type_id(body_id)));
+                                // }
+                                (
+                                    false,
+                                    !self.known_to_be_definitionally_equal(
+                                        argument_type_id,
+                                        type_argument_type_id,
                                     ),
-                                },
-                            ),
+                                    match self.get_type_id(body_id) {
+                                        None => true,
+                                        Some(body_type_id) => !self
+                                            .known_to_be_definitionally_equal(
+                                                body_type_id,
+                                                type_return_type_id,
+                                            ),
+                                    },
+                                )
+                            }
                             _ => (true, true, true),
                         };
                         ElementaryDisproofsOfElementaryJudgments::Lambda {

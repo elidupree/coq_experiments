@@ -1,47 +1,43 @@
 {
-  "e7318832-d928-4916-b601-446ba35b736b": {
-    "name": "",
+  "a2231a18-52bf-404b-9c25-a5b37224565c": {
+    "name": "P",
     "contents": {
       "Reference": "ad797a1b-3c0a-4924-bfab-b803e95b6666"
     }
   },
-  "fb307b7a-789f-4a4e-979b-7f3841859831": {
-    "name": "p",
-    "contents": {
-      "Term": {
-        "VariableUsage": "f1d24f29-704c-431f-8d91-50d6dccdb133"
-      }
-    }
-  },
-  "2695fd9e-140a-4b24-b4c6-1a5f136ff52f": {
+  "826eb3a9-9247-44ef-8250-cff022b71338": {
     "name": "",
     "contents": {
       "Term": {
-        "VariableUsage": "f1d24f29-704c-431f-8d91-50d6dccdb133"
+        "VariableUsage": "e1e855e6-c7ef-4182-8b77-86a1991ba460"
       }
     }
   },
-  "03fcdf39-a8a8-4b52-b52d-7eec45942eb7": {
-    "name": "trueIsTrue",
+  "fc72c5bf-3dc9-41cb-8182-c9d0a8205503": {
+    "name": "",
     "contents": {
       "Term": {
         "Recursive": {
-          "kind": "Lambda",
+          "kind": "ForAll",
           "child_ids": [
-            "f1d24f29-704c-431f-8d91-50d6dccdb133",
-            "ccacb20d-dc2c-4ea1-8cbe-35b151f7f3e6"
+            "07e7747f-e6cf-40f0-be3b-9d949a43152a",
+            "ba5998f9-0e09-4c5a-8c6f-4069befde06f"
           ],
-          "type_id": "609874e2-05ce-458b-8e29-26cd132ceda2"
+          "type_id": "e7c96063-1c1c-4221-ba58-01a77dc7e331"
         }
       }
     }
   },
-  "e21d6d13-4ffc-4faf-9d4f-06fa91feeb08": {
-    "name": "p",
+  "1e4403c9-86f5-40aa-9549-7fae54b80873": {
+    "name": "P",
     "contents": {
-      "Term": {
-        "VariableUsage": "a2231a18-52bf-404b-9c25-a5b37224565c"
-      }
+      "Reference": "ad797a1b-3c0a-4924-bfab-b803e95b6666"
+    }
+  },
+  "d216dde5-7d56-4e4a-a295-dfc4d0149d35": {
+    "name": "",
+    "contents": {
+      "Reference": "ad797a1b-3c0a-4924-bfab-b803e95b6666"
     }
   },
   "ccacb20d-dc2c-4ea1-8cbe-35b151f7f3e6": {
@@ -59,17 +55,117 @@
       }
     }
   },
-  "660e111d-9c55-47b5-87fb-f801347a549b": {
+  "e21d6d13-4ffc-4faf-9d4f-06fa91feeb08": {
+    "name": "p",
+    "contents": {
+      "Term": {
+        "VariableUsage": "a2231a18-52bf-404b-9c25-a5b37224565c"
+      }
+    }
+  },
+  "6231fdac-00f3-476e-a98e-0db82a7328cf": {
+    "name": "Type",
+    "contents": {
+      "Term": {
+        "Sort": "Type"
+      }
+    }
+  },
+  "77c41c8d-2b13-445f-a38d-b2f0abd61048": {
     "name": "",
+    "contents": {
+      "Term": {
+        "VariableUsage": "7066bb77-be69-4b11-bdd2-642373127cde"
+      }
+    }
+  },
+  "93f73a13-1109-4cf6-b3e7-f641f968f16f": {
+    "name": "",
+    "contents": {
+      "Term": {
+        "Recursive": {
+          "kind": "Lambda",
+          "child_ids": [
+            "e988c547-2bec-4209-bb49-079403cdb051",
+            "813a6c21-85c8-439c-a0e2-469ed0b9856e"
+          ],
+          "type_id": "60ca2855-4d31-4d9b-b64c-bbd820f7371c"
+        }
+      }
+    }
+  },
+  "813a6c21-85c8-439c-a0e2-469ed0b9856e": {
+    "name": "",
+    "contents": {
+      "Term": {
+        "VariableUsage": "2bef1da1-400a-4991-add6-f2308ea9b6e9"
+      }
+    }
+  },
+  "609874e2-05ce-458b-8e29-26cd132ceda2": {
+    "name": "",
+    "contents": {
+      "Reference": "65959d6b-667a-4b7c-8bc9-fac07729acb7"
+    }
+  },
+  "08713a62-9cf6-462d-8167-4bfcda4bc8bc": {
+    "name": "b",
+    "contents": {
+      "Term": {
+        "VariableUsage": "1e4403c9-86f5-40aa-9549-7fae54b80873"
+      }
+    }
+  },
+  "d31b4eef-e80d-4b39-9338-6d831dac688d": {
+    "name": "Bool",
     "contents": {
       "Term": {
         "Recursive": {
           "kind": "ForAll",
           "child_ids": [
-            "fb307b7a-789f-4a4e-979b-7f3841859831",
-            "2695fd9e-140a-4b24-b4c6-1a5f136ff52f"
+            "1e4403c9-86f5-40aa-9549-7fae54b80873",
+            "fc72c5bf-3dc9-41cb-8182-c9d0a8205503"
           ],
-          "type_id": "e7318832-d928-4916-b601-446ba35b736b"
+          "type_id": "f5a02d3b-933f-4a1e-9dd2-c5aa301b4bdd"
+        }
+      }
+    }
+  },
+  "2bef1da1-400a-4991-add6-f2308ea9b6e9": {
+    "name": "a",
+    "contents": {
+      "Term": {
+        "VariableUsage": "07fa43b7-0c82-452f-9e7c-ce3314697019"
+      }
+    }
+  },
+  "e988c547-2bec-4209-bb49-079403cdb051": {
+    "name": "b",
+    "contents": {
+      "Term": {
+        "VariableUsage": "07fa43b7-0c82-452f-9e7c-ce3314697019"
+      }
+    }
+  },
+  "e1e855e6-c7ef-4182-8b77-86a1991ba460": {
+    "name": "p",
+    "contents": {
+      "Term": {
+        "VariableUsage": "f1d24f29-704c-431f-8d91-50d6dccdb133"
+      }
+    }
+  },
+  "223fec38-5ce9-4586-97af-1ab9ac7e77e2": {
+    "name": "",
+    "contents": {
+      "Term": {
+        "Recursive": {
+          "kind": "Lambda",
+          "child_ids": [
+            "2bef1da1-400a-4991-add6-f2308ea9b6e9",
+            "93f73a13-1109-4cf6-b3e7-f641f968f16f"
+          ],
+          "type_id": "cc1b16e8-894e-46e2-9814-5d5d79a55026"
         }
       }
     }
@@ -82,40 +178,60 @@
       }
     }
   },
-  "72a3654b-01e4-48c7-b558-d795cf688d19": {
+  "e7c96063-1c1c-4221-ba58-01a77dc7e331": {
     "name": "",
     "contents": {
       "Reference": "ad797a1b-3c0a-4924-bfab-b803e95b6666"
     }
   },
-  "77c41c8d-2b13-445f-a38d-b2f0abd61048": {
+  "ba5998f9-0e09-4c5a-8c6f-4069befde06f": {
     "name": "",
     "contents": {
       "Term": {
-        "VariableUsage": "7066bb77-be69-4b11-bdd2-642373127cde"
+        "Recursive": {
+          "kind": "ForAll",
+          "child_ids": [
+            "08713a62-9cf6-462d-8167-4bfcda4bc8bc",
+            "e66e29e7-d323-489b-a021-18d444d75aa7"
+          ],
+          "type_id": "d216dde5-7d56-4e4a-a295-dfc4d0149d35"
+        }
       }
     }
   },
-  "ce567179-8353-4a67-9fd7-17736a416f59": {
+  "e66e29e7-d323-489b-a021-18d444d75aa7": {
     "name": "",
+    "contents": {
+      "Term": {
+        "VariableUsage": "1e4403c9-86f5-40aa-9549-7fae54b80873"
+      }
+    }
+  },
+  "7850f2dc-ce64-43e7-967f-b7d69bb53fbd": {
+    "name": "False",
+    "contents": {
+      "Term": {
+        "Recursive": {
+          "kind": "ForAll",
+          "child_ids": [
+            "7066bb77-be69-4b11-bdd2-642373127cde",
+            "77c41c8d-2b13-445f-a38d-b2f0abd61048"
+          ],
+          "type_id": "96217d93-efa8-4c1b-a244-d504dc8f0a17"
+        }
+      }
+    }
+  },
+  "f1d24f29-704c-431f-8d91-50d6dccdb133": {
+    "name": "P",
     "contents": {
       "Reference": "ad797a1b-3c0a-4924-bfab-b803e95b6666"
     }
   },
-  "e1e855e6-c7ef-4182-8b77-86a1991ba460": {
-    "name": "p",
+  "7066bb77-be69-4b11-bdd2-642373127cde": {
+    "name": "P",
     "contents": {
-      "Term": {
-        "VariableUsage": "f1d24f29-704c-431f-8d91-50d6dccdb133"
-      }
-    }
-  },
-  "6231fdac-00f3-476e-a98e-0db82a7328cf": {
-    "name": "Type",
-    "contents": {
-      "Term": {
-        "Sort": "Type"
-      }
+      "Reference": "ad797a1b-3c0a-4924-bfab-b803e95b6666"
     }
   },
   "1833f3f6-8e30-49b2-86ed-0b7c73f8128c": {
@@ -126,8 +242,8 @@
       }
     }
   },
-  "f1d24f29-704c-431f-8d91-50d6dccdb133": {
-    "name": "P",
+  "f5a02d3b-933f-4a1e-9dd2-c5aa301b4bdd": {
+    "name": "",
     "contents": {
       "Reference": "ad797a1b-3c0a-4924-bfab-b803e95b6666"
     }
@@ -147,35 +263,8 @@
       }
     }
   },
-  "609874e2-05ce-458b-8e29-26cd132ceda2": {
+  "96217d93-efa8-4c1b-a244-d504dc8f0a17": {
     "name": "",
-    "contents": {
-      "Reference": "65959d6b-667a-4b7c-8bc9-fac07729acb7"
-    }
-  },
-  "a2231a18-52bf-404b-9c25-a5b37224565c": {
-    "name": "P",
-    "contents": {
-      "Reference": "ad797a1b-3c0a-4924-bfab-b803e95b6666"
-    }
-  },
-  "7850f2dc-ce64-43e7-967f-b7d69bb53fbd": {
-    "name": "False",
-    "contents": {
-      "Term": {
-        "Recursive": {
-          "kind": "ForAll",
-          "child_ids": [
-            "7066bb77-be69-4b11-bdd2-642373127cde",
-            "77c41c8d-2b13-445f-a38d-b2f0abd61048"
-          ],
-          "type_id": "96217d93-efa8-4c1b-a244-d504dc8f0a17"
-        }
-      }
-    }
-  },
-  "7066bb77-be69-4b11-bdd2-642373127cde": {
-    "name": "P",
     "contents": {
       "Reference": "ad797a1b-3c0a-4924-bfab-b803e95b6666"
     }
@@ -195,18 +284,111 @@
       }
     }
   },
-  "826eb3a9-9247-44ef-8250-cff022b71338": {
-    "name": "",
+  "ad5e72cf-3c12-4b13-bfe4-2286348c2be5": {
+    "name": "true",
     "contents": {
       "Term": {
-        "VariableUsage": "e1e855e6-c7ef-4182-8b77-86a1991ba460"
+        "Recursive": {
+          "kind": "Lambda",
+          "child_ids": [
+            "07fa43b7-0c82-452f-9e7c-ce3314697019",
+            "223fec38-5ce9-4586-97af-1ab9ac7e77e2"
+          ],
+          "type_id": "148d6ff7-f1e2-4ca6-aec2-b859c52a16ef"
+        }
       }
     }
   },
-  "96217d93-efa8-4c1b-a244-d504dc8f0a17": {
+  "07e7747f-e6cf-40f0-be3b-9d949a43152a": {
+    "name": "a",
+    "contents": {
+      "Term": {
+        "VariableUsage": "1e4403c9-86f5-40aa-9549-7fae54b80873"
+      }
+    }
+  },
+  "148d6ff7-f1e2-4ca6-aec2-b859c52a16ef": {
+    "name": "",
+    "contents": {
+      "Reference": "d31b4eef-e80d-4b39-9338-6d831dac688d"
+    }
+  },
+  "660e111d-9c55-47b5-87fb-f801347a549b": {
+    "name": "",
+    "contents": {
+      "Term": {
+        "Recursive": {
+          "kind": "ForAll",
+          "child_ids": [
+            "fb307b7a-789f-4a4e-979b-7f3841859831",
+            "2695fd9e-140a-4b24-b4c6-1a5f136ff52f"
+          ],
+          "type_id": "e7318832-d928-4916-b601-446ba35b736b"
+        }
+      }
+    }
+  },
+  "e7318832-d928-4916-b601-446ba35b736b": {
     "name": "",
     "contents": {
       "Reference": "ad797a1b-3c0a-4924-bfab-b803e95b6666"
+    }
+  },
+  "72a3654b-01e4-48c7-b558-d795cf688d19": {
+    "name": "",
+    "contents": {
+      "Reference": "ad797a1b-3c0a-4924-bfab-b803e95b6666"
+    }
+  },
+  "07fa43b7-0c82-452f-9e7c-ce3314697019": {
+    "name": "P",
+    "contents": {
+      "Reference": "ad797a1b-3c0a-4924-bfab-b803e95b6666"
+    }
+  },
+  "2695fd9e-140a-4b24-b4c6-1a5f136ff52f": {
+    "name": "",
+    "contents": {
+      "Term": {
+        "VariableUsage": "f1d24f29-704c-431f-8d91-50d6dccdb133"
+      }
+    }
+  },
+  "ce567179-8353-4a67-9fd7-17736a416f59": {
+    "name": "",
+    "contents": {
+      "Reference": "ad797a1b-3c0a-4924-bfab-b803e95b6666"
+    }
+  },
+  "60ca2855-4d31-4d9b-b64c-bbd820f7371c": {
+    "name": "",
+    "contents": "Nothing"
+  },
+  "cc1b16e8-894e-46e2-9814-5d5d79a55026": {
+    "name": "",
+    "contents": "Nothing"
+  },
+  "fb307b7a-789f-4a4e-979b-7f3841859831": {
+    "name": "p",
+    "contents": {
+      "Term": {
+        "VariableUsage": "f1d24f29-704c-431f-8d91-50d6dccdb133"
+      }
+    }
+  },
+  "03fcdf39-a8a8-4b52-b52d-7eec45942eb7": {
+    "name": "proofOfTrue",
+    "contents": {
+      "Term": {
+        "Recursive": {
+          "kind": "Lambda",
+          "child_ids": [
+            "f1d24f29-704c-431f-8d91-50d6dccdb133",
+            "ccacb20d-dc2c-4ea1-8cbe-35b151f7f3e6"
+          ],
+          "type_id": "609874e2-05ce-458b-8e29-26cd132ceda2"
+        }
+      }
     }
   }
 }
