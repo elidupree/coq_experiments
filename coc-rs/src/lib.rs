@@ -2,6 +2,7 @@
 
 //pub mod incomplete_term;
 pub mod inductive_type;
+pub mod metavariable;
 pub mod term;
 pub mod term_variable;
 pub mod types;
