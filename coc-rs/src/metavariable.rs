@@ -23,9 +23,9 @@ constructor! {
     BindVariable () -> BindingTree;
     BindBranch (m: BindingTree, n: BindingTree) -> BindingTree;
 
-    DescendantHere () -> WhichDescendant;
-    DescendantL (descendant: WhichDescendant) -> WhichDescendant;
-    DescendantR (descendant: WhichDescendant) -> WhichDescendant;
+    BetaReductionHere (replaced_bindings: Binding3) -> WhichBetaReduction;
+    BetaReductionL (reduction: WhichBetaReduction) -> WhichBetaReduction;
+    BetaReductionR (reduction: WhichBetaReduction) -> WhichBetaReduction;
 
     ContextHole ()-> Context;
     ContextKnownVariable (binding_term: Term, binding_context: Context)-> Context;
@@ -48,13 +48,46 @@ constructor! {
         _:GrowFromLeaves n n2 inserted_bindings,
     )-> GrowFromLeaves inserted_bindings (BindBranch m n) (BindBranch m2 n2);
 
-    // Note: implicitly requires disjointness, not having a constructor for BindVariable other than next to BindNothing
+    // Note: implicitly requires disjointness, by not having a constructor for BindVariable other than next to BindNothing
     UnionBindingsNothingL(bindings: BindingTree) -> UnionBindings BindNothing bindings bindings;
     UnionBindingsNothingR(bindings: BindingTree) -> UnionBindings bindings BindNothing bindings;
-    UnionBindingsBranch(m: BindingTree, n: BindingTree, m2, BindingTree, n2: BindingTree, m3, BindingTree, n3: BindingTree,
+    UnionBindingsBranch(m: BindingTree, n: BindingTree, m2: BindingTree, n2: BindingTree, m3: BindingTree, n3: BindingTree,
         _:UnionBindings m m2 m3,
         _:UnionBindings n n2 n3,
     ) -> UnionBindings (BindBranch m n) (BindBranch m2 n2) (BindBranch m3 n3);
+
+    PortBindingsNothing(
+        reduction: WhichBetaReduction,
+    ) -> PortBindings reduction BindNothing BindNothing;
+    PortBindingsHere(
+        replaced_bindings: BindingTree,
+        bindings_in_argument_type: BindingTree, bindings_in_body: BindingTree,
+        bindings_in_argument: BindingTree,
+        bindings_in_new_copies_of_argument: BindingTree,
+        new_bindings: BindingTree,
+        _: GrowFromLeaves bindings_in_argument replaced_bindings bindings_in_new_copies_of_argument,
+        _:UnionBindings(bindings_in_body,bindings_in_new_copies_of_argument),
+    ) -> PortBindings
+      (BetaReductionHere replaced_bindings)
+      (BindBranch (BindBranch bindings_in_argument_type bindings_in_body) bindings_in_argument)
+      new_bindings;
+
+    PortBindingsL (
+        reduction: WhichBetaReduction,
+        m: BindingTree, n: BindingTree, m2: BindingTree,
+        _: PortBindings reduction m m2,
+    )->PortBindings
+      (BetaReductionL reduction)
+      (BindBranch m n)
+      (BindBranch m2 n);
+    PortBindingsR (
+        reduction: WhichBetaReduction,
+        m: BindingTree, n: BindingTree, n2: BindingTree,
+        _: PortBindings reduction n n2,
+    )->PortBindings
+      (BetaReductionR reduction)
+      (BindBranch m n)
+      (BindBranch m n2);
 
     SingleSubstitutionNothing (
         term: Term, replacement: Term
@@ -82,6 +115,48 @@ constructor! {
         _ : SingleSubstitution mb repl m m2,
         _ : SingleSubstitution nb repl n n2,
     ) -> SingleSubstitution bindings repl (Apply m n) (Apply m2 n2);
+
+
+    BetaReduction (
+        argument_type: Term, body: Term, bindings: BindingTree,
+        argument: Term,
+        result: Term,
+        _:SingleSubstitution bindings argument body result,
+    )-> BetaReductionOneStep BetaReductionHere (Apply (Abstraction Lambda argument_type body bindings) argument) result;
+
+    BetaCompatibilityApplyLeft (
+        m: Term, n: Term, m2: Term,
+        reduction: WhichBetaReduction,
+        _ : BetaReductionOneStep reduction m m2,
+    )-> BetaReductionOneStep (BetaReductionL reduction) (Apply m n) (Apply m2 n);
+
+    BetaCompatibilityApplyRight (
+        m: Term, n: Term, n2: Term,
+        reduction: WhichBetaReduction,
+        _ : BetaReductionOneStep reduction n n2,
+    )-> BetaReductionOneStep (BetaReductionR reduction) (Apply m n) (Apply m n2);
+
+    BetaCompatibilityAbstractionArgType (
+        kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree,
+        argument_type2: Term,
+        reduction: WhichBetaReduction,
+        _ : BetaReductionOneStep reduction argument_type argument_type2,
+    )-> BetaReductionOneStep (BetaReductionL reduction) (Abstraction kind argument_type body bindings) (Abstraction kind argument_type2 body bindings);
+
+    BetaCompatibilityAbstractionBody (
+        kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree, bindings2: BindingTree,
+        body2: Term,
+        reduction: WhichBetaReduction,
+        _ : PortBindings reduction bindings bindings2,
+        _ : BetaReductionOneStep reduction body body2,
+    )-> BetaReductionOneStep (BetaReductionR reduction) (Abstraction kind argument_type body bindings) (Abstraction kind argument_type body2 bindings2);
+
+
+    BetaReductionIsConversion (reduction: WhichBetaReduction, a: Term, b: Term,
+        _:BetaReductionOneStep reduction a b) -> BetaConversion a b;
+    BetaReflexive (term: Term) -> BetaConversion term term;
+    BetaSymmetric (x: Term, y: Term, _:BetaConversion x y)-> BetaConversion y x;
+    BetaTransitive (x: Term, y: Term, z: Term,_:BetaConversion x y,_:BetaConversion y z)-> BetaConversion x z;
 
     TypeIsSort () -> IsSort Type;
     PropIsSort () -> IsSort Prop;
@@ -127,130 +202,14 @@ constructor! {
         (Abstraction ForAll argument_type return_type forall_bindings)
         (ContextBranch argument_context return_context_before_bindings);
 
-
-    TypeIsSort (t = Type) -> IsSort [t];
-    PropIsSort (p = Prop) -> IsSort [p];
-
-    TypeOfProp(
-        p = Prop, t = Type,
-    ) -> HasType [p t];
-
-    TypeOfVariable (
-        var, usage = VariableUsage [var],
-    ) -> HasType [usage var];
-
-    TypeOfForAll (
-        var, ret, s1, s2,
-        f = ForAll [var ret],
-        _ : HasType [var s1],
-        _ : HasType [ret s2],
-        _ : IsSort [s1],
-        _ : IsSort [s2],
-    ) -> HasType [f s2];
-
-    TypeOfLambda (
-        var, body, ret, s,
-        l = Lambda [var body],
-        f = ForAll [var ret],
-        _ : HasType [body ret],
-        _ : HasType [f s],
-        _ : IsSort [s],
-    ) -> HasType [l f];
-
-    TypeOfApply (
-        m, n, var, ret, ret2,
-        mn = Apply [m n],
-        f = ForAll [var ret],
-        _ : HasType [m f],
-        _ : HasType [n var],
-        _ : SingleSubstitution [ret var n ret2],
-    ) -> HasType [mn ret2];
-
     TypeBetaConversion (
-        x, ty, ty2, s,
-        _ : HasType [x ty],
-        _ : HasType [ty2 s],
-        _ : IsSort [s],
-        _ : BetaConversion [ty ty2],
-    ) -> HasType [x ty2];
-
-
-    BindNothing () -> BindingTree;
-    BindVariable () -> BindingTree;
-    BindBranch (m, n) -> BindingTree;
-
-
-    SingleSubstitutionNothing (
-        term, bindings = BindNothing, repl
-    ) -> SingleSubstitution [term bindings repl term];
-
-    SingleSubstitutionBoundVariable (
-        term, bindings = BindVariable, repl
-    ) -> SingleSubstitution [term bindings repl repl];
-
-    SingleSubstitutionForAll (
-        var, ret, f_ret_b, f = ForAll [var ret f_ret_b]
-        var2, ret2, f2 = ForAll [var2 ret2 f_ret_b]
-        varb, retb, bindings = BindBranch [varb retb],
-        repl,
-        _ : SingleSubstitution [var varb repl var2],
-        _ : SingleSubstitution [ret retb repl ret2],
-    ) -> SingleSubstitution [f bindings repl f2];
-
-    SingleSubstitutionApply (
-        repl, m, n, mn, m2, n2, mn2, mb, nb, bindings = BindBranch [mb nb],
-        _ : SingleSubstitution [m mb repl m2],
-        _ : SingleSubstitution [n nb repl n2],
-    ) -> SingleSubstitution [mn bindings repl mn2];
-
-
-    BetaRefl ()-> BetaConversion [t t];
-
-    BetaReduction (
-        l = Lambda [argument_type body bindings],
-        argument,
-        application = Apply [l argument],
-        result,
-        _:SingleSubstitution [body,bindings,argument, result], ?????????
-    )-> BetaReductionOneStep [application result];
-
-    BetaCompatibilityApplyLeft (
-        mn = Apply [m n],
-        mn2 = Apply [m2 n],
-        b : BetaReductionOneStep [m m2],
-    )-> BetaReductionOneStep [mn mn2];
-
-    BetaCompatibilityApplyRight (
-        mn = Apply [m n],
-        mn2 = Apply [m n2],
-        b : BetaReductionOneStep [n n2],
-    )-> BetaReductionOneStep [mn mn2];
-
-    BetaCompatibilityLambdaArgType (
-        l = Lambda [argument_type body bindings],
-        l2 = Lambda [argument_type2 body bindings],
-        b : BetaReductionOneStep [argument_type argument_type2],
-    )-> BetaReductionOneStep [l l2];
-
-    BetaCompatibilityLambdaBody (
-        l = Lambda [argument_type body bindings],
-        l2 = Lambda [argument_type body2 bindings],
-        b : BetaReductionOneStep [body body2],
-    )-> BetaReductionOneStep [l l2];
-
-    PortBindingsBetaReduction (
-        b = BetaReductionOneStep [l argument application result],
-        bindings = BindBranch [argument_bindings body_bindings],
-        new_body_bindings,
-        _: SpliceBindings [body_bindings, l_bindings, new_body_bindings]
-        new_bindings = BindBranch [argument_bindings body_bindings],
-    )->PortBindings [bindings b new_bindings]
-
-    PortBindNothing (
-        b, bindings = BindNothing,
-    )->PortBindings [bindings b bindings]
-
-    PortBindVariable (
-        b, bindings = BindNothing,
-    )->PortBindings [bindings b bindings]
+        value: Term, value_context: Context,
+        ty: Term, type_context: Context,
+        ty2: Term,
+        s: Term,
+        _ : HasType value value_context ty type_context,
+        _ : HasType ty2 type_context s ContextHole,
+        _ : IsSort s,
+        _ : BetaConversion ty ty2,
+    ) -> HasType value value_context ty2 type_context;
 }
