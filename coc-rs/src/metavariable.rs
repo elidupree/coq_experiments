@@ -24,7 +24,7 @@ constructor! {
     Apply (m: Term, n: Term) -> Term, notated "(m n)";
 
     type BindingTree;
-    BindNothing () -> BindingTree, notated "∅";
+    BindNotThis () -> BindingTree, notated "∅";
     BindVariable () -> BindingTree, notated "𝕍";
     BindBranch (m: BindingTree, n: BindingTree) -> BindingTree, notated "(m n)";
 
@@ -40,19 +40,10 @@ constructor! {
     ContextKnownVariable (binding_term: Term, binding_context: Context)-> Context, notated "binding_term{binding_context}";
     ContextBranch(m: Context,n: Context)-> Context, notated "(m n)";
 
-    type BindsAnything BindingTree;
-    BindsAnythingVariable()->BindsAnything BindVariable;
-    BindsAnythingL(m: BindingTree,n: BindingTree,_: BindsAnything m)->BindsAnything (BindBranch m n);
-    BindsAnythingR(m: BindingTree,n: BindingTree,_: BindsAnything n)->BindsAnything (BindBranch m n);
-
-    type BindingsMinimal BindingTree;
-    BindNothingMinimal()->BindingsMinimal BindNothing;
-    BindsAnythingMinimal(b: BindingTree, _:BindsAnything b)->BindingsMinimal b;
-
     // Note: implicitly prevents binding the same thing a second time, by requiring ContextHole
     // Similar structure to SingleSubstitution, and notated the same way; is there a better name, maybe?
     type AddBindingsToContext BindingTree Context Context Context, notated "3 = 2[0:=1]";
-    AddBindingsToContextNothing(context: Context, inserted_context: Context) -> AddBindingsToContext BindNothing inserted_context context context;
+    AddBindingsToContextNotHere(inserted_context: Context) -> AddBindingsToContext BindNotThis inserted_context ContextHole ContextHole;
     AddBindingsToContextVariable(inserted_context: Context) -> AddBindingsToContext BindVariable inserted_context ContextHole inserted_context;
     AddBindingsToContextBranch (lb: BindingTree,rb: BindingTree,lc: Context, rc: Context,lc2: Context, rc2: Context,inserted_context: Context,
         _: AddBindingsToContext lb inserted_context lc lc2,
@@ -62,19 +53,18 @@ constructor! {
 
     type GrowFromLeaves BindingTree BindingTree BindingTree, notated "2 = 1🌿0";
     GrowFromLeaf(inserted_bindings: BindingTree)-> GrowFromLeaves inserted_bindings BindVariable inserted_bindings;
-    GrowNothing(bindings: BindingTree)-> GrowFromLeaves BindNothing bindings BindNothing;
-    GrowFromNothing(inserted_bindings: BindingTree)-> GrowFromLeaves inserted_bindings BindNothing BindNothing;
+    GrowNotHere (inserted_bindings: BindingTree)-> GrowFromLeaves inserted_bindings BindNotThis BindNotThis;
     GrowFromBranch(m: BindingTree, n: BindingTree, inserted_bindings: BindingTree,
         m2, BindingTree, n2: BindingTree,
         _:GrowFromLeaves m m2 inserted_bindings,
         _:GrowFromLeaves n n2 inserted_bindings,
-        _:BindsAnything inserted_bindings,
     )-> GrowFromLeaves inserted_bindings (BindBranch m n) (BindBranch m2 n2);
 
-    // Note: implicitly requires disjointness, by not having a constructor for BindVariable other than next to BindNothing
+    // Note: implicitly requires disjointness, by not having a constructor for BindVariable other than next to BindNotThis
     type UnionBindings BindingTree BindingTree BindingTree, notated "2 = 0 ⨆ 1";
-    UnionBindingsNothingL(bindings: BindingTree) -> UnionBindings BindNothing bindings bindings;
-    UnionBindingsNothingR(bindings: BindingTree) -> UnionBindings bindings BindNothing bindings;
+    UnionBindingsNeither() -> UnionBindings BindNotThis BindNotThis BindNotThis;
+    UnionBindingsVarL() -> UnionBindings BindNotThis BindVariable BindVariable;
+    UnionBindingsVarR() -> UnionBindings BindVariable BindNotThis BindVariable;
     UnionBindingsBranch(m: BindingTree, n: BindingTree, m2: BindingTree, n2: BindingTree, m3: BindingTree, n3: BindingTree,
         _:UnionBindings m m2 m3,
         _:UnionBindings n n2 n3,
@@ -83,9 +73,6 @@ constructor! {
     // how the bindings of an outer lambda/forall are transformed by a particular beta reduction;
     // uses the same notation as BetaReductionOneStep, which is the same thing but for Terms
     type PortBindings WhichBetaReduction BindingTree BindingTree, notated "1 →𝛽(0) 2";
-    PortBindingsNothing(
-        reduction: WhichBetaReduction,
-    ) -> PortBindings reduction BindNothing BindNothing;
     PortBindingsHere(
         replaced_bindings: BindingTree,
         bindings_in_argument_type: BindingTree, bindings_in_body: BindingTree,
@@ -97,15 +84,6 @@ constructor! {
     ) -> PortBindings
       (BetaReductionHere replaced_bindings)
       (BindBranch (BindBranch bindings_in_argument_type bindings_in_body) bindings_in_argument)
-      new_bindings;
-    PortBindingsHereOnlyInArgument(
-        replaced_bindings: BindingTree,
-        bindings_in_argument: BindingTree,
-        new_bindings: BindingTree,
-        _: GrowFromLeaves bindings_in_argument replaced_bindings new_bindings,
-    ) -> PortBindings
-      (BetaReductionHere replaced_bindings)
-      (BindBranch BindNothing bindings_in_argument)
       new_bindings;
 
     PortBindingsL (
@@ -126,9 +104,9 @@ constructor! {
       (BindBranch m n2);
 
     type SingleSubstitution BindingTree Term Term Term, notated "3 = 2[0:=1]";
-    SingleSubstitutionNothing (
+    SingleSubstitutionNotHere (
         term: Term, replacement: Term
-    ) -> SingleSubstitution BindNothing replacement term term;
+    ) -> SingleSubstitution BindNotThis replacement term term;
 
     SingleSubstitutionBoundVariable (
         term: Term, replacement: Term
@@ -219,7 +197,6 @@ constructor! {
         _ : HasType return_type return_context s2 ContextHole,
         _ : IsSort s1,
         _ : IsSort s2,
-        _ : BindingsMinimal bindings,
         _ : AddBindingsToContext bindings (ContextKnownVariable (Abstraction ForAll argument_type return_type bindings) (ContextBranch argument_context return_context_before_bindings)) return_context_before_bindings return_context
     ) -> HasType
         (Abstraction ForAll argument_type return_type bindings)
@@ -234,7 +211,6 @@ constructor! {
         s : Term,
         _ : HasType (Abstraction ForAll argument_type return_type forall_bindings) (ContextBranch argument_context return_context_before_bindings) s ContextHole,
         _ : HasType body body_context return_type return_context,
-        _ : BindingsMinimal lambda_bindings,
         _ : AddBindingsToContext lambda_bindings (ContextKnownVariable (Abstraction Lambda argument_type body lambda_bindings) (ContextBranch argument_context body_context_before_bindings)) body_context_before_bindings body_context
     ) -> HasType
         (Abstraction Lambda argument_type body lambda_bindings)
