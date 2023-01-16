@@ -38,13 +38,13 @@ constructor! {
     BindsAnythingMinimal(b: BindingTree, _:BindsAnything b)->BindingsMinimal b;
 
     // Note: implicitly prevents binding the same thing a second time, by requiring ContextHole
-    AddBindingsNothing(context: Context, inserted_context: Context) -> AddBindings BindNothing inserted_context context context;
-    AddBindingsVariable(inserted_context: Context) -> AddBindings BindVariable inserted_context ContextHole inserted_context;
-    AddBindingsBranch (lb: BindingTree,rb: BindingTree,lc: Context, rc: Context,lc2: Context, rc2: Context,inserted_context: Context,
-        _: AddBindings lb inserted_context lc lc2,
-        _: AddBindings rb inserted_context rc rc2,
+    AddBindingsToContextNothing(context: Context, inserted_context: Context) -> AddBindingsToContext BindNothing inserted_context context context;
+    AddBindingsToContextVariable(inserted_context: Context) -> AddBindingsToContext BindVariable inserted_context ContextHole inserted_context;
+    AddBindingsToContextBranch (lb: BindingTree,rb: BindingTree,lc: Context, rc: Context,lc2: Context, rc2: Context,inserted_context: Context,
+        _: AddBindingsToContext lb inserted_context lc lc2,
+        _: AddBindingsToContext rb inserted_context rc rc2,
       )
-      -> AddBindings (BindBranch lb rb) inserted_context (ContextBranch lc rc) (ContextBranch lc2 rc2);
+      -> AddBindingsToContext (BindBranch lb rb) inserted_context (ContextBranch lc rc) (ContextBranch lc2 rc2);
 
     GrowFromLeaf(inserted_bindings: BindingTree)-> GrowFromLeaves inserted_bindings BindVariable inserted_bindings;
     GrowNothing(bindings: BindingTree)-> GrowFromLeaves BindNothing bindings BindNothing;
@@ -197,7 +197,7 @@ constructor! {
         _ : IsSort s1,
         _ : IsSort s2,
         _ : BindingsMinimal bindings,
-        _ : AddBindings bindings (ContextKnownVariable (Abstraction ForAll argument_type return_type bindings) (ContextBranch argument_context return_context_before_bindings)) return_context_before_bindings return_context
+        _ : AddBindingsToContext bindings (ContextKnownVariable (Abstraction ForAll argument_type return_type bindings) (ContextBranch argument_context return_context_before_bindings)) return_context_before_bindings return_context
     ) -> HasType
         (Abstraction ForAll argument_type return_type bindings)
         (ContextBranch argument_context return_context)
@@ -212,7 +212,7 @@ constructor! {
         _ : HasType (Abstraction ForAll argument_type return_type forall_bindings) (ContextBranch argument_context return_context_before_bindings) s ContextHole,
         _ : HasType body body_context return_type return_context,
         _ : BindingsMinimal lambda_bindings,
-        _ : AddBindings lambda_bindings (ContextKnownVariable (Abstraction Lambda argument_type body lambda_bindings) (ContextBranch argument_context body_context_before_bindings)) body_context_before_bindings body_context
+        _ : AddBindingsToContext lambda_bindings (ContextKnownVariable (Abstraction Lambda argument_type body lambda_bindings) (ContextBranch argument_context body_context_before_bindings)) body_context_before_bindings body_context
     ) -> HasType
         (Abstraction Lambda argument_type body lambda_bindings)
         (ContextBranch argument_context body_context_before_bindings)
