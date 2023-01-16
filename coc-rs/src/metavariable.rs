@@ -11,33 +11,47 @@ macro_rules! constructor {
 }
 
 constructor! {
-    Lambda () -> AbstractionKind;
-    ForAll () -> AbstractionKind;
-    Type () -> Term;
-    Prop () -> Term;
-    VariableUsage () -> Term;
-    Abstraction (kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree) -> Term;
-    Apply (m: Term, n: Term) -> Term;
+    // Many of the rules work the same way for lambdas and foralls, so we use the same Term constructor (`Abstraction`) for both of them, and just specify which one using this type.
+    type AbstractionKind;
+    Lambda () -> AbstractionKind, notated "λ";
+    ForAll () -> AbstractionKind, notated "∀";
 
-    BindNothing () -> BindingTree;
-    BindVariable () -> BindingTree;
-    BindBranch (m: BindingTree, n: BindingTree) -> BindingTree;
+    type Term;
+    Type () -> Term, notated "𝕋";
+    Prop () -> Term, notated "ℙ";
+    VariableUsage () -> Term, notated "𝕍";
+    Abstraction (kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree) -> Term, notated "kind(bindings:argument_type), body";
+    Apply (m: Term, n: Term) -> Term, notated "(m n)";
 
-    BetaReductionHere (replaced_bindings: Binding3) -> WhichBetaReduction;
+    type BindingTree;
+    BindNothing () -> BindingTree, notated "∅";
+    BindVariable () -> BindingTree, notated "𝕍";
+    BindBranch (m: BindingTree, n: BindingTree) -> BindingTree, notated "(m n)";
+
+    type WhichBetaReduction;
+    BetaReductionHere (replaced_bindings: BindingTree) -> WhichBetaReduction;
     BetaReductionL (reduction: WhichBetaReduction) -> WhichBetaReduction;
     BetaReductionR (reduction: WhichBetaReduction) -> WhichBetaReduction;
 
-    ContextHole ()-> Context;
-    ContextKnownVariable (binding_term: Term, binding_context: Context)-> Context;
-    ContextBranch(m: Context,n: Context)-> Context;
+    // a Context specifies the types and identities of some or all of the free variables within a particular term,
+    // by sharing the tree structure of the term.
+    type Context;
+    ContextHole ()-> Context, notated "∅";
+    ContextKnownVariable (binding_term: Term, binding_context: Context)-> Context, notated "binding_term{binding_context}";
+    ContextBranch(m: Context,n: Context)-> Context, notated "(m n)";
 
+    type BindsAnything BindingTree;
     BindsAnythingVariable()->BindsAnything BindVariable;
     BindsAnythingL(m: BindingTree,n: BindingTree,_: BindsAnything m)->BindsAnything (BindBranch m n);
     BindsAnythingR(m: BindingTree,n: BindingTree,_: BindsAnything n)->BindsAnything (BindBranch m n);
+
+    type BindingsMinimal BindingTree;
     BindNothingMinimal()->BindingsMinimal BindNothing;
     BindsAnythingMinimal(b: BindingTree, _:BindsAnything b)->BindingsMinimal b;
 
     // Note: implicitly prevents binding the same thing a second time, by requiring ContextHole
+    // Similar structure to SingleSubstitution, and notated the same way; is there a better name, maybe?
+    type AddBindingsToContext BindingTree Context Context Context, notated "3 = 2[0:=1]";
     AddBindingsToContextNothing(context: Context, inserted_context: Context) -> AddBindingsToContext BindNothing inserted_context context context;
     AddBindingsToContextVariable(inserted_context: Context) -> AddBindingsToContext BindVariable inserted_context ContextHole inserted_context;
     AddBindingsToContextBranch (lb: BindingTree,rb: BindingTree,lc: Context, rc: Context,lc2: Context, rc2: Context,inserted_context: Context,
@@ -46,6 +60,7 @@ constructor! {
       )
       -> AddBindingsToContext (BindBranch lb rb) inserted_context (ContextBranch lc rc) (ContextBranch lc2 rc2);
 
+    type GrowFromLeaves BindingTree BindingTree BindingTree, notated "2 = 1🌿0";
     GrowFromLeaf(inserted_bindings: BindingTree)-> GrowFromLeaves inserted_bindings BindVariable inserted_bindings;
     GrowNothing(bindings: BindingTree)-> GrowFromLeaves BindNothing bindings BindNothing;
     GrowFromNothing(inserted_bindings: BindingTree)-> GrowFromLeaves inserted_bindings BindNothing BindNothing;
@@ -57,6 +72,7 @@ constructor! {
     )-> GrowFromLeaves inserted_bindings (BindBranch m n) (BindBranch m2 n2);
 
     // Note: implicitly requires disjointness, by not having a constructor for BindVariable other than next to BindNothing
+    type UnionBindings BindingTree BindingTree BindingTree, notated "2 = 0 ⨆ 1";
     UnionBindingsNothingL(bindings: BindingTree) -> UnionBindings BindNothing bindings bindings;
     UnionBindingsNothingR(bindings: BindingTree) -> UnionBindings bindings BindNothing bindings;
     UnionBindingsBranch(m: BindingTree, n: BindingTree, m2: BindingTree, n2: BindingTree, m3: BindingTree, n3: BindingTree,
@@ -64,6 +80,9 @@ constructor! {
         _:UnionBindings n n2 n3,
     ) -> UnionBindings (BindBranch m n) (BindBranch m2 n2) (BindBranch m3 n3);
 
+    // how the bindings of an outer lambda/forall are transformed by a particular beta reduction;
+    // uses the same notation as BetaReductionOneStep, which is the same thing but for Terms
+    type PortBindings WhichBetaReduction BindingTree BindingTree, notated "1 →𝛽(0) 2";
     PortBindingsNothing(
         reduction: WhichBetaReduction,
     ) -> PortBindings reduction BindNothing BindNothing;
@@ -106,13 +125,14 @@ constructor! {
       (BindBranch m n)
       (BindBranch m n2);
 
+    type SingleSubstitution BindingTree Term Term Term, notated "3 = 2[0:=1]";
     SingleSubstitutionNothing (
         term: Term, replacement: Term
     ) -> SingleSubstitution BindNothing replacement term term;
 
     SingleSubstitutionBoundVariable (
         term: Term, replacement: Term
-    ) -> SingleSubstitution BindVariable replacement term replacement;
+    ) -> SingleSubstitution BindVariable replacement VariableUsage replacement;
 
     SingleSubstitutionAbstraction (
         kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree,
@@ -133,7 +153,7 @@ constructor! {
         _ : SingleSubstitution nb repl n n2,
     ) -> SingleSubstitution bindings repl (Apply m n) (Apply m2 n2);
 
-
+    type BetaReductionOneStep WhichBetaReduction Term Term, notated "1 →𝛽(0) 2";
     BetaReduction (
         argument_type: Term, body: Term, bindings: BindingTree,
         argument: Term,
@@ -169,18 +189,21 @@ constructor! {
     )-> BetaReductionOneStep (BetaReductionR reduction) (Abstraction kind argument_type body bindings) (Abstraction kind argument_type body2 bindings2);
 
 
+    type BetaConversion WhichBetaReduction Term Term, notated "0 =𝛽 1";
     BetaReductionIsConversion (reduction: WhichBetaReduction, a: Term, b: Term,
         _:BetaReductionOneStep reduction a b) -> BetaConversion a b;
     BetaReflexive (term: Term) -> BetaConversion term term;
     BetaSymmetric (x: Term, y: Term, _:BetaConversion x y)-> BetaConversion y x;
     BetaTransitive (x: Term, y: Term, z: Term,_:BetaConversion x y,_:BetaConversion y z)-> BetaConversion x z;
 
+    type IsSort Term;
     TypeIsSort () -> IsSort Type;
     PropIsSort () -> IsSort Prop;
 
     // HasTypeThatIsSortCons (term: Term, context: Context, sort: Term,
     //   _: HasType term context sort ContextHole) -> HasTypeThatIsSort term context;
 
+    type HasType Term Context Term Context, notated "0{1} : 2{3}";
     TypeOfProp() -> HasType Prop ContextHole Type ContextHole;
     TypeOfVariableUsage(
         kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree,
