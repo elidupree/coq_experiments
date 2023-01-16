@@ -31,6 +31,12 @@ constructor! {
     ContextKnownVariable (binding_term: Term, binding_context: Context)-> Context;
     ContextBranch(m: Context,n: Context)-> Context;
 
+    BindsAnythingVariable()->BindsAnything BindVariable;
+    BindsAnythingL(m: BindingTree,n: BindingTree,_: BindsAnything m)->BindsAnything (BindBranch m n);
+    BindsAnythingR(m: BindingTree,n: BindingTree,_: BindsAnything n)->BindsAnything (BindBranch m n);
+    BindNothingMinimal()->BindingsMinimal BindNothing;
+    BindsAnythingMinimal(b: BindingTree, _:BindsAnything b)->BindingsMinimal b;
+
     // Note: implicitly prevents binding the same thing a second time, by requiring ContextHole
     AddBindingsNothing(context: Context, inserted_context: Context) -> AddBindings BindNothing inserted_context context context;
     AddBindingsVariable(inserted_context: Context) -> AddBindings BindVariable inserted_context ContextHole inserted_context;
@@ -41,11 +47,13 @@ constructor! {
       -> AddBindings (BindBranch lb rb) inserted_context (ContextBranch lc rc) (ContextBranch lc2 rc2);
 
     GrowFromLeaf(inserted_bindings: BindingTree)-> GrowFromLeaves inserted_bindings BindVariable inserted_bindings;
-    GrowNothing(inserted_bindings: BindingTree)-> GrowFromLeaves inserted_bindings BindNothing BindNothing;
+    GrowNothing(bindings: BindingTree)-> GrowFromLeaves BindNothing bindings BindNothing;
+    GrowFromNothing(inserted_bindings: BindingTree)-> GrowFromLeaves inserted_bindings BindNothing BindNothing;
     GrowFromBranch(m: BindingTree, n: BindingTree, inserted_bindings: BindingTree,
         m2, BindingTree, n2: BindingTree,
         _:GrowFromLeaves m m2 inserted_bindings,
         _:GrowFromLeaves n n2 inserted_bindings,
+        _:BindsAnything inserted_bindings,
     )-> GrowFromLeaves inserted_bindings (BindBranch m n) (BindBranch m2 n2);
 
     // Note: implicitly requires disjointness, by not having a constructor for BindVariable other than next to BindNothing
@@ -70,6 +78,15 @@ constructor! {
     ) -> PortBindings
       (BetaReductionHere replaced_bindings)
       (BindBranch (BindBranch bindings_in_argument_type bindings_in_body) bindings_in_argument)
+      new_bindings;
+    PortBindingsHereOnlyInArgument(
+        replaced_bindings: BindingTree,
+        bindings_in_argument: BindingTree,
+        new_bindings: BindingTree,
+        _: GrowFromLeaves bindings_in_argument replaced_bindings new_bindings,
+    ) -> PortBindings
+      (BetaReductionHere replaced_bindings)
+      (BindBranch BindNothing bindings_in_argument)
       new_bindings;
 
     PortBindingsL (
