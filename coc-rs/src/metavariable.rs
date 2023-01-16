@@ -12,37 +12,37 @@ macro_rules! constructor {
 
 constructor! {
     // Many of the rules work the same way for lambdas and foralls, so we use the same Term constructor (`Abstraction`) for both of them, and just specify which one using this type.
-    type AbstractionKind;
+    data AbstractionKind;
     Lambda () -> AbstractionKind, notated "λ";
     ForAll () -> AbstractionKind, notated "∀";
 
-    type Term;
+    data Term;
     Type () -> Term, notated "𝕋";
     Prop () -> Term, notated "ℙ";
     VariableUsage () -> Term, notated "𝕍";
     Abstraction (kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree) -> Term, notated "kind(bindings:argument_type), body";
     Apply (m: Term, n: Term) -> Term, notated "(m n)";
 
-    type BindingTree;
+    data BindingTree;
     BindNotThis () -> BindingTree, notated "∅";
     BindVariable () -> BindingTree, notated "𝕍";
     BindBranch (m: BindingTree, n: BindingTree) -> BindingTree, notated "(m n)";
 
-    type WhichBetaReduction;
-    BetaReductionHere (replaced_bindings: BindingTree) -> WhichBetaReduction;
-    BetaReductionL (reduction: WhichBetaReduction) -> WhichBetaReduction;
-    BetaReductionR (reduction: WhichBetaReduction) -> WhichBetaReduction;
+    data WhichBetaReduction;
+    BetaReductionHere (replaced_bindings: BindingTree) -> WhichBetaReduction, notated "replaced_bindings";
+    BetaReductionL (reduction: WhichBetaReduction) -> WhichBetaReduction, notated "𝐿reduction";
+    BetaReductionR (reduction: WhichBetaReduction) -> WhichBetaReduction, notated "𝑅reduction";
 
     // a Context specifies the types and identities of some or all of the free variables within a particular term,
     // by sharing the tree structure of the term.
-    type Context;
+    data Context;
     ContextHole ()-> Context, notated "∅";
     ContextKnownVariable (binding_term: Term, binding_context: Context)-> Context, notated "binding_term{binding_context}";
     ContextBranch(m: Context,n: Context)-> Context, notated "(m n)";
 
     // Note: implicitly prevents binding the same thing a second time, by requiring ContextHole
     // Similar structure to SingleSubstitution, and notated the same way; is there a better name, maybe?
-    type AddBindingsToContext BindingTree Context Context Context, notated "3 = 2[0:=1]";
+    predicate AddBindingsToContext BindingTree Context Context Context, notated "3 = 2[0:=1]";
     AddBindingsToContextNotHere(inserted_context: Context) -> AddBindingsToContext BindNotThis inserted_context ContextHole ContextHole;
     AddBindingsToContextVariable(inserted_context: Context) -> AddBindingsToContext BindVariable inserted_context ContextHole inserted_context;
     AddBindingsToContextBranch (lb: BindingTree,rb: BindingTree,lc: Context, rc: Context,lc2: Context, rc2: Context,inserted_context: Context,
@@ -51,7 +51,7 @@ constructor! {
       )
       -> AddBindingsToContext (BindBranch lb rb) inserted_context (ContextBranch lc rc) (ContextBranch lc2 rc2);
 
-    type GrowFromLeaves BindingTree BindingTree BindingTree, notated "2 = 1🌿0";
+    predicate GrowFromLeaves BindingTree BindingTree BindingTree, notated "2 = 1🌿0";
     GrowFromLeaf(inserted_bindings: BindingTree)-> GrowFromLeaves inserted_bindings BindVariable inserted_bindings;
     GrowNotHere (inserted_bindings: BindingTree)-> GrowFromLeaves inserted_bindings BindNotThis BindNotThis;
     GrowFromBranch(m: BindingTree, n: BindingTree, inserted_bindings: BindingTree,
@@ -61,7 +61,7 @@ constructor! {
     )-> GrowFromLeaves inserted_bindings (BindBranch m n) (BindBranch m2 n2);
 
     // Note: implicitly requires disjointness, by not having a constructor for BindVariable other than next to BindNotThis
-    type UnionBindings BindingTree BindingTree BindingTree, notated "2 = 0 ⨆ 1";
+    predicate UnionBindings BindingTree BindingTree BindingTree, notated "2 = 0 ⨆ 1";
     UnionBindingsNeither() -> UnionBindings BindNotThis BindNotThis BindNotThis;
     UnionBindingsVarL() -> UnionBindings BindNotThis BindVariable BindVariable;
     UnionBindingsVarR() -> UnionBindings BindVariable BindNotThis BindVariable;
@@ -72,7 +72,7 @@ constructor! {
 
     // how the bindings of an outer lambda/forall are transformed by a particular beta reduction;
     // uses the same notation as BetaReductionOneStep, which is the same thing but for Terms
-    type PortBindings WhichBetaReduction BindingTree BindingTree, notated "1 →𝛽(0) 2";
+    predicate PortBindings WhichBetaReduction BindingTree BindingTree, notated "1 →𝛽(0) 2";
     PortBindingsHere(
         replaced_bindings: BindingTree,
         bindings_in_argument_type: BindingTree, bindings_in_body: BindingTree,
@@ -103,7 +103,7 @@ constructor! {
       (BindBranch m n)
       (BindBranch m n2);
 
-    type SingleSubstitution BindingTree Term Term Term, notated "3 = 2[0:=1]";
+    predicate SingleSubstitution BindingTree Term Term Term, notated "3 = 2[0:=1]";
     SingleSubstitutionNotHere (
         term: Term, replacement: Term
     ) -> SingleSubstitution BindNotThis replacement term term;
@@ -131,7 +131,7 @@ constructor! {
         _ : SingleSubstitution nb repl n n2,
     ) -> SingleSubstitution bindings repl (Apply m n) (Apply m2 n2);
 
-    type BetaReductionOneStep WhichBetaReduction Term Term, notated "1 →𝛽(0) 2";
+    predicate BetaReductionOneStep WhichBetaReduction Term Term, notated "1 →𝛽(0) 2";
     BetaReduction (
         argument_type: Term, body: Term, bindings: BindingTree,
         argument: Term,
@@ -167,21 +167,21 @@ constructor! {
     )-> BetaReductionOneStep (BetaReductionR reduction) (Abstraction kind argument_type body bindings) (Abstraction kind argument_type body2 bindings2);
 
 
-    type BetaConversion WhichBetaReduction Term Term, notated "0 =𝛽 1";
+    predicate BetaConversion WhichBetaReduction Term Term, notated "0 =𝛽 1";
     BetaReductionIsConversion (reduction: WhichBetaReduction, a: Term, b: Term,
         _:BetaReductionOneStep reduction a b) -> BetaConversion a b;
     BetaReflexive (term: Term) -> BetaConversion term term;
     BetaSymmetric (x: Term, y: Term, _:BetaConversion x y)-> BetaConversion y x;
     BetaTransitive (x: Term, y: Term, z: Term,_:BetaConversion x y,_:BetaConversion y z)-> BetaConversion x z;
 
-    type IsSort Term;
+    predicate IsSort Term;
     TypeIsSort () -> IsSort Type;
     PropIsSort () -> IsSort Prop;
 
     // HasTypeThatIsSortCons (term: Term, context: Context, sort: Term,
     //   _: HasType term context sort ContextHole) -> HasTypeThatIsSort term context;
 
-    type HasType Term Context Term Context, notated "0{1} : 2{3}";
+    predicate HasType Term Context Term Context, notated "0{1} : 2{3}";
     TypeOfProp() -> HasType Prop ContextHole Type ContextHole;
     TypeOfVariableUsage(
         kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree,
