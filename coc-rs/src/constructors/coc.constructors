@@ -4,9 +4,12 @@ data AbstractionKind;
 Lambda () -> AbstractionKind, notated "λ";
 ForAll () -> AbstractionKind, notated "∀";
 
+data Sort;
+Type () -> Sort, notated "𝕋";
+Prop () -> Sort, notated "ℙ";
+
 data Term;
-Type () -> Term, notated "𝕋";
-Prop () -> Term, notated "ℙ";
+SortTerm (s:Sort) -> Term, notated "{s}";
 VariableUsage () -> Term, notated "𝕍";
 Abstraction (kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree) -> Term, notated "{kind}({bindings}:{argument_type}), {body}";
 Apply (m: Term, n: Term) -> Term, notated "({m} {n})";
@@ -28,6 +31,18 @@ ContextHole ()-> Context, notated "∅";
 ContextKnownVariable (binding_term: Term, binding_context: Context)-> Context, notated "{binding_term}{{binding_context}}";
 ContextBranch(m: Context,n: Context)-> Context, notated "({m} {n})";
 
+predicate EmptyBindingsShapedLike Term BindingTree, notated "{0}'s empty bindings are {1}";
+EmptyBindingsShapedLikeVariable()-> EmptyBindingsShapedLike VariableUsage BindNotThis;
+EmptyBindingsShapedLikeSort(s: Sort)-> EmptyBindingsShapedLike (SortTerm s) BindNotThis;
+EmptyBindingsShapedLikeAbstraction(
+    kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree,
+    a: BindingTree, b: BindingTree,
+)-> EmptyBindingsShapedLike (Abstraction kind argument_type body bindings) (BindBranch a b);
+EmptyBindingsShapedLikeApply(
+    m: Term, n: Term,
+    a: BindingTree, b: BindingTree,
+)-> EmptyBindingsShapedLike (Apply m n) (BindBranch a b);
+
 /* Note: implicitly prevents binding the same thing a second time, by requiring ContextHole
   Similar structure to SingleSubstitution, and notated the same way; is there a better name, maybe? */
 predicate AddBindingsToContext BindingTree Context Context Context, notated "{3} = {2}[{0}:={1}]";
@@ -39,24 +54,19 @@ AddBindingsToContextBranch (lb: BindingTree,rb: BindingTree,lc: Context, rc: Con
   )
   -> AddBindingsToContext (BindBranch lb rb) inserted_context (ContextBranch lc rc) (ContextBranch lc2 rc2);
 
-predicate GrowFromLeaves BindingTree BindingTree BindingTree, notated "{2} = {1}🌿{0}";
-GrowFromLeaf(inserted_bindings: BindingTree)-> GrowFromLeaves inserted_bindings BindVariable inserted_bindings;
-GrowNotHere (inserted_bindings: BindingTree)-> GrowFromLeaves inserted_bindings BindNotThis BindNotThis;
-GrowFromBranch(m: BindingTree, n: BindingTree, inserted_bindings: BindingTree,
+/* Note: implicitly prevents growing from something that already has a BindVariable in 2
+  Similar structure to SingleSubstitution, and notated the same way; is there a better name, maybe? */
+predicate GrowFromLeaves BindingTree BindingTree BindingTree BindingTree, notated "{3} = {2}[{0}:={1}]";
+GrowFromLeaf(inserted_bindings: BindingTree)
+  -> GrowFromLeaves BindVariable inserted_bindings BindNotThis inserted_bindings;
+GrowNotHere (inserted_bindings: BindingTree, original_bindings: BindingTree)
+  -> GrowFromLeaves BindNotThis inserted_bindings original_bindings original_bindings;
+GrowFromBranch(m: BindingTree, n: BindingTree, mb: BindingTree, nb: BindingTree, inserted_bindings: BindingTree,
     m2: BindingTree, n2: BindingTree,
-    _:GrowFromLeaves m m2 inserted_bindings,
-    _:GrowFromLeaves n n2 inserted_bindings,
-)-> GrowFromLeaves inserted_bindings (BindBranch m n) (BindBranch m2 n2);
+    _:GrowFromLeaves mb inserted_bindings m m2,
+    _:GrowFromLeaves nb inserted_bindings n n2,
+)-> GrowFromLeaves (BindBranch mb nb) inserted_bindings (BindBranch m n) (BindBranch m2 n2);
 
-/* Note: implicitly requires disjointness, by not having a constructor for BindVariable other than next to BindNotThis */
-predicate UnionBindings BindingTree BindingTree BindingTree, notated "{2} = {0} ⨆ {1}";
-UnionBindingsNeither() -> UnionBindings BindNotThis BindNotThis BindNotThis;
-UnionBindingsVarL() -> UnionBindings BindNotThis BindVariable BindVariable;
-UnionBindingsVarR() -> UnionBindings BindVariable BindNotThis BindVariable;
-UnionBindingsBranch(m: BindingTree, n: BindingTree, m2: BindingTree, n2: BindingTree, m3: BindingTree, n3: BindingTree,
-    _:UnionBindings m m2 m3,
-    _:UnionBindings n n2 n3,
-) -> UnionBindings (BindBranch m n) (BindBranch m2 n2) (BindBranch m3 n3);
 
 /* how the bindings of an outer lambda/forall are transformed by a particular beta reduction;
   uses the same notation as BetaReductionOneStep, which is the same thing but for Terms */
@@ -65,10 +75,8 @@ PortBindingsHere(
     replaced_bindings: BindingTree,
     bindings_in_argument_type: BindingTree, bindings_in_body: BindingTree,
     bindings_in_argument: BindingTree,
-    bindings_in_new_copies_of_argument: BindingTree,
     new_bindings: BindingTree,
-    _: GrowFromLeaves bindings_in_argument replaced_bindings bindings_in_new_copies_of_argument,
-    _:UnionBindings bindings_in_body bindings_in_new_copies_of_argument new_bindings,
+    _: GrowFromLeaves replaced_bindings bindings_in_argument bindings_in_body new_bindings,
 ) -> PortBindings
   (BetaReductionHere replaced_bindings)
   (BindBranch (BindBranch bindings_in_argument_type bindings_in_body) bindings_in_argument)
@@ -102,16 +110,18 @@ SingleSubstitutionBoundVariable (
 
 SingleSubstitutionAbstraction (
     kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree,
-    argument_type2: Term, body2: Term,
+    argument_type2: Term, body2: Term, bindings2: BindingTree,
     argument_replaced_bindings: BindingTree, body_replaced_bindings: BindingTree,
-    replacement: Term,
+    replacement: Term, replacement_empty_bindings: BindingTree,
     _ : SingleSubstitution argument_replaced_bindings replacement argument_type argument_type2,
     _ : SingleSubstitution body_replaced_bindings replacement body body2,
+    _ : GrowFromLeaves body_replaced_bindings replacement_empty_bindings bindings bindings2,
+    _ : EmptyBindingsShapedLike replacement replacement_empty_bindings,
 ) -> SingleSubstitution
     (BindBranch argument_replaced_bindings body_replaced_bindings)
     replacement
     (Abstraction kind argument_type body bindings)
-    (Abstraction kind argument_type2 body2 bindings);
+    (Abstraction kind argument_type2 body2 bindings2);
 
 SingleSubstitutionApply (
     repl: Term, m: Term, n: Term, m2: Term, n2: Term, mb: BindingTree, nb: BindingTree,
@@ -166,15 +176,8 @@ BetaReflexive (term: Term) -> BetaConversion term term;
 BetaSymmetric (x: Term, y: Term, _:BetaConversion x y)-> BetaConversion y x;
 BetaTransitive (x: Term, y: Term, z: Term,_:BetaConversion x y,_:BetaConversion y z)-> BetaConversion x z;
 
-predicate IsSort Term, notated "IsSort({0})";
-TypeIsSort () -> IsSort Type;
-PropIsSort () -> IsSort Prop;
-
-/* HasTypeThatIsSortCons (term: Term, context: Context, sort: Term,
-   _: HasType term context sort ContextHole) -> HasTypeThatIsSort term context; */
-
 predicate HasType Term Context Term Context, notated "{0}{{1}} : {2}{{3}}";
-TypeOfProp() -> HasType Prop ContextHole Type ContextHole;
+TypeOfProp() -> HasType (SortTerm Prop) ContextHole (SortTerm Type) ContextHole;
 TypeOfVariableUsage(
     kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree,
     argument_context: Context, body_context: Context,
@@ -184,16 +187,14 @@ TypeOfVariableUsage(
 
 TypeOfForAll (
     argument_type: Term, return_type: Term, argument_context: Context, return_context: Context, return_context_before_bindings: Context, bindings: BindingTree,
-    s1 : Term, s2 : Term,
-    _ : HasType argument_type argument_context s1 ContextHole,
-    _ : HasType return_type return_context s2 ContextHole,
-    _ : IsSort s1,
-    _ : IsSort s2,
+    s1 : Sort, s2 : Sort,
+    _ : HasType argument_type argument_context (SortTerm s1) ContextHole,
+    _ : HasType return_type return_context (SortTerm s2) ContextHole,
     _ : AddBindingsToContext bindings (ContextKnownVariable (Abstraction ForAll argument_type return_type bindings) (ContextBranch argument_context return_context_before_bindings)) return_context_before_bindings return_context
 ) -> HasType
     (Abstraction ForAll argument_type return_type bindings)
     (ContextBranch argument_context return_context)
-    s2 ContextHole;
+    (SortTerm s2) ContextHole;
 
 TypeOfLambda (
     argument_type: Term, argument_context: Context,
@@ -214,9 +215,8 @@ TypeBetaConversion (
     value: Term, value_context: Context,
     ty: Term, type_context: Context,
     ty2: Term,
-    s: Term,
+    s: Sort,
     _ : HasType value value_context ty type_context,
-    _ : HasType ty2 type_context s ContextHole,
-    _ : IsSort s,
+    _ : HasType ty2 type_context (SortTerm s) ContextHole,
     _ : BetaConversion ty ty2,
 ) -> HasType value value_context ty2 type_context;
