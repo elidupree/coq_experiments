@@ -48,7 +48,7 @@ pub struct TypeDefinition {
     pub constructors: BTreeMap<String, Constructor>,
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct Constructors {
     pub types: BTreeMap<String, TypeDefinition>,
 }
@@ -71,14 +71,6 @@ pub(crate) enum ConstructorEntry {
         resulting_type_parameters: Vec<DataValue>,
         notation: Option<String>,
     },
-}
-
-impl Default for Constructors {
-    fn default() -> Self {
-        Constructors {
-            types: Default::default(),
-        }
-    }
 }
 
 impl Constructors {
