@@ -1,4 +1,5 @@
 #![feature(default_free_fn, array_methods)]
+#![feature(once_cell)]
 
 //pub mod incomplete_term;
 pub mod constructors;

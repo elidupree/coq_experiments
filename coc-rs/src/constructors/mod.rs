@@ -2,6 +2,7 @@ use live_prop_test::{lpt_assert, lpt_assert_eq};
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::iter::zip;
+use std::sync::LazyLock;
 
 #[allow(clippy::all)]
 mod lalrpop_wrapper {
@@ -33,34 +34,23 @@ pub struct Precondition {
 }
 
 #[derive(Debug)]
-pub struct DataTypeConstructor {
-    pub arguments: Vec<DataArgument>,
-    pub notation: String,
-}
-
-#[derive(Debug)]
-pub struct PredicateTypeConstructor {
+pub struct Constructor {
     pub data_arguments: Vec<DataArgument>,
     pub preconditions: Vec<Precondition>,
     pub resulting_type_parameters: Vec<DataValue>,
+    pub notation: Option<String>,
 }
 
 #[derive(Debug)]
-pub struct DataType {
-    pub constructors: BTreeMap<String, DataTypeConstructor>,
-}
-
-#[derive(Debug)]
-pub struct PredicateType {
+pub struct TypeDefinition {
     pub type_parameters: Vec<String>,
-    pub notation: String,
-    pub constructors: BTreeMap<String, PredicateTypeConstructor>,
+    pub notation: Option<String>,
+    pub constructors: BTreeMap<String, Constructor>,
 }
 
 #[derive(Debug)]
 pub struct Constructors {
-    pub datatypes: BTreeMap<String, DataType>,
-    pub predicate_types: BTreeMap<String, PredicateType>,
+    pub types: BTreeMap<String, TypeDefinition>,
 }
 
 #[derive(Debug)]
@@ -86,25 +76,29 @@ pub(crate) enum ConstructorEntry {
 impl Default for Constructors {
     fn default() -> Self {
         Constructors {
-            datatypes: Default::default(),
-            predicate_types: Default::default(),
+            types: Default::default(),
         }
     }
 }
 
 impl Constructors {
-    pub fn coc() -> Self {
-        ConstructorsParser::new()
-            .parse(include_str!("coc.constructors"))
-            .unwrap()
+    pub fn coc() -> &'static Self {
+        static COC: LazyLock<Constructors> = LazyLock::new(|| {
+            ConstructorsParser::new()
+                .parse(include_str!("coc.constructors"))
+                .unwrap()
+        });
+        &COC
     }
 
     pub(crate) fn add_entry(&mut self, entry: ConstructorEntry) -> Result<(), String> {
         match entry {
             ConstructorEntry::DataType { name } => {
-                self.datatypes.insert(
+                self.types.insert(
                     name,
-                    DataType {
+                    TypeDefinition {
+                        type_parameters: Vec::new(),
+                        notation: None,
                         constructors: Default::default(),
                     },
                 );
@@ -115,11 +109,11 @@ impl Constructors {
                 type_parameters,
                 notation,
             } => {
-                self.predicate_types.insert(
+                self.types.insert(
                     name,
-                    PredicateType {
+                    TypeDefinition {
                         type_parameters,
-                        notation,
+                        notation: Some(notation),
                         constructors: Default::default(),
                     },
                 );
@@ -133,68 +127,28 @@ impl Constructors {
                 resulting_type_parameters,
                 notation,
             } => {
-                if let Some(datatype) = self.datatypes.get_mut(&constructed_type) {
-                    let notation = notation.ok_or_else(|| {
-                        format!(
-                            "Constructor {} for data type {} needs a notation",
-                            name, constructed_type
-                        )
-                    })?;
-                    if !preconditions.is_empty() {
+                if let Some(type_definition) = self.types.get_mut(&constructed_type) {
+                    if resulting_type_parameters.len() != type_definition.type_parameters.len() {
                         return Err(format!(
-                            "Constructor {} for data type {} can't have precondition",
-                            name, constructed_type,
+                            "Constructor {} for type {} has wrong number of resulting type parameters (found {}, needs {})",
+                            name, constructed_type, resulting_type_parameters.len(), type_definition.type_parameters.len()
                         ));
                     }
-                    if !resulting_type_parameters.is_empty() {
-                        return Err(format!(
-                            "Constructor {} for data type {} can't have resulting type parameters",
-                            name, constructed_type,
-                        ));
-                    }
-                    let old_value = datatype.constructors.insert(
+                    let old_value = type_definition.constructors.insert(
                         name.clone(),
-                        DataTypeConstructor {
-                            arguments: data_arguments,
+                        Constructor {
+                            data_arguments,
+                            preconditions,
+                            resulting_type_parameters,
                             notation,
                         },
                     );
                     if old_value.is_some() {
                         return Err(format!(
-                            "Duplicate definition of constructor {} for data type {}",
+                            "Duplicate definition of constructor {} for type {}",
                             name, constructed_type,
                         ));
                     }
-                    Ok(())
-                } else if let Some(predicate_type) = self.predicate_types.get_mut(&constructed_type)
-                {
-                    if notation.is_some() {
-                        return Err(format!(
-                            "Constructor {} for predicate type {} can't have a notation (for now at least)",
-                            name, constructed_type
-                        ));
-                    }
-                    if resulting_type_parameters.len() != predicate_type.type_parameters.len() {
-                        return Err(format!(
-                            "Constructor {} for predicate type {} has wrong number of resulting type parameters (found {}, needs {})",
-                            name, constructed_type, resulting_type_parameters.len(), predicate_type.type_parameters.len()
-                        ));
-                    }
-                    let old_value = predicate_type.constructors.insert(
-                        name.clone(),
-                        PredicateTypeConstructor {
-                            data_arguments,
-                            preconditions,
-                            resulting_type_parameters,
-                        },
-                    );
-                    if old_value.is_some() {
-                        return Err(format!(
-                            "Duplicate definition of constructor {} for data type {}",
-                            name, constructed_type,
-                        ));
-                    }
-
                     Ok(())
                 } else {
                     Err(format!(
@@ -221,64 +175,39 @@ impl Constructors {
             );
             Ok(())
         };
-        for (datatype_name, datatype) in &self.datatypes {
-            observe_global_name(datatype_name)?;
-            for (constructor_name, constructor) in &datatype.constructors {
-                observe_global_name(constructor_name)?;
-                let mut arguments_map = HashSet::new();
-                for argument in &constructor.arguments {
-                    lpt_assert!(
-                        arguments_map.insert(&*argument.name),
-                        "Duplicate argument: {}",
-                        argument.name
-                    );
-
-                    lpt_assert!(
-                        self.datatypes.contains_key(&argument.datatype),
-                        "Constructor {} takes parameter of non-existent datatype {}",
-                        constructor_name,
-                        argument.datatype,
-                    );
-                }
-                for captures in regex.captures_iter(&constructor.notation) {
-                    let format_name = captures.get(1).unwrap().as_str();
-                    lpt_assert!(
-                        arguments_map.contains(format_name),
-                        "Notation {} of constructor {} expected argument {}, which isn't present",
-                        constructor.notation,
-                        constructor_name,
-                        format_name
-                    );
-                }
-            }
-        }
-        for (predicate_name, predicate) in &self.predicate_types {
-            observe_global_name(predicate_name)?;
-            for type_parameter in &predicate.type_parameters {
+        for (typename, type_definition) in &self.types {
+            observe_global_name(typename)?;
+            for type_parameter in &type_definition.type_parameters {
+                let Some(datatype) = self.types.get(type_parameter) else {
+                    return Err(format!("Predicate {} takes parameter of non-existent datatype {}",
+                                       typename,
+                                       type_parameter));
+                };
                 lpt_assert!(
-                    self.datatypes.contains_key(type_parameter),
-                    "Predicate {} takes parameter of non-existent datatype {}",
-                    predicate_name,
-                    type_parameter,
+                    datatype.type_parameters.is_empty(),
+                    "Predicate {} takes parameter of predicate {}",
+                    typename,
+                    type_parameter
                 );
             }
-            let notation_capture_indices = regex.captures_iter(&predicate.notation).map(|captures| {
-                let capture_str = captures.get(1).unwrap().as_str();
-                capture_str.parse::<usize>().map_err(|_| format!("Notation {} for predicate {} tried to capture {}, which isn't a numeric index", predicate.notation, predicate_name, capture_str))
-            }).collect::<Result<BTreeSet<usize>, String>>()?;
-            let type_parameter_indices =
-                (0..predicate.type_parameters.len()).collect::<BTreeSet<usize>>();
-            lpt_assert_eq!(
-                notation_capture_indices,
-                type_parameter_indices,
-                "Notation {} for predicate {} didn't capture the right set of indices",
-                predicate.notation,
-                predicate_name
-            );
-
-            for (constructor_name, constructor) in &predicate.constructors {
+            if let Some(notation) = &type_definition.notation {
+                let notation_capture_indices = regex.captures_iter(notation).map(|captures| {
+                    let capture_str = captures.get(1).unwrap().as_str();
+                    capture_str.parse::<usize>().map_err(|_| format!("Notation {} for predicate {} tried to capture {}, which isn't a numeric index", notation, typename, capture_str))
+                }).collect::<Result<BTreeSet<usize>, String>>()?;
+                let type_parameter_indices =
+                    (0..type_definition.type_parameters.len()).collect::<BTreeSet<usize>>();
+                lpt_assert_eq!(
+                    notation_capture_indices,
+                    type_parameter_indices,
+                    "Notation {} for predicate {} didn't capture the right set of indices",
+                    notation,
+                    typename
+                );
+            }
+            for (constructor_name, constructor) in &type_definition.constructors {
                 observe_global_name(constructor_name)?;
-                let mut arguments_map = HashMap::new();
+                let mut arguments_map: HashMap<&str, &str> = HashMap::new();
                 for argument in &constructor.data_arguments {
                     lpt_assert!(
                         arguments_map
@@ -288,57 +217,21 @@ impl Constructors {
                         argument.name
                     );
 
+                    let Some(datatype) = self.types.get(&argument.datatype) else {
+                        return Err(format!("Constructor {} takes parameter of non-existent datatype {}",
+                                           constructor_name,
+                                           argument.datatype));
+                    };
                     lpt_assert!(
-                        self.datatypes.contains_key(&argument.datatype),
-                        "Constructor {} takes parameter of non-existent datatype {}",
+                        datatype.type_parameters.is_empty(),
+                        "Constructor {} takes data-argument of predicate {}",
                         constructor_name,
-                        argument.datatype,
+                        argument.datatype
                     );
                 }
-                fn value_must_be_type(
-                    value: &DataValue,
-                    datatype: &String,
-                    constructor_name: &String,
-                    arguments_map: &HashMap<&String, &String>,
-                    datatypes: &BTreeMap<String, DataType>,
-                ) -> Result<(), String> {
-                    match value {
-                        DataValue::Argument(argument_name) => {
-                            let Some(&argument_type) = arguments_map.get(argument_name) else { return Err(format!("In constructor {}, tried to reference nonexistent argument {}", constructor_name, argument_name)); };
-                            lpt_assert_eq!(argument_type, datatype);
-                            Ok(())
-                        }
-                        DataValue::Constructor {
-                            constructor: datatype_constructor_name,
-                            arguments,
-                        } => {
-                            let Some(datatype_constructor) = datatypes.get(datatype).unwrap().constructors.get(datatype_constructor_name) else { return Err(format!("In constructor {}, tried to reference nonexistent constructor {}", constructor_name, datatype_constructor_name)); };
 
-                            lpt_assert_eq!(
-                                arguments.len(),
-                                datatype_constructor.arguments.len(),
-                                "In constructor {}, gave wrong number of arguments to constructor {}",
-                                constructor_name,
-                                datatype_constructor_name,
-                            );
-                            for (value, constructor_argument) in
-                                zip(arguments, &datatype_constructor.arguments)
-                            {
-                                value_must_be_type(
-                                    value,
-                                    &constructor_argument.datatype,
-                                    constructor_name,
-                                    arguments_map,
-                                    datatypes,
-                                )?;
-                            }
-
-                            Ok(())
-                        }
-                    }
-                }
                 for precondition in &constructor.preconditions {
-                    let Some(precondition_type) = self.predicate_types.get(&precondition.predicate_type) else {
+                    let Some(precondition_type) = self.types.get(&precondition.predicate_type) else {
                         return Err(format!("Constructor {} takes parameter of non-existent predicate {}",
                                            constructor_name,
                                            precondition.predicate_type, ));
@@ -359,7 +252,7 @@ impl Constructors {
                             datatype,
                             constructor_name,
                             &arguments_map,
-                            &self.datatypes,
+                            &self.types,
                         )?;
                     }
 
@@ -367,26 +260,95 @@ impl Constructors {
                 }
                 lpt_assert_eq!(
                     constructor.resulting_type_parameters.len(),
-                    predicate.type_parameters.len(),
+                    type_definition.type_parameters.len(),
                     "Constructor {} has wrong number of resulting type parameters",
                     constructor_name,
                 );
                 for (resulting_type_parameter, type_parameter) in zip(
                     &constructor.resulting_type_parameters,
-                    &predicate.type_parameters,
+                    &type_definition.type_parameters,
                 ) {
                     value_must_be_type(
                         resulting_type_parameter,
                         type_parameter,
                         constructor_name,
                         &arguments_map,
-                        &self.datatypes,
+                        &self.types,
                     )?;
+                }
+                if let Some(notation) = &constructor.notation {
+                    for captures in regex.captures_iter(notation) {
+                        let format_name = captures.get(1).unwrap().as_str();
+                        lpt_assert!(
+                            arguments_map.contains_key(format_name),
+                            "Notation {} of constructor {} expected data-argument {}, which isn't present",
+                            notation,
+                            constructor_name,
+                            format_name
+                        );
+                    }
                 }
             }
         }
 
         Ok(())
+    }
+}
+
+fn value_must_be_type(
+    value: &DataValue,
+    datatype_name: &str,
+    constructor_name: &str,
+    arguments_map: &HashMap<&str, &str>,
+    types: &BTreeMap<String, TypeDefinition>,
+) -> Result<(), String> {
+    match value {
+        DataValue::Argument(argument_name) => {
+            let Some(&argument_type) = arguments_map.get(&**argument_name) else { return Err(format!("In constructor {}, tried to reference nonexistent argument {}", constructor_name, argument_name)); };
+            lpt_assert_eq!(argument_type, datatype_name);
+            Ok(())
+        }
+        DataValue::Constructor {
+            constructor: datatype_constructor_name,
+            arguments,
+        } => {
+            let datatype = types.get(datatype_name).unwrap();
+            let Some(datatype_constructor) = datatype.constructors.get(datatype_constructor_name) else { return Err(format!("In constructor {}, tried to reference nonexistent constructor {}", constructor_name, datatype_constructor_name)); };
+            lpt_assert!(
+                datatype.type_parameters.is_empty(),
+                "Constructor {} takes data-argument of predicate {}",
+                constructor_name,
+                datatype_name
+            );
+
+            lpt_assert_eq!(
+                arguments.len(),
+                datatype_constructor.data_arguments.len(),
+                "In constructor {}, gave wrong number of arguments to constructor {}",
+                constructor_name,
+                datatype_constructor_name,
+            );
+
+            lpt_assert!(
+                datatype_constructor.preconditions.is_empty(),
+                "In constructor {}, called constructor with preconditions {}",
+                constructor_name,
+                datatype_constructor_name,
+            );
+            for (value, constructor_argument) in
+                zip(arguments, &datatype_constructor.data_arguments)
+            {
+                value_must_be_type(
+                    value,
+                    &constructor_argument.datatype,
+                    constructor_name,
+                    arguments_map,
+                    types,
+                )?;
+            }
+
+            Ok(())
+        }
     }
 }
 
