@@ -6,6 +6,7 @@ use coc_rs::constructors::Constructors;
 use coc_rs::metavariable::{Environment, MetavariableId};
 use coc_rs::utils::{read_json_file, write_json_file};
 use quick_and_dirty_web_gui::{callback, callback_with};
+use std::iter::zip;
 use std::sync::{LazyLock, Mutex};
 use typed_html::elements::{FlowContent, PhrasingContent};
 use typed_html::types::Id;
@@ -50,9 +51,21 @@ impl Interface {
             format!("color: hwb({h1}turn 0.0% {b}%); background-color: hwb({h2}turn {w}% 0.0%)");
 
         html! {
-            <span class="metavariable_name_id" style=style onclick={callback(move || focus_node(id))}>
+            <span class="metavariable_name_id" style=style onclick={callback(move || set_focus(id, None))}>
                 {text!(name)}
             </span> : String
+        }
+    }
+    fn inline_child(&self, id: Option<MetavariableId>) -> Span {
+        match id {
+            None => {
+                html! {
+                    <span class="hole">
+                        "_"
+                    </span> : String
+                }
+            }
+            Some(id) => self.inline_metavariable_name_id(id),
         }
     }
 
@@ -79,13 +92,28 @@ impl Interface {
             </button> : String
         });
         self_elements.push(self.inline_metavariable_name_id(id));
+        for (index, typename) in type_definition.type_parameters.iter().enumerate() {
+            let body = self.inline_child(*metavariable.type_parameters.get(index).unwrap());
+            let valid = *validity.type_parameters_valid.get(index).unwrap();
+            let class = if valid {
+                "child valid"
+            } else {
+                "child invalid"
+            };
+
+            child_elements.push(html! {
+                <div class=class onclick={callback(move || set_focus(id,Some (WhichChild::TypeParameter (index))))}>
+                    {text!(typename)} " = " {body}
+                </div> : String
+            });
+        }
         match &metavariable.constructor {
             None => {
                 for (constructor_name, _) in type_definition.constructors.iter() {
                     let text = text!(constructor_name);
                     let constructor_name = constructor_name.clone();
                     child_elements.push(html! {
-                        <button onclick={callback(move || set_constructor(id,Some (constructor_name)))}>
+                        <button onclick={callback(move || set_constructor(id,Some (constructor_name.clone())))}>
                             {text}
                         </button> : String
                     });
@@ -97,10 +125,55 @@ impl Interface {
                         "Remove constructor"
                     </button> : String
                 });
+                let constructor_definition =
+                    type_definition.constructors.get(&constructor.name).unwrap();
+                for (index, argument_definition) in
+                    constructor_definition.data_arguments.iter().enumerate()
+                {
+                    let body = self.inline_child(
+                        *constructor
+                            .data_arguments
+                            .get(&argument_definition.name)
+                            .unwrap(),
+                    );
+                    let argument_name = argument_definition.name.clone();
+                    let valid = *validity.data_arguments_valid.get(&argument_name).unwrap();
+                    let class = if valid {
+                        "child valid"
+                    } else {
+                        "child invalid"
+                    };
+
+                    child_elements.push(html! {
+                        <div class=class onclick={callback(move || set_focus(id,Some (WhichChild::DataArgument (index))))}>
+                            {text!(argument_name)} " = " {body}
+                        </div> : String
+                    });
+                }
+                for (index, (argument_definition, valid)) in zip(
+                    &constructor_definition.preconditions,
+                    validity.preconditions_valid,
+                )
+                .enumerate()
+                {
+                    let body = self.inline_child(*constructor.preconditions.get(index).unwrap());
+                    let class = if valid {
+                        "child valid"
+                    } else {
+                        "child invalid"
+                    };
+
+                    child_elements.push(html! {
+                        <div class="child" onclick={callback(move || set_focus(id,Some (WhichChild::Precondition (index))))}>
+                            {body}" : "{text!("todo")}  
+                        </div> : String
+                    });
+                }
             }
         }
-        html! {
-            <div class="node" onclick={callback(move || focus_node(id))}>
+        // why make a binding for this? just to suppress an IDE bug
+        let result: FlowElement = html! {
+            <div class="node" onclick={callback(move || set_focus(id, None))}>
                 <div class="self">
                     {self_elements}
                 </div>
@@ -108,7 +181,8 @@ impl Interface {
                     {child_elements}
                 </div>
             </div> : String
-        }
+        };
+        result
     }
     fn nodes(&self) -> FlowElement {
         let nodes = self
@@ -124,10 +198,11 @@ impl Interface {
     fn whole_page(&self) -> FlowElement {
         let nodes = self.nodes();
         let new_buttons = Constructors::coc().types.keys().cloned().map(|typename| {
+            let text = text!(&typename);
             html! {
                 <div class="new_global">
-                    <button onclick={callback(|| new_global(typename))}>
-                        "New global"
+                    <button onclick={callback(move || new_global(typename.clone()))}>
+                        {text}
                     </button>
                 </div> : String
             }
@@ -144,8 +219,8 @@ impl Interface {
         quick_and_dirty_web_gui::replace_html(self.whole_page().to_string());
     }
 
-    fn focus_node(&mut self, id: MetavariableId) {
-        self.focus = Some((id, None));
+    fn set_focus(&mut self, id: MetavariableId, child: Option<WhichChild>) {
+        self.focus = Some((id, child));
     }
 }
 
@@ -153,7 +228,6 @@ static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
     let args = Args::parse();
     let environment = read_json_file::<_, Environment>(&args.file_path)
         .unwrap_or_else(|_| Environment::default());
-    let focus = *environment.metavariables().next().unwrap().0;
     Mutex::new(Interface {
         file_path: args.file_path,
         environment,
@@ -168,9 +242,9 @@ fn with_interface(f: impl FnOnce(&mut Interface)) {
     write_json_file(&interface.file_path, &interface.environment).unwrap();
 }
 
-fn focus_node(id: MetavariableId) {
+fn set_focus(id: MetavariableId, child: Option<WhichChild>) {
     with_interface(|interface: &mut Interface| {
-        interface.focus_node(id);
+        interface.set_focus(id, child);
     });
 }
 
@@ -190,9 +264,20 @@ fn use_metavariable(id: MetavariableId) {
                         .set_type_parameter(focus_id, index, Some(id));
                 }
                 WhichChild::DataArgument(index) => {
+                    let focus = interface.environment.get(focus_id);
+                    // TODO this should be 1 line of code or less
+                    let name = &Constructors::coc()
+                        .types
+                        .get(&focus.typename)
+                        .unwrap()
+                        .constructors
+                        .get(&focus.constructor.as_ref().unwrap().name)
+                        .unwrap()
+                        .data_arguments[index]
+                        .name;
                     interface
                         .environment
-                        .set_data_argument(focus_id, index, Some(id));
+                        .set_data_argument(focus_id, name, Some(id));
                 }
                 WhichChild::Precondition(index) => {
                     interface
@@ -213,7 +298,7 @@ fn rename_metavariable(id: MetavariableId, name: String) {
 fn new_global(typename: String) {
     with_interface(|interface: &mut Interface| {
         let id = interface.environment.create_metavariable(typename);
-        interface.focus_node(id);
+        interface.set_focus(id, None);
     });
 }
 

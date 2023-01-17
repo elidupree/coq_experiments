@@ -1,0 +1,73 @@
+{
+  "23292a56-d007-406a-bbdf-dcef092bbb6c": {
+    "name": "PropIsType",
+    "typename": "HasType",
+    "type_parameters": [
+      "36672dfa-deaa-4f59-9a02-d46f44337963",
+      "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
+      "50cea31a-7a6a-48c9-a5c6-a1ab0145c669",
+      "c718c640-6ba3-4f0e-9fce-2ade31143ac9"
+    ],
+    "constructor": {
+      "name": "TypeOfProp",
+      "data_arguments": {},
+      "preconditions": []
+    }
+  },
+  "36672dfa-deaa-4f59-9a02-d46f44337963": {
+    "name": "Prop",
+    "typename": "Term",
+    "type_parameters": [],
+    "constructor": {
+      "name": "SortTerm",
+      "data_arguments": {
+        "s": "ed22f6a4-e9f1-43a7-9578-4d50d7c027aa"
+      },
+      "preconditions": []
+    }
+  },
+  "50cea31a-7a6a-48c9-a5c6-a1ab0145c669": {
+    "name": "Type",
+    "typename": "Term",
+    "type_parameters": [],
+    "constructor": {
+      "name": "SortTerm",
+      "data_arguments": {
+        "s": "70e91b64-7e97-48ca-9145-b0c460c73af9"
+      },
+      "preconditions": []
+    }
+  },
+  "70b9cb7f-bee4-4d6d-a788-2cb90051e13e": {
+    "name": "",
+    "typename": "AbstractionKind",
+    "type_parameters": [],
+    "constructor": null
+  },
+  "70e91b64-7e97-48ca-9145-b0c460c73af9": {
+    "name": "Type",
+    "typename": "Sort",
+    "type_parameters": [],
+    "constructor": null
+  },
+  "c718c640-6ba3-4f0e-9fce-2ade31143ac9": {
+    "name": "ContextHole",
+    "typename": "Context",
+    "type_parameters": [],
+    "constructor": {
+      "name": "ContextHole",
+      "data_arguments": {},
+      "preconditions": []
+    }
+  },
+  "ed22f6a4-e9f1-43a7-9578-4d50d7c027aa": {
+    "name": "Prop",
+    "typename": "Sort",
+    "type_parameters": [],
+    "constructor": {
+      "name": "Prop",
+      "data_arguments": {},
+      "preconditions": []
+    }
+  }
+}
