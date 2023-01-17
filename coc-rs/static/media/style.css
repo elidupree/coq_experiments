@@ -49,7 +49,7 @@ body {
   font-weight: bold;
   font-style: italic;
 }
-.term_name_id {
+.term_name_id,.metavariable_name_id {
   padding: 0 0.2em;
   border-radius: 0.2em;
 }

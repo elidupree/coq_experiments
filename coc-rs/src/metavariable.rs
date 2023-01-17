@@ -94,7 +94,7 @@ impl Environment {
             }
         }
     }
-    pub fn locally_valid(&self, id: MetavariableId) -> LocalValidity {
+    pub fn local_validity(&self, id: MetavariableId) -> LocalValidity {
         let metavariable = self.get(id);
         let type_definition = Constructors::coc()
             .types
@@ -249,7 +249,7 @@ impl Environment {
         self.get_mut(id).type_parameters[index] = value;
     }
 
-    pub fn replace_constructor(&mut self, id: MetavariableId, value: Option<String>) {
+    pub fn set_constructor(&mut self, id: MetavariableId, value: Option<String>) {
         let metavariable = self.get_mut(id);
         let type_definition = Constructors::coc()
             .types
@@ -287,6 +287,10 @@ impl Environment {
     ) {
         let constructor = self.get_mut(id).constructor.as_mut().unwrap();
         *constructor.preconditions.get_mut(index).unwrap() = value;
+    }
+
+    pub fn rename(&mut self, id: MetavariableId, new_name: impl Into<String>) {
+        self.get_mut(id).name = new_name.into();
     }
 
     pub fn metavariables(&self) -> impl Iterator<Item = (&MetavariableId, &Metavariable)> {
