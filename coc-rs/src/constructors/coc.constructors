@@ -28,7 +28,7 @@ BetaReductionR (reduction: WhichBetaReduction) -> WhichBetaReduction, notated "ð
   by sharing the tree structure of the term. */
 data Context;
 ContextHole ()-> Context, notated "âˆ…";
-ContextKnownVariable (binding_term: Term, binding_context: Context)-> Context, notated "{binding_term}{{binding_context}}";
+ContextKnownVariable (binding_term: Term, binding_context: Context)-> Context, notated "{binding_term}/{binding_context}";
 ContextBranch(m: Context,n: Context)-> Context, notated "({m} {n})";
 
 predicate EmptyBindingsShapedLike Term BindingTree, notated "{0}'s empty bindings are {1}";
@@ -176,7 +176,7 @@ BetaReflexive (term: Term) -> BetaConversion term term;
 BetaSymmetric (x: Term, y: Term, _:BetaConversion x y)-> BetaConversion y x;
 BetaTransitive (x: Term, y: Term, z: Term,_:BetaConversion x y,_:BetaConversion y z)-> BetaConversion x z;
 
-predicate HasType Term Context Term Context, notated "{0}{{1}} : {2}{{3}}";
+predicate HasType Term Context Term Context, notated "{0} : {2} ({1}/{3})";
 TypeOfProp() -> HasType (SortTerm Prop) ContextHole (SortTerm Type) ContextHole;
 TypeOfVariableUsage(
     kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree,
