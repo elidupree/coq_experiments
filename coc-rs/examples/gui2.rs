@@ -2,11 +2,10 @@
 #![feature(once_cell)]
 
 use clap::Parser;
-use coc_rs::constructors::Constructors;
+use coc_rs::constructors::{Constructors, Notation, NotationItem};
 use coc_rs::metavariable::{Environment, MetavariableId};
 use coc_rs::utils::{read_json_file, write_json_file};
 use quick_and_dirty_web_gui::{callback, callback_with};
-use std::collections::HashMap;
 use std::iter::zip;
 use std::sync::{LazyLock, Mutex};
 use typed_html::elements::{FlowContent, PhrasingContent};
@@ -32,22 +31,14 @@ enum WhichChild {
 
 impl Interface {
     fn inline_metavariable_name_id(&self, id: MetavariableId) -> Span {
-        let name = &self.environment.get(id).name;
         let bytes = id.0.as_u128().to_le_bytes();
-        let [h1, h2, b, w, abc @ ..] = bytes;
+        let [h1, h2, b, w, ..] = bytes;
         let h1 = (h1 as f64) / 255.0;
         let h2 = (h1 + 1.0 / 4.0 + ((h2 as f64) / 255.0) / 4.0).fract();
         let b = (0.6 + ((b as f64) / 255.0).powi(3) * 0.4) * 100.0;
         let w = (0.7 + ((w as f64) / 255.0).powi(2) * 0.15) * 100.0;
 
-        let mut name = name.to_string();
-        if name.is_empty() {
-            name.extend(
-                abc.into_iter()
-                    .take(3)
-                    .map(|a| char::from_u32(((a as u32) & 63) + 63).unwrap()),
-            );
-        }
+        let name = self.unfolded_name(id);
         let style =
             format!("color: hwb({h1}turn 0.0% {b}%); background-color: hwb({h2}turn {w}% 0.0%)");
 
@@ -69,24 +60,95 @@ impl Interface {
             Some(id) => self.inline_metavariable_name_id(id),
         }
     }
-    fn inline_notation(
-        &self,
-        notation: &str,
-        mut child_func: impl FnMut(&str) -> PhrasingElement,
-    ) -> Span {
-        let mut elements: Vec<PhrasingElement> = Vec::new();
-        let mut rest = notation;
-        while let Some(captures) = Constructors::notation_regex().captures(rest) {
-            let before = &rest[..captures.get(0).unwrap().start()];
-            if before.len() > 0 {
-                elements.push(text!(before));
+    fn implicit_name(&self, id: MetavariableId) -> String {
+        let mut name = self.environment.get(id).name.clone();
+        if name.is_empty() {
+            let [_, _, _, _, abc @ ..] = id.0.as_u128().to_le_bytes();
+            name.extend(
+                abc.into_iter()
+                    .take(3)
+                    .map(|a| char::from_u32(((a as u32) & 63) + 63).unwrap()),
+            );
+        }
+        name
+    }
+    fn unfolded_name(&self, id: MetavariableId) -> String {
+        pub enum Item {
+            Text(String),
+            Variable(MetavariableId),
+        }
+        let mut items = vec![Item::Variable(id)];
+        let length = |items: &[Item]| -> usize {
+            items
+                .iter()
+                .map(|item| match item {
+                    Item::Text(text) => text.len(),
+                    &Item::Variable(id) => self.implicit_name(id).len(),
+                })
+                .sum()
+        };
+        loop {
+            let mut next = Vec::with_capacity(items.len() * 2);
+            let mut expanded = false;
+            for item in &items {
+                match item {
+                    Item::Text(text) => next.push(Item::Text(text.clone())),
+                    &Item::Variable(id) => {
+                        let metavariable = self.environment.get(id);
+                        if !metavariable.name.is_empty() {
+                            next.push(Item::Text(metavariable.name.clone()));
+                        } else if let Some(constructor) = &metavariable.constructor {
+                            expanded = true;
+                            let type_definition = Constructors::coc()
+                                .types
+                                .get(&metavariable.typename)
+                                .unwrap();
+                            let constructor_definition =
+                                type_definition.constructors.get(&constructor.name).unwrap();
+                            for item in &constructor_definition.notation.as_ref().unwrap().items {
+                                next.push(match item {
+                                    NotationItem::Text(text) => Item::Text(text.clone()),
+                                    NotationItem::Argument(argument) => {
+                                        match constructor.data_arguments.get(argument).unwrap() {
+                                            &Some(id) => Item::Variable(id),
+                                            None => Item::Text("_".to_owned()),
+                                        }
+                                    }
+                                });
+                            }
+                        } else {
+                            next.push(Item::Text("_".to_owned()));
+                        }
+                    }
+                }
             }
-            elements.push(child_func(captures.get(1).unwrap().as_str()));
-            rest = &rest[captures.get(0).unwrap().end()..];
+            if !expanded || length(&next) > 10 {
+                let mut result = String::new();
+                for item in items {
+                    result.push_str(&match item {
+                        Item::Text(text) => text,
+                        Item::Variable(id) => self.implicit_name(id),
+                    })
+                }
+                return result;
+            }
+            items = next;
         }
-        if rest.len() > 0 {
-            elements.push(text!(rest));
-        }
+    }
+
+    fn inline_notation<T>(
+        &self,
+        notation: &Notation<T>,
+        mut child_func: impl FnMut(&T) -> PhrasingElement,
+    ) -> Span {
+        let elements: Vec<PhrasingElement> = notation
+            .items
+            .iter()
+            .map(|item| match item {
+                NotationItem::Text(text) => text!(text),
+                NotationItem::Argument(argument) => child_func(argument),
+            })
+            .collect();
         html! {
             <span class="notation">
                 {elements}
@@ -117,8 +179,7 @@ impl Interface {
                 "Use"
             </button> : String
         });
-        self_elements.push(self.inline_notation(&type_definition.notation, |index| {
-            let index = index.parse::<usize>().unwrap();
+        self_elements.push(self.inline_notation(&type_definition.notation, |&index| {
             let body = self.inline_child(*metavariable.type_parameters.get(index).unwrap());
             let valid = *validity.type_parameters_valid.get(index).unwrap();
             let class = if valid {
@@ -190,7 +251,7 @@ impl Interface {
                     };
 
                     child_elements.push(html! {
-                        <div class="child" onclick={callback(move || set_focus(id,Some (WhichChild::Precondition (index))))}>
+                        <div class=class onclick={callback(move || set_focus(id,Some (WhichChild::Precondition (index))))}>
                             {body}" : "{text!("todo")}  
                         </div> : String
                     });

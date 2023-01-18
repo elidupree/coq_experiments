@@ -1,4 +1,3 @@
-use clap::arg;
 use live_prop_test::{lpt_assert, lpt_assert_eq};
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -39,13 +38,13 @@ pub struct Constructor {
     pub data_arguments: Vec<DataArgument>,
     pub preconditions: Vec<Precondition>,
     pub resulting_type_parameters: Vec<DataValue>,
-    pub notation: Option<String>,
+    pub notation: Option<Notation<String>>,
 }
 
 #[derive(Debug)]
 pub struct TypeDefinition {
     pub type_parameters: Vec<String>,
-    pub notation: String,
+    pub notation: Notation<usize>,
     pub constructors: BTreeMap<String, Constructor>,
 }
 
@@ -74,6 +73,58 @@ pub(crate) enum ConstructorEntry {
     },
 }
 
+#[derive(Debug)]
+pub enum NotationItem<T> {
+    Text(String),
+    Argument(T),
+}
+
+#[derive(Debug)]
+pub enum NotationMapItem<'a, T> {
+    Text(&'a String),
+    Argument(T),
+}
+
+#[derive(Debug)]
+pub struct Notation<T> {
+    pub items: Vec<NotationItem<T>>,
+}
+
+impl<T> Notation<T> {
+    pub fn try_from_str<E>(
+        text: &str,
+        mut argument_function: impl FnMut(&str) -> Result<T, E>,
+    ) -> Result<Self, E> {
+        let mut items: Vec<NotationItem<T>> = Vec::new();
+        let mut rest = text;
+        while let Some(captures) = Constructors::notation_regex().captures(rest) {
+            let before = &rest[..captures.get(0).unwrap().start()];
+            if !before.is_empty() {
+                items.push(NotationItem::Text(before.to_owned()));
+            }
+            items.push(NotationItem::Argument(argument_function(
+                captures.get(1).unwrap().as_str(),
+            )?));
+            rest = &rest[captures.get(0).unwrap().end()..];
+        }
+        if !rest.is_empty() {
+            items.push(NotationItem::Text(rest.to_owned()));
+        }
+        Ok(Notation { items })
+    }
+    // pub fn map<'a, U>(
+    //     &'a self,
+    //     mut argument_function: impl FnMut(&T) -> U + 'a,
+    // ) -> impl Iterator<Item = NotationMapItem<'a, U>> + 'a {
+    //     self.items.iter().map(move |item| match item {
+    //         NotationItem::Text(text) => NotationMapItem::Text(text),
+    //         NotationItem::Argument(argument) => {
+    //             NotationMapItem::Argument(argument_function(argument))
+    //         }
+    //     })
+    // }
+}
+
 impl Constructors {
     pub fn coc() -> &'static Self {
         static COC: LazyLock<Constructors> = LazyLock::new(|| {
@@ -91,7 +142,9 @@ impl Constructors {
                     name.clone(),
                     TypeDefinition {
                         type_parameters: Vec::new(),
-                        notation: name,
+                        notation: Notation {
+                            items: vec![NotationItem::Text(name)],
+                        },
                         constructors: Default::default(),
                     },
                 );
@@ -102,6 +155,14 @@ impl Constructors {
                 type_parameters,
                 notation,
             } => {
+                let notation = Notation::try_from_str(&notation, |argument| {
+                    let index = argument.parse::<usize>().map_err(|_| format!("Notation {} for predicate {} tried to capture {}, which isn't a numeric index", notation, name, argument))?;
+                    if type_parameters.get(index).is_none() {
+                        Err(format!("Notation {} for predicate {} tried to capture index {}, which is too big for the number of type parameters", notation, name, index))
+                    } else {
+                        Ok(index)
+                    }
+                })?;
                 self.types.insert(
                     name,
                     TypeDefinition {
@@ -127,6 +188,22 @@ impl Constructors {
                             name, constructed_type, resulting_type_parameters.len(), type_definition.type_parameters.len()
                         ));
                     }
+                    let notation = match notation {
+                        None => None,
+                        Some(notation) => {
+                            Some(Notation::try_from_str(&notation, |argument_name| {
+                                if data_arguments.iter().any(|a| a.name == argument_name) {
+                                    Ok(argument_name.to_owned())
+                                } else {
+                                    Err(format!("Notation {:?} of constructor {} expected data-argument {}, which isn't present",
+                                                notation,
+                                                name,
+                                                argument_name))
+                                }
+                            })?)
+                        }
+                    };
+
                     let old_value = type_definition.constructors.insert(
                         name.clone(),
                         Constructor {
@@ -153,12 +230,11 @@ impl Constructors {
         }
     }
 
-    pub fn notation_regex() -> Regex {
+    fn notation_regex() -> Regex {
         Regex::new(r#"\{([^{}]*)\}"#).unwrap()
     }
 
     pub fn check_invariants(&self) -> Result<(), String> {
-        let regex = Self::notation_regex();
         let mut global_names = HashSet::new();
         let mut observe_global_name = |name: &str| {
             lpt_assert!(
@@ -184,16 +260,24 @@ impl Constructors {
                 );
             }
 
-            let notation_capture_indices = regex.captures_iter(&type_definition.notation).map(|captures| {
-                let capture_str = captures.get(1).unwrap().as_str();
-                capture_str.parse::<usize>().map_err(|_| format!("Notation {} for predicate {} tried to capture {}, which isn't a numeric index", type_definition.notation, typename, capture_str))
-            }).collect::<Result<BTreeSet<usize>, String>>()?;
+            let notation_capture_indices = type_definition
+                .notation
+                .items
+                .iter()
+                .filter_map(|item| {
+                    if let &NotationItem::Argument(index) = item {
+                        Some(index)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<BTreeSet<usize>>();
             let type_parameter_indices =
                 (0..type_definition.type_parameters.len()).collect::<BTreeSet<usize>>();
             lpt_assert_eq!(
                 notation_capture_indices,
                 type_parameter_indices,
-                "Notation {} for predicate {} didn't capture the right set of indices",
+                "Notation {:?} for predicate {} didn't capture the right set of indices",
                 type_definition.notation,
                 typename
             );
@@ -270,15 +354,16 @@ impl Constructors {
                     )?;
                 }
                 if let Some(notation) = &constructor.notation {
-                    for captures in regex.captures_iter(notation) {
-                        let format_name = captures.get(1).unwrap().as_str();
-                        lpt_assert!(
-                            arguments_map.contains_key(format_name),
-                            "Notation {} of constructor {} expected data-argument {}, which isn't present",
+                    for item in &notation.items {
+                        if let NotationItem::Argument(argument_name) = item {
+                            lpt_assert!(
+                            arguments_map.contains_key(&**argument_name),
+                            "Notation {:?} of constructor {} expected data-argument {}, which isn't present",
                             notation,
                             constructor_name,
-                            format_name
+                            argument_name
                         );
+                        }
                     }
                 }
             }

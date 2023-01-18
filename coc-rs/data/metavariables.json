@@ -15,7 +15,7 @@
     }
   },
   "36672dfa-deaa-4f59-9a02-d46f44337963": {
-    "name": "Prop",
+    "name": "",
     "typename": "Term",
     "type_parameters": [],
     "constructor": {
@@ -27,7 +27,7 @@
     }
   },
   "50cea31a-7a6a-48c9-a5c6-a1ab0145c669": {
-    "name": "Type",
+    "name": "",
     "typename": "Term",
     "type_parameters": [],
     "constructor": {
@@ -45,13 +45,13 @@
     "constructor": null
   },
   "70e91b64-7e97-48ca-9145-b0c460c73af9": {
-    "name": "Type",
+    "name": "",
     "typename": "Sort",
     "type_parameters": [],
     "constructor": null
   },
   "c718c640-6ba3-4f0e-9fce-2ade31143ac9": {
-    "name": "ContextHole",
+    "name": "",
     "typename": "Context",
     "type_parameters": [],
     "constructor": {
@@ -61,7 +61,7 @@
     }
   },
   "ed22f6a4-e9f1-43a7-9578-4d50d7c027aa": {
-    "name": "Prop",
+    "name": "",
     "typename": "Sort",
     "type_parameters": [],
     "constructor": {
