@@ -2,10 +2,11 @@
 #![feature(once_cell)]
 
 use clap::Parser;
-use coc_rs::constructors::{Constructors, Notation, NotationItem};
+use coc_rs::constructors::{Constructors, DataValue, Notation, NotationItem};
 use coc_rs::metavariable::{Environment, MetavariableId};
 use coc_rs::utils::{read_json_file, write_json_file};
 use quick_and_dirty_web_gui::{callback, callback_with};
+use std::collections::{BTreeMap, HashMap};
 use std::iter::zip;
 use std::sync::{LazyLock, Mutex};
 use typed_html::elements::{FlowContent, PhrasingContent};
@@ -105,16 +106,21 @@ impl Interface {
                                 .unwrap();
                             let constructor_definition =
                                 type_definition.constructors.get(&constructor.name).unwrap();
-                            for item in &constructor_definition.notation.as_ref().unwrap().items {
-                                next.push(match item {
-                                    NotationItem::Text(text) => Item::Text(text.clone()),
-                                    NotationItem::Argument(argument) => {
-                                        match constructor.data_arguments.get(argument).unwrap() {
-                                            &Some(id) => Item::Variable(id),
-                                            None => Item::Text("_".to_owned()),
+                            if let Some(notation) = &constructor_definition.notation {
+                                for item in &notation.items {
+                                    next.push(match item {
+                                        NotationItem::Text(text) => Item::Text(text.clone()),
+                                        NotationItem::Argument(argument) => {
+                                            match constructor.data_arguments.get(argument).unwrap()
+                                            {
+                                                &Some(id) => Item::Variable(id),
+                                                None => Item::Text("_".to_owned()),
+                                            }
                                         }
-                                    }
-                                });
+                                    });
+                                }
+                            } else {
+                                next.push(Item::Variable(id));
                             }
                         } else {
                             next.push(Item::Text("_".to_owned()));
@@ -133,6 +139,37 @@ impl Interface {
                 return result;
             }
             items = next;
+        }
+    }
+
+    fn inline_data_value(
+        &self,
+        value: &DataValue,
+        typename: &str,
+        data_arguments: &BTreeMap<String, Option<MetavariableId>>,
+    ) -> Span {
+        let datatype = Constructors::coc().types.get(typename).unwrap();
+        match value {
+            DataValue::Argument(argname) => {
+                self.inline_child(*data_arguments.get(argname).unwrap())
+            }
+            DataValue::Constructor {
+                constructor,
+                arguments,
+            } => {
+                let constructor_definition = datatype.constructors.get(constructor).unwrap();
+                let arguments_map: HashMap<&String, (&DataValue, &String)> =
+                    zip(&constructor_definition.data_arguments, arguments)
+                        .map(|(a, v)| (&a.name, (v, &a.datatype)))
+                        .collect();
+                self.inline_notation(
+                    constructor_definition.notation.as_ref().unwrap(),
+                    |argument_name| {
+                        let &(v, t) = arguments_map.get(argument_name).unwrap();
+                        self.inline_data_value(v, t, data_arguments)
+                    },
+                )
+            }
         }
     }
 
@@ -256,6 +293,31 @@ impl Interface {
                         </div> : String
                     });
                 }
+
+                child_elements.push(text!("->"));
+                child_elements.push(self.inline_notation(
+                    &type_definition.notation,
+                    |&index: &usize| {
+                        let typename = type_definition.type_parameters.get(index).unwrap();
+                        let value = constructor_definition
+                            .resulting_type_parameters
+                            .get(index)
+                            .unwrap();
+                        let valid = *validity.return_type_parameters_valid.get(index).unwrap();
+
+                        let class = if valid {
+                            "child valid"
+                        } else {
+                            "child invalid"
+                        };
+
+                        html! {
+                            <span class=class>
+                                {self.inline_data_value(value,typename,&constructor.data_arguments)}
+                            </span> : String
+                        }
+                    },
+                ));
             }
         }
         // why make a binding for this? just to suppress an IDE bug

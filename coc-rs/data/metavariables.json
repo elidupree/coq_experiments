@@ -48,7 +48,11 @@
     "name": "",
     "typename": "Sort",
     "type_parameters": [],
-    "constructor": null
+    "constructor": {
+      "name": "Type",
+      "data_arguments": {},
+      "preconditions": []
+    }
   },
   "c718c640-6ba3-4f0e-9fce-2ade31143ac9": {
     "name": "",
