@@ -1,3 +1,4 @@
+use clap::arg;
 use live_prop_test::{lpt_assert, lpt_assert_eq};
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -44,7 +45,7 @@ pub struct Constructor {
 #[derive(Debug)]
 pub struct TypeDefinition {
     pub type_parameters: Vec<String>,
-    pub notation: Option<String>,
+    pub notation: String,
     pub constructors: BTreeMap<String, Constructor>,
 }
 
@@ -87,10 +88,10 @@ impl Constructors {
         match entry {
             ConstructorEntry::DataType { name } => {
                 self.types.insert(
-                    name,
+                    name.clone(),
                     TypeDefinition {
                         type_parameters: Vec::new(),
-                        notation: None,
+                        notation: name,
                         constructors: Default::default(),
                     },
                 );
@@ -105,7 +106,7 @@ impl Constructors {
                     name,
                     TypeDefinition {
                         type_parameters,
-                        notation: Some(notation),
+                        notation,
                         constructors: Default::default(),
                     },
                 );
@@ -182,21 +183,21 @@ impl Constructors {
                     type_parameter
                 );
             }
-            if let Some(notation) = &type_definition.notation {
-                let notation_capture_indices = regex.captures_iter(notation).map(|captures| {
-                    let capture_str = captures.get(1).unwrap().as_str();
-                    capture_str.parse::<usize>().map_err(|_| format!("Notation {} for predicate {} tried to capture {}, which isn't a numeric index", notation, typename, capture_str))
-                }).collect::<Result<BTreeSet<usize>, String>>()?;
-                let type_parameter_indices =
-                    (0..type_definition.type_parameters.len()).collect::<BTreeSet<usize>>();
-                lpt_assert_eq!(
-                    notation_capture_indices,
-                    type_parameter_indices,
-                    "Notation {} for predicate {} didn't capture the right set of indices",
-                    notation,
-                    typename
-                );
-            }
+
+            let notation_capture_indices = regex.captures_iter(&type_definition.notation).map(|captures| {
+                let capture_str = captures.get(1).unwrap().as_str();
+                capture_str.parse::<usize>().map_err(|_| format!("Notation {} for predicate {} tried to capture {}, which isn't a numeric index", type_definition.notation, typename, capture_str))
+            }).collect::<Result<BTreeSet<usize>, String>>()?;
+            let type_parameter_indices =
+                (0..type_definition.type_parameters.len()).collect::<BTreeSet<usize>>();
+            lpt_assert_eq!(
+                notation_capture_indices,
+                type_parameter_indices,
+                "Notation {} for predicate {} didn't capture the right set of indices",
+                type_definition.notation,
+                typename
+            );
+
             for (constructor_name, constructor) in &type_definition.constructors {
                 observe_global_name(constructor_name)?;
                 let mut arguments_map: HashMap<&str, &str> = HashMap::new();

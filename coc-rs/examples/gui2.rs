@@ -6,6 +6,7 @@ use coc_rs::constructors::Constructors;
 use coc_rs::metavariable::{Environment, MetavariableId};
 use coc_rs::utils::{read_json_file, write_json_file};
 use quick_and_dirty_web_gui::{callback, callback_with};
+use std::collections::HashMap;
 use std::iter::zip;
 use std::sync::{LazyLock, Mutex};
 use typed_html::elements::{FlowContent, PhrasingContent};
@@ -68,6 +69,30 @@ impl Interface {
             Some(id) => self.inline_metavariable_name_id(id),
         }
     }
+    fn inline_notation(
+        &self,
+        notation: &str,
+        mut child_func: impl FnMut(&str) -> PhrasingElement,
+    ) -> Span {
+        let mut elements: Vec<PhrasingElement> = Vec::new();
+        let mut rest = notation;
+        while let Some(captures) = Constructors::notation_regex().captures(rest) {
+            let before = &rest[..captures.get(0).unwrap().start()];
+            if before.len() > 0 {
+                elements.push(text!(before));
+            }
+            elements.push(child_func(captures.get(1).unwrap().as_str()));
+            rest = &rest[captures.get(0).unwrap().end()..];
+        }
+        if rest.len() > 0 {
+            elements.push(text!(rest));
+        }
+        html! {
+            <span class="notation">
+                {elements}
+            </span> : String
+        }
+    }
 
     fn node_element(&self, id: MetavariableId) -> FlowElement {
         let metavariable = self.environment.get(id);
@@ -86,13 +111,14 @@ impl Interface {
                 move |name: String| rename_metavariable (id,name)
             )} /> : String
         });
+        self_elements.push(self.inline_metavariable_name_id(id));
         self_elements.push(html! {
             <button onclick={callback(move || use_metavariable(id))}>
                 "Use"
             </button> : String
         });
-        self_elements.push(self.inline_metavariable_name_id(id));
-        for (index, typename) in type_definition.type_parameters.iter().enumerate() {
+        self_elements.push(self.inline_notation(&type_definition.notation, |index| {
+            let index = index.parse::<usize>().unwrap();
             let body = self.inline_child(*metavariable.type_parameters.get(index).unwrap());
             let valid = *validity.type_parameters_valid.get(index).unwrap();
             let class = if valid {
@@ -101,12 +127,12 @@ impl Interface {
                 "child invalid"
             };
 
-            child_elements.push(html! {
-                <div class=class onclick={callback(move || set_focus(id,Some (WhichChild::TypeParameter (index))))}>
-                    {text!(typename)} " = " {body}
-                </div> : String
-            });
-        }
+            html! {
+                <span class=class onclick={callback(move || set_focus(id,Some (WhichChild::TypeParameter (index))))}>
+                    {body}
+                </span> : String
+            }
+        }));
         match &metavariable.constructor {
             None => {
                 for (constructor_name, _) in type_definition.constructors.iter() {
@@ -200,7 +226,7 @@ impl Interface {
         let new_buttons = Constructors::coc().types.keys().cloned().map(|typename| {
             let text = text!(&typename);
             html! {
-                <div class="new_global">
+                <div class="new_metavariable">
                     <button onclick={callback(move || new_global(typename.clone()))}>
                         {text}
                     </button>
@@ -209,7 +235,9 @@ impl Interface {
         });
         html! {
             <div class="page">
-                {new_buttons}
+                <div class="new_metavariables">
+                    {new_buttons}
+                </div>
                 {nodes}
             </div>
         }
