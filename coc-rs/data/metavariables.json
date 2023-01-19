@@ -1,4 +1,24 @@
 {
+  "124791da-56f3-48cc-b9dd-c476fdb03d61": {
+    "name": "",
+    "typename": "Term",
+    "type_parameters": [],
+    "constructor": {
+      "name": "VariableUsage",
+      "data_arguments": {},
+      "preconditions": []
+    }
+  },
+  "204f0058-b75c-471e-9a8f-a532e13bd618": {
+    "name": "",
+    "typename": "BindingTree",
+    "type_parameters": [],
+    "constructor": {
+      "name": "BindVariable",
+      "data_arguments": {},
+      "preconditions": []
+    }
+  },
   "23292a56-d007-406a-bbdf-dcef092bbb6c": {
     "name": "PropIsType",
     "typename": "HasType",
@@ -38,11 +58,28 @@
       "preconditions": []
     }
   },
+  "56bc8b93-ab49-475b-92a0-c96dfa6e15cd": {
+    "name": "",
+    "typename": "BindingTree",
+    "type_parameters": [],
+    "constructor": {
+      "name": "BindBranch",
+      "data_arguments": {
+        "m": null,
+        "n": null
+      },
+      "preconditions": []
+    }
+  },
   "70b9cb7f-bee4-4d6d-a788-2cb90051e13e": {
     "name": "",
     "typename": "AbstractionKind",
     "type_parameters": [],
-    "constructor": null
+    "constructor": {
+      "name": "ForAll",
+      "data_arguments": {},
+      "preconditions": []
+    }
   },
   "70e91b64-7e97-48ca-9145-b0c460c73af9": {
     "name": "",
@@ -54,6 +91,47 @@
       "preconditions": []
     }
   },
+  "84316150-415f-4da0-b5bc-869fd349cb09": {
+    "name": "False",
+    "typename": "Term",
+    "type_parameters": [],
+    "constructor": {
+      "name": "Abstraction",
+      "data_arguments": {
+        "argument_type": "36672dfa-deaa-4f59-9a02-d46f44337963",
+        "bindings": "204f0058-b75c-471e-9a8f-a532e13bd618",
+        "body": "124791da-56f3-48cc-b9dd-c476fdb03d61",
+        "kind": "70b9cb7f-bee4-4d6d-a788-2cb90051e13e"
+      },
+      "preconditions": []
+    }
+  },
+  "ab469acc-9936-4097-8286-ced7cf5baee5": {
+    "name": "",
+    "typename": "Context",
+    "type_parameters": [],
+    "constructor": {
+      "name": "ContextKnownVariable",
+      "data_arguments": {
+        "binding_context": "bf0956bc-79bf-4903-9e5b-876e76376d51",
+        "binding_term": "84316150-415f-4da0-b5bc-869fd349cb09"
+      },
+      "preconditions": []
+    }
+  },
+  "bf0956bc-79bf-4903-9e5b-876e76376d51": {
+    "name": "",
+    "typename": "Context",
+    "type_parameters": [],
+    "constructor": {
+      "name": "ContextBranch",
+      "data_arguments": {
+        "m": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
+        "n": "c718c640-6ba3-4f0e-9fce-2ade31143ac9"
+      },
+      "preconditions": []
+    }
+  },
   "c718c640-6ba3-4f0e-9fce-2ade31143ac9": {
     "name": "",
     "typename": "Context",
@@ -62,6 +140,34 @@
       "name": "ContextHole",
       "data_arguments": {},
       "preconditions": []
+    }
+  },
+  "eb63bcd8-0a3f-4065-887e-18754d43e30c": {
+    "name": "",
+    "typename": "HasType",
+    "type_parameters": [
+      "84316150-415f-4da0-b5bc-869fd349cb09",
+      "bf0956bc-79bf-4903-9e5b-876e76376d51",
+      "36672dfa-deaa-4f59-9a02-d46f44337963",
+      "c718c640-6ba3-4f0e-9fce-2ade31143ac9"
+    ],
+    "constructor": {
+      "name": "TypeOfForAll",
+      "data_arguments": {
+        "argument_context": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
+        "argument_type": "36672dfa-deaa-4f59-9a02-d46f44337963",
+        "bindings": "204f0058-b75c-471e-9a8f-a532e13bd618",
+        "return_context": "ab469acc-9936-4097-8286-ced7cf5baee5",
+        "return_context_before_bindings": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
+        "return_type": "124791da-56f3-48cc-b9dd-c476fdb03d61",
+        "s1": "70e91b64-7e97-48ca-9145-b0c460c73af9",
+        "s2": "ed22f6a4-e9f1-43a7-9578-4d50d7c027aa"
+      },
+      "preconditions": [
+        "23292a56-d007-406a-bbdf-dcef092bbb6c",
+        "23292a56-d007-406a-bbdf-dcef092bbb6c",
+        null
+      ]
     }
   },
   "ed22f6a4-e9f1-43a7-9578-4d50d7c027aa": {

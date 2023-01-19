@@ -99,7 +99,6 @@ impl Interface {
                         if !metavariable.name.is_empty() {
                             next.push(Item::Text(metavariable.name.clone()));
                         } else if let Some(constructor) = &metavariable.constructor {
-                            expanded = true;
                             let type_definition = Constructors::coc()
                                 .types
                                 .get(&metavariable.typename)
@@ -107,6 +106,7 @@ impl Interface {
                             let constructor_definition =
                                 type_definition.constructors.get(&constructor.name).unwrap();
                             if let Some(notation) = &constructor_definition.notation {
+                                expanded = true;
                                 for item in &notation.items {
                                     next.push(match item {
                                         NotationItem::Text(text) => Item::Text(text.clone()),
@@ -323,10 +323,10 @@ impl Interface {
         // why make a binding for this? just to suppress an IDE bug
         let result: FlowElement = html! {
             <div class="node" onclick={callback(move || set_focus(id, None))}>
-                <div class="self">
+                <div class="name_etc">
                     {self_elements}
                 </div>
-                <div class="children">
+                <div class="arguments">
                     {child_elements}
                 </div>
             </div> : String

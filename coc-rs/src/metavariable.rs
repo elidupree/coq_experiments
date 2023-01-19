@@ -121,23 +121,26 @@ impl Environment {
 
             let constructor_definition =
                 type_definition.constructors.get(&constructor.name).unwrap();
-            data_arguments_valid = zip(
-                constructor.data_arguments.values(),
-                &constructor_definition.data_arguments,
-            )
-            .map(|(a, argument_definition)| {
-                (
-                    argument_definition.name.clone(),
-                    match a {
-                        None => false,
-                        Some(other_id) => {
-                            let other = self.get(*other_id);
-                            other.typename == argument_definition.datatype
-                        }
-                    },
-                )
-            })
-            .collect();
+            data_arguments_valid = constructor_definition
+                .data_arguments
+                .iter()
+                .map(|argument_definition| {
+                    let a = constructor
+                        .data_arguments
+                        .get(&argument_definition.name)
+                        .unwrap();
+                    (
+                        argument_definition.name.clone(),
+                        match a {
+                            None => false,
+                            Some(other_id) => {
+                                let other = self.get(*other_id);
+                                other.typename == argument_definition.datatype
+                            }
+                        },
+                    )
+                })
+                .collect();
 
             preconditions_valid = zip(
                 &constructor.preconditions,

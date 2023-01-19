@@ -193,7 +193,7 @@ TypeOfForAll (
     _ : AddBindingsToContext bindings (ContextKnownVariable (Abstraction ForAll argument_type return_type bindings) (ContextBranch argument_context return_context_before_bindings)) return_context_before_bindings return_context
 ) -> HasType
     (Abstraction ForAll argument_type return_type bindings)
-    (ContextBranch argument_context return_context)
+    (ContextBranch argument_context return_context_before_bindings)
     (SortTerm s2) ContextHole;
 
 TypeOfLambda (
