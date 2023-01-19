@@ -1,7 +1,7 @@
 body {
   font-size: 120%;
 }
-.globals, .goals, .new_metavariables {
+.globals, .goals, .new_metavariables, .nodes {
     display: flex;
     flex-wrap: wrap;
 }

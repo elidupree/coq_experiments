@@ -65,8 +65,25 @@
     "constructor": {
       "name": "BindBranch",
       "data_arguments": {
-        "m": null,
-        "n": null
+        "m": "fb2abfeb-7528-4f6f-ada6-ce07352c285a",
+        "n": "fb2abfeb-7528-4f6f-ada6-ce07352c285a"
+      },
+      "preconditions": []
+    }
+  },
+  "67ce6c90-6671-4a9d-8be5-a556208675f0": {
+    "name": "",
+    "typename": "AddBindingsToContext",
+    "type_parameters": [
+      "204f0058-b75c-471e-9a8f-a532e13bd618",
+      "ab469acc-9936-4097-8286-ced7cf5baee5",
+      "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
+      "ab469acc-9936-4097-8286-ced7cf5baee5"
+    ],
+    "constructor": {
+      "name": "AddBindingsToContextVariable",
+      "data_arguments": {
+        "inserted_context": "ab469acc-9936-4097-8286-ced7cf5baee5"
       },
       "preconditions": []
     }
@@ -165,8 +182,8 @@
       },
       "preconditions": [
         "23292a56-d007-406a-bbdf-dcef092bbb6c",
-        "23292a56-d007-406a-bbdf-dcef092bbb6c",
-        null
+        "edaa355c-81a5-45da-8610-e5c329ef29c6",
+        "67ce6c90-6671-4a9d-8be5-a556208675f0"
       ]
     }
   },
@@ -176,6 +193,38 @@
     "type_parameters": [],
     "constructor": {
       "name": "Prop",
+      "data_arguments": {},
+      "preconditions": []
+    }
+  },
+  "edaa355c-81a5-45da-8610-e5c329ef29c6": {
+    "name": "",
+    "typename": "HasType",
+    "type_parameters": [
+      "124791da-56f3-48cc-b9dd-c476fdb03d61",
+      "ab469acc-9936-4097-8286-ced7cf5baee5",
+      "36672dfa-deaa-4f59-9a02-d46f44337963",
+      "c718c640-6ba3-4f0e-9fce-2ade31143ac9"
+    ],
+    "constructor": {
+      "name": "TypeOfVariableUsage",
+      "data_arguments": {
+        "argument_context": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
+        "argument_type": "36672dfa-deaa-4f59-9a02-d46f44337963",
+        "bindings": "204f0058-b75c-471e-9a8f-a532e13bd618",
+        "body": "124791da-56f3-48cc-b9dd-c476fdb03d61",
+        "body_context": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
+        "kind": "70b9cb7f-bee4-4d6d-a788-2cb90051e13e"
+      },
+      "preconditions": []
+    }
+  },
+  "fb2abfeb-7528-4f6f-ada6-ce07352c285a": {
+    "name": "",
+    "typename": "BindingTree",
+    "type_parameters": [],
+    "constructor": {
+      "name": "BindNotThis",
       "data_arguments": {},
       "preconditions": []
     }

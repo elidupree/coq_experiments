@@ -28,7 +28,7 @@ BetaReductionR (reduction: WhichBetaReduction) -> WhichBetaReduction, notated "�
   by sharing the tree structure of the term. */
 data Context;
 ContextHole ()-> Context, notated "∅";
-ContextKnownVariable (binding_term: Term, binding_context: Context)-> Context, notated "{binding_term}/{binding_context}";
+ContextKnownVariable (binding_term: Term, binding_context: Context)-> Context, notated "𝕍({binding_term}/{binding_context})";
 ContextBranch(m: Context,n: Context)-> Context, notated "({m} {n})";
 
 predicate EmptyBindingsShapedLike Term BindingTree, notated "{0}'s empty bindings are {1}";

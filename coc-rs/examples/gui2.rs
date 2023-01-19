@@ -44,7 +44,7 @@ impl Interface {
             format!("color: hwb({h1}turn 0.0% {b}%); background-color: hwb({h2}turn {w}% 0.0%)");
 
         html! {
-            <span class="metavariable_name_id" style=style onclick={callback(move || set_focus(id, None))}>
+            <span class="metavariable_name_id" style=style/* onclick={callback(move || set_focus(id, None))}*/>
                 {text!(name)}
             </span> : String
         }
@@ -128,7 +128,7 @@ impl Interface {
                     }
                 }
             }
-            if !expanded || length(&next) > 10 {
+            if !expanded || length(&next) > 20 {
                 let mut result = String::new();
                 for item in items {
                     result.push_str(&match item {
