@@ -1,9 +1,6 @@
 #![feature(array_chunks)]
 #![feature(once_cell)]
 
-use autograd::ndarray::{Array1, Array2};
-use autograd::optimizers::{Adam, Optimizer, SGD};
-use autograd::variable::NamespaceTrait;
 use clap::{arg, Parser};
 use coc_rs::constructors::{Constructors, DataValue, Notation, NotationItem};
 use coc_rs::metavariable::{Environment, MetavariableId};
@@ -12,7 +9,6 @@ use quick_and_dirty_web_gui::{callback, callback_with};
 use std::collections::{BTreeMap, HashMap};
 use std::iter::zip;
 use std::sync::{LazyLock, Mutex};
-use std::time::Duration;
 use typed_html::elements::{FlowContent, PhrasingContent};
 use typed_html::types::Id;
 use typed_html::{elements, html, text};
@@ -24,22 +20,7 @@ pub type Span = Box<elements::span<String>>;
 struct Interface {
     file_path: String,
     environment: Environment,
-    node_positions: BTreeMap<MetavariableId, NodePosition>,
     focus: Option<(MetavariableId, Option<WhichChild>)>,
-}
-
-struct NodePosition {
-    position: [f32; 2],
-    log_size: f32,
-}
-
-impl NodePosition {
-    fn random() -> Self {
-        NodePosition {
-            position: rand::random(),
-            log_size: 0.1f32.ln(),
-        }
-    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -57,58 +38,15 @@ struct MetavariableColors {
 }
 
 impl Interface {
-    fn optimize_positions(&mut self) {
-        let mut position_data = Vec::with_capacity(self.environment.metavariables().len() * 2);
-        let mut log_size_data = Vec::with_capacity(self.environment.metavariables().len());
-        let mut indices = BTreeMap::new();
-        for (index, (&id, _metavariable)) in self.environment.metavariables().iter().enumerate() {
-            let position = self
-                .node_positions
-                .entry(id)
-                .or_insert_with(NodePosition::random);
-            position_data.extend_from_slice(&position.position);
-            log_size_data.push(position.log_size);
-            indices.insert(id, index);
-        }
-        let position_array =
-            Array2::from_shape_vec((self.environment.metavariables().len(), 2), position_data)
-                .unwrap();
-        let log_size_array = Array1::from(log_size_data);
-        let mut variable_environment = autograd::VariableEnvironment::new();
-        let positions = variable_environment.name("positions").set(position_array);
-        let log_sizes = variable_environment.name("log_sizes").set(log_size_array);
-
-        let optimizer = Adam::default(
-            "optimizer",
-            variable_environment.default_namespace().current_var_ids(),
-            &mut variable_environment,
-        );
-        // let optimizer = SGD::new(0.00005);
-        for _epoch in 0..100 {
-            variable_environment.run(|ctx| {
-                use autograd::tensor_ops::*;
-                let positions = ctx.variable_by_id(positions);
-                let sizes = ctx.variable_by_id(log_sizes);
-                let mut loss_components =
-                    Vec::with_capacity(self.environment.metavariables().len());
-                for (index, (&_id, metavariable)) in
-                    self.environment.metavariables().iter().enumerate()
-                {
-                    let position =
-                        slice(positions, &[index as isize, 0], &[index as isize + 1, -1]);
-                    let size = exp(sum_all(slice(
-                        sizes,
-                        &[index as isize],
-                        &[index as isize + 1],
-                    )));
-                    loss_components.push(square(inv(size)) * 0.001);
-                    let x = sum_all(slice(position, &[0, 0], &[1, 1]));
-                    let y = sum_all(slice(position, &[0, 1], &[1, 2]));
-                    loss_components.push(square(relu(x + size - 1.0)) * 750.0);
-                    loss_components.push(square(relu(y + size - 1.0)) * 750.0);
-                    loss_components.push(square(relu(size - x)) * 750.0);
-                    loss_components.push(square(relu(size - y)) * 750.0);
-                    for neighbor in metavariable
+    fn optimized_ordering(&self) -> Vec<MetavariableId> {
+        let references: HashMap<MetavariableId, Vec<MetavariableId>> = self
+            .environment
+            .metavariables()
+            .iter()
+            .map(|(&id, metavariable)| {
+                (
+                    id,
+                    metavariable
                         .type_parameters
                         .iter()
                         .chain(metavariable.constructor.iter().flat_map(|constructor| {
@@ -118,88 +56,106 @@ impl Interface {
                                 .chain(&constructor.preconditions)
                         }))
                         .flatten()
-                    {
-                        let neighbor_index = *indices.get(neighbor).unwrap();
-                        let neighbor_position = slice(
-                            positions,
-                            &[neighbor_index as isize, 0],
-                            &[neighbor_index as isize + 1, -1],
-                        );
-                        let neighbor_size = exp(sum_all(slice(
-                            sizes,
-                            &[neighbor_index as isize],
-                            &[neighbor_index as isize + 1],
-                        )));
-                        let total_size = size + neighbor_size;
-                        let displacement = neighbor_position - position;
-                        let distance_squared = sum_all(square(displacement));
-                        let desired_distance_squared = square(total_size * 1.5);
-                        loss_components.push(
-                            square(relu((distance_squared / desired_distance_squared) - 1.0))
-                                * 50.0,
-                        );
-                    }
-                    for neighbor_index in index + 1..self.environment.metavariables().len() {
-                        let neighbor_position = slice(
-                            positions,
-                            &[neighbor_index as isize, 0],
-                            &[neighbor_index as isize + 1, -1],
-                        );
-                        let neighbor_size = exp(sum_all(slice(
-                            sizes,
-                            &[neighbor_index as isize],
-                            &[neighbor_index as isize + 1],
-                        )));
-                        let total_size = size + neighbor_size;
-                        let displacement = neighbor_position - position;
-                        let distance_squared = sum_all(square(displacement));
-                        let minimum_distance_squared = square(total_size * 1.2);
-                        loss_components.push(
-                            relu(
-                                ((minimum_distance_squared + minimum_distance_squared)
-                                    / (distance_squared + minimum_distance_squared))
-                                    - 1.0,
-                            ) * 1.0,
-                        );
+                        .copied()
+                        .collect(),
+                )
+            })
+            .collect();
+        let mut back_references: HashMap<MetavariableId, Vec<MetavariableId>> = self
+            .environment
+            .metavariables()
+            .iter()
+            .map(|(&id, _)| (id, Vec::new()))
+            .collect();
+        for (&parent, children) in &references {
+            for child in children {
+                back_references.get_mut(child).unwrap().push(parent);
+            }
+        }
+        let mut ordering: Vec<MetavariableId> =
+            self.environment.metavariables().keys().copied().collect();
+        let mut indices: HashMap<MetavariableId, usize> = ordering
+            .iter()
+            .enumerate()
+            .map(|(index, &id)| (id, index))
+            .collect();
+
+        fn edge_loss(parent_index: usize, child_index: usize) -> f32 {
+            let distance = (parent_index as f32 - child_index as f32).powi(2);
+            if parent_index > child_index {
+                distance
+            } else {
+                distance * 200.0
+            }
+        }
+
+        fn all_neighbors_loss(
+            index: usize,
+            id: MetavariableId,
+            exclude_id: Option<MetavariableId>,
+            indices: &HashMap<MetavariableId, usize>,
+            references: &HashMap<MetavariableId, Vec<MetavariableId>>,
+            back_references: &HashMap<MetavariableId, Vec<MetavariableId>>,
+        ) -> f32 {
+            let mut result = 0.0;
+            for &child in &references[&id] {
+                if Some(child) != exclude_id {
+                    result += edge_loss(index, indices[&child]);
+                }
+            }
+            for &parent in &back_references[&id] {
+                if Some(parent) != exclude_id {
+                    result += edge_loss(indices[&parent], index);
+                }
+            }
+            result
+        }
+
+        for _ in 0..10 {
+            let mut changed_anything = false;
+            for ix1 in 0..ordering.len() {
+                for ix2 in ix1..ordering.len() {
+                    let id1 = ordering[ix1];
+                    let id2 = ordering[ix2];
+                    let a =
+                        all_neighbors_loss(ix1, id1, None, &indices, &references, &back_references);
+                    let b = all_neighbors_loss(
+                        ix2,
+                        id2,
+                        Some(id1),
+                        &indices,
+                        &references,
+                        &back_references,
+                    );
+
+                    ordering.swap(ix1, ix2);
+                    *indices.get_mut(&id1).unwrap() = ix2;
+                    *indices.get_mut(&id2).unwrap() = ix1;
+
+                    let c =
+                        all_neighbors_loss(ix1, id2, None, &indices, &references, &back_references);
+                    let d = all_neighbors_loss(
+                        ix2,
+                        id1,
+                        Some(id1),
+                        &indices,
+                        &references,
+                        &back_references,
+                    );
+                    if c + d < a + b {
+                        changed_anything = true;
+                    } else {
+                        ordering.swap(ix1, ix2);
+                        *indices.get_mut(&id1).unwrap() = ix1;
+                        *indices.get_mut(&id2).unwrap() = ix2;
                     }
                 }
-                // loss_components = loss_components.into_iter().map(|s| s.show()).collect();
-                let loss = add_n(&loss_components);
-                // let mut loss = zeros::<[usize; 0], _>(&[], ctx);
-                // for l in loss_components {
-                //     loss = loss.show() + l;
-                // }
-                let grads = &grad(&[loss], &[positions, sizes])
-                    //.into_iter()
-                    //.map(|s| s.show())
-                    //.collect::<Vec<_>>()
-                    ;
-
-                let feeder = autograd::Feeder::new();
-                optimizer.update(&[positions, sizes], grads, ctx, feeder);
-            });
+            }
+            if !changed_anything {
+                break;
+            }
         }
-
-        for ((_id, mp), (position, &log_size)) in zip(
-            &mut self.node_positions,
-            zip(
-                variable_environment
-                    .get_array_by_id(positions)
-                    .unwrap()
-                    .borrow()
-                    .genrows(),
-                variable_environment
-                    .get_array_by_id(log_sizes)
-                    .unwrap()
-                    .borrow()
-                    .iter(),
-            ),
-        ) {
-            mp.position = <&[f32; 2]>::try_from(position.as_slice().unwrap())
-                .unwrap()
-                .clone();
-            mp.log_size = log_size;
-        }
+        ordering
     }
     fn metavariable_colors(&self, id: MetavariableId) -> MetavariableColors {
         if matches!(self.focus_slot_needed_typename(),  Some(need) if self.environment.get(id).typename != *need )
@@ -641,10 +597,6 @@ impl Interface {
                 }
             }
         }
-        // let mp = self.node_positions.get(&id).unwrap();
-        // let top = mp.position[1] * 100.0;
-        // let left = mp.position[0] * 100.0;
-        // let size = mp.log_size.exp() / 0.1;
         let MetavariableColors {
             node_background,
             border,
@@ -667,11 +619,15 @@ impl Interface {
         result
     }
     fn nodes(&self) -> FlowElement {
+        // let nodes = self
+        //     .environment
+        //     .metavariables()
+        //     .iter()
+        //     .map(|(&id, _)| self.node_element(id));
         let nodes = self
-            .environment
-            .metavariables()
-            .iter()
-            .map(|(&id, _)| self.node_element(id));
+            .optimized_ordering()
+            .into_iter()
+            .map(|id| self.node_element(id));
         html! {
             <div class="nodes" onclick={callback(move || unfocus())}>
                 {nodes}
@@ -717,7 +673,6 @@ static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
     Mutex::new(Interface {
         file_path: args.file_path,
         environment,
-        node_positions: Default::default(),
         focus: None,
     })
 });
