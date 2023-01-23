@@ -1,7 +1,7 @@
 body {
   font-size: 120%;
 }
-.background_canvas {
+#background_canvas {
     width: 100vw;
     height: 100vh;
 }
@@ -16,11 +16,12 @@ body {
     position: absolute;
     width: 10vw;
     height: 10vh;
-    background-color: #ddd;
+    background-color: rgba(255,255,255,0.7);
     overflow: hidden;
     display: flex;
     flex-direction: column;
     padding: 0.8em;
+    border-radius: 1.3em;
     border: 2px solid transparent;
     cursor: pointer;
     transition: all 0.3s ease-in;

@@ -30,6 +30,9 @@ function connect() {
           document.body.appendChild(app_options.app_element)
         }
         morphdom(app_options.app_element, message["ReplaceDom"]);
+        if (app_options.on_replace_dom) {
+          app_options.on_replace_dom()
+        }
       }
       else if (message["AppMessage"]) {
         console.log('Got app message');

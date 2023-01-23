@@ -49,6 +49,13 @@ enum WhichChild {
     Precondition(usize),
 }
 
+struct MetavariableColors {
+    name_foreground: String,
+    name_background: String,
+    node_background: String,
+    border: String,
+}
+
 impl Interface {
     fn optimize_positions(&mut self) {
         let mut position_data = Vec::with_capacity(self.environment.metavariables().len() * 2);
@@ -194,20 +201,46 @@ impl Interface {
             mp.log_size = log_size;
         }
     }
-    fn inline_metavariable_name_id(&self, id: MetavariableId) -> Span {
+    fn metavariable_colors(&self, id: MetavariableId) -> MetavariableColors {
         let bytes = id.0.as_u128().to_le_bytes();
         let [h1, h2, b, w, ..] = bytes;
         let h1 = (h1 as f64) / 255.0;
         let h2 = (h1 + 1.0 / 4.0 + ((h2 as f64) / 255.0) / 4.0).fract();
         let b = (0.6 + ((b as f64) / 255.0).powi(3) * 0.4) * 100.0;
         let w = (0.7 + ((w as f64) / 255.0).powi(2) * 0.15) * 100.0;
-
+        let w2 = (w + 150.0) * 0.4;
+        let w3 = w - 40.0;
+        MetavariableColors {
+            name_foreground: format!("hwb({h1}turn 0.0% {b}%)"),
+            name_background: format!("hwb({h2}turn {w}% 0.0%)"),
+            node_background: format!("hwb({h2}turn {w2}% 0.0% / 0.8)"),
+            border: format!("hwb({h2}turn {w3}% 0.0%)"),
+        }
+    }
+    fn implicit_name(&self, id: MetavariableId) -> String {
+        let mut name = self.environment.get(id).name.clone();
+        if name.is_empty() {
+            let [_, _, _, _, abc @ ..] = id.0.as_u128().to_le_bytes();
+            name.extend(
+                abc.into_iter()
+                    .take(3)
+                    .map(|a| char::from_u32(((a as u32) & 63) + 63).unwrap()),
+            );
+        }
+        name
+    }
+    fn inline_metavariable_name_id(&self, id: MetavariableId) -> Span {
         let name = self.unfolded_name(id);
-        let style =
-            format!("color: hwb({h1}turn 0.0% {b}%); background-color: hwb({h2}turn {w}% 0.0%)");
+        let MetavariableColors {
+            name_foreground,
+            name_background,
+            ..
+        } = self.metavariable_colors(id);
+        let style = format!("color: {name_foreground}; background-color: {name_background}");
+        let id_string = id.0.to_string();
 
         html! {
-            <span class="metavariable_name_id" style=style/* onclick={callback(move || set_focus(id, None))}*/>
+            <span class="metavariable_name_id" style=style data-targetid=id_string/* onclick={callback(move || set_focus(id, None))}*/>
                 {text!(name)}
             </span> : String
         }
@@ -223,18 +256,6 @@ impl Interface {
             }
             Some(id) => self.inline_metavariable_name_id(id),
         }
-    }
-    fn implicit_name(&self, id: MetavariableId) -> String {
-        let mut name = self.environment.get(id).name.clone();
-        if name.is_empty() {
-            let [_, _, _, _, abc @ ..] = id.0.as_u128().to_le_bytes();
-            name.extend(
-                abc.into_iter()
-                    .take(3)
-                    .map(|a| char::from_u32(((a as u32) & 63) + 63).unwrap()),
-            );
-        }
-        name
     }
     fn unfolded_name(&self, id: MetavariableId) -> String {
         pub enum Item {
@@ -514,12 +535,17 @@ impl Interface {
         let top = mp.position[1] * 100.0;
         let left = mp.position[0] * 100.0;
         let size = mp.log_size.exp() / 0.1;
+        let MetavariableColors {
+            node_background,
+            border,
+            ..
+        } = self.metavariable_colors(id);
         let style =
-            format!("top: {top}%; left: {left}%; transform: translate(-50%,-50%) scale({size})");
+            format!("background-color: {node_background}; border-color: {border}; top: {top}%; left: {left}%; transform: translate(-50%,-50%) scale({size})");
         // why make a binding for this? just to suppress an IDE bug
         // Note: This exact ID is referenced in the js
         let result: FlowElement = html! {
-            <div class="node" style=style id=Id::new(&*format!("metavariable_{}", id.0)) onclick={callback(move || set_focus(id, None))}>
+            <div class="node" style=style data-color=border id=Id::new(&*format!("metavariable_{}", id.0)) onclick={callback(move || set_focus(id, None))}>
                 <div class="name_etc">
                     {self_elements}
                 </div>
