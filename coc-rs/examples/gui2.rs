@@ -208,7 +208,7 @@ impl Interface {
         let h2 = (h1 + 1.0 / 4.0 + ((h2 as f64) / 255.0) / 4.0).fract();
         let b = (0.6 + ((b as f64) / 255.0).powi(3) * 0.4) * 100.0;
         let w = (0.7 + ((w as f64) / 255.0).powi(2) * 0.15) * 100.0;
-        let w2 = (w + 150.0) * 0.4;
+        let w2 = (w + 300.0) * 0.25;
         let w3 = w - 40.0;
         MetavariableColors {
             name_foreground: format!("hwb({h1}turn 0.0% {b}%)"),
@@ -395,11 +395,45 @@ impl Interface {
             )} /> : String
         });
         self_elements.push(self.inline_metavariable_name_id(id));
-        self_elements.push(html! {
-            <button onclick={callback(move || use_metavariable(id))}>
-                "Use"
-            </button> : String
-        });
+        let use_allowed = match &self.focus {
+            Some((id, Some(child))) => {
+                let focus_metavariable = self.environment.get(*id);
+                let focus_type_definition = Constructors::coc()
+                    .types
+                    .get(&focus_metavariable.typename)
+                    .unwrap();
+                let focus_constructor_definition = focus_metavariable
+                    .constructor
+                    .as_ref()
+                    .map(|c| focus_type_definition.constructors.get(&c.name).unwrap());
+                let needed_typename = match *child {
+                    WhichChild::TypeParameter(index) => {
+                        &focus_type_definition.type_parameters[index]
+                    }
+                    WhichChild::DataArgument(index) => {
+                        &focus_constructor_definition.unwrap().data_arguments[index].datatype
+                    }
+                    WhichChild::Precondition(index) => {
+                        &focus_constructor_definition.unwrap().preconditions[index].predicate_type
+                    }
+                };
+                metavariable.typename == *needed_typename
+            }
+            _ => false,
+        };
+        if use_allowed {
+            self_elements.push(html! {
+                <button onclick={callback(move || use_metavariable(id))}>
+                    "Use"
+                </button> : String
+            });
+        } else {
+            self_elements.push(html! {
+                <button disabled=true>
+                    "Use"
+                </button> : String
+            });
+        }
         self_elements.push(self.inline_notation(&type_definition.notation, |&index| {
             let body = self.inline_child(*metavariable.type_parameters.get(index).unwrap());
             let valid = *validity.type_parameters_valid.get(index).unwrap();
@@ -541,7 +575,7 @@ impl Interface {
             ..
         } = self.metavariable_colors(id);
         let style =
-            format!("background-color: {node_background}; border-color: {border}; top: {top}%; left: {left}%; transform: translate(-50%,-50%) scale({size})");
+            format!("background-color: {node_background}; border-color: {border}; top: {top}%; left: {left}%; transform: translate(-50%,-50%)");
         // why make a binding for this? just to suppress an IDE bug
         // Note: This exact ID is referenced in the js
         let result: FlowElement = html! {
@@ -628,6 +662,7 @@ fn set_focus(id: MetavariableId, child: Option<WhichChild>) {
 fn set_constructor(id: MetavariableId, constructor: Option<String>) {
     with_interface(|interface: &mut Interface| {
         interface.environment.set_constructor(id, constructor);
+        interface.set_focus(id, None);
     });
 }
 

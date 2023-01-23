@@ -69,6 +69,9 @@ impl Environment {
     ) -> bool {
         let Some(id) = id else { return false; };
         let metavariable = self.get(id);
+        if metavariable.typename != *datatype {
+            return false;
+        }
         let datatype = Constructors::coc().types.get(datatype).unwrap();
         match value {
             DataValue::Argument(argname) => data_arguments.get(argname).unwrap() == &Some(id),
