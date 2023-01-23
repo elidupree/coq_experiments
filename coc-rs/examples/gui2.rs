@@ -406,19 +406,6 @@ impl Interface {
         let valid = validity.is_valid();
 
         let use_allowed = self.focus_slot_needed_typename() == Some(&metavariable.typename);
-        let use_button = if use_allowed {
-            html! {
-                <button onclick={callback(move || use_metavariable(id))}>
-                    "Use"
-                </button> : String
-            }
-        } else {
-            html! {
-                <button disabled=true>
-                    "Use"
-                </button> : String
-            }
-        };
 
         let implicit_name = self.implicit_name(id);
         let unfolded_name = self.unfolded_name(id, true);
@@ -448,14 +435,14 @@ impl Interface {
             let unfolded = self.inline_metavariable_reference(id, &unfolded_name);
             lines.push(html! {
                 <div>
-                    {use_button} {unfolded} " : "{type_element}
+                    {unfolded} " : "{type_element}
                 </div>
             });
         } else {
             let name_id = self.inline_metavariable_reference(id, &implicit_name);
             lines.push(html! {
                 <div>
-                    {use_button} {name_id} " : "{type_element}
+                    {name_id} " : "{type_element}
                 </div>
             });
             if let Some(constructor) = &metavariable.constructor {
@@ -654,10 +641,17 @@ impl Interface {
             ..
         } = self.metavariable_colors(id);
         let style = format!("background-color: {node_background}; border-color: {border};");
+        let onclick = callback(move || {
+            if use_allowed {
+                use_metavariable(id)
+            } else {
+                set_focus(id, None)
+            }
+        });
         // why make a binding for this? just to suppress an IDE bug
         // Note: This exact ID is referenced in the js
         let result: FlowElement = html! {
-            <div class="node" style=style data-color=border id=Id::new(&*format!("metavariable_{}", id.0)) onclick={callback(move || set_focus(id, None))}>
+            <div class="node" style=style data-color=border id=Id::new(&*format!("metavariable_{}", id.0)) onclick=onclick>
                 {lines}
                 <div class="name_etc">
                     {self_elements}
