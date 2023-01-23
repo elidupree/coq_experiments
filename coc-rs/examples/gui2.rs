@@ -213,7 +213,7 @@ impl Interface {
         match id {
             None => {
                 html! {
-                    <span class="hole">
+                    <span class="hole invalid">
                         "_"
                     </span> : String
                 }
@@ -222,6 +222,7 @@ impl Interface {
         }
     }
     fn unfolded_name(&self, id: MetavariableId, force_unfold: bool) -> String {
+        #[derive(Debug)]
         pub enum Item {
             Text(String),
             Variable(MetavariableId),
@@ -277,9 +278,11 @@ impl Interface {
                                 } else {
                                     next.push(Item::Variable(id));
                                 }
-                            } else {
+                            } else if force_unfold {
                                 changed_anything = true;
                                 next.push(Item::Text(format!("{} [...]", constructor.name)));
+                            } else {
+                                next.push(Item::Variable(id));
                             }
                         } else {
                             changed_anything = true;
@@ -288,7 +291,7 @@ impl Interface {
                     }
                 }
             }
-            if !changed_anything || (length(&next) > 20 && !force_unfold) {
+            if !changed_anything {
                 let mut result = String::new();
                 for item in items {
                     result.push_str(&match item {
@@ -298,10 +301,12 @@ impl Interface {
                 }
                 return result;
             }
-            if length(&next) > 20 && !force_unfold {
-                allow_increasing_length = false;
-            } else {
+            let too_long = length(&next) > 20;
+            if !too_long || !allow_increasing_length {
                 items = next;
+            }
+            if too_long {
+                allow_increasing_length = false;
             }
             force_unfold = false;
         }
@@ -436,7 +441,10 @@ impl Interface {
                 </span> : String
             }
         });
-        if metavariable.name.is_empty() && unfolded_name.chars().count() <= 3 {
+        if metavariable.name.is_empty()
+            && metavariable.constructor.is_some()
+            && unfolded_name.chars().count() <= 3
+        {
             let unfolded = self.inline_metavariable_reference(id, &unfolded_name);
             lines.push(html! {
                 <div>
@@ -450,11 +458,54 @@ impl Interface {
                     {use_button} {name_id} " : "{type_element}
                 </div>
             });
-            lines.push(html! {
-                <div>
-                    " = "{text!{unfolded_name}}
-                </div>
-            });
+            if let Some(constructor) = &metavariable.constructor {
+                let constructor_definition =
+                    type_definition.constructors.get(&constructor.name).unwrap();
+                if let Some(notation) = &constructor_definition.notation {
+                    let argument_indices: HashMap<&str, usize> = constructor_definition
+                        .data_arguments
+                        .iter()
+                        .enumerate()
+                        .map(|(index, argument)| (&*argument.name, index))
+                        .collect();
+                    let value_element = self.inline_notation(notation, |name| {
+                        let body = self.inline_child(*constructor.data_arguments.get(name).unwrap());
+                        let index = argument_indices[&**name];
+                        let child_valid = *validity.data_arguments_valid.get(name).unwrap();
+                        let class = if matches!(self.focus, Some((i,Some(WhichChild::DataArgument(j)))) if i==id && j==index)
+                        {
+                            "child focused"
+                        } else if child_valid {
+                            "child valid"
+                        } else {
+                            "child invalid"
+                        };
+
+                        html! {
+                            <span class=class onclick={callback(move || set_focus(id,Some (WhichChild::DataArgument(index))))}>
+                                {body}
+                            </span> : String
+                        }
+                    });
+                    lines.push(html! {
+                        <div>
+                            " = "{value_element}
+                        </div>
+                    });
+                } else {
+                    lines.push(html! {
+                        <div>
+                            " = "{text!{unfolded_name}}
+                        </div>
+                    });
+                }
+            } else {
+                lines.push(html! {
+                    <div>
+                        " = "{self.inline_child(None)}
+                    </div>
+                });
+            }
         }
 
         if focused {
