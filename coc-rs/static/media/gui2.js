@@ -18,13 +18,16 @@ function redraw_lines() {
   canvas.height = Math.floor (bounds.height * scale);
   context.scale(scale, scale);
   for (const element of document.querySelectorAll(".metavariable_reference")){
-    const target = document.getElementById(`metavariable_${element.dataset.targetid}`);
-    context.strokeStyle = target.dataset.color;
-    context.lineWidth = 2;
-    context.beginPath();
-    context.moveTo(...center(element));
-    context.lineTo(...center(target));
-    context.stroke();
+    const target_node = document.getElementById(`metavariable_${element.dataset.targetid}`);
+    const target_name = target_node.querySelector(".metavariable_reference");
+    if (target_name !== element) {
+      context.strokeStyle = target_node.dataset.color;
+      context.lineWidth = 2;
+      context.beginPath();
+      context.moveTo(...center(element));
+      context.lineTo(...center(target_name));
+      context.stroke();
+    }
   }
 }
 

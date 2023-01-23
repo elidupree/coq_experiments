@@ -1,9 +1,13 @@
 body {
   font-size: 120%;
+  margin: 0;
 }
 #background_canvas {
     position: absolute;
     z-index: -1;
+}
+.new_metavariables {
+  padding: 8px;
 }
 .new_metavariables, .nodes {
     display: flex;
