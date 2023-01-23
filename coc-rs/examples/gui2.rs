@@ -202,6 +202,15 @@ impl Interface {
         }
     }
     fn metavariable_colors(&self, id: MetavariableId) -> MetavariableColors {
+        if matches!(self.focus_slot_needed_typename(),  Some(need) if self.environment.get(id).typename != *need )
+        {
+            return MetavariableColors {
+                name_foreground: format!("hsl(0turn 0% 40%)"),
+                name_background: format!("hsl(0turn 0% 90%)"),
+                node_background: format!("hsl(0turn 0% 97% / 0.8)"),
+                border: format!("hsl(0turn 0% 80%)"),
+            };
+        }
         let bytes = id.0.as_u128().to_le_bytes();
         let [h1, h2, b, w, ..] = bytes;
         let h1 = (h1 as f64) / 255.0;
@@ -377,25 +386,8 @@ impl Interface {
         }
     }
 
-    fn node_element(&self, id: MetavariableId) -> FlowElement {
-        let metavariable = self.environment.get(id);
-        let type_definition = Constructors::coc()
-            .types
-            .get(&metavariable.typename)
-            .unwrap();
-        let validity = self.environment.local_validity(id);
-        let mut self_elements: Vec<FlowElement> = Vec::new();
-        let mut child_elements: Vec<FlowElement> = Vec::new();
-        let name_element_id = format!("metavariable_{}_name", id.0);
-        self_elements.push(html! {
-            <input id=Id::new(&*name_element_id) type="text" value=&metavariable.name
-              oninput={callback_with(
-                &format!(r##"document.getElementById("{name_element_id}").value"##),
-                move |name: String| rename_metavariable (id,name)
-            )} /> : String
-        });
-        self_elements.push(self.inline_metavariable_name_id(id));
-        let use_allowed = match &self.focus {
+    fn focus_slot_needed_typename(&self) -> Option<&String> {
+        match &self.focus {
             Some((id, Some(child))) => {
                 let focus_metavariable = self.environment.get(*id);
                 let focus_type_definition = Constructors::coc()
@@ -417,10 +409,31 @@ impl Interface {
                         &focus_constructor_definition.unwrap().preconditions[index].predicate_type
                     }
                 };
-                metavariable.typename == *needed_typename
+                Some(needed_typename)
             }
-            _ => false,
-        };
+            _ => None,
+        }
+    }
+
+    fn node_element(&self, id: MetavariableId) -> FlowElement {
+        let metavariable = self.environment.get(id);
+        let type_definition = Constructors::coc()
+            .types
+            .get(&metavariable.typename)
+            .unwrap();
+        let validity = self.environment.local_validity(id);
+        let mut self_elements: Vec<FlowElement> = Vec::new();
+        let mut child_elements: Vec<FlowElement> = Vec::new();
+        let name_element_id = format!("metavariable_{}_name", id.0);
+        self_elements.push(html! {
+            <input id=Id::new(&*name_element_id) type="text" value=&metavariable.name
+              oninput={callback_with(
+                &format!(r##"document.getElementById("{name_element_id}").value"##),
+                move |name: String| rename_metavariable (id,name)
+            )} /> : String
+        });
+        self_elements.push(self.inline_metavariable_name_id(id));
+        let use_allowed = self.focus_slot_needed_typename() == Some(&metavariable.typename);
         if use_allowed {
             self_elements.push(html! {
                 <button onclick={callback(move || use_metavariable(id))}>
@@ -575,7 +588,7 @@ impl Interface {
             ..
         } = self.metavariable_colors(id);
         let style =
-            format!("background-color: {node_background}; border-color: {border}; top: {top}%; left: {left}%; transform: translate(-50%,-50%)");
+            format!("background-color: {node_background}; border-color: {border}; top: {top}%; left: {left}%;");
         // why make a binding for this? just to suppress an IDE bug
         // Note: This exact ID is referenced in the js
         let result: FlowElement = html! {
@@ -697,6 +710,7 @@ fn use_metavariable(id: MetavariableId) {
                         .set_precondition(focus_id, index, Some(id));
                 }
             }
+            interface.set_focus(focus_id, None);
         }
     });
 }
