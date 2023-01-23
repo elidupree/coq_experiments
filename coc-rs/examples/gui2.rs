@@ -281,15 +281,17 @@ impl Interface {
                 .sum()
         };
         let mut force_unfold = force_unfold;
+        let mut allow_increasing_length = true;
         loop {
             let mut next = Vec::with_capacity(items.len() * 2);
-            let mut expanded = false;
+            let mut changed_anything = false;
             for item in &items {
                 match item {
                     Item::Text(text) => next.push(Item::Text(text.clone())),
                     &Item::Variable(id) => {
                         let metavariable = self.environment.get(id);
                         if !metavariable.name.is_empty() && !force_unfold {
+                            changed_anything = true;
                             next.push(Item::Text(metavariable.name.clone()));
                         } else if let Some(constructor) = &metavariable.constructor {
                             let type_definition = Constructors::coc()
@@ -299,9 +301,10 @@ impl Interface {
                             let constructor_definition =
                                 type_definition.constructors.get(&constructor.name).unwrap();
                             if let Some(notation) = &constructor_definition.notation {
-                                expanded = true;
-                                for item in &notation.items {
-                                    next.push(match item {
+                                let new_items: Vec<_> = notation
+                                    .items
+                                    .iter()
+                                    .map(|item| match item {
                                         NotationItem::Text(text) => Item::Text(text.clone()),
                                         NotationItem::Argument(argument) => {
                                             match constructor.data_arguments.get(argument).unwrap()
@@ -310,18 +313,26 @@ impl Interface {
                                                 None => Item::Text("_".to_owned()),
                                             }
                                         }
-                                    });
+                                    })
+                                    .collect();
+                                if allow_increasing_length || length(&new_items) <= 3 {
+                                    changed_anything = true;
+                                    next.extend(new_items);
+                                } else {
+                                    next.push(Item::Variable(id));
                                 }
                             } else {
+                                changed_anything = true;
                                 next.push(Item::Text(format!("{} [...]", constructor.name)));
                             }
                         } else {
+                            changed_anything = true;
                             next.push(Item::Text("_".to_owned()));
                         }
                     }
                 }
             }
-            if (!expanded || length(&next) > 20) && !force_unfold {
+            if !changed_anything || (length(&next) > 20 && !force_unfold) {
                 let mut result = String::new();
                 for item in items {
                     result.push_str(&match item {
@@ -331,8 +342,12 @@ impl Interface {
                 }
                 return result;
             }
+            if length(&next) > 20 && !force_unfold {
+                allow_increasing_length = false;
+            } else {
+                items = next;
+            }
             force_unfold = false;
-            items = next;
         }
     }
 
