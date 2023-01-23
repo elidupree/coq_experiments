@@ -11,10 +11,13 @@ function center (element){
 
 function redraw_lines() {
   scale = window.devicePixelRatio;
-  canvas.width = Math.floor (window.innerWidth * scale);
-  canvas.height = Math.floor (window.innerHeight * scale);
+  const bounds = document.body.getBoundingClientRect();
+  canvas.style.width = bounds.width+"px";
+  canvas.style.height = bounds.height+"px";
+  canvas.width = Math.floor (bounds.width * scale);
+  canvas.height = Math.floor (bounds.height * scale);
   context.scale(scale, scale);
-  for (const element of document.querySelectorAll(".metavariable_name_id")){
+  for (const element of document.querySelectorAll(".metavariable_reference")){
     const target = document.getElementById(`metavariable_${element.dataset.targetid}`);
     context.strokeStyle = target.dataset.color;
     context.lineWidth = 2;

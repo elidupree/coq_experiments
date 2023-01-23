@@ -2,23 +2,26 @@ body {
   font-size: 120%;
 }
 #background_canvas {
-    width: 100vw;
-    height: 100vh;
+    position: absolute;
+    z-index: -1;
 }
 .new_metavariables, .nodes {
     display: flex;
     flex-wrap: wrap;
 }
+.nodes {
+  align-items: center;
+}
 .invalid {
   border: 2px solid red;
 }
 .node {
-    position: absolute;
     background-color: rgba(255,255,255,0.7);
     overflow: hidden;
     display: flex;
     flex-direction: column;
     padding: 0.8em;
+    margin: 1.6em;
     border-radius: 1.3em;
     border: 2px solid transparent;
     cursor: pointer;
@@ -26,7 +29,14 @@ body {
 .node:hover {
   border-color: black;
 }
-.metavariable_name_id {
+.child.focused {
+  border: 2px solid blue;
+}
+.child:hover {
+  filter: brightness(0.9) saturate(130%);
+  background-color: rgba(60,60,255,0.2);
+}
+.metavariable_reference {
   padding: 0 0.2em;
   border-radius: 0.2em;
 }

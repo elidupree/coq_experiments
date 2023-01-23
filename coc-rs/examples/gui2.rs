@@ -238,8 +238,7 @@ impl Interface {
         }
         name
     }
-    fn inline_metavariable_name_id(&self, id: MetavariableId) -> Span {
-        let name = self.unfolded_name(id);
+    fn inline_metavariable_reference(&self, id: MetavariableId, name: &str) -> Span {
         let MetavariableColors {
             name_foreground,
             name_background,
@@ -249,7 +248,7 @@ impl Interface {
         let id_string = id.0.to_string();
 
         html! {
-            <span class="metavariable_name_id" style=style data-targetid=id_string/* onclick={callback(move || set_focus(id, None))}*/>
+            <span class="metavariable_reference" style=style data-targetid=id_string/* onclick={callback(move || set_focus(id, None))}*/>
                 {text!(name)}
             </span> : String
         }
@@ -263,10 +262,10 @@ impl Interface {
                     </span> : String
                 }
             }
-            Some(id) => self.inline_metavariable_name_id(id),
+            Some(id) => self.inline_metavariable_reference(id, &self.unfolded_name(id, false)),
         }
     }
-    fn unfolded_name(&self, id: MetavariableId) -> String {
+    fn unfolded_name(&self, id: MetavariableId, force_unfold: bool) -> String {
         pub enum Item {
             Text(String),
             Variable(MetavariableId),
@@ -276,11 +275,12 @@ impl Interface {
             items
                 .iter()
                 .map(|item| match item {
-                    Item::Text(text) => text.len(),
-                    &Item::Variable(id) => self.implicit_name(id).len(),
+                    Item::Text(text) => text.chars().count(),
+                    &Item::Variable(id) => self.implicit_name(id).chars().count(),
                 })
                 .sum()
         };
+        let mut force_unfold = force_unfold;
         loop {
             let mut next = Vec::with_capacity(items.len() * 2);
             let mut expanded = false;
@@ -289,7 +289,7 @@ impl Interface {
                     Item::Text(text) => next.push(Item::Text(text.clone())),
                     &Item::Variable(id) => {
                         let metavariable = self.environment.get(id);
-                        if !metavariable.name.is_empty() {
+                        if !metavariable.name.is_empty() && !force_unfold {
                             next.push(Item::Text(metavariable.name.clone()));
                         } else if let Some(constructor) = &metavariable.constructor {
                             let type_definition = Constructors::coc()
@@ -313,7 +313,7 @@ impl Interface {
                                     });
                                 }
                             } else {
-                                next.push(Item::Variable(id));
+                                next.push(Item::Text(format!("{} [...]", constructor.name)));
                             }
                         } else {
                             next.push(Item::Text("_".to_owned()));
@@ -321,7 +321,7 @@ impl Interface {
                     }
                 }
             }
-            if !expanded || length(&next) > 20 {
+            if (!expanded || length(&next) > 20) && !force_unfold {
                 let mut result = String::new();
                 for item in items {
                     result.push_str(&match item {
@@ -331,6 +331,7 @@ impl Interface {
                 }
                 return result;
             }
+            force_unfold = false;
             items = next;
         }
     }
@@ -422,35 +423,37 @@ impl Interface {
             .get(&metavariable.typename)
             .unwrap();
         let validity = self.environment.local_validity(id);
+        let mut lines: Vec<FlowElement> = Vec::new();
         let mut self_elements: Vec<FlowElement> = Vec::new();
         let mut child_elements: Vec<FlowElement> = Vec::new();
-        let name_element_id = format!("metavariable_{}_name", id.0);
-        self_elements.push(html! {
-            <input id=Id::new(&*name_element_id) type="text" value=&metavariable.name
-              oninput={callback_with(
-                &format!(r##"document.getElementById("{name_element_id}").value"##),
-                move |name: String| rename_metavariable (id,name)
-            )} /> : String
-        });
-        self_elements.push(self.inline_metavariable_name_id(id));
+        let focused = matches!(self.focus, Some((i, _)) if i == id);
+        let valid = validity.is_valid();
+
         let use_allowed = self.focus_slot_needed_typename() == Some(&metavariable.typename);
-        if use_allowed {
-            self_elements.push(html! {
+        let use_button = if use_allowed {
+            html! {
                 <button onclick={callback(move || use_metavariable(id))}>
                     "Use"
                 </button> : String
-            });
+            }
         } else {
-            self_elements.push(html! {
+            html! {
                 <button disabled=true>
                     "Use"
                 </button> : String
-            });
-        }
-        self_elements.push(self.inline_notation(&type_definition.notation, |&index| {
+            }
+        };
+
+        let implicit_name = self.implicit_name(id);
+        let unfolded_name = self.unfolded_name(id, true);
+
+        let type_element = self.inline_notation(&type_definition.notation, |&index| {
             let body = self.inline_child(*metavariable.type_parameters.get(index).unwrap());
-            let valid = *validity.type_parameters_valid.get(index).unwrap();
-            let class = if valid {
+            let child_valid = *validity.type_parameters_valid.get(index).unwrap();
+            let class = if matches!(self.focus, Some((i,Some(WhichChild::TypeParameter(j)))) if i==id && j==index)
+            {
+                "child focused"
+            } else if child_valid {
                 "child valid"
             } else {
                 "child invalid"
@@ -461,25 +464,60 @@ impl Interface {
                     {body}
                 </span> : String
             }
-        }));
+        });
+        if metavariable.name.is_empty() && unfolded_name.chars().count() <= 3 {
+            let unfolded = self.inline_metavariable_reference(id, &unfolded_name);
+            lines.push(html! {
+                <div>
+                    {use_button} {unfolded} " : "{type_element}
+                </div>
+            });
+        } else {
+            let name_id = self.inline_metavariable_reference(id, &implicit_name);
+            lines.push(html! {
+                <div>
+                    {use_button} {name_id} " : "{type_element}
+                </div>
+            });
+            lines.push(html! {
+                <div>
+                    " = "{text!{unfolded_name}}
+                </div>
+            });
+        }
+
+        if focused {
+            let name_element_id = format!("metavariable_{}_name", id.0);
+            self_elements.push(html! {
+                <input id=Id::new(&*name_element_id) type="text" value=&metavariable.name
+                  oninput={callback_with(
+                    &format!(r##"document.getElementById("{name_element_id}").value"##),
+                    move |name: String| rename_metavariable (id,name)
+                )} /> : String
+            });
+        }
         match &metavariable.constructor {
             None => {
-                for (constructor_name, _) in type_definition.constructors.iter() {
-                    let text = text!(constructor_name);
-                    let constructor_name = constructor_name.clone();
-                    child_elements.push(html! {
-                        <button onclick={callback(move || set_constructor(id,Some (constructor_name.clone())))}>
-                            {text}
-                        </button> : String
-                    });
+                if focused || !valid {
+                    for (constructor_name, _) in type_definition.constructors.iter() {
+                        let text = text!(constructor_name);
+                        let constructor_name = constructor_name.clone();
+                        child_elements.push(html! {
+                            <button onclick={callback(move || set_constructor(id,Some (constructor_name.clone())))}>
+                                {text}
+                            </button> : String
+                        });
+                    }
                 }
             }
             Some(constructor) => {
-                child_elements.push(html! {
-                    <button onclick={callback(move || set_constructor(id,None))}>
-                        "Remove constructor"
-                    </button> : String
-                });
+                if focused || !valid {
+                    child_elements.push(html! {
+                        <button onclick={callback(move || set_constructor(id,None))}>
+                            "Remove constructor"
+                        </button> : String
+                    });
+                }
                 let constructor_definition =
                     type_definition.constructors.get(&constructor.name).unwrap();
                 for (index, argument_definition) in
@@ -492,27 +530,35 @@ impl Interface {
                             .unwrap(),
                     );
                     let argument_name = argument_definition.name.clone();
-                    let valid = *validity.data_arguments_valid.get(&argument_name).unwrap();
-                    let class = if valid {
+                    let child_valid = *validity.data_arguments_valid.get(&argument_name).unwrap();
+                    let class = if matches!(self.focus, Some((i,Some(WhichChild::DataArgument(j)))) if i==id && j==index)
+                    {
+                        "child focused"
+                    } else if child_valid {
                         "child valid"
                     } else {
                         "child invalid"
                     };
 
-                    child_elements.push(html! {
-                        <div class=class onclick={callback(move || set_focus(id,Some (WhichChild::DataArgument (index))))}>
-                            {text!(argument_name)} " = " {body}
-                        </div> : String
-                    });
+                    if focused || !valid {
+                        child_elements.push(html! {
+                            <div class=class onclick={callback(move || set_focus(id,Some (WhichChild::DataArgument (index))))}>
+                                {text!(argument_name)} " = " {body}
+                            </div> : String
+                        });
+                    }
                 }
-                for (index, (argument_definition, valid)) in zip(
+                for (index, (argument_definition, child_valid)) in zip(
                     &constructor_definition.preconditions,
                     validity.preconditions_valid,
                 )
                 .enumerate()
                 {
                     let body = self.inline_child(*constructor.preconditions.get(index).unwrap());
-                    let class = if valid {
+                    let class = if matches!(self.focus, Some((i,Some(WhichChild::Precondition(j)))) if i==id && j==index)
+                    {
+                        "child focused"
+                    } else if child_valid {
                         "child valid"
                     } else {
                         "child invalid"
@@ -552,47 +598,49 @@ impl Interface {
                     });
                 }
 
-                child_elements.push(text!("->"));
-                child_elements.push(self.inline_notation(
-                    &type_definition.notation,
-                    |&index: &usize| {
-                        let typename = type_definition.type_parameters.get(index).unwrap();
-                        let value = constructor_definition
-                            .resulting_type_parameters
-                            .get(index)
-                            .unwrap();
-                        let valid = *validity.return_type_parameters_valid.get(index).unwrap();
+                if focused || !valid {
+                    child_elements.push(text!("->"));
+                    child_elements.push(self.inline_notation(
+                        &type_definition.notation,
+                        |&index: &usize| {
+                            let typename = type_definition.type_parameters.get(index).unwrap();
+                            let value = constructor_definition
+                                .resulting_type_parameters
+                                .get(index)
+                                .unwrap();
+                            let valid = *validity.return_type_parameters_valid.get(index).unwrap();
 
-                        let class = if valid {
-                            "child valid"
-                        } else {
-                            "child invalid"
-                        };
+                            let class = if valid {
+                                "child valid"
+                            } else {
+                                "child invalid"
+                            };
 
-                        html! {
-                            <span class=class>
-                                {self.inline_data_value(value,typename,&constructor.data_arguments)}
-                            </span> : String
-                        }
-                    },
-                ));
+                            html! {
+                                <span class=class>
+                                    {self.inline_data_value(value,typename,&constructor.data_arguments)}
+                                </span> : String
+                            }
+                        },
+                    ));
+                }
             }
         }
-        let mp = self.node_positions.get(&id).unwrap();
-        let top = mp.position[1] * 100.0;
-        let left = mp.position[0] * 100.0;
-        let size = mp.log_size.exp() / 0.1;
+        // let mp = self.node_positions.get(&id).unwrap();
+        // let top = mp.position[1] * 100.0;
+        // let left = mp.position[0] * 100.0;
+        // let size = mp.log_size.exp() / 0.1;
         let MetavariableColors {
             node_background,
             border,
             ..
         } = self.metavariable_colors(id);
-        let style =
-            format!("background-color: {node_background}; border-color: {border}; top: {top}%; left: {left}%;");
+        let style = format!("background-color: {node_background}; border-color: {border};");
         // why make a binding for this? just to suppress an IDE bug
         // Note: This exact ID is referenced in the js
         let result: FlowElement = html! {
             <div class="node" style=style data-color=border id=Id::new(&*format!("metavariable_{}", id.0)) onclick={callback(move || set_focus(id, None))}>
+                {lines}
                 <div class="name_etc">
                     {self_elements}
                 </div>
@@ -610,9 +658,9 @@ impl Interface {
             .iter()
             .map(|(&id, _)| self.node_element(id));
         html! {
-            <div class="nodes">
+            <div class="nodes" onclick={callback(move || unfocus())}>
                 {nodes}
-            </div>
+            </div> : String
         }
     }
     fn whole_page(&self) -> FlowElement {
@@ -633,6 +681,7 @@ impl Interface {
                     {new_buttons}
                 </div>
                 {nodes}
+                <div style="clear: both"></div>
             </div>
         }
     }
@@ -661,9 +710,15 @@ static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
 fn with_interface(f: impl FnOnce(&mut Interface)) {
     let mut interface = INTERFACE.lock().unwrap();
     f(&mut *interface);
-    interface.optimize_positions();
+    //interface.optimize_positions();
     interface.update_gui();
     write_json_file(&interface.file_path, &interface.environment).unwrap();
+}
+
+fn unfocus() {
+    with_interface(|interface: &mut Interface| {
+        interface.focus = None;
+    });
 }
 
 fn set_focus(id: MetavariableId, child: Option<WhichChild>) {
@@ -739,11 +794,11 @@ struct Args {
 #[actix_web::main]
 async fn main() {
     with_interface(|_| {});
-    actix_web::rt::spawn(async {
-        loop {
-            actix_web::rt::time::sleep(Duration::from_millis(1000)).await;
-            with_interface(|_| {});
-        }
-    });
+    // actix_web::rt::spawn(async {
+    //     loop {
+    //         actix_web::rt::time::sleep(Duration::from_millis(1000)).await;
+    //         with_interface(|_| {});
+    //     }
+    // });
     quick_and_dirty_web_gui::launch(4986).await;
 }
