@@ -22,7 +22,6 @@ body {
     border-radius: 1.3em;
     border: 2px solid transparent;
     cursor: pointer;
-    transition: all 0.3s ease-in;
 }
 .node:hover {
   border-color: black;
