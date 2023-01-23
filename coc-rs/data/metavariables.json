@@ -58,19 +58,6 @@
       "preconditions": []
     }
   },
-  "56bc8b93-ab49-475b-92a0-c96dfa6e15cd": {
-    "name": "",
-    "typename": "BindingTree",
-    "type_parameters": [],
-    "constructor": {
-      "name": "BindBranch",
-      "data_arguments": {
-        "m": "fb2abfeb-7528-4f6f-ada6-ce07352c285a",
-        "n": "fb2abfeb-7528-4f6f-ada6-ce07352c285a"
-      },
-      "preconditions": []
-    }
-  },
   "67ce6c90-6671-4a9d-8be5-a556208675f0": {
     "name": "",
     "typename": "AddBindingsToContext",
@@ -216,16 +203,6 @@
         "body_context": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
         "kind": "70b9cb7f-bee4-4d6d-a788-2cb90051e13e"
       },
-      "preconditions": []
-    }
-  },
-  "fb2abfeb-7528-4f6f-ada6-ce07352c285a": {
-    "name": "",
-    "typename": "BindingTree",
-    "type_parameters": [],
-    "constructor": {
-      "name": "BindNotThis",
-      "data_arguments": {},
       "preconditions": []
     }
   }

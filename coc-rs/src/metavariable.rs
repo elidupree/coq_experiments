@@ -296,8 +296,8 @@ impl Environment {
         self.get_mut(id).name = new_name.into();
     }
 
-    pub fn metavariables(&self) -> impl Iterator<Item = (&MetavariableId, &Metavariable)> {
-        self.metavariables.iter()
+    pub fn metavariables(&self) -> &BTreeMap<MetavariableId, Metavariable> {
+        &self.metavariables
     }
 }
 

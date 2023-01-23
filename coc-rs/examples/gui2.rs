@@ -1,7 +1,10 @@
 #![feature(array_chunks)]
 #![feature(once_cell)]
 
-use clap::Parser;
+use autograd::ndarray::{Array1, Array2};
+use autograd::optimizers::{Adam, Optimizer, SGD};
+use autograd::variable::NamespaceTrait;
+use clap::{arg, Parser};
 use coc_rs::constructors::{Constructors, DataValue, Notation, NotationItem};
 use coc_rs::metavariable::{Environment, MetavariableId};
 use coc_rs::utils::{read_json_file, write_json_file};
@@ -9,6 +12,7 @@ use quick_and_dirty_web_gui::{callback, callback_with};
 use std::collections::{BTreeMap, HashMap};
 use std::iter::zip;
 use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
 use typed_html::elements::{FlowContent, PhrasingContent};
 use typed_html::types::Id;
 use typed_html::{elements, html, text};
@@ -20,7 +24,22 @@ pub type Span = Box<elements::span<String>>;
 struct Interface {
     file_path: String,
     environment: Environment,
+    node_positions: BTreeMap<MetavariableId, NodePosition>,
     focus: Option<(MetavariableId, Option<WhichChild>)>,
+}
+
+struct NodePosition {
+    position: [f32; 2],
+    log_size: f32,
+}
+
+impl NodePosition {
+    fn random() -> Self {
+        NodePosition {
+            position: rand::random(),
+            log_size: 0.1f32.ln(),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -31,6 +50,150 @@ enum WhichChild {
 }
 
 impl Interface {
+    fn optimize_positions(&mut self) {
+        let mut position_data = Vec::with_capacity(self.environment.metavariables().len() * 2);
+        let mut log_size_data = Vec::with_capacity(self.environment.metavariables().len());
+        let mut indices = BTreeMap::new();
+        for (index, (&id, _metavariable)) in self.environment.metavariables().iter().enumerate() {
+            let position = self
+                .node_positions
+                .entry(id)
+                .or_insert_with(NodePosition::random);
+            position_data.extend_from_slice(&position.position);
+            log_size_data.push(position.log_size);
+            indices.insert(id, index);
+        }
+        let position_array =
+            Array2::from_shape_vec((self.environment.metavariables().len(), 2), position_data)
+                .unwrap();
+        let log_size_array = Array1::from(log_size_data);
+        let mut variable_environment = autograd::VariableEnvironment::new();
+        let positions = variable_environment.name("positions").set(position_array);
+        let log_sizes = variable_environment.name("log_sizes").set(log_size_array);
+
+        let optimizer = Adam::default(
+            "optimizer",
+            variable_environment.default_namespace().current_var_ids(),
+            &mut variable_environment,
+        );
+        // let optimizer = SGD::new(0.00005);
+        for _epoch in 0..100 {
+            variable_environment.run(|ctx| {
+                use autograd::tensor_ops::*;
+                let positions = ctx.variable_by_id(positions);
+                let sizes = ctx.variable_by_id(log_sizes);
+                let mut loss_components =
+                    Vec::with_capacity(self.environment.metavariables().len());
+                for (index, (&_id, metavariable)) in
+                    self.environment.metavariables().iter().enumerate()
+                {
+                    let position =
+                        slice(positions, &[index as isize, 0], &[index as isize + 1, -1]);
+                    let size = exp(sum_all(slice(
+                        sizes,
+                        &[index as isize],
+                        &[index as isize + 1],
+                    )));
+                    loss_components.push(square(inv(size)) * 0.001);
+                    let x = sum_all(slice(position, &[0, 0], &[1, 1]));
+                    let y = sum_all(slice(position, &[0, 1], &[1, 2]));
+                    loss_components.push(square(relu(x + size - 1.0)) * 750.0);
+                    loss_components.push(square(relu(y + size - 1.0)) * 750.0);
+                    loss_components.push(square(relu(size - x)) * 750.0);
+                    loss_components.push(square(relu(size - y)) * 750.0);
+                    for neighbor in metavariable
+                        .type_parameters
+                        .iter()
+                        .chain(metavariable.constructor.iter().flat_map(|constructor| {
+                            constructor
+                                .data_arguments
+                                .values()
+                                .chain(&constructor.preconditions)
+                        }))
+                        .flatten()
+                    {
+                        let neighbor_index = *indices.get(neighbor).unwrap();
+                        let neighbor_position = slice(
+                            positions,
+                            &[neighbor_index as isize, 0],
+                            &[neighbor_index as isize + 1, -1],
+                        );
+                        let neighbor_size = exp(sum_all(slice(
+                            sizes,
+                            &[neighbor_index as isize],
+                            &[neighbor_index as isize + 1],
+                        )));
+                        let total_size = size + neighbor_size;
+                        let displacement = neighbor_position - position;
+                        let distance_squared = sum_all(square(displacement));
+                        let desired_distance_squared = square(total_size * 1.5);
+                        loss_components.push(
+                            square(relu((distance_squared / desired_distance_squared) - 1.0))
+                                * 50.0,
+                        );
+                    }
+                    for neighbor_index in index + 1..self.environment.metavariables().len() {
+                        let neighbor_position = slice(
+                            positions,
+                            &[neighbor_index as isize, 0],
+                            &[neighbor_index as isize + 1, -1],
+                        );
+                        let neighbor_size = exp(sum_all(slice(
+                            sizes,
+                            &[neighbor_index as isize],
+                            &[neighbor_index as isize + 1],
+                        )));
+                        let total_size = size + neighbor_size;
+                        let displacement = neighbor_position - position;
+                        let distance_squared = sum_all(square(displacement));
+                        let minimum_distance_squared = square(total_size * 1.2);
+                        loss_components.push(
+                            relu(
+                                ((minimum_distance_squared + minimum_distance_squared)
+                                    / (distance_squared + minimum_distance_squared))
+                                    - 1.0,
+                            ) * 1.0,
+                        );
+                    }
+                }
+                // loss_components = loss_components.into_iter().map(|s| s.show()).collect();
+                let loss = add_n(&loss_components);
+                // let mut loss = zeros::<[usize; 0], _>(&[], ctx);
+                // for l in loss_components {
+                //     loss = loss.show() + l;
+                // }
+                let grads = &grad(&[loss], &[positions, sizes])
+                    //.into_iter()
+                    //.map(|s| s.show())
+                    //.collect::<Vec<_>>()
+                    ;
+
+                let feeder = autograd::Feeder::new();
+                optimizer.update(&[positions, sizes], grads, ctx, feeder);
+            });
+        }
+
+        for ((_id, mp), (position, &log_size)) in zip(
+            &mut self.node_positions,
+            zip(
+                variable_environment
+                    .get_array_by_id(positions)
+                    .unwrap()
+                    .borrow()
+                    .genrows(),
+                variable_environment
+                    .get_array_by_id(log_sizes)
+                    .unwrap()
+                    .borrow()
+                    .iter(),
+            ),
+        ) {
+            mp.position = <&[f32; 2]>::try_from(position.as_slice().unwrap())
+                .unwrap()
+                .clone();
+            mp.log_size = log_size;
+        }
+    }
     fn inline_metavariable_name_id(&self, id: MetavariableId) -> Span {
         let bytes = id.0.as_u128().to_le_bytes();
         let [h1, h2, b, w, ..] = bytes;
@@ -287,9 +450,36 @@ impl Interface {
                         "child invalid"
                     };
 
+                    let predicate_definition = Constructors::coc()
+                        .types
+                        .get(&argument_definition.predicate_type)
+                        .unwrap();
+
+                    let full_type = self.inline_notation(&predicate_definition.notation, |&index| {
+                        let value = argument_definition.type_parameters.get(index).unwrap();
+                        let typename = predicate_definition
+                            .type_parameters
+                            .get(index)
+                            .unwrap();
+                        let body = self.inline_data_value(value, typename, &constructor.data_arguments);
+                        self.inline_child(*metavariable.type_parameters.get(index).unwrap());
+                        let valid = *validity.type_parameters_valid.get(index).unwrap();
+                        let class = if valid {
+                            "child valid"
+                        } else {
+                            "child invalid"
+                        };
+
+                        html! {
+                            <span class=class onclick={callback(move || set_focus(id,Some (WhichChild::TypeParameter (index))))}>
+                                {body}
+                            </span> : String
+                        }
+                    });
+
                     child_elements.push(html! {
                         <div class=class onclick={callback(move || set_focus(id,Some (WhichChild::Precondition (index))))}>
-                            {body}" : "{text!("todo")}  
+                            {body}" : "{full_type}  
                         </div> : String
                     });
                 }
@@ -320,9 +510,16 @@ impl Interface {
                 ));
             }
         }
+        let mp = self.node_positions.get(&id).unwrap();
+        let top = mp.position[1] * 100.0;
+        let left = mp.position[0] * 100.0;
+        let size = mp.log_size.exp() / 0.1;
+        let style =
+            format!("top: {top}%; left: {left}%; transform: translate(-50%,-50%) scale({size})");
         // why make a binding for this? just to suppress an IDE bug
+        // Note: This exact ID is referenced in the js
         let result: FlowElement = html! {
-            <div class="node" onclick={callback(move || set_focus(id, None))}>
+            <div class="node" style=style id=Id::new(&*format!("metavariable_{}", id.0)) onclick={callback(move || set_focus(id, None))}>
                 <div class="name_etc">
                     {self_elements}
                 </div>
@@ -337,6 +534,7 @@ impl Interface {
         let nodes = self
             .environment
             .metavariables()
+            .iter()
             .map(|(&id, _)| self.node_element(id));
         html! {
             <div class="nodes">
@@ -382,6 +580,7 @@ static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
     Mutex::new(Interface {
         file_path: args.file_path,
         environment,
+        node_positions: Default::default(),
         focus: None,
     })
 });
@@ -389,6 +588,7 @@ static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
 fn with_interface(f: impl FnOnce(&mut Interface)) {
     let mut interface = INTERFACE.lock().unwrap();
     f(&mut *interface);
+    interface.optimize_positions();
     interface.update_gui();
     write_json_file(&interface.file_path, &interface.environment).unwrap();
 }
@@ -464,5 +664,11 @@ struct Args {
 #[actix_web::main]
 async fn main() {
     with_interface(|_| {});
+    actix_web::rt::spawn(async {
+        loop {
+            actix_web::rt::time::sleep(Duration::from_millis(1000)).await;
+            with_interface(|_| {});
+        }
+    });
     quick_and_dirty_web_gui::launch(4986).await;
 }

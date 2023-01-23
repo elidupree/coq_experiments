@@ -21,6 +21,8 @@ anyhow = "1.0.68"
 lalrpop-util = { version = "0.19.8", features = ["lexer"] }
 live-prop-test = { git = "https://github.com/elidupree/live-prop-test" }
 regex = "1.7.1"
+rand = "0.8.5"
+autograd = "2.0.0-rc3"
 
 [build-dependencies]
 lalrpop = "0.19.8"
