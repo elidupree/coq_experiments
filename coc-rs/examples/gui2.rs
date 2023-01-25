@@ -673,9 +673,22 @@ impl Interface {
             .optimized_ordering()
             .into_iter()
             .map(|id| self.node_element(id));
+        let new = if let Some((_id, Some(_child))) = &self.focus {
+            let style = format!(
+                "background-color: hsl(0turn 100% 97% / 0.8); border-color: hsl(0turn 100% 80%);"
+            );
+            Some(html! {
+                <div class="node" style=style onclick={callback(move || new_child())}>
+                    "(Create...)"
+                </div> : String
+            })
+        } else {
+            None
+        };
         html! {
             <div class="nodes" onclick={callback(move || unfocus())}>
                 {nodes}
+                {new}
             </div> : String
         }
     }
@@ -744,6 +757,59 @@ impl Interface {
         }
         self.focus = Some((id, child));
     }
+
+    fn new_child(&mut self) {
+        let Some((id, Some(which_child))) = self.focus.take() else { return };
+
+        let metavariable = self.environment.get(id);
+        let type_definition = Constructors::coc()
+            .types
+            .get(&metavariable.typename)
+            .unwrap();
+
+        match which_child {
+            WhichChild::TypeParameter(index) => {
+                let new_id = self
+                    .environment
+                    .create_metavariable(type_definition.type_parameters[index].clone());
+                self.environment.set_type_parameter(id, index, Some(new_id));
+                self.set_focus(new_id, None);
+            }
+            WhichChild::DataArgument(index) => {
+                let Some(constructor) = &metavariable.constructor else { return };
+                let constructor_definition =
+                    type_definition.constructors.get(&constructor.name).unwrap();
+                let new_id = self.environment.create_metavariable(
+                    constructor_definition.data_arguments[index]
+                        .datatype
+                        .clone(),
+                );
+                self.environment.set_data_argument(
+                    id,
+                    &constructor_definition.data_arguments[index].name,
+                    Some(new_id),
+                );
+                self.set_focus(new_id, None);
+            }
+            WhichChild::Precondition(index) => {
+                let Some(constructor) = &metavariable.constructor else { return };
+                let constructor_definition =
+                    type_definition.constructors.get(&constructor.name).unwrap();
+                let new_id = self.environment.create_metavariable(
+                    constructor_definition.preconditions[index]
+                        .predicate_type
+                        .clone(),
+                );
+                self.environment.set_precondition(id, index, Some(new_id));
+                // for (tpi, &type_parameter) in something.type_parameters.iter().enumerate() {
+                //     self.environment
+                //         .set_type_parameter(new_id, tpi, type_parameter????);
+                // }
+
+                self.set_focus(new_id, None);
+            }
+        }
+    }
 }
 
 static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
@@ -769,6 +835,10 @@ fn unfocus() {
     with_interface(|interface: &mut Interface| {
         interface.focus = None;
     });
+}
+
+fn new_child() {
+    with_interface(Interface::new_child);
 }
 
 fn set_focus(id: MetavariableId, child: Option<WhichChild>) {
