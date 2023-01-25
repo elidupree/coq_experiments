@@ -173,12 +173,12 @@ impl Interface {
         let h2 = (h1 + 1.0 / 4.0 + ((h2 as f64) / 255.0) / 4.0).fract();
         let b = (0.6 + ((b as f64) / 255.0).powi(3) * 0.4) * 100.0;
         let w = (0.7 + ((w as f64) / 255.0).powi(2) * 0.15) * 100.0;
-        let w2 = (w + 300.0) * 0.25;
+        let w2 = (w + 400.0) * 0.2;
         let w3 = w - 40.0;
         MetavariableColors {
             name_foreground: format!("hwb({h1}turn 0.0% {b}%)"),
             name_background: format!("hwb({h2}turn {w}% 0.0%)"),
-            node_background: format!("hwb({h2}turn {w2}% 0.0% / 0.8)"),
+            node_background: format!("hwb({h2}turn {w2}% 0.0% / 0.85)"),
             border: format!("hwb({h2}turn {w3}% 0.0%)"),
         }
     }
