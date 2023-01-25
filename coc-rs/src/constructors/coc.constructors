@@ -37,10 +37,14 @@ EmptyBindingsShapedLikeSort(s: Sort)-> EmptyBindingsShapedLike (SortTerm s) Bind
 EmptyBindingsShapedLikeAbstraction(
     kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree,
     a: BindingTree, b: BindingTree,
+    _: EmptyBindingsShapedLike argument_type a,
+    _: EmptyBindingsShapedLike body b,
 )-> EmptyBindingsShapedLike (Abstraction kind argument_type body bindings) (BindBranch a b);
 EmptyBindingsShapedLikeApply(
     m: Term, n: Term,
     a: BindingTree, b: BindingTree,
+    _: EmptyBindingsShapedLike m a,
+    _: EmptyBindingsShapedLike n b,
 )-> EmptyBindingsShapedLike (Apply m n) (BindBranch a b);
 
 /* Note: implicitly prevents binding the same thing a second time, by requiring ContextHole
