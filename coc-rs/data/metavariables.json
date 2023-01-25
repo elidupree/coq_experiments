@@ -1,4 +1,17 @@
 {
+  "0bf259eb-1f89-4f50-b4f4-54c47b086e7c": {
+    "name": "",
+    "typename": "BindingTree",
+    "type_parameters": [],
+    "constructor": {
+      "name": "BindBranch",
+      "data_arguments": {
+        "m": "204f0058-b75c-471e-9a8f-a532e13bd618",
+        "n": "dd358366-c4b3-4328-9db8-c1ccb6c86d7b"
+      },
+      "preconditions": []
+    }
+  },
   "124791da-56f3-48cc-b9dd-c476fdb03d61": {
     "name": "",
     "typename": "Term",
@@ -42,6 +55,46 @@
       "name": "SortTerm",
       "data_arguments": {
         "s": "ed22f6a4-e9f1-43a7-9578-4d50d7c027aa"
+      },
+      "preconditions": []
+    }
+  },
+  "466f1a79-20c5-4dd3-966c-24eb99995ce9": {
+    "name": "",
+    "typename": "AbstractionKind",
+    "type_parameters": [],
+    "constructor": {
+      "name": "Lambda",
+      "data_arguments": {},
+      "preconditions": []
+    }
+  },
+  "4de2b50d-5f20-43db-b840-da4f59da39b7": {
+    "name": "",
+    "typename": "Term",
+    "type_parameters": [],
+    "constructor": {
+      "name": "Abstraction",
+      "data_arguments": {
+        "argument_type": "124791da-56f3-48cc-b9dd-c476fdb03d61",
+        "bindings": "faf9f984-0018-498a-b104-34698590fd6b",
+        "body": "124791da-56f3-48cc-b9dd-c476fdb03d61",
+        "kind": "466f1a79-20c5-4dd3-966c-24eb99995ce9"
+      },
+      "preconditions": []
+    }
+  },
+  "4eeabd44-68ff-46cc-8717-e99834d9b963": {
+    "name": "Bool",
+    "typename": "Term",
+    "type_parameters": [],
+    "constructor": {
+      "name": "Abstraction",
+      "data_arguments": {
+        "argument_type": "36672dfa-deaa-4f59-9a02-d46f44337963",
+        "bindings": "0bf259eb-1f89-4f50-b4f4-54c47b086e7c",
+        "body": "83f4d1df-eff2-49d6-b1ca-04777a9941e2",
+        "kind": "70b9cb7f-bee4-4d6d-a788-2cb90051e13e"
       },
       "preconditions": []
     }
@@ -95,6 +148,34 @@
       "preconditions": []
     }
   },
+  "807b39a8-faab-46ed-8fb2-bc2a602c72b7": {
+    "name": "",
+    "typename": "BindingTree",
+    "type_parameters": [],
+    "constructor": {
+      "name": "BindBranch",
+      "data_arguments": {
+        "m": "faf9f984-0018-498a-b104-34698590fd6b",
+        "n": "204f0058-b75c-471e-9a8f-a532e13bd618"
+      },
+      "preconditions": []
+    }
+  },
+  "83f4d1df-eff2-49d6-b1ca-04777a9941e2": {
+    "name": "",
+    "typename": "Term",
+    "type_parameters": [],
+    "constructor": {
+      "name": "Abstraction",
+      "data_arguments": {
+        "argument_type": "124791da-56f3-48cc-b9dd-c476fdb03d61",
+        "bindings": "cb9bc597-413d-46a2-a7ea-bd334c03668e",
+        "body": "c5745d7c-f46c-4593-aab2-8e46075f5d6a",
+        "kind": "70b9cb7f-bee4-4d6d-a788-2cb90051e13e"
+      },
+      "preconditions": []
+    }
+  },
   "84316150-415f-4da0-b5bc-869fd349cb09": {
     "name": "False",
     "typename": "Term",
@@ -123,6 +204,21 @@
       "preconditions": []
     }
   },
+  "ac23124b-2e8b-4a09-9755-f486a8dae3bf": {
+    "name": "",
+    "typename": "Term",
+    "type_parameters": [],
+    "constructor": {
+      "name": "Abstraction",
+      "data_arguments": {
+        "argument_type": "124791da-56f3-48cc-b9dd-c476fdb03d61",
+        "bindings": "807b39a8-faab-46ed-8fb2-bc2a602c72b7",
+        "body": "4de2b50d-5f20-43db-b840-da4f59da39b7",
+        "kind": "466f1a79-20c5-4dd3-966c-24eb99995ce9"
+      },
+      "preconditions": []
+    }
+  },
   "bf0956bc-79bf-4903-9e5b-876e76376d51": {
     "name": "",
     "typename": "Context",
@@ -136,6 +232,21 @@
       "preconditions": []
     }
   },
+  "c5745d7c-f46c-4593-aab2-8e46075f5d6a": {
+    "name": "",
+    "typename": "Term",
+    "type_parameters": [],
+    "constructor": {
+      "name": "Abstraction",
+      "data_arguments": {
+        "argument_type": "124791da-56f3-48cc-b9dd-c476fdb03d61",
+        "bindings": "faf9f984-0018-498a-b104-34698590fd6b",
+        "body": "124791da-56f3-48cc-b9dd-c476fdb03d61",
+        "kind": "70b9cb7f-bee4-4d6d-a788-2cb90051e13e"
+      },
+      "preconditions": []
+    }
+  },
   "c718c640-6ba3-4f0e-9fce-2ade31143ac9": {
     "name": "",
     "typename": "Context",
@@ -143,6 +254,78 @@
     "constructor": {
       "name": "ContextHole",
       "data_arguments": {},
+      "preconditions": []
+    }
+  },
+  "cb9bc597-413d-46a2-a7ea-bd334c03668e": {
+    "name": "",
+    "typename": "BindingTree",
+    "type_parameters": [],
+    "constructor": {
+      "name": "BindBranch",
+      "data_arguments": {
+        "m": "faf9f984-0018-498a-b104-34698590fd6b",
+        "n": "faf9f984-0018-498a-b104-34698590fd6b"
+      },
+      "preconditions": []
+    }
+  },
+  "d12637c8-06ca-4b92-ab22-48df9026fc75": {
+    "name": "",
+    "typename": "HasType",
+    "type_parameters": [
+      "d6f7c003-47e9-4c1b-951b-5e181a764d50",
+      null,
+      "4eeabd44-68ff-46cc-8717-e99834d9b963",
+      null
+    ],
+    "constructor": {
+      "name": "TypeOfLambda",
+      "data_arguments": {
+        "argument_context": null,
+        "argument_type": null,
+        "body": null,
+        "body_context": null,
+        "body_context_before_bindings": null,
+        "forall_bindings": null,
+        "lambda_bindings": null,
+        "return_context": null,
+        "return_context_before_bindings": null,
+        "return_type": null,
+        "s": null
+      },
+      "preconditions": [
+        null,
+        null,
+        null
+      ]
+    }
+  },
+  "d6f7c003-47e9-4c1b-951b-5e181a764d50": {
+    "name": "true",
+    "typename": "Term",
+    "type_parameters": [],
+    "constructor": {
+      "name": "Abstraction",
+      "data_arguments": {
+        "argument_type": "36672dfa-deaa-4f59-9a02-d46f44337963",
+        "bindings": "0bf259eb-1f89-4f50-b4f4-54c47b086e7c",
+        "body": "ac23124b-2e8b-4a09-9755-f486a8dae3bf",
+        "kind": "466f1a79-20c5-4dd3-966c-24eb99995ce9"
+      },
+      "preconditions": []
+    }
+  },
+  "dd358366-c4b3-4328-9db8-c1ccb6c86d7b": {
+    "name": "",
+    "typename": "BindingTree",
+    "type_parameters": [],
+    "constructor": {
+      "name": "BindBranch",
+      "data_arguments": {
+        "m": "204f0058-b75c-471e-9a8f-a532e13bd618",
+        "n": "faf9f984-0018-498a-b104-34698590fd6b"
+      },
       "preconditions": []
     }
   },
@@ -203,6 +386,16 @@
         "body_context": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
         "kind": "70b9cb7f-bee4-4d6d-a788-2cb90051e13e"
       },
+      "preconditions": []
+    }
+  },
+  "faf9f984-0018-498a-b104-34698590fd6b": {
+    "name": "",
+    "typename": "BindingTree",
+    "type_parameters": [],
+    "constructor": {
+      "name": "BindNotThis",
+      "data_arguments": {},
       "preconditions": []
     }
   }
