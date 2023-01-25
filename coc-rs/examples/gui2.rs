@@ -707,6 +707,41 @@ impl Interface {
     }
 
     fn set_focus(&mut self, id: MetavariableId, child: Option<WhichChild>) {
+        if child.is_none() {
+            let metavariable = self.environment.get(id);
+            for (index, parameter) in metavariable.type_parameters.iter().enumerate() {
+                if parameter.is_none() {
+                    self.focus = Some((id, Some(WhichChild::TypeParameter(index))));
+                    return;
+                }
+            }
+            if let Some(constructor) = &metavariable.constructor {
+                let constructor_definition = Constructors::coc()
+                    .types
+                    .get(&metavariable.typename)
+                    .unwrap()
+                    .constructors
+                    .get(&constructor.name)
+                    .unwrap();
+                for (index, argument) in constructor_definition.data_arguments.iter().enumerate() {
+                    if constructor
+                        .data_arguments
+                        .get(&argument.name)
+                        .unwrap()
+                        .is_none()
+                    {
+                        self.focus = Some((id, Some(WhichChild::DataArgument(index))));
+                        return;
+                    }
+                }
+                for (index, argument) in constructor.preconditions.iter().enumerate() {
+                    if argument.is_none() {
+                        self.focus = Some((id, Some(WhichChild::Precondition(index))));
+                        return;
+                    }
+                }
+            }
+        }
         self.focus = Some((id, child));
     }
 }

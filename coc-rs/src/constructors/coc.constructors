@@ -11,6 +11,7 @@ Prop () -> Sort, notated "ℙ";
 data Term;
 SortTerm (s:Sort) -> Term, notated "{s}";
 VariableUsage () -> Term, notated "𝕍";
+/* TODO: change order so bindings come second */
 Abstraction (kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree) -> Term, notated "{kind}({bindings}:{argument_type}), {body}";
 Apply (m: Term, n: Term) -> Term, notated "({m} {n})";
 
