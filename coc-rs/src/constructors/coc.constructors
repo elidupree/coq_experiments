@@ -216,6 +216,28 @@ TypeOfLambda (
     (Abstraction ForAll argument_type return_type forall_bindings)
     (ContextBranch argument_context return_context_before_bindings);
 
+TypeOfApply (
+    function: Term, function_context: Context,
+    argument: Term, argument_context: Context,
+
+    argument_type: Term, argument_type_context: Context,
+    return_type: Term, return_type_context: Context,
+    forall_bindings: BindingTree,
+
+    result_type: Term, result_type_context: Context,
+
+    _ : HasType function function_context
+         (Abstraction ForAll argument_type return_type forall_bindings)
+         (ContextBranch argument_context return_type_context),
+    _ : HasType argument argument_context argument_type argument_type_context,
+    _ : SingleSubstitution forall_bindings argument return_type result_type,
+    _ : AddBindingsToContext forall_bindings argument_context return_type_context result_type_context
+) -> HasType
+    (Apply function argument)
+    (ContextBranch function_context argument_context)
+    result_type
+    result_context;
+
 TypeBetaConversion (
     value: Term, value_context: Context,
     ty: Term, type_context: Context,
