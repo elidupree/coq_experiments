@@ -302,6 +302,165 @@ impl Environment {
     pub fn metavariables(&self) -> &BTreeMap<MetavariableId, Metavariable> {
         &self.metavariables
     }
+
+    pub fn make_datavalue_match_metavariable(
+        &self,
+        id: Option<MetavariableId>,
+        value: &DataValue,
+        datatype: &str,
+        data_arguments: &mut BTreeMap<String, Option<MetavariableId>>,
+    ) {
+        let Some(id) = id else { return; };
+        let metavariable = self.get(id);
+        if metavariable.typename != *datatype {
+            return;
+        }
+        let datatype = Constructors::coc().types.get(datatype).unwrap();
+        match value {
+            DataValue::Argument(argname) => {
+                let arg = data_arguments.get_mut(argname).unwrap();
+                if arg.is_none() {
+                    *arg = Some(id);
+                }
+            }
+            DataValue::Constructor {
+                constructor: required_constructor_name,
+                arguments: required_constructor_arguments,
+            } => {
+                let Some(constructor) = &metavariable.constructor else { return; };
+                let constructor_definition = datatype.constructors.get(&constructor.name).unwrap();
+                if constructor.name != *required_constructor_name {
+                    return;
+                }
+                for (r, a) in zip(
+                    required_constructor_arguments,
+                    &constructor_definition.data_arguments,
+                ) {
+                    self.make_datavalue_match_metavariable(
+                        *constructor.data_arguments.get(&a.name).unwrap(),
+                        r,
+                        &a.datatype,
+                        data_arguments,
+                    )
+                }
+            }
+        }
+    }
+    pub fn autofill(&mut self, id: MetavariableId) {
+        let metavariable = self.get(id);
+
+        let type_definition = Constructors::coc()
+            .types
+            .get(&metavariable.typename)
+            .unwrap();
+        if let Some(constructor) = &metavariable.constructor {
+            let constructor_definition =
+                type_definition.constructors.get(&constructor.name).unwrap();
+            let mut data_arguments = constructor.data_arguments.clone();
+            for (typename, (&defined, resulting)) in zip(
+                &type_definition.type_parameters,
+                zip(
+                    &metavariable.type_parameters,
+                    &constructor_definition.resulting_type_parameters,
+                ),
+            ) {
+                self.make_datavalue_match_metavariable(
+                    defined,
+                    resulting,
+                    typename,
+                    &mut data_arguments,
+                );
+            }
+            for (precondition_definition, &defined) in zip(
+                &constructor_definition.preconditions,
+                &constructor.preconditions,
+            ) {
+                if let Some(defined) = defined {
+                    let other = self.get(defined);
+                    let predicate_definition = Constructors::coc()
+                        .types
+                        .get(&precondition_definition.predicate_type)
+                        .unwrap();
+                    for (typename, (required, &defined)) in zip(
+                        &predicate_definition.type_parameters,
+                        zip(
+                            &precondition_definition.type_parameters,
+                            &other.type_parameters,
+                        ),
+                    ) {
+                        self.make_datavalue_match_metavariable(
+                            defined,
+                            required,
+                            typename,
+                            &mut data_arguments,
+                        );
+                    }
+                }
+            }
+            if data_arguments != constructor.data_arguments {
+                self.get_mut(id)
+                    .constructor
+                    .as_mut()
+                    .unwrap()
+                    .data_arguments = data_arguments;
+                return self.autofill(id);
+            }
+
+            for (precondition_index, (precondition_definition, &defined)) in zip(
+                &constructor_definition.preconditions,
+                &constructor.preconditions,
+            )
+            .enumerate()
+            {
+                if defined.is_none() {
+                    let predicate_definition = Constructors::coc()
+                        .types
+                        .get(&precondition_definition.predicate_type)
+                        .unwrap();
+                    for (&other_id, other) in &self.metavariables {
+                        if other.typename == precondition_definition.predicate_type
+                            && zip(
+                                &predicate_definition.type_parameters,
+                                zip(
+                                    &precondition_definition.type_parameters,
+                                    &other.type_parameters,
+                                ),
+                            )
+                            .all(
+                                |(typename, (required, &provided))| {
+                                    self.metavariable_matches_datavalue(
+                                        provided,
+                                        required,
+                                        typename,
+                                        &constructor.data_arguments,
+                                    )
+                                },
+                            )
+                        {
+                            self.get_mut(id).constructor.as_mut().unwrap().preconditions
+                                [precondition_index] = Some(other_id);
+                            return self.autofill(id);
+                        }
+                    }
+                }
+            }
+        }
+
+        // for type_parameter in &metavariable.type_parameters {
+        //     if type_parameter.is_none() {
+        //         for (&other_id, _other) in &self.metavariables {
+        //             if self.metavariable_matches_datavalue(
+        //                 Some(other_id),
+        //                 resulting,
+        //                 typename,
+        //                 &constructor.data_arguments,
+        //             ) {
+        //                 self.get_mut(id).type_parameters[index]
+        //             }
+        //         }
+        //     }
+        // }
+    }
 }
 
 impl Serialize for Environment {

@@ -51,7 +51,7 @@ EmptyBindingsShapedLikeApply(
 /* Note: implicitly prevents binding the same thing a second time, by requiring ContextHole
   Similar structure to SingleSubstitution, and notated the same way; is there a better name, maybe? */
 predicate AddBindingsToContext BindingTree Context Context Context, notated "{3} = {2}[{0}:={1}]";
-AddBindingsToContextNotHere(inserted_context: Context) -> AddBindingsToContext BindNotThis inserted_context ContextHole ContextHole;
+AddBindingsToContextNotHere(inserted_context: Context, context: Context) -> AddBindingsToContext BindNotThis inserted_context context context;
 AddBindingsToContextVariable(inserted_context: Context) -> AddBindingsToContext BindVariable inserted_context ContextHole inserted_context;
 AddBindingsToContextBranch (lb: BindingTree,rb: BindingTree,lc: Context, rc: Context,lc2: Context, rc2: Context,inserted_context: Context,
     _: AddBindingsToContext lb inserted_context lc lc2,
@@ -195,7 +195,10 @@ TypeOfForAll (
     s1 : Sort, s2 : Sort,
     _ : HasType argument_type argument_context (SortTerm s1) ContextHole,
     _ : HasType return_type return_context (SortTerm s2) ContextHole,
-    _ : AddBindingsToContext bindings (ContextKnownVariable (Abstraction ForAll argument_type return_type bindings) (ContextBranch argument_context return_context_before_bindings)) return_context_before_bindings return_context
+    _ : AddBindingsToContext bindings
+      (ContextKnownVariable (Abstraction ForAll argument_type return_type bindings)
+                            (ContextBranch argument_context return_context_before_bindings))
+      return_context_before_bindings return_context,
 ) -> HasType
     (Abstraction ForAll argument_type return_type bindings)
     (ContextBranch argument_context return_context_before_bindings)
@@ -209,7 +212,14 @@ TypeOfLambda (
     s : Term,
     _ : HasType (Abstraction ForAll argument_type return_type forall_bindings) (ContextBranch argument_context return_context_before_bindings) s ContextHole,
     _ : HasType body body_context return_type return_context,
-    _ : AddBindingsToContext lambda_bindings (ContextKnownVariable (Abstraction Lambda argument_type body lambda_bindings) (ContextBranch argument_context body_context_before_bindings)) body_context_before_bindings body_context
+    _ : AddBindingsToContext lambda_bindings
+      (ContextKnownVariable (Abstraction Lambda argument_type body lambda_bindings)
+                            (ContextBranch argument_context body_context_before_bindings))
+      body_context_before_bindings body_context,
+    _ : AddBindingsToContext forall_bindings
+      (ContextKnownVariable (Abstraction ForAll argument_type return_type forall_bindings)
+                            (ContextBranch argument_context return_context_before_bindings))
+      return_context_before_bindings return_context,
 ) -> HasType
     (Abstraction Lambda argument_type body lambda_bindings)
     (ContextBranch argument_context body_context_before_bindings)
@@ -236,7 +246,7 @@ TypeOfApply (
     (Apply function argument)
     (ContextBranch function_context argument_context)
     result_type
-    result_context;
+    result_type_context;
 
 TypeBetaConversion (
     value: Term, value_context: Context,

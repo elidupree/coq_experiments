@@ -6,7 +6,7 @@ const last_bounds_by_id = {};
 
 function center (element){
   const bounds =element.getBoundingClientRect();
-  return [bounds.left+ bounds.width / 2,bounds.top +bounds.height / 2]
+  return [bounds.left + window.scrollX + bounds.width / 2,bounds.top + window.scrollY + bounds.height / 2]
 }
 
 function redraw_lines() {
@@ -39,6 +39,8 @@ function frame() {
   if (just_changed) {
     for (const element of document.querySelectorAll(".node")) {
       const bounds = element.getBoundingClientRect();
+      bounds.x += window.scrollX;
+      bounds.y += window.scrollY;
       const last_bounds = last_bounds_by_id[element.id];
       if (last_bounds !== undefined) {
         if (bounds.x !== last_bounds.x || bounds.y !== last_bounds.y) {
@@ -69,8 +71,10 @@ function frame() {
 frame()
 
 function update_display() {
-  just_changed = true;
-  animate_until = Date.now() + (transition_seconds + 0.1)*1000;
+  if (!(Date.now() < animate_until)) {
+    just_changed = true;
+    animate_until = Date.now() + (transition_seconds + 0.1)*1000;
+  }
 }
 
 window.addEventListener ("resize",update_display);

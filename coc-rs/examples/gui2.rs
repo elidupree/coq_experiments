@@ -526,6 +526,11 @@ impl Interface {
                             "Remove constructor"
                         </button> : String
                     });
+                    child_elements.push(html! {
+                        <button onclick={callback(move || autofill(id))}>
+                            "Autofill"
+                        </button> : String
+                    });
                 }
                 let constructor_definition =
                     type_definition.constructors.get(&constructor.name).unwrap();
@@ -586,7 +591,7 @@ impl Interface {
                             .unwrap();
                         let body = self.inline_data_value(value, typename, &constructor.data_arguments);
                         self.inline_child(*metavariable.type_parameters.get(index).unwrap());
-                        let valid = *validity.type_parameters_valid.get(index).unwrap();
+                        let valid = true; //*validity.type_parameters_valid.get(index).unwrap();
                         let class = if valid {
                             "child valid"
                         } else {
@@ -844,6 +849,12 @@ fn new_child() {
 fn set_focus(id: MetavariableId, child: Option<WhichChild>) {
     with_interface(|interface: &mut Interface| {
         interface.set_focus(id, child);
+    });
+}
+
+fn autofill(id: MetavariableId) {
+    with_interface(|interface: &mut Interface| {
+        interface.environment.autofill(id);
     });
 }
 
