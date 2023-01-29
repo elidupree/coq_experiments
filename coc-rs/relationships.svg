@@ -26,15 +26,15 @@
      inkscape:pagecheckerboard="0"
      inkscape:document-units="mm"
      showgrid="false"
-     inkscape:zoom="4.3994184"
-     inkscape:cx="281.74179"
-     inkscape:cy="178.09172"
+     inkscape:zoom="7.1657299"
+     inkscape:cx="226.5645"
+     inkscape:cy="192.65309"
      inkscape:window-width="2754"
      inkscape:window-height="1699"
-     inkscape:window-x="1127"
-     inkscape:window-y="211"
+     inkscape:window-x="1140"
+     inkscape:window-y="210"
      inkscape:window-maximized="0"
-     inkscape:current-layer="layer1" />
+     inkscape:current-layer="layer3" />
   <defs
      id="defs2">
     <marker
@@ -111,8 +111,7 @@
   <g
      inkscape:groupmode="layer"
      id="layer2"
-     inkscape:label="background"
-     sodipodi:insensitive="true">
+     inkscape:label="background">
     <rect
        style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.177458;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
        id="rect201279"
@@ -120,9 +119,9 @@
        height="76.11248"
        x="15.570569"
        y="4.6821632"
-       inkscape:export-filename="C:\Users\Eli\Documents\coc_relationships_2.png"
-       inkscape:export-xdpi="525.85999"
-       inkscape:export-ydpi="525.85999" />
+       inkscape:export-filename="C:\Users\Eli\Documents\coc_relationships_3.png"
+       inkscape:export-xdpi="520.13104"
+       inkscape:export-ydpi="520.13104" />
   </g>
   <g
      inkscape:label="Layer 1"
@@ -520,20 +519,20 @@
     <text
        xml:space="preserve"
        style="font-size:1.73996px;line-height:85%;font-family:'Cambria Math';-inkscape-font-specification:'Cambria Math';text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.217494px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-       x="28.957121"
-       y="55.243942"
+       x="29.168791"
+       y="54.926437"
        id="text154353-9"
        inkscape:export-filename="C:\Users\Eli\Documents\coc_relationships.png"
        inkscape:export-xdpi="362.76651"
        inkscape:export-ydpi="362.76651"><tspan
          sodipodi:role="line"
          style="font-size:1.73996px;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.217494px"
-         x="28.957121"
-         y="55.243942"
+         x="29.168791"
+         y="54.926437"
          id="tspan167339-4">objects</tspan></text>
     <text
        xml:space="preserve"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;line-height:125%;font-family:Lexend;-inkscape-font-specification:Lexend;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;line-height:105%;font-family:Lexend;-inkscape-font-specification:Lexend;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
        x="35.699699"
        y="47.424267"
        id="text154357"
@@ -544,7 +543,12 @@
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;font-family:Lexend;-inkscape-font-specification:Lexend;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px"
          x="35.699699"
          y="47.424267"
-         id="tspan154355">a.k.a. types, members of sorts</tspan></text>
+         id="tspan154355">a.k.a. types, members of sorts,</tspan><tspan
+         sodipodi:role="line"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;font-family:Lexend;-inkscape-font-specification:Lexend;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px"
+         x="35.699699"
+         y="48.1651"
+         id="tspan448971">&quot;types and kinds&quot;</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;line-height:105%;font-family:Lexend;-inkscape-font-specification:Lexend;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
@@ -568,7 +572,12 @@
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;font-family:Lexend;-inkscape-font-specification:Lexend;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px"
          x="75.101234"
          y="52.966091"
-         id="tspan173380">generic types</tspan></text>
+         id="tspan173380">generic types, functions</tspan><tspan
+         sodipodi:role="line"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;font-family:Lexend;-inkscape-font-specification:Lexend;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px"
+         x="75.101234"
+         y="53.706924"
+         id="tspan432031">that return types</tspan></text>
     <text
        xml:space="preserve"
        style="font-size:1.73996px;line-height:85%;font-family:'Cambria Math';-inkscape-font-specification:'Cambria Math';text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.217494px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
@@ -707,18 +716,28 @@
        transform="rotate(4.9458375)" />
     <text
        xml:space="preserve"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;line-height:125%;font-family:Lexend;-inkscape-font-specification:Lexend;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-       x="24.907286"
-       y="56.324711"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;line-height:105%;font-family:Lexend;-inkscape-font-specification:Lexend;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+       x="29.568888"
+       y="56.007206"
        id="text220814"
        inkscape:export-filename="C:\Users\Eli\Documents\coc_relationships.png"
        inkscape:export-xdpi="362.76651"
        inkscape:export-ydpi="362.76651"><tspan
          sodipodi:role="line"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;font-family:Lexend;-inkscape-font-specification:Lexend;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px"
-         x="24.907286"
-         y="56.324711"
-         id="tspan221802">a.k.a. well-typed formulas</tspan></text>
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;font-family:Lexend;-inkscape-font-specification:Lexend;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px"
+         x="29.568888"
+         y="56.007206"
+         id="tspan221802">a.k.a. well-typed formulas,</tspan><tspan
+         sodipodi:role="line"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;font-family:Lexend;-inkscape-font-specification:Lexend;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px"
+         x="29.568888"
+         y="56.748039"
+         id="tspan437911">beta-equivalence classes of</tspan><tspan
+         sodipodi:role="line"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;font-family:Lexend;-inkscape-font-specification:Lexend;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px"
+         x="29.568888"
+         y="57.488873"
+         id="tspan444229">well-typed formulas</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:1.11478px;line-height:105%;font-family:Lexend;-inkscape-font-specification:Lexend;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.194884px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
@@ -747,7 +766,7 @@
        xml:space="preserve"
        style="font-size:1.73996px;line-height:85%;font-family:'Cambria Math';-inkscape-font-specification:'Cambria Math';text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.217494px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
        x="69.565125"
-       y="65.592049"
+       y="65.274544"
        id="text362944"
        inkscape:export-filename="C:\Users\Eli\Documents\coc_relationships.png"
        inkscape:export-xdpi="362.76651"
@@ -755,18 +774,18 @@
          sodipodi:role="line"
          style="font-size:1.73996px;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.217494px"
          x="69.565125"
-         y="65.592049"
+         y="65.274544"
          id="tspan362940">objects that</tspan><tspan
          sodipodi:role="line"
          style="font-size:1.73996px;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.217494px"
          x="69.565125"
-         y="67.071014"
+         y="66.75351"
          id="tspan362942">can inhabit objects</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;line-height:105%;font-family:Lexend;-inkscape-font-specification:Lexend;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
        x="69.745079"
-       y="68.060707"
+       y="67.743202"
        id="text362948"
        inkscape:export-filename="C:\Users\Eli\Documents\coc_relationships.png"
        inkscape:export-xdpi="362.76651"
@@ -774,22 +793,22 @@
          sodipodi:role="line"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;font-family:Lexend;-inkscape-font-specification:Lexend;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px"
          x="69.745079"
-         y="68.060707"
+         y="67.743202"
          id="tspan362946">a.k.a. values, members of types;</tspan><tspan
          sodipodi:role="line"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;font-family:Lexend;-inkscape-font-specification:Lexend;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px"
          x="69.745079"
-         y="68.801544"
+         y="68.484039"
          id="tspan366872">only these can be variable values,</tspan><tspan
          sodipodi:role="line"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;font-family:Lexend;-inkscape-font-specification:Lexend;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px"
          x="69.745079"
-         y="69.542374"
+         y="69.224869"
          id="tspan390724">lambda argument values,</tspan><tspan
          sodipodi:role="line"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.705556px;font-family:Lexend;-inkscape-font-specification:Lexend;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px"
          x="69.745079"
-         y="70.283211"
+         y="69.965706"
          id="tspan393872">or lambda return values.</tspan></text>
     <text
        xml:space="preserve"
@@ -1022,10 +1041,10 @@
        y="56.61256"
        id="text281662"><tspan
          sodipodi:role="line"
-         id="tspan281660"
          style="font-size:1.76389px;fill:#00a221;fill-opacity:1;stroke:none;stroke-width:0.264583px"
          x="53.904366"
-         y="56.61256">x:K,A</tspan></text>
+         y="56.61256"
+         id="tspan453288">t:K,A</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:2.30792px;line-height:125%;font-family:Ebrima;-inkscape-font-specification:'Ebrima Bold';letter-spacing:0px;word-spacing:0px;fill:#00a221;fill-opacity:1;stroke:none;stroke-width:0.230792px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
