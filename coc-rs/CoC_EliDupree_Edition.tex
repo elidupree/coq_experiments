@@ -13,12 +13,15 @@
 \author{Eli Dupree}
 \date{\today}
 
+\DeclareMathSymbol{\mlq}{\mathord}{operators}{``}
+\DeclareMathSymbol{\mrq}{\mathord}{operators}{`'}
+
 \newcommand{\Prop}{\mathbb{P}}
 \newcommand{\istype}{\ \mathrm{type}}
 \newcommand{\usage}{\mathcal{V}}
-\newcommand{\usageKnown}[2]{\usage\{#2:#1\}}
+\newcommand{\usageKnown}[2]{{\usage_{\mlq\hspace{-0.06em}#2\hspace{-0.06em}\mrq}^{:#1}}}
 \newcommand{\presep}{\hspace{1.8em}}
-\newcommand{\subst}[3]{#1[{#2}{/}{#3}]}
+\newcommand{\subst}[3]{#1^{[{#2}{/}{#3}]}}
 \newcommand{\subty}[1]{#1^*}
 \newcommand{\bindvariable}{\bigstar}
 \newcommand{\bindnotthis}{\circ}
@@ -106,13 +109,17 @@
   
   The whole point of variables is to be able to substitute them for other values. In algebra, we say $x^2 + x + 2$, knowing that we can later replace $x$ with \emph{any} number and have the formula retain its meaning. In CoC, we want to do much the same thing, just using lambdas instead. Instead of $x$, we have the binding tree; instead of "number", we have the parameter type.
   
-  To achieve this, we'll define the following concepts:
+  To achieve this, we'll introduce some formal notation. In the following rules, the symbols $F,G,H,T,U,f,v,w$ mean "any formula", and the symbols $b,c,d,e,f$ mean "any binding tree". Technically, by "any formula", we mean \emph{universal quantification over formulas, scoped outside the statement}. That is, if a statement includes two copies of the same symbol (say, $T$), then the statement is true for all possible values of $T$, but the two usages of $T$ must represent the \emph{same} formula.
+  
+  We now define the following concepts:
   
   \begin{itemize}
   \item $\subst{F}{b}{v}$ ("formula subsitution") means the formula you get when you start with $F$ and insert one copy of $v$ at the location of each $\bindvariable$ in $b$.
   \item $\subst{c}{b}{d}$ ("binding tree subsitution") is the same thing for binding trees, starting with $c$ and inserting a copy of the \emph{tree} $d$ at the location of each $\bindvariable$ in $b$.
   \item $\emptybindingslike{v}$ ("empty bindings shaped like") means an empty binding tree shaped like the formula $v$.\footnote{The need to define $\emptybindingslike{v}$ is one of the few complications added by the "binding tree" form. However, if we used variable names, we would instead have to allow variable-renaming here, which is not any simpler.}
   \end{itemize}
+  
+  
   
   Formally,  
   \[\emptybindingslike{\usage} = \bindnotthis\]
@@ -134,21 +141,28 @@
   \[\subst{(\forall b:T,U)}{(cd)}{v} = \forall \subst{b}{d}{\emptybindingslike{v}}:\subst{T}{c}{v},\subst{U}{d}{v}\]
   \[\subst{(f w)}{(cd)}{v} = (\subst{f}{c}{v}\ \subst{w}{d}{v})\]
 
-The main reason we want this is for \emph{function application}. If you have a function $f =(\lambda b:T,w)$, then you want $(f v)$ to be equivalent to $\subst{w}{b}{v}$.
+The main reason we define substitution is for \emph{function application}. If you have a function $f =(\lambda b:T,w)$, then you want $(f v)$ to be equivalent to $\subst{w}{b}{v}$.
 
 When we say "equivalent", we can't mean that they are the \emph{same formula}. But we would like to say that they are two different formulas that refer to the \emph{same object}. This notion is formalized in the concept of \textbf{beta-equivalence}, written $\betaeq$, which we will now build out of several pieces.
 
 The transformation $(f v) \rightarrow \subst{w}{b}{v}$ is the elementary \textbf{single-step beta-reduction}. However, it's not the only single-step beta-reduction. If $(f v)$ appears as a sub-formula of a larger formula – say, $(g (f v))$ – then we would also like to say $(g (f v)) \rightarrow (g(\subst{w}{b}{v}))$.
 
-For this, we need\footnote{The typical definitions don't need this, and indeed, this is the one place where the "binding tree" form adds more complexity than it removes.} a notion of \textbf{which sub-formula} is being beta-reduced, with the following grammar:
+For this, we need\footnote{The typical definitions don't need this, and indeed, this is the one place where the "binding tree" form adds more complexity than it removes.} a notion of \textbf{which-reduction} is being performed, with the following grammar:
 
 \[r \rightarrow \mathcal{L}r \mid \mathcal{R}r \mid b\]
   
   This is effectively a path starting at the root of the formula, with a choice of "left" or "right" at each step, ending in the binding-tree specifying which usages are being replaced.
+
+  We now introduce a few more notations:
   
-  Again, we will have a definition for reducing formulas, and a parallel definition for reducing binding-trees. Formally, the single-step beta-reductions are:
+  \begin{itemize}
+  \item The symbol $r$ means "any which-reduction" (using the same quantification as before).
+  \item $F \betared{r} G$ means "the formula $F$ becomes $G$ when you perform $r$".
+  \item $b \betared{r} c$ means "the binding-tree $b$ becomes $c$ when you perform $r$".
+  \item $\frac{premises}{conclusions}$ means that if all the premises above the line are true, then all the conclusions below the line are also true. (If the premises are $\varnothing$, then the conclusions are true unconditionally.)
+  \end{itemize}
   
-  \emph{[TODO explain notation: "if everything above the line is true, then everything below the line is true"; also explain, probably earlier, that any letter not explicitly defined is universally quantified]}
+  Formally, the single-step beta-reductions are:
   
 \[ \frac{\varnothing}{((\lambda b:T,w)v) \betared{b} \subst{w}{b}{v} \presep ((c d) e) \betared{b} \subst{d}{b}{e}} \]
 \[ \frac{b \betared{r} c}{(b d) \betared{\mathcal{L}r} (c d) \presep (d b)\betared{\mathcal{R}r} (d c)} \]
@@ -157,7 +171,7 @@ For this, we need\footnote{The typical definitions don't need this, and indeed, 
 
 Of these rules, the most interesting one is the last, which requires that both the body formula and the bindings be reducible according to the same choice of which reduction.
 
-Having defined single-step reductions, we now define beta-equivalence as the smallest equivalence relation that contains it. Intuitively, $F \betaeq G$ if there is a "path" of single-step reductions, forwards or backwards, that connects $F$ and $G$. Formally,
+Having defined single-step reductions, we now define beta-equivalence as the smallest equivalence relation that contains them. Intuitively, $F \betaeq G$ if there is a "path" of single-step reductions, forwards or backwards, that connects $F$ and $G$. Formally,
 
 \[ \frac{F \betared{r} G}{F \betaeq G} \]
 \[ \frac{\varnothing}{F \betaeq F} \]
@@ -166,6 +180,15 @@ Having defined single-step reductions, we now define beta-equivalence as the sma
   
   
   \subsection{Type judgments}
+  
+  We can now define the substance of CoC: The rules about which formulas are types, and which formulas are members of those types.
+  
+  \begin{itemize}
+  \item "$F\istype$" means "the formula $F$ \textbf{is} a type".
+  \item "$F : G$" means "the formula $F$ is a \textbf{member} of the type $G$". (We will make sure this only occurs when the formula $G$ is actually a type.)
+  \end{itemize}
+  
+  Formally,
   
   "Prop is a type":
   \[ \frac{\varnothing}{\Prop\istype} \]  
@@ -177,13 +200,13 @@ Having defined single-step reductions, we now define beta-equivalence as the sma
   \[ \frac{T\istype}{\usageKnown{T}{i}:T} \]
   
   "Foralls are types":
-  \[ \frac{T\istype\presep \subty{U}\istype}{(\forall b:T,U)\istype} \]
+  \[ \frac{T\istype\presep \subst{U}{b}{\usageKnown{T}{U}}\istype}{(\forall b:T,U)\istype} \]
   
   "Prop is impredicative":
-  \[ \frac{T\istype\presep \subty{U} : \Prop}{(\forall b:T,U) : \Prop} \]
+  \[ \frac{T\istype\presep \subst{U}{b}{\usageKnown{T}{U}} : \Prop}{(\forall b:T,U) : \Prop} \]
   
   "Lambdas belong to foralls":
-  \[ \frac{\subty{v} : \subty{U} \presep (\forall b:T,U)\istype}{(\lambda c:T,v) : (\forall b:T,U)} \]
+  \[ \frac{\subst{v}{c}{\usageKnown{T}{U\!v}} : \subst{U}{b}{\usageKnown{T}{U\!v}} \presep (\forall b:T,U)\istype}{(\lambda c:T,v) : (\forall b:T,U)} \]
   
   "You can beta-reduce values":
   \[ \frac{f : (\forall b:T,U) \presep v : T}{(f v) : \subst{U}{b}{v}} \]
@@ -191,8 +214,6 @@ Having defined single-step reductions, we now define beta-equivalence as the sma
   "You can beta-convert types", a.k.a. "Types are objects, not formulas" ("when we say \textbf{object}, we mean a beta-equivalence class over forulas"):
   \[ \frac{v : T \presep T \betaeq U \presep U\istype}{v : U} \]
   
-  
-  [TODO: define the *s]
   
 
   \section{Type relationships}
