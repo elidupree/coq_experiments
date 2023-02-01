@@ -1,259 +1,219 @@
 /* Many of the rules work the same way for lambdas and foralls,
-  so we use the same Term constructor (`Abstraction`) for both of them, and just specify which one using this type. */
+  so we use the same Formula constructor (`Abstraction`) for both of them, and just specify which one using this type. */
 data AbstractionKind;
 Lambda () -> AbstractionKind, notated "λ";
 ForAll () -> AbstractionKind, notated "∀";
 
-data Sort;
-Type () -> Sort, notated "𝕋";
-Prop () -> Sort, notated "ℙ";
-
-data Term;
-SortTerm (s:Sort) -> Term, notated "{s}";
-VariableUsage () -> Term, notated "𝕍";
-/* TODO: change order so bindings come second */
-Abstraction (kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree) -> Term, notated "{kind}({bindings}:{argument_type}), {body}";
-Apply (m: Term, n: Term) -> Term, notated "({m} {n})";
+data Formula;
+Prop () -> Formula, notated "ℙ";
+Usage () -> Formula, notated "𝒱";
+KnownUsage (type: Formula, namespace_competitors: Formula) -> Formula,
+  notated "𝒱{type}({namespace_competitors})";
+Abstraction (kind: AbstractionKind, parameter_type: Formula, body: Formula, bindings: BindingTree) -> Formula, notated "{kind}({bindings}:{parameter_type}), {body}";
+Apply (m: Formula, n: Formula) -> Formula, notated "({m} {n})";
 
 data BindingTree;
 BindNotThis () -> BindingTree, notated "∅";
 BindVariable () -> BindingTree, notated "𝕍";
 BindBranch (m: BindingTree, n: BindingTree) -> BindingTree, notated "({m} {n})";
 
-data WhichBetaReduction;
-BetaReductionHere (replaced_bindings: BindingTree) -> WhichBetaReduction, notated "{replaced_bindings}";
-BetaReductionL (reduction: WhichBetaReduction) -> WhichBetaReduction, notated "𝐿{reduction}";
-BetaReductionR (reduction: WhichBetaReduction) -> WhichBetaReduction, notated "𝑅{reduction}";
+data WhichLambda;
+ThisLambda (bindings: BindingTree) -> WhichLambda, notated "{bindings}";
+LambdaInL (which: WhichLambda) -> WhichLambda, notated "𝐿{which}";
+LambdaInR (which: WhichLambda) -> WhichLambda, notated "𝑅{which}";
 
-/* a Context specifies the types and identities of some or all of the free variables within a particular term,
-  by sharing the tree structure of the term. */
-data Context;
-ContextHole ()-> Context, notated "∅";
-ContextKnownVariable (binding_term: Term, binding_context: Context)-> Context, notated "𝕍({binding_term}/{binding_context})";
-ContextBranch(m: Context,n: Context)-> Context, notated "({m} {n})";
-
-predicate EmptyBindingsShapedLike Term BindingTree, notated "{0}'s empty bindings are {1}";
-EmptyBindingsShapedLikeVariable()-> EmptyBindingsShapedLike VariableUsage BindNotThis;
-EmptyBindingsShapedLikeSort(s: Sort)-> EmptyBindingsShapedLike (SortTerm s) BindNotThis;
+predicate EmptyBindingsShapedLike Formula BindingTree, notated "{0}'s empty bindings are {1}";
+EmptyBindingsShapedLikeUsage()-> EmptyBindingsShapedLike Usage BindNotThis;
+EmptyBindingsShapedLikeKnownUsage(type: Formula, namespace_competitors: Formula)-> EmptyBindingsShapedLike (KnownUsage type namespace_competitors) BindNotThis;
+EmptyBindingsShapedLikeProp()-> EmptyBindingsShapedLike Prop BindNotThis;
 EmptyBindingsShapedLikeAbstraction(
-    kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree,
+    kind: AbstractionKind, parameter_type: Formula, body: Formula, bindings: BindingTree,
     a: BindingTree, b: BindingTree,
-    _: EmptyBindingsShapedLike argument_type a,
+    _: EmptyBindingsShapedLike parameter_type a,
     _: EmptyBindingsShapedLike body b,
-)-> EmptyBindingsShapedLike (Abstraction kind argument_type body bindings) (BindBranch a b);
+)-> EmptyBindingsShapedLike (Abstraction kind parameter_type body bindings) (BindBranch a b);
 EmptyBindingsShapedLikeApply(
-    m: Term, n: Term,
+    m: Formula, n: Formula,
     a: BindingTree, b: BindingTree,
     _: EmptyBindingsShapedLike m a,
     _: EmptyBindingsShapedLike n b,
 )-> EmptyBindingsShapedLike (Apply m n) (BindBranch a b);
 
-/* Note: implicitly prevents binding the same thing a second time, by requiring ContextHole
-  Similar structure to SingleSubstitution, and notated the same way; is there a better name, maybe? */
-predicate AddBindingsToContext BindingTree Context Context Context, notated "{3} = {2}[{0}:={1}]";
-AddBindingsToContextNotHere(inserted_context: Context, context: Context) -> AddBindingsToContext BindNotThis inserted_context context context;
-AddBindingsToContextVariable(inserted_context: Context) -> AddBindingsToContext BindVariable inserted_context ContextHole inserted_context;
-AddBindingsToContextBranch (lb: BindingTree,rb: BindingTree,lc: Context, rc: Context,lc2: Context, rc2: Context,inserted_context: Context,
-    _: AddBindingsToContext lb inserted_context lc lc2,
-    _: AddBindingsToContext rb inserted_context rc rc2,
-  )
-  -> AddBindingsToContext (BindBranch lb rb) inserted_context (ContextBranch lc rc) (ContextBranch lc2 rc2);
+predicate BindingTreeSubstitution BindingTree BindingTree BindingTree BindingTree, notated "{3} = {2}[{0}:={1}]";
+predicate FormulaSubstitution     BindingTree Formula     Formula     Formula    , notated "{3} = {2}[{0}:={1}]";
 
-/* Note: implicitly prevents growing from something that already has a BindVariable in 2
-  Similar structure to SingleSubstitution, and notated the same way; is there a better name, maybe? */
-predicate GrowFromLeaves BindingTree BindingTree BindingTree BindingTree, notated "{3} = {2}[{0}:={1}]";
-GrowFromLeaf(inserted_bindings: BindingTree)
-  -> GrowFromLeaves BindVariable inserted_bindings BindNotThis inserted_bindings;
-GrowNotHere (inserted_bindings: BindingTree, original_bindings: BindingTree)
-  -> GrowFromLeaves BindNotThis inserted_bindings original_bindings original_bindings;
-GrowFromBranch(m: BindingTree, n: BindingTree, mb: BindingTree, nb: BindingTree, inserted_bindings: BindingTree,
+FormulaSubstitutionHere (v: Formula) -> FormulaSubstitution BindVariable v Usage v;
+BindingSubstitutionHere (d: BindingTree) -> BindingTreeSubstitution BindVariable d BindNotThis d;
+FormulaSubstitutionProp (v: Formula) -> FormulaSubstitution BindNotThis v Prop Prop;
+FormulaSubstitutionKnownUsage (v: Formula, t: Formula, i: Formula)
+  -> FormulaSubstitution BindNotThis v (KnownUsage t i) (KnownUsage t i);
+BindingSubstitutionNeither (d: BindingTree) -> BindingTreeSubstitution BindNotThis d BindNotThis BindNotThis;
+BindingSubstitutionAlready (d: BindingTree) -> BindingTreeSubstitution BindNotThis d BindVariable BindVariable;
+
+BindingSubstitutionBranch(m: BindingTree, n: BindingTree, mb: BindingTree, nb: BindingTree, inserted_bindings: BindingTree,
     m2: BindingTree, n2: BindingTree,
-    _:GrowFromLeaves mb inserted_bindings m m2,
-    _:GrowFromLeaves nb inserted_bindings n n2,
-)-> GrowFromLeaves (BindBranch mb nb) inserted_bindings (BindBranch m n) (BindBranch m2 n2);
+    _:BindingTreeSubstitution mb inserted_bindings m m2,
+    _:BindingTreeSubstitution nb inserted_bindings n n2,
+)-> BindingTreeSubstitution (BindBranch mb nb) inserted_bindings (BindBranch m n) (BindBranch m2 n2);
+
+FormulaSubstitutionApply (
+    repl: Formula, m: Formula, n: Formula, m2: Formula, n2: Formula, mb: BindingTree, nb: BindingTree,
+    _ : FormulaSubstitution mb repl m m2,
+    _ : FormulaSubstitution nb repl n n2,
+) -> FormulaSubstitution (BindBranch mb nb) repl (Apply m n) (Apply m2 n2);
+
+FormulaSubstitutionAbstraction (
+    kind: AbstractionKind, parameter_type: Formula, body: Formula, bindings: BindingTree,
+    parameter_type2: Formula, body2: Formula, bindings2: BindingTree,
+    parameter_replaced_bindings: BindingTree, body_replaced_bindings: BindingTree,
+    replacement: Formula, replacement_empty_bindings: BindingTree,
+    _ : FormulaSubstitution parameter_replaced_bindings replacement parameter_type parameter_type2,
+    _ : FormulaSubstitution body_replaced_bindings replacement body body2,
+    _ : BindingTreeSubstitution body_replaced_bindings replacement_empty_bindings bindings bindings2,
+    _ : EmptyBindingsShapedLike replacement replacement_empty_bindings,
+) -> FormulaSubstitution
+    (BindBranch parameter_replaced_bindings body_replaced_bindings)
+    replacement
+    (Abstraction kind parameter_type body bindings)
+    (Abstraction kind parameter_type2 body2 bindings2);
 
 
-/* how the bindings of an outer lambda/forall are transformed by a particular beta reduction;
-  uses the same notation as BetaReductionOneStep, which is the same thing but for Terms */
-predicate PortBindings WhichBetaReduction BindingTree BindingTree, notated "{1} →𝛽({0}) {2}";
-PortBindingsHere(
+/* how the bindings of an outer lambda/forall are transformed by a particular unfolding;
+  uses the same notation as UnfoldInFormula, which is the same thing but for Formulas */
+predicate UnfoldInBindings WhichLambda BindingTree BindingTree, notated "{1} →({0}) {2}";
+predicate UnfoldInFormula WhichLambda Formula Formula, notated "{1} →({0}) {2}";
+UnfoldFormulaHere (
+    parameter_type: Formula, body: Formula, bindings: BindingTree,
+    parameter: Formula,
+    result: Formula,
+    _:FormulaSubstitution bindings parameter body result,
+)-> UnfoldInFormula
+  (ThisLambda bindings)
+  (Apply (Abstraction Lambda parameter_type body bindings) parameter)
+  result;
+UnfoldBindingsHere(
     replaced_bindings: BindingTree,
-    bindings_in_argument_type: BindingTree, bindings_in_body: BindingTree,
-    bindings_in_argument: BindingTree,
+    bindings_in_parameter_type: BindingTree, bindings_in_body: BindingTree,
+    bindings_in_parameter: BindingTree,
     new_bindings: BindingTree,
-    _: GrowFromLeaves replaced_bindings bindings_in_argument bindings_in_body new_bindings,
-) -> PortBindings
-  (BetaReductionHere replaced_bindings)
-  (BindBranch (BindBranch bindings_in_argument_type bindings_in_body) bindings_in_argument)
+    _: BindingTreeSubstitution replaced_bindings bindings_in_parameter bindings_in_body new_bindings,
+) -> UnfoldInBindings
+  (ThisLambda replaced_bindings)
+  (BindBranch (BindBranch bindings_in_parameter_type bindings_in_body) bindings_in_parameter)
   new_bindings;
 
-PortBindingsL (
-    reduction: WhichBetaReduction,
+UnfoldFormulaApplyL (
+    m: Formula, n: Formula, m2: Formula,
+    which: WhichLambda,
+    _ : UnfoldInFormula which m m2,
+)-> UnfoldInFormula (LambdaInL which) (Apply m n) (Apply m2 n);
+UnfoldBindingsL (
+    which: WhichLambda,
     m: BindingTree, n: BindingTree, m2: BindingTree,
-    _: PortBindings reduction m m2,
-)->PortBindings
-  (BetaReductionL reduction)
-  (BindBranch m n)
-  (BindBranch m2 n);
-PortBindingsR (
-    reduction: WhichBetaReduction,
+    _: UnfoldInBindings which m m2,
+)-> UnfoldInBindings (LambdaInL which) (BindBranch m n) (BindBranch m2 n);
+
+UnfoldFormulaApplyR (
+    m: Formula, n: Formula, n2: Formula,
+    which: WhichLambda,
+    _ : UnfoldInFormula which n n2,
+)-> UnfoldInFormula (LambdaInR which) (Apply m n) (Apply m n2);
+UnfoldBindingsR (
+    which: WhichLambda,
     m: BindingTree, n: BindingTree, n2: BindingTree,
-    _: PortBindings reduction n n2,
-)->PortBindings
-  (BetaReductionR reduction)
-  (BindBranch m n)
-  (BindBranch m n2);
+    _: UnfoldInBindings which n n2,
+)->UnfoldInBindings (LambdaInR which) (BindBranch m n) (BindBranch m n2);
 
-predicate SingleSubstitution BindingTree Term Term Term, notated "{3} = {2}[{0}:={1}]";
-SingleSubstitutionNotHere (
-    term: Term, replacement: Term
-) -> SingleSubstitution BindNotThis replacement term term;
+UnfoldFormulaAbstractionArgType (
+    kind: AbstractionKind, parameter_type: Formula, body: Formula, bindings: BindingTree,
+    parameter_type2: Formula,
+    which: WhichLambda,
+    _ : UnfoldInFormula which parameter_type parameter_type2,
+)-> UnfoldInFormula (LambdaInL which)
+     (Abstraction kind parameter_type body bindings)
+     (Abstraction kind parameter_type2 body bindings);
 
-SingleSubstitutionBoundVariable (
-    term: Term, replacement: Term
-) -> SingleSubstitution BindVariable replacement VariableUsage replacement;
-
-SingleSubstitutionAbstraction (
-    kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree,
-    argument_type2: Term, body2: Term, bindings2: BindingTree,
-    argument_replaced_bindings: BindingTree, body_replaced_bindings: BindingTree,
-    replacement: Term, replacement_empty_bindings: BindingTree,
-    _ : SingleSubstitution argument_replaced_bindings replacement argument_type argument_type2,
-    _ : SingleSubstitution body_replaced_bindings replacement body body2,
-    _ : GrowFromLeaves body_replaced_bindings replacement_empty_bindings bindings bindings2,
-    _ : EmptyBindingsShapedLike replacement replacement_empty_bindings,
-) -> SingleSubstitution
-    (BindBranch argument_replaced_bindings body_replaced_bindings)
-    replacement
-    (Abstraction kind argument_type body bindings)
-    (Abstraction kind argument_type2 body2 bindings2);
-
-SingleSubstitutionApply (
-    repl: Term, m: Term, n: Term, m2: Term, n2: Term, mb: BindingTree, nb: BindingTree,
-    _ : SingleSubstitution mb repl m m2,
-    _ : SingleSubstitution nb repl n n2,
-) -> SingleSubstitution (BindBranch mb nb) repl (Apply m n) (Apply m2 n2);
-
-predicate BetaReductionOneStep WhichBetaReduction Term Term, notated "{1} →𝛽({0}) {2}";
-BetaReduction (
-    argument_type: Term, body: Term, bindings: BindingTree,
-    argument: Term,
-    result: Term,
-    _:SingleSubstitution bindings argument body result,
-)-> BetaReductionOneStep (BetaReductionHere bindings) (Apply (Abstraction Lambda argument_type body bindings) argument) result;
-
-BetaCompatibilityApplyLeft (
-    m: Term, n: Term, m2: Term,
-    reduction: WhichBetaReduction,
-    _ : BetaReductionOneStep reduction m m2,
-)-> BetaReductionOneStep (BetaReductionL reduction) (Apply m n) (Apply m2 n);
-
-BetaCompatibilityApplyRight (
-    m: Term, n: Term, n2: Term,
-    reduction: WhichBetaReduction,
-    _ : BetaReductionOneStep reduction n n2,
-)-> BetaReductionOneStep (BetaReductionR reduction) (Apply m n) (Apply m n2);
-
-BetaCompatibilityAbstractionArgType (
-    kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree,
-    argument_type2: Term,
-    reduction: WhichBetaReduction,
-    _ : BetaReductionOneStep reduction argument_type argument_type2,
-)-> BetaReductionOneStep (BetaReductionL reduction)
-     (Abstraction kind argument_type body bindings)
-     (Abstraction kind argument_type2 body bindings);
-
-BetaCompatibilityAbstractionBody (
-    kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree, bindings2: BindingTree,
-    body2: Term,
-    reduction: WhichBetaReduction,
-    _ : PortBindings reduction bindings bindings2,
-    _ : BetaReductionOneStep reduction body body2,
-)-> BetaReductionOneStep (BetaReductionR reduction)
-     (Abstraction kind argument_type body bindings)
-     (Abstraction kind argument_type body2 bindings2);
+UnfoldFormulaAbstractionBody (
+    kind: AbstractionKind, parameter_type: Formula, body: Formula, bindings: BindingTree, bindings2: BindingTree,
+    body2: Formula,
+    which: WhichLambda,
+    _ : UnfoldInBindings which bindings bindings2,
+    _ : UnfoldInFormula which body body2,
+)-> UnfoldInFormula (LambdaInR which)
+     (Abstraction kind parameter_type body bindings)
+     (Abstraction kind parameter_type body2 bindings2);
 
 
-predicate BetaConversion Term Term, notated "{0} =𝛽 {1}";
-BetaReductionIsConversion (reduction: WhichBetaReduction, a: Term, b: Term,
-    _:BetaReductionOneStep reduction a b) -> BetaConversion a b;
-BetaReflexive (term: Term) -> BetaConversion term term;
-BetaSymmetric (x: Term, y: Term, _:BetaConversion x y)-> BetaConversion y x;
-BetaTransitive (x: Term, y: Term, z: Term,_:BetaConversion x y,_:BetaConversion y z)-> BetaConversion x z;
+predicate FoldEquivalent Formula Formula, notated "{0} ≅ {1}";
+UnfoldIsEquivalence (which: WhichLambda, a: Formula, b: Formula,
+    _:UnfoldInFormula which a b) -> FoldEquivalent a b;
+FoldReflexive (formula: Formula) -> FoldEquivalent formula formula;
+FoldSymmetric (x: Formula, y: Formula, _:FoldEquivalent x y)-> FoldEquivalent y x;
+FoldTransitive (x: Formula, y: Formula, z: Formula,_:FoldEquivalent x y,_:FoldEquivalent y z)-> FoldEquivalent x z;
 
-predicate HasType Term Context Term Context, notated "{0} : {2} ({1}/{3})";
-TypeOfProp() -> HasType (SortTerm Prop) ContextHole (SortTerm Type) ContextHole;
+predicate IsType Formula, notated "{0} is a type";
+predicate HasType Formula Formula, notated "{0} : {1}";
+
+PropIsType() -> IsType Prop;
+
+PropsAreTypes(t: Formula, _ : HasType t Prop) -> IsType t;
+
 TypeOfVariableUsage(
-    kind: AbstractionKind, argument_type: Term, body: Term, bindings: BindingTree,
-    argument_context: Context, body_context: Context,
-) -> HasType
-  VariableUsage (ContextKnownVariable (Abstraction kind argument_type body bindings) (ContextBranch argument_context body_context))
-  argument_type argument_context;
+    type: Formula, namespace_competitors: Formula,
+    _ : IsType type,
+) -> HasType (KnownUsage type namespace_competitors) type;
 
 TypeOfForAll (
-    argument_type: Term, return_type: Term, argument_context: Context, return_context: Context, return_context_before_bindings: Context, bindings: BindingTree,
-    s1 : Sort, s2 : Sort,
-    _ : HasType argument_type argument_context (SortTerm s1) ContextHole,
-    _ : HasType return_type return_context (SortTerm s2) ContextHole,
-    _ : AddBindingsToContext bindings
-      (ContextKnownVariable (Abstraction ForAll argument_type return_type bindings)
-                            (ContextBranch argument_context return_context_before_bindings))
-      return_context_before_bindings return_context,
-) -> HasType
-    (Abstraction ForAll argument_type return_type bindings)
-    (ContextBranch argument_context return_context_before_bindings)
-    (SortTerm s2) ContextHole;
+    parameter_type: Formula, return_type: Formula, return_type_after_bindings: Formula, bindings: BindingTree,
+    _ : IsType parameter_type,
+    _ : HasType return_type_after_bindings Prop,
+    _ : FormulaSubstitution bindings
+      (KnownUsage parameter_type return_type)
+      return_type return_type_after_bindings,
+) -> HasType (Abstraction ForAll parameter_type return_type bindings) Prop;
 
+ForAllIsType (
+    parameter_type: Formula, return_type: Formula, return_type_after_bindings: Formula, bindings: BindingTree,
+    _ : IsType parameter_type,
+    _ : IsType return_type_after_bindings,
+    _ : FormulaSubstitution bindings
+      (KnownUsage parameter_type return_type)
+      return_type return_type_after_bindings,
+) -> IsType (Abstraction ForAll parameter_type return_type bindings);
+
+/* Note: I don't know if the variable-identities below actually need to include return_type,
+  or if just body is enough. Playing it safe though. */
 TypeOfLambda (
-    argument_type: Term, argument_context: Context,
-    body: Term, body_context: Context, body_context_before_bindings: Context,
-    return_type: Term, return_context: Context, return_context_before_bindings: Context,
+    parameter_type: Formula,
+    body: Formula, body_after_bindings: Formula,
+    return_type: Formula, return_type_after_bindings: Formula,
     lambda_bindings: BindingTree, forall_bindings: BindingTree,
-    s : Term,
-    _ : HasType (Abstraction ForAll argument_type return_type forall_bindings) (ContextBranch argument_context return_context_before_bindings) s ContextHole,
-    _ : HasType body body_context return_type return_context,
-    _ : AddBindingsToContext lambda_bindings
-      (ContextKnownVariable (Abstraction Lambda argument_type body lambda_bindings)
-                            (ContextBranch argument_context body_context_before_bindings))
-      body_context_before_bindings body_context,
-    _ : AddBindingsToContext forall_bindings
-      (ContextKnownVariable (Abstraction ForAll argument_type return_type forall_bindings)
-                            (ContextBranch argument_context return_context_before_bindings))
-      return_context_before_bindings return_context,
+    _ : IsType (Abstraction ForAll parameter_type return_type_after_bindings forall_bindings),
+    _ : HasType body_after_bindings return_type_after_bindings,
+    _ : FormulaSubstitution lambda_bindings
+      (KnownUsage parameter_type (Apply body return_type))
+      body body_after_bindings,
+    _ : FormulaSubstitution forall_bindings
+      (KnownUsage parameter_type (Apply body return_type))
+      return_type return_type_after_bindings,
 ) -> HasType
-    (Abstraction Lambda argument_type body lambda_bindings)
-    (ContextBranch argument_context body_context_before_bindings)
-    (Abstraction ForAll argument_type return_type forall_bindings)
-    (ContextBranch argument_context return_context_before_bindings);
+    (Abstraction Lambda parameter_type body lambda_bindings)
+    (Abstraction ForAll parameter_type return_type forall_bindings);
 
 TypeOfApply (
-    function: Term, function_context: Context,
-    argument: Term, argument_context: Context,
+    function: Formula, parameter: Formula,
+    parameter_type: Formula, return_type: Formula, forall_bindings: BindingTree,
+    result_type: Formula,
+    _ : HasType function (Abstraction ForAll parameter_type return_type forall_bindings),
+    _ : HasType parameter parameter_type,
+    _ : FormulaSubstitution forall_bindings parameter return_type result_type,
+) -> HasType (Apply function parameter) result_type;
 
-    argument_type: Term, argument_type_context: Context,
-    return_type: Term, return_type_context: Context,
-    forall_bindings: BindingTree,
-
-    result_type: Term, result_type_context: Context,
-
-    _ : HasType function function_context
-         (Abstraction ForAll argument_type return_type forall_bindings)
-         (ContextBranch argument_context return_type_context),
-    _ : HasType argument argument_context argument_type argument_type_context,
-    _ : SingleSubstitution forall_bindings argument return_type result_type,
-    _ : AddBindingsToContext forall_bindings argument_context return_type_context result_type_context
-) -> HasType
-    (Apply function argument)
-    (ContextBranch function_context argument_context)
-    result_type
-    result_type_context;
-
-TypeBetaConversion (
-    value: Term, value_context: Context,
-    ty: Term, type_context: Context,
-    ty2: Term,
-    s: Sort,
-    _ : HasType value value_context ty type_context,
-    _ : HasType ty2 type_context (SortTerm s) ContextHole,
-    _ : BetaConversion ty ty2,
-) -> HasType value value_context ty2 type_context;
+TypeFoldEquivalent (
+    member: Formula,
+    ty: Formula,
+    ty2: Formula,
+    _ : HasType member ty,
+    _ : FoldEquivalent ty ty2,
+    _ : IsType ty2,
+) -> HasType member ty2;

@@ -4,10 +4,15 @@
 \usepackage{amsfonts}
 \usepackage{amssymb}
 \usepackage{mathtools}
+\usepackage{nameref}
+\usepackage{xcolor}
 
 \usepackage[english]{babel}
 \usepackage[autostyle]{csquotes}
 \MakeOuterQuote{"}
+
+\usepackage[backend=biber,style=numeric]{biblatex}
+\addbibresource{CoC_EliDupree_Edition.bib}
 
 \title{The Calculus of Constructions, EliDupree Edition}
 \author{Eli Dupree}
@@ -26,13 +31,25 @@
 \newcommand{\bindvariable}{\bigstar}
 \newcommand{\bindnotthis}{\circ}
 \newcommand{\emptybindingslike}[1]{\varnothing #1}
-\newcommand{\betaeq}{\overset{\beta}{=}}
+\newcommand{\betaeq}{\cong}
 \newcommand{\betared}[1]{\overset{#1}{\rightarrow}}
+\newcommand{\anywhat}{\ell}
 
 \begin{document}
   \maketitle
+  
+  \section{Introduction}
+  
+  This document describes the Calculus of Constructions (CoC), using the specific definitions that I (Eli Dupree) refined from the original definitions.
+  
+  Section \ref{fundamentals} (\textit{\nameref{fundamentals}}) gives a formal definition of CoC.
+  
+  Section \ref{structure} (\textit{\nameref{structure}}), which is currently much shorter, describes some of the structure that occurs based on those definitions.
+  
+  I hope to expand this document with more details (such as how to use CoC in practice), but I also hope to define those details by \emph{actually building them}; we'll see what form that takes in practice.
+  
 
-  \section{Fundamentals}
+  \section{Fundamentals}\label{fundamentals}
   \subsection{Formulas}
 
   The Calculus of Constructions (CoC) is a system of formulas. The following context-free grammar shows the six elementary "formula constructors" – ways to build a formula, sometimes from smaller formulas ($F$):
@@ -45,13 +62,13 @@
 
   $\Prop$ (read as "Prop") is the \emph{type of all ordinary types}. It's called "Prop" because the ordinary types can represent \emph{propositions} (although they can represent many other things as well).
   
-  $\lambda b:T,v$ ("a lambda") is a \emph{function} which maps a single parameter, of type $T$, to the formula $v$ (after the value of the parameter is substituted into $v$) We call $T$ the \textbf{parameter type}, and $v$ the \textbf{body} or \textbf{return value}.
+  $\lambda b:T,v$ ("a lambda") is a \emph{function} which maps a single parameter, of type $T$, to the formula $v$ (after the value of the parameter is substituted into $v$). We call $T$ the \textbf{parameter type}, and $v$ the \textbf{body} or the \textbf{return value}.
   
-  $\forall b:T,U$ ("a forall", read as "for all $b$ in $T$, $U$") is the \emph{type} of any $\lambda c:T,v$ where $v : U$. We call these types "foralls" because of the way that types can represent propositions: The members of a type are the proofs of a proposition, and a proposition with no proofs (an empty type) is a false proposition\footnote{A fan of Gödel might ask: "What about propositions that are true but unprovable?" Well, we are free to define "true" to mean "provable within CoC". We are speaking of \emph{constructive} truth, which is a slightly stronger claim than truth in classical logic. Like all theories, CoC must be incomplete, but the form of that incompleteness is just that there are some propositions $P$ where neither $P$ nor $\neg P$ is provable.}. If the proposition $U$ is true for all members of the type $T$, then you can write a lambda that maps any member of $T$ to a member of $U$, and that lambda will be a member (a proof) of $\forall b:T,U$. As with lambdas, we call $T$ the \textbf{parameter type}, and $U$ the \textbf{body} or \textbf{return type}.
+  $\forall b:T,U$ ("a forall", read as "for all $b$ in $T$, $U$") is the \emph{type} of a lambda. We call these types "foralls" because of the way that types can represent propositions: The members of a type are the proofs of a proposition, and a proposition with no proofs (an empty type) is a false proposition\footnote{A fan of Gödel might ask: "What about propositions that are true but unprovable?" Well, we are free to define "true" to mean "provable within CoC". We are speaking of \emph{constructive} truth, which is a slightly stronger claim than truth in classical logic. Like all theories, CoC must be incomplete, but the form of that incompleteness is just that there are some propositions $P$ where neither $P$ nor $\neg P$ is provable.}. If the proposition $U$ is true for all members of the type $T$, then you can write a lambda that maps any member of $T$ to a member of $U$, and that lambda will be a member (a proof) of $\forall b:T,U$. As with lambdas, we call $T$ the \textbf{parameter type}, and $U$ the \textbf{body} or the \textbf{return type} (because it will be the type of the return value of such a lambda).
   
   $\usage$ is a \emph{variable usage}, which may appear inside the body of a lambda or forall, as a location to substitute in the value of the parameter. $\usageKnown{T}{i}$ is the same, but with an explicit definition of its type and variable-identity.
   
-  $(f v)$ is a \emph{function application} – the kind that would be written $f(v)$ in the notation of usual math or programming. CoC descends from the lambda calculus, where this is written as $f v$.
+  $(f v)$ ("an apply") is a \emph{function application} – the kind that would be written $f(v)$ in the notation of usual math or programming. CoC is based on the lambda calculus, where this is written as $f v$.
   
   Before we can make these definitions formal, we must take a couple of detours.
   
@@ -63,7 +80,7 @@
 
   \[b \rightarrow \bindvariable \mid \bindnotthis \mid (b b) \]
 
-  This requires some explanation. In the usual lambda calculus, you may write
+  This requires some explanation. In the usual lambda calculus, you may write something like
 
   \[ \lambda x : \mathrm{Number}, ((\mathrm{plus}\ 2)\ x) \]
 
@@ -81,7 +98,64 @@
   
   This is best visualized as a tree, where each lambda's binding-tree is the \emph{same shape} as the whole body of that lambda:
   
-  [TODO: construct the diagram when I'm in a better position to do that relative to my computer]
+  \begin{center}
+  \begin{tikzpicture}
+    \draw (0,0) node[inner sep=3pt](lx){$\lambda$}[level distance = 0.9cm]
+      child {node[xshift=-0.8em,inner sep=2pt]{Number} [child anchor=28]}
+      child {node[inner sep=3pt](ly){$\lambda$}
+        child {node[xshift=-0.8em,inner sep=2pt]{Number} [child anchor=28]}
+        child {node[inner sep=1pt]{()}
+          child {node[inner sep=1pt]{()}
+            child {node[inner sep=2pt]{plus}}
+            child {node[inner sep=3pt]{$\usage$}}
+          }
+          child {node[inner sep=3pt]{$\usage$}}
+        }
+      };
+    \path(lx) +(0.3,-0.05) node[red,inner sep=1pt](x){x}
+      (lx-1) +(0.78,-0.02) node[red,inner sep=0pt](x01){$\bindnotthis$}
+      (ly) +(0.42,0.02) node(x0){}
+      (ly-2)+(0.5,-0.08) node(x1){}
+      (ly-2-2)+(0.6,0) node[red,inner sep=0pt](x2){$\bindnotthis$}
+      (ly-2-1)+(0.5,0) node(x3){}
+      (ly-2-1-1)+(0.7,0) node[red,inner sep=0pt](x4){$\bindnotthis$}
+      (ly-2-1-2)+(0.6,0) node[red,inner sep=1pt](x5){$\bindvariable$};
+    \path(ly) +(0.3,-0.09) node[blue,inner sep=0pt](y){y}
+      (ly-1) +(0.78,-0.02) node[blue,inner sep=0pt](y01){$\bindnotthis$}
+      (ly-2)+(0.28,-0.08) node(y1){}
+      (ly-2-2)+(0.33,0) node[blue,inner sep=1pt](y2){$\bindvariable$}
+      (ly-2-1)+(0.3,0) node(y3){}
+      (ly-2-1-1)+(0.45,0) node[blue,inner sep=0pt](y4){$\bindnotthis$}
+      (ly-2-1-2)+(0.3,0) node[blue,inner sep=0pt](y5){$\bindnotthis$};
+    
+    \draw[red](x) -- (x0.mid) -- (x1.mid) -- (x3.mid) -- (x5);
+    \draw[red,very thin,dashed]
+      (x) -- (x01)
+      (x1.mid) -- (x2)
+      (x3.mid) -- (x4);
+    \draw[blue](y) -- (y1.mid) -- (y2);
+    \draw[blue,very thin,dashed]
+      (y) -- (y01)
+      (y1.mid) -- (y3.mid) -- (y4)
+      (y3.mid) -- (y5);
+    
+%    \draw(ly-2-1) +(0.3,0) -- (y);
+%    \draw (0.2cm,0) node[above]{$x$}[level distance = 1cm]
+%      child {node{$\bindnotthis$}}
+%      child {
+%        child {node{$\bindnotthis$}}
+%        child {
+%          child {
+%            child {node{$\bindnotthis$}}
+%            child {node{$\bindvariable$}}
+%          }
+%          child {node{$\bindnotthis$}}
+%        }
+%      };
+  \end{tikzpicture}
+  \end{center}
+  
+  In this example, the red tree rooted at $x$ selects the first $\usage$ (by marking it with $\color{red}\bindvariable$), and the blue tree rooted at $y$ selects the second $\usage$ (by marking it with $\color{blue}\bindvariable$). If we wanted to express $x + x$, we could make the first binding tree have a $\color{red}\bindvariable$ at both locations, and the second have only $\color{blue}\bindnotthis$s.
   
   Observe that it is straightforward to convert between the "variable names" form and the "binding trees" form:
   \begin{itemize}
@@ -109,7 +183,7 @@
   
   The whole point of variables is to be able to substitute them for other values. In algebra, we say $x^2 + x + 2$, knowing that we can later replace $x$ with \emph{any} number and have the formula retain its meaning. In CoC, we want to do much the same thing, just using lambdas instead. Instead of $x$, we have the binding tree; instead of "number", we have the parameter type.
   
-  To achieve this, we'll introduce some formal notation. In the following rules, the symbols $F,G,H,T,U,f,v,w$ mean "any formula", and the symbols $b,c,d,e,f$ mean "any binding tree". Technically, by "any formula", we mean \emph{universal quantification over formulas, scoped outside the statement}. That is, if a statement includes two copies of the same symbol (say, $T$), then the statement is true for all possible values of $T$, but the two usages of $T$ must represent the \emph{same} formula.
+  To achieve this, we'll introduce some formal notation. In the following rules, the symbols $F,G,H,T,U,f,v,w$ mean "any formula", and the symbols $b,c,d,e,f$ mean "any binding tree". Technically, by "any", we mean \emph{universal quantification, scoped outside the statement}. That is, if a statement includes two copies of the same symbol (say, $T$), then the statement is true for all possible values of $T$, but only when the two usages of $T$ represent the \emph{same} formula.
   
   We now define the following concepts:
   
@@ -143,41 +217,44 @@
 
 The main reason we define substitution is for \emph{function application}. If you have a function $f =(\lambda b:T,w)$, then you want $(f v)$ to be equivalent to $\subst{w}{b}{v}$.
 
-When we say "equivalent", we can't mean that they are the \emph{same formula}. But we would like to say that they are two different formulas that refer to the \emph{same object}. This notion is formalized in the concept of \textbf{beta-equivalence}, written $\betaeq$, which we will now build out of several pieces.
+When we say "equivalent", we can't mean that they are the \emph{same formula} (because they are not). But we would like to say that they are two different formulas that refer to the \emph{same object}. This notion is formalized in the concept of \textbf{fold-equivalence}, written $\betaeq$, which we will now build out of several pieces.
 
-The transformation $(f v) \rightarrow \subst{w}{b}{v}$ is the elementary \textbf{single-step beta-reduction}. However, it's not the only single-step beta-reduction. If $(f v)$ appears as a sub-formula of a larger formula – say, $(g (f v))$ – then we would also like to say $(g (f v)) \rightarrow (g(\subst{w}{b}{v}))$.
+The transformation $(f v) \rightarrow \subst{w}{b}{v}$ is called \textbf{lambda unfolding}. We would like to be able to unfold any lambda within a formula. That is, if $(f v)$ appears as a sub-formula of a larger formula – say, $(g (f v))$ – then we would also like to say $(g (f v)) \rightarrow (g(\subst{w}{b}{v}))$.
 
-For this, we need\footnote{The typical definitions don't need this, and indeed, this is the one place where the "binding tree" form adds more complexity than it removes.} a notion of \textbf{which-reduction} is being performed, with the following grammar:
+For this, we need\footnote{The typical definitions don't need this, and indeed, this is the one place where the "binding tree" form adds more complexity than it removes.} a notion of \textbf{what-lambda} is being unfolded, with the following grammar:
 
-\[r \rightarrow \mathcal{L}r \mid \mathcal{R}r \mid b\]
+\[\anywhat \rightarrow \mathcal{L}\anywhat \mid \mathcal{R}\anywhat \mid b\]
   
-  This is effectively a path starting at the root of the formula, with a choice of "left" or "right" at each step, ending in the binding-tree specifying which usages are being replaced.
+  This represents a path starting at the root of the formula, with a choice of "left" or "right" at each step, ending in the binding-tree specifying which usages are being replaced.
 
   We now introduce a few more notations:
   
   \begin{itemize}
-  \item The symbol $r$ means "any which-reduction" (using the same quantification as before).
-  \item $F \betared{r} G$ means "the formula $F$ becomes $G$ when you perform $r$".
-  \item $b \betared{r} c$ means "the binding-tree $b$ becomes $c$ when you perform $r$".
+  \item The symbol $\anywhat$ means "any what-lambda" (using the same meaning of "any" as before).
+  \item $F \betared{\anywhat} G$ means "the formula $F$ becomes $G$ when you unfold $\anywhat$".
+  \item $b \betared{\anywhat} c$ means "the binding-tree $b$ becomes $c$ when you unfold $\anywhat$".
   \item $\frac{premises}{conclusions}$ means that if all the premises above the line are true, then all the conclusions below the line are also true. (If the premises are $\varnothing$, then the conclusions are true unconditionally.)
   \end{itemize}
   
-  Formally, the single-step beta-reductions are:
+  Formally, the single-step unfoldings are:
   
 \[ \frac{\varnothing}{((\lambda b:T,w)v) \betared{b} \subst{w}{b}{v} \presep ((c d) e) \betared{b} \subst{d}{b}{e}} \]
-\[ \frac{b \betared{r} c}{(b d) \betared{\mathcal{L}r} (c d) \presep (d b)\betared{\mathcal{R}r} (d c)} \]
-\[ \frac{F \betared{r} G}{(F H) \betared{\mathcal{L}r} (G H) \presep (H F) \betared{\mathcal{R}r} (H G) \presep (\lambda b:F,v) \betared{\mathcal{L}r} (\lambda b:G,v) \presep (\forall b:F,v) \betared{\mathcal{L}r} (\forall b:G,v)} \]
-\[ \frac{F \betared{r} G \presep b \betared{r} c}{(\lambda b:T,F) \betared{\mathcal{R}r} (\lambda c:T,G) \presep (\forall b:T,F) \betared{\mathcal{R}r} (\forall c:T,G)} \]
+\[ \frac{b \betared{\anywhat} c}{(b d) \betared{\mathcal{L}\anywhat} (c d) \presep (d b)\betared{\mathcal{R}\anywhat} (d c)} \]
+\[ \frac{F \betared{\anywhat} G}{(F H) \betared{\mathcal{L}\anywhat} (G H) \presep (H F) \betared{\mathcal{R}\anywhat} (H G) \presep (\lambda b:F,v) \betared{\mathcal{L}\anywhat} (\lambda b:G,v) \presep (\forall b:F,U) \betared{\mathcal{L}\anywhat} (\forall b:G,U)} \]
+\[ \frac{F \betared{\anywhat} G \presep b \betared{\anywhat} c}{(\lambda b:T,F) \betared{\mathcal{R}\anywhat} (\lambda c:T,G) \presep (\forall b:T,F) \betared{\mathcal{R}\anywhat} (\forall c:T,G)} \]
 
-Of these rules, the most interesting one is the last, which requires that both the body formula and the bindings be reducible according to the same choice of which reduction.
+Of these rules, the most interesting one is the last, which requires that both the body formula and the bindings be unfolded at the same lambda. This is necessary because, when any outer lambda had $\bindvariable$s \emph{inside $v$}, those $\bindvariable$s need to be moved/copied to the new location(s) of $v$. 
 
-Having defined single-step reductions, we now define beta-equivalence as the smallest equivalence relation that contains them. Intuitively, $F \betaeq G$ if there is a "path" of single-step reductions, forwards or backwards, that connects $F$ and $G$. Formally,
+Having defined single-step unfoldings, we now define fold-equivalence as the smallest equivalence relation that contains them. Intuitively, $F \betaeq G$ if there is a "path" of foldings or unfoldings that converts $F$ to $G$. Formally,
 
-\[ \frac{F \betared{r} G}{F \betaeq G} \]
+(unfolding is equivalence)
+\[ \frac{F \betared{\anywhat} G}{F \betaeq G} \]
+(reflexivity\footnote{We don't technically need to assert reflexivity here, because it can be proven from the other rules. But it would be frivolous to leave it out "just because we can".})
 \[ \frac{\varnothing}{F \betaeq F} \]
+(symmetry)
 \[ \frac{F \betaeq G}{G \betaeq F} \]
+(transitivity)
 \[ \frac{F \betaeq G \presep G \betaeq H}{F \betaeq H} \]
-  
   
   \subsection{Type judgments}
   
@@ -193,7 +270,7 @@ Having defined single-step reductions, we now define beta-equivalence as the sma
   "Prop is a type":
   \[ \frac{\varnothing}{\Prop\istype} \]  
   
-  "Members of Prop are types":
+  "Props are types":
   \[ \frac{T : \Prop}{T\istype} \]
   
   "Usages are what they say they are":
@@ -202,24 +279,40 @@ Having defined single-step reductions, we now define beta-equivalence as the sma
   "Foralls are types":
   \[ \frac{T\istype\presep \subst{U}{b}{\usageKnown{T}{U}}\istype}{(\forall b:T,U)\istype} \]
   
-  "Prop is impredicative":
+  "Foralls can be Props":
   \[ \frac{T\istype\presep \subst{U}{b}{\usageKnown{T}{U}} : \Prop}{(\forall b:T,U) : \Prop} \]
   
   "Lambdas belong to foralls":
   \[ \frac{\subst{v}{c}{\usageKnown{T}{U\!v}} : \subst{U}{b}{\usageKnown{T}{U\!v}} \presep (\forall b:T,U)\istype}{(\lambda c:T,v) : (\forall b:T,U)} \]
   
-  "You can beta-reduce values":
+  "Applications are the type they'd unfold into":
   \[ \frac{f : (\forall b:T,U) \presep v : T}{(f v) : \subst{U}{b}{v}} \]
   
-  "You can beta-convert types", a.k.a. "Types are objects, not formulas" ("when we say \textbf{object}, we mean a beta-equivalence class over forulas"):
+  "You can fold or unfold types":
   \[ \frac{v : T \presep T \betaeq U \presep U\istype}{v : U} \]
   
+  We say that a formula $F$ is a \textbf{value} if it is a member of any type. And a formula is \textbf{well-typed} if it is either a type or a value.
+    
+  We can now formalize the statement "$F$ and $G$ refer to the same object". An \textbf{object} is an equivalence class of well-typed formulas under $\betaeq$, and any well-typed formula "refers" to the class it belongs to. This makes the statement "$F$ and $G$ refer to the same object" equivalent to "$F \betaeq G$ and both are well-typed".
+  
+  A few notes on these definitions:
+  
+  The two rules of foralls are almost identical, and indeed, previous formulations of CoC\cite{coquand1990proof}\cite{rodrigueztype} have expressed them as a single rule, by abstracting over the distinction between "being a type" and "being a member of Prop". However, the two rules have substantially different meanings. "Foralls are types" is the basic definition of the role of foralls. "Foralls can be Props" gives them an additional power, sometimes known as \textbf{impredicativity}: A forall whose parameter type is $\Prop$ can still be a member of $\Prop$ itself, meaning that it quantifies over a category that \emph{includes itself}. This is very mathematically powerful, and only narrowly avoids a paradox of self-reference.
+  
+  The "You can fold or unfold types" rule can also be read as "Types are objects, not formulas". If $v : T$, then $v$ is also a member of any other formula that represents the same object as $T$.
+  
+  % TODO: is this actually true?: Although this rule allows a formula to be a member of more than one formula, it's the only rule that does so. Thus, we can say that any formula can only be a member of one \emph{object}.
+  % TODO: is this actually true?: also the apply rule means values are objects
   
 
-  \section{Type relationships}
-  All well-bound formulas of CoC can be immediately\footnote{By a process that is $O(n)$ in the size of the formula.} classified into one of the following groups.
+  \section{Type relationships}\label{structure}
+  All well-bound formulas of CoC can be immediately classified into one of the following groups, knowing only the formula constructor and the groups of its immediate sub-formulas.
 
   \vspace{0.5cm}
+  
+  \newcommand\toprow{U}
+  \newcommand\midrow{Y}
+  \newcommand\botrow{D}
 
   \noindent\begin{tikzpicture}
     \pgfsetxvec{\pgfpoint{2cm}{0}}
@@ -236,32 +329,42 @@ Having defined single-step reductions, we now define beta-equivalence as the sma
       \draw (4.2,\y+0.5) node[right]{{\LARGE \boldmath $\cdots$}};
     }
     \foreach \x in {0,1,2,3,4} {
-      \draw (\x+0.15,0.15) node[]{{\boldmath $U_\x$}};
-      \draw (\x+0.15,1.15) node[]{{\boldmath $F_\x$}};
+      \draw (\x+0.15,0.15) node[]{{\boldmath $\toprow_\x$}};
+      \draw (\x+0.15,1.15) node[]{{\boldmath $\midrow_\x$}};
     }
     \foreach \x in {0,1,2,3} {
-      \draw (\x+0.5,1.8) node[]{$\usageKnown{U_\x}{i}$};
+      \draw (\x+0.5,1.8) node[]{$\usageKnown{\toprow_\x}{i}$};
     }
-    \draw (0.15,2.15) node[]{{\boldmath $D$}};
+    \draw (0.15,2.15) node[]{{\boldmath $\botrow$}};
     \draw (0.5,0.5) node[]{$\Prop$};
-    \draw (0.5,1.4) node[]{$\forall b:T,F_0$};
-    \draw (0.5,1.6) node[]{$(F_1 v)$};
-    \draw (0.5,2.4) node[]{$\lambda b:T,D$};
-    \draw (0.5,2.6) node[]{$(D v)$};
-    \draw (0.5,2.8) node[]{$\usageKnown{F_0}{i}$};
+    \draw (0.5,1.4) node[]{$\forall b:T,\midrow_0$};
+    \draw (0.5,1.6) node[]{$(\midrow_1 v)$};
+    \draw (0.5,2.4) node[]{$\lambda b:T,\botrow$};
+    \draw (0.5,2.6) node[]{$(\botrow v)$};
+    \draw (0.5,2.8) node[]{$\usageKnown{\midrow_0}{i}$};
     \foreach \l/\x/\r in {0/1/2,1/2/3,2/3/4} {
 %      \pgfmathsetmacro{\l}{\x-1};
       \draw (\x,0) rectangle (\x+1,1);
-      \draw (\x+0.5,0.5) node[]{$\forall b:T,U_{\l}$};
+      \draw (\x+0.5,0.5) node[]{$\forall b:T,\toprow_{\l}$};
       \draw (\x,1) rectangle (\x+1,2);
-      \draw (\x+0.5,1.4) node[]{$\lambda b:T,F_{\l}$};
-      \draw (\x+0.5,1.6) node[]{$(F_{\r} v)$};
+      \draw (\x+0.5,1.4) node[]{$\lambda b:T,\midrow_{\l}$};
+      \draw (\x+0.5,1.6) node[]{$(\midrow_{\r} v)$};
     }
   \end{tikzpicture}
 
   \vspace{0.5cm}
 
-  In the above chart, $V:T$ denotes a variable-usage-site whose bound type is in the cell $T$. The literal $T$ can denote any \emph{type}, and $v$ can denote any \emph{value}, which we shall define forthwith. The other letters refer to cells; for example, $F_2$ can denote any formula from the cell $F_2$.
+  In the above chart, the literal $T$ can denote any \emph{type}, and $v$ can denote any \emph{value}. The other letters refer to cells; for example, $\midrow_2$ can denote any formula from the cell $\midrow_2$.
+  
+  % TODO: is this actually correct? (footnote was on "if" below): \footnote{In general, it may be very difficult to determine whether a formula has a type \emph{at all}. But it is easy (again, $O(n)$) to give any formula $V$ a \emph{provisional} type $T$, where if $V$ has any types at all, its types are exactly all the well-typed beta-conversions of $T$. The only difficult part is determining whether function arguments have the correct types.}
 
-  If\footnote{In general, it may be very difficult to determine whether a formula has a type \emph{at all}. But it is easy (again, $O(n)$) to give any formula $V$ a \emph{provisional} type $T$, where if $V$ has any types at all, its types are exactly all the well-typed beta-conversions of $T$. The only difficult part is determining whether function arguments have the correct types.} a formula has a type, that type is in the cell directly above its own. Thus, the \emph{values} (formulas that can be members of types) include everything except the top row, and the \emph{types} (formulas that can have members) include everything except the bottom-most cells. As such, $F_0$ (the cell of propositions) is the unique cell whose formulas are both types and values.
+  If a formula has a type, that type is in the cell directly above its own. Thus, \emph{values} (formulas that can be members of types) can be in any cell except the top row, and \emph{types} (formulas that can have members) can be in any cell with another cell under it. As such, $\midrow_0$ is the unique cell whose formulas are both types and values.
+  
+  $\midrow_0$ and $\botrow$ are the easiest to work with. Objects in $\midrow_0$ are called \textbf{ordinary types}, and objects in $\botrow$ are called \textbf{ordinary values}. Sometimes we will also call them, respectively, the \textbf{propositions} and the \textbf{proofs}. Since $\toprow_0$ contains \emph{only} the formula $\Prop$, every ordinary type (proposition) is a member of $\Prop$.
+  
+  Object in the top row are called \textbf{unwieldy types}. Because they aren't members of any other type, they can't be passed as a parameter values (because parameters must always declare their types), nor returned from lambdas (because a lambda is not well-typed unless its body has a type). The middle row – \emph{members} of unwieldy types – are the \textbf{unwieldy values}. Unwieldy values can freely be passed as parameters, and \emph{can} be returned from lambdas – but a lambda that \emph{returns} an unwieldy value also becomes unwieldy itself. (Note that the ordinary types are also unwieldy values.)
+  
+  
+  
+  \printbibliography
 \end{document}

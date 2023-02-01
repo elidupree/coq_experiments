@@ -383,7 +383,12 @@ fn value_must_be_type(
     match value {
         DataValue::Argument(argument_name) => {
             let Some(&argument_type) = arguments_map.get(&**argument_name) else { return Err(format!("In constructor {}, tried to reference nonexistent argument {}", constructor_name, argument_name)); };
-            lpt_assert_eq!(argument_type, datatype_name);
+            lpt_assert_eq!(
+                argument_type,
+                datatype_name,
+                "Constructor {} tried to pass value as wrong datatype",
+                constructor_name,
+            );
             Ok(())
         }
         DataValue::Constructor {
