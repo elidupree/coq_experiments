@@ -320,7 +320,6 @@ impl Environment {
         datatype: &str,
         data_arguments: &mut BTreeMap<String, Option<MetavariableId>>,
     ) -> CanMatch {
-        dbg!(datatype);
         let Some(id) = id else { return CanMatch::Maybe; };
         let metavariable = self.get(id);
         if metavariable.typename != *datatype {
@@ -336,7 +335,9 @@ impl Environment {
                 if *arg == Some(id) {
                     CanMatch::Yes
                 } else {
-                    dbg!(argname, arg, id);
+                    // if {
+                    //     self.replace(*arg, id);
+                    // }
                     CanMatch::No
                 }
             }
@@ -638,6 +639,27 @@ impl Environment {
         //         }
         //     }
         // }
+    }
+
+    pub fn replace(&mut self, replaced: MetavariableId, replacement: MetavariableId) {
+        for (&_id, metavariable) in &mut self.metavariables {
+            for id in metavariable
+                .type_parameters
+                .iter_mut()
+                .chain(metavariable.constructor.iter_mut().flat_map(|constructor| {
+                    constructor
+                        .data_arguments
+                        .values_mut()
+                        .chain(&mut constructor.preconditions)
+                }))
+                .flatten()
+            {
+                if *id == replaced {
+                    *id = replacement;
+                }
+            }
+        }
+        self.metavariables.remove(&replaced);
     }
 }
 

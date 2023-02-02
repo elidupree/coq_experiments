@@ -19,6 +19,7 @@ function redraw_lines() {
   context.scale(scale, scale);
   for (const element of document.querySelectorAll(".metavariable_reference")){
     const target_node = document.getElementById(`metavariable_${element.dataset.targetid}`);
+    if (!target_node) { continue; }
     const target_name = target_node.querySelector(".metavariable_reference");
     if (target_name !== element) {
       context.strokeStyle = target_node.dataset.color;

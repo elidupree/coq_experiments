@@ -6,7 +6,7 @@ use coc_rs::constructors::{Constructors, DataValue, Notation, NotationItem};
 use coc_rs::metavariable::{CanMatch, Environment, MetavariableId};
 use coc_rs::utils::{read_json_file, write_json_file};
 use quick_and_dirty_web_gui::{callback, callback_with};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::zip;
 use std::sync::{LazyLock, Mutex};
 use typed_html::elements::{FlowContent, PhrasingContent};
@@ -28,6 +28,7 @@ enum WhichChild {
     TypeParameter(usize),
     DataArgument(usize),
     Precondition(usize),
+    Replace,
 }
 
 struct MetavariableColors {
@@ -38,7 +39,7 @@ struct MetavariableColors {
 }
 
 impl Interface {
-    fn optimized_ordering(&self) -> Vec<MetavariableId> {
+    fn all_references(&self) -> [HashMap<MetavariableId, Vec<MetavariableId>>; 2] {
         let references: HashMap<MetavariableId, Vec<MetavariableId>> = self
             .environment
             .metavariables()
@@ -72,6 +73,10 @@ impl Interface {
                 back_references.get_mut(child).unwrap().push(parent);
             }
         }
+        [references, back_references]
+    }
+    fn optimized_ordering(&self) -> Vec<MetavariableId> {
+        let [references, back_references] = self.all_references();
         let mut ordering: Vec<MetavariableId> =
             self.environment.metavariables().keys().copied().collect();
         let mut indices: HashMap<MetavariableId, usize> = ordering
@@ -385,6 +390,7 @@ impl Interface {
                     WhichChild::Precondition(index) => {
                         &focus_constructor_definition.unwrap().preconditions[index].predicate_type
                     }
+                    WhichChild::Replace => &focus_metavariable.typename,
                 };
                 Some(needed_typename)
             }
@@ -509,6 +515,11 @@ impl Interface {
             child_elements.push(html! {
                 <button onclick={callback(move || autofill(id))}>
                     "Autofill"
+                </button> : String
+            });
+            child_elements.push(html! {
+                <button onclick={callback(move || set_focus(id, Some(WhichChild::Replace)))}>
+                    "Replace"
                 </button> : String
             });
         }
@@ -685,9 +696,28 @@ impl Interface {
         //     .metavariables()
         //     .iter()
         //     .map(|(&id, _)| self.node_element(id));
+        let [references, back_references] = self.all_references();
+        let mut included_nodes = HashSet::new();
+        for (&id, _) in self.environment.metavariables() {
+            let metavariable = self.environment.get(id);
+            if !metavariable.name.is_empty()
+                || !self.environment.local_validity(id).is_valid()
+                || matches!(self.focus, Some((a,_)) if a == id)
+            {
+                included_nodes.insert(id);
+                for &id2 in &references[&id] {
+                    included_nodes.insert(id2);
+                }
+                for &id2 in &back_references[&id] {
+                    included_nodes.insert(id2);
+                }
+            }
+        }
+
         let nodes = self
             .optimized_ordering()
             .into_iter()
+            .filter(|id| included_nodes.contains(id))
             .map(|id| self.node_element(id));
         let new = if let Some((_id, Some(_child))) = &self.focus {
             let style = format!(
@@ -824,6 +854,7 @@ impl Interface {
 
                 self.set_focus(new_id, None);
             }
+            WhichChild::Replace => {}
         }
     }
 }
@@ -905,6 +936,11 @@ fn use_metavariable(id: MetavariableId) {
                     interface
                         .environment
                         .set_precondition(focus_id, index, Some(id));
+                }
+                WhichChild::Replace => {
+                    interface.environment.replace(focus_id, id);
+                    interface.focus = None;
+                    return;
                 }
             }
             interface.set_focus(focus_id, None);

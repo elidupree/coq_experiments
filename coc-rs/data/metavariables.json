@@ -1,4 +1,37 @@
 {
+  "0eaf9ec0-c55f-405d-95b2-e6f8ea1a24ae": {
+    "name": "",
+    "typename": "FormulaSubstitution",
+    "type_parameters": [
+      "98f4100b-ec65-4e12-beb9-cb8e6938ac7f",
+      "5ccedaca-881e-438f-99cd-3544e36af456",
+      "7790e349-da9b-4f4c-b2c0-954231878966",
+      "5ccedaca-881e-438f-99cd-3544e36af456"
+    ],
+    "constructor": {
+      "name": "FormulaSubstitutionHere",
+      "data_arguments": {
+        "v": "5ccedaca-881e-438f-99cd-3544e36af456"
+      },
+      "preconditions": []
+    }
+  },
+  "0f4e14a3-5205-4aa0-942f-62af735235fe": {
+    "name": "",
+    "typename": "IsType",
+    "type_parameters": [
+      "10cf5712-fa0c-4f61-b9bf-72c21f5a9a88"
+    ],
+    "constructor": {
+      "name": "PropsAreTypes",
+      "data_arguments": {
+        "t": "10cf5712-fa0c-4f61-b9bf-72c21f5a9a88"
+      },
+      "preconditions": [
+        "9c88eff9-d192-44d9-bbaf-1d42d20d87be"
+      ]
+    }
+  },
   "10cf5712-fa0c-4f61-b9bf-72c21f5a9a88": {
     "name": "",
     "typename": "Formula",
@@ -12,6 +45,41 @@
       "preconditions": []
     }
   },
+  "19f28496-531c-4510-8b5b-0c4c9d04693c": {
+    "name": "",
+    "typename": "BindingTree",
+    "type_parameters": [],
+    "constructor": {
+      "name": "BindBranch",
+      "data_arguments": {
+        "m": "98f4100b-ec65-4e12-beb9-cb8e6938ac7f",
+        "n": "d48af673-693c-46b4-a506-3df59e683c2f"
+      },
+      "preconditions": []
+    }
+  },
+  "1a889814-8097-4cf5-a795-52360aef2e90": {
+    "name": "",
+    "typename": "HasType",
+    "type_parameters": [
+      "386af141-18cc-4f62-8835-973234abf8b4",
+      "293ddedb-75ed-4ab1-80ca-7f8429bd9b91"
+    ],
+    "constructor": {
+      "name": "TypeOfForAll",
+      "data_arguments": {
+        "bindings": "19f28496-531c-4510-8b5b-0c4c9d04693c",
+        "parameter_type": "293ddedb-75ed-4ab1-80ca-7f8429bd9b91",
+        "return_type": "fb823eec-2ed1-46b2-8dfe-01261f369d4d",
+        "return_type_after_bindings": "d4dc34d6-27fc-4c3d-b0e0-271a15413f69"
+      },
+      "preconditions": [
+        "42c50966-2639-4064-8afc-8780a76fc156",
+        "a0c0b105-b440-474b-97a2-993926448869",
+        "3e730d77-e823-4aa1-9d78-217400615862"
+      ]
+    }
+  },
   "293ddedb-75ed-4ab1-80ca-7f8429bd9b91": {
     "name": "",
     "typename": "Formula",
@@ -20,6 +88,68 @@
       "name": "Prop",
       "data_arguments": {},
       "preconditions": []
+    }
+  },
+  "386af141-18cc-4f62-8835-973234abf8b4": {
+    "name": "Bool",
+    "typename": "Formula",
+    "type_parameters": [],
+    "constructor": {
+      "name": "Abstraction",
+      "data_arguments": {
+        "bindings": "19f28496-531c-4510-8b5b-0c4c9d04693c",
+        "body": "fb823eec-2ed1-46b2-8dfe-01261f369d4d",
+        "kind": "c95d2dc3-f48f-475d-bd4b-3fac22d29d90",
+        "parameter_type": "293ddedb-75ed-4ab1-80ca-7f8429bd9b91"
+      },
+      "preconditions": []
+    }
+  },
+  "3c32deee-d06e-422c-afb9-3d101a6541a5": {
+    "name": "Bool3f",
+    "typename": "Formula",
+    "type_parameters": [],
+    "constructor": {
+      "name": "Abstraction",
+      "data_arguments": {
+        "bindings": "83da7112-8f4a-4835-88da-831fbc7534e4",
+        "body": "5ccedaca-881e-438f-99cd-3544e36af456",
+        "kind": "c95d2dc3-f48f-475d-bd4b-3fac22d29d90",
+        "parameter_type": "5ccedaca-881e-438f-99cd-3544e36af456"
+      },
+      "preconditions": []
+    }
+  },
+  "3e730d77-e823-4aa1-9d78-217400615862": {
+    "name": "",
+    "typename": "FormulaSubstitution",
+    "type_parameters": [
+      "19f28496-531c-4510-8b5b-0c4c9d04693c",
+      "5ccedaca-881e-438f-99cd-3544e36af456",
+      "fb823eec-2ed1-46b2-8dfe-01261f369d4d",
+      "d4dc34d6-27fc-4c3d-b0e0-271a15413f69"
+    ],
+    "constructor": {
+      "name": "FormulaSubstitutionAbstraction",
+      "data_arguments": {
+        "bindings": "6071c395-dbc9-4875-a4eb-48000482ff93",
+        "bindings2": "6071c395-dbc9-4875-a4eb-48000482ff93",
+        "body": "b897f785-680c-45d9-a74f-c818ab1d768a",
+        "body2": "3c32deee-d06e-422c-afb9-3d101a6541a5",
+        "body_replaced_bindings": "d48af673-693c-46b4-a506-3df59e683c2f",
+        "kind": "c95d2dc3-f48f-475d-bd4b-3fac22d29d90",
+        "parameter_replaced_bindings": "98f4100b-ec65-4e12-beb9-cb8e6938ac7f",
+        "parameter_type": "7790e349-da9b-4f4c-b2c0-954231878966",
+        "parameter_type2": "5ccedaca-881e-438f-99cd-3544e36af456",
+        "replacement": "5ccedaca-881e-438f-99cd-3544e36af456",
+        "replacement_empty_bindings": "83da7112-8f4a-4835-88da-831fbc7534e4"
+      },
+      "preconditions": [
+        "e9f00e3b-f1fd-41b3-891e-e7e0bed5f9ac",
+        "c80f05a1-05b5-4146-bb2c-8393c143e0a4",
+        "bb6ca59d-33e2-4424-8577-6f06565922b4",
+        "88f902f2-ebbf-4868-8b96-cf55ca43bae4"
+      ]
     }
   },
   "42c50966-2639-4064-8afc-8780a76fc156": {
@@ -33,6 +163,15 @@
       "data_arguments": {},
       "preconditions": []
     }
+  },
+  "53e9bd88-9738-4c7b-b285-ecc17709f847": {
+    "name": "",
+    "typename": "HasType",
+    "type_parameters": [
+      "386af141-18cc-4f62-8835-973234abf8b4",
+      "d99a212b-a3fb-4ee0-a871-e73d568de7d8"
+    ],
+    "constructor": null
   },
   "543ec8d1-c4a8-48e7-8bbe-c2c0f4fb6766": {
     "name": "False",
@@ -49,11 +188,74 @@
       "preconditions": []
     }
   },
-  "6f3c0553-d119-4908-86ac-af0ef25819e9": {
+  "5be72554-af4f-4e10-8854-b7d7e692e703": {
+    "name": "",
+    "typename": "FoldEquivalent",
+    "type_parameters": [
+      "d99a212b-a3fb-4ee0-a871-e73d568de7d8",
+      "293ddedb-75ed-4ab1-80ca-7f8429bd9b91"
+    ],
+    "constructor": null
+  },
+  "5ccedaca-881e-438f-99cd-3544e36af456": {
     "name": "",
     "typename": "Formula",
     "type_parameters": [],
-    "constructor": null
+    "constructor": {
+      "name": "KnownUsage",
+      "data_arguments": {
+        "namespace_competitors": "fb823eec-2ed1-46b2-8dfe-01261f369d4d",
+        "type": "293ddedb-75ed-4ab1-80ca-7f8429bd9b91"
+      },
+      "preconditions": []
+    }
+  },
+  "6071c395-dbc9-4875-a4eb-48000482ff93": {
+    "name": "2◦",
+    "typename": "BindingTree",
+    "type_parameters": [],
+    "constructor": {
+      "name": "BindBranch",
+      "data_arguments": {
+        "m": "83da7112-8f4a-4835-88da-831fbc7534e4",
+        "n": "83da7112-8f4a-4835-88da-831fbc7534e4"
+      },
+      "preconditions": []
+    }
+  },
+  "705ddf8f-bdab-46ce-bb38-e06669f58c80": {
+    "name": "",
+    "typename": "BindingTreeSubstitution",
+    "type_parameters": [
+      "98f4100b-ec65-4e12-beb9-cb8e6938ac7f",
+      "83da7112-8f4a-4835-88da-831fbc7534e4",
+      "83da7112-8f4a-4835-88da-831fbc7534e4",
+      "83da7112-8f4a-4835-88da-831fbc7534e4"
+    ],
+    "constructor": {
+      "name": "BindingSubstitutionHere",
+      "data_arguments": {
+        "d": "83da7112-8f4a-4835-88da-831fbc7534e4"
+      },
+      "preconditions": []
+    }
+  },
+  "7324eb5d-55bb-4371-9c74-268cf6dbfe9c": {
+    "name": "",
+    "typename": "FormulaSubstitution",
+    "type_parameters": [
+      "98f4100b-ec65-4e12-beb9-cb8e6938ac7f",
+      "10cf5712-fa0c-4f61-b9bf-72c21f5a9a88",
+      "7790e349-da9b-4f4c-b2c0-954231878966",
+      "10cf5712-fa0c-4f61-b9bf-72c21f5a9a88"
+    ],
+    "constructor": {
+      "name": "FormulaSubstitutionHere",
+      "data_arguments": {
+        "v": "10cf5712-fa0c-4f61-b9bf-72c21f5a9a88"
+      },
+      "preconditions": []
+    }
   },
   "7790e349-da9b-4f4c-b2c0-954231878966": {
     "name": "",
@@ -62,6 +264,32 @@
     "constructor": {
       "name": "Usage",
       "data_arguments": {},
+      "preconditions": []
+    }
+  },
+  "83da7112-8f4a-4835-88da-831fbc7534e4": {
+    "name": "",
+    "typename": "BindingTree",
+    "type_parameters": [],
+    "constructor": {
+      "name": "BindNotThis",
+      "data_arguments": {},
+      "preconditions": []
+    }
+  },
+  "88f902f2-ebbf-4868-8b96-cf55ca43bae4": {
+    "name": "",
+    "typename": "EmptyBindingsShapedLike",
+    "type_parameters": [
+      "5ccedaca-881e-438f-99cd-3544e36af456",
+      "83da7112-8f4a-4835-88da-831fbc7534e4"
+    ],
+    "constructor": {
+      "name": "EmptyBindingsShapedLikeKnownUsage",
+      "data_arguments": {
+        "namespace_competitors": "fb823eec-2ed1-46b2-8dfe-01261f369d4d",
+        "type": "293ddedb-75ed-4ab1-80ca-7f8429bd9b91"
+      },
       "preconditions": []
     }
   },
@@ -114,6 +342,27 @@
       "preconditions": []
     }
   },
+  "9b5c3413-9d3b-4e2b-8c97-85dab0fbb6b2": {
+    "name": "",
+    "typename": "IsType",
+    "type_parameters": [
+      "543ec8d1-c4a8-48e7-8bbe-c2c0f4fb6766"
+    ],
+    "constructor": {
+      "name": "ForAllIsType",
+      "data_arguments": {
+        "bindings": "98f4100b-ec65-4e12-beb9-cb8e6938ac7f",
+        "parameter_type": "293ddedb-75ed-4ab1-80ca-7f8429bd9b91",
+        "return_type": "7790e349-da9b-4f4c-b2c0-954231878966",
+        "return_type_after_bindings": "10cf5712-fa0c-4f61-b9bf-72c21f5a9a88"
+      },
+      "preconditions": [
+        "42c50966-2639-4064-8afc-8780a76fc156",
+        "0f4e14a3-5205-4aa0-942f-62af735235fe",
+        "7324eb5d-55bb-4371-9c74-268cf6dbfe9c"
+      ]
+    }
+  },
   "9c88eff9-d192-44d9-bbaf-1d42d20d87be": {
     "name": "",
     "typename": "HasType",
@@ -132,6 +381,138 @@
       ]
     }
   },
+  "a0c0b105-b440-474b-97a2-993926448869": {
+    "name": "",
+    "typename": "HasType",
+    "type_parameters": [
+      "d4dc34d6-27fc-4c3d-b0e0-271a15413f69",
+      "293ddedb-75ed-4ab1-80ca-7f8429bd9b91"
+    ],
+    "constructor": null
+  },
+  "b81877cf-f699-4ec6-94ed-4bc26ebae0fd": {
+    "name": "",
+    "typename": "FormulaSubstitution",
+    "type_parameters": [
+      "98f4100b-ec65-4e12-beb9-cb8e6938ac7f",
+      "5ccedaca-881e-438f-99cd-3544e36af456",
+      "7790e349-da9b-4f4c-b2c0-954231878966",
+      "5ccedaca-881e-438f-99cd-3544e36af456"
+    ],
+    "constructor": {
+      "name": "FormulaSubstitutionHere",
+      "data_arguments": {
+        "v": "5ccedaca-881e-438f-99cd-3544e36af456"
+      },
+      "preconditions": []
+    }
+  },
+  "b897f785-680c-45d9-a74f-c818ab1d768a": {
+    "name": "Bool3",
+    "typename": "Formula",
+    "type_parameters": [],
+    "constructor": {
+      "name": "Abstraction",
+      "data_arguments": {
+        "bindings": "83da7112-8f4a-4835-88da-831fbc7534e4",
+        "body": "7790e349-da9b-4f4c-b2c0-954231878966",
+        "kind": "c95d2dc3-f48f-475d-bd4b-3fac22d29d90",
+        "parameter_type": "7790e349-da9b-4f4c-b2c0-954231878966"
+      },
+      "preconditions": []
+    }
+  },
+  "bb6ca59d-33e2-4424-8577-6f06565922b4": {
+    "name": "",
+    "typename": "BindingTreeSubstitution",
+    "type_parameters": [
+      "d48af673-693c-46b4-a506-3df59e683c2f",
+      "83da7112-8f4a-4835-88da-831fbc7534e4",
+      "6071c395-dbc9-4875-a4eb-48000482ff93",
+      "6071c395-dbc9-4875-a4eb-48000482ff93"
+    ],
+    "constructor": {
+      "name": "BindingSubstitutionBranch",
+      "data_arguments": {
+        "inserted_bindings": "83da7112-8f4a-4835-88da-831fbc7534e4",
+        "m": "83da7112-8f4a-4835-88da-831fbc7534e4",
+        "m2": "83da7112-8f4a-4835-88da-831fbc7534e4",
+        "mb": "98f4100b-ec65-4e12-beb9-cb8e6938ac7f",
+        "n": "83da7112-8f4a-4835-88da-831fbc7534e4",
+        "n2": "83da7112-8f4a-4835-88da-831fbc7534e4",
+        "nb": "98f4100b-ec65-4e12-beb9-cb8e6938ac7f"
+      },
+      "preconditions": [
+        "705ddf8f-bdab-46ce-bb38-e06669f58c80",
+        "705ddf8f-bdab-46ce-bb38-e06669f58c80"
+      ]
+    }
+  },
+  "bde9cf56-5145-4d6b-aa75-494a4396ae83": {
+    "name": "",
+    "typename": "BindingTreeSubstitution",
+    "type_parameters": [
+      "98f4100b-ec65-4e12-beb9-cb8e6938ac7f",
+      "83da7112-8f4a-4835-88da-831fbc7534e4",
+      "83da7112-8f4a-4835-88da-831fbc7534e4",
+      "83da7112-8f4a-4835-88da-831fbc7534e4"
+    ],
+    "constructor": {
+      "name": "BindingSubstitutionHere",
+      "data_arguments": {
+        "d": "83da7112-8f4a-4835-88da-831fbc7534e4"
+      },
+      "preconditions": []
+    }
+  },
+  "bea60e3a-7a67-49d2-a945-0b37a3fe8a91": {
+    "name": "",
+    "typename": "EmptyBindingsShapedLike",
+    "type_parameters": [
+      "5ccedaca-881e-438f-99cd-3544e36af456",
+      "83da7112-8f4a-4835-88da-831fbc7534e4"
+    ],
+    "constructor": {
+      "name": "EmptyBindingsShapedLikeKnownUsage",
+      "data_arguments": {
+        "namespace_competitors": "fb823eec-2ed1-46b2-8dfe-01261f369d4d",
+        "type": "293ddedb-75ed-4ab1-80ca-7f8429bd9b91"
+      },
+      "preconditions": []
+    }
+  },
+  "c80f05a1-05b5-4146-bb2c-8393c143e0a4": {
+    "name": "",
+    "typename": "FormulaSubstitution",
+    "type_parameters": [
+      "d48af673-693c-46b4-a506-3df59e683c2f",
+      "5ccedaca-881e-438f-99cd-3544e36af456",
+      "b897f785-680c-45d9-a74f-c818ab1d768a",
+      "3c32deee-d06e-422c-afb9-3d101a6541a5"
+    ],
+    "constructor": {
+      "name": "FormulaSubstitutionAbstraction",
+      "data_arguments": {
+        "bindings": "83da7112-8f4a-4835-88da-831fbc7534e4",
+        "bindings2": "83da7112-8f4a-4835-88da-831fbc7534e4",
+        "body": "7790e349-da9b-4f4c-b2c0-954231878966",
+        "body2": "5ccedaca-881e-438f-99cd-3544e36af456",
+        "body_replaced_bindings": "98f4100b-ec65-4e12-beb9-cb8e6938ac7f",
+        "kind": "c95d2dc3-f48f-475d-bd4b-3fac22d29d90",
+        "parameter_replaced_bindings": "98f4100b-ec65-4e12-beb9-cb8e6938ac7f",
+        "parameter_type": "7790e349-da9b-4f4c-b2c0-954231878966",
+        "parameter_type2": "5ccedaca-881e-438f-99cd-3544e36af456",
+        "replacement": "5ccedaca-881e-438f-99cd-3544e36af456",
+        "replacement_empty_bindings": "83da7112-8f4a-4835-88da-831fbc7534e4"
+      },
+      "preconditions": [
+        "b81877cf-f699-4ec6-94ed-4bc26ebae0fd",
+        "0eaf9ec0-c55f-405d-95b2-e6f8ea1a24ae",
+        "bde9cf56-5145-4d6b-aa75-494a4396ae83",
+        "bea60e3a-7a67-49d2-a945-0b37a3fe8a91"
+      ]
+    }
+  },
   "c95d2dc3-f48f-475d-bd4b-3fac22d29d90": {
     "name": "",
     "typename": "AbstractionKind",
@@ -139,6 +520,85 @@
     "constructor": {
       "name": "ForAll",
       "data_arguments": {},
+      "preconditions": []
+    }
+  },
+  "d44c72f4-5a98-4f51-93f1-1d47b62e51a5": {
+    "name": "",
+    "typename": "BindingTree",
+    "type_parameters": [],
+    "constructor": {
+      "name": "BindBranch",
+      "data_arguments": {
+        "m": "83da7112-8f4a-4835-88da-831fbc7534e4",
+        "n": "6071c395-dbc9-4875-a4eb-48000482ff93"
+      },
+      "preconditions": []
+    }
+  },
+  "d48af673-693c-46b4-a506-3df59e683c2f": {
+    "name": "",
+    "typename": "BindingTree",
+    "type_parameters": [],
+    "constructor": {
+      "name": "BindBranch",
+      "data_arguments": {
+        "m": "98f4100b-ec65-4e12-beb9-cb8e6938ac7f",
+        "n": "98f4100b-ec65-4e12-beb9-cb8e6938ac7f"
+      },
+      "preconditions": []
+    }
+  },
+  "d4dc34d6-27fc-4c3d-b0e0-271a15413f69": {
+    "name": "",
+    "typename": "Formula",
+    "type_parameters": [],
+    "constructor": {
+      "name": "Abstraction",
+      "data_arguments": {
+        "bindings": "6071c395-dbc9-4875-a4eb-48000482ff93",
+        "body": "3c32deee-d06e-422c-afb9-3d101a6541a5",
+        "kind": "c95d2dc3-f48f-475d-bd4b-3fac22d29d90",
+        "parameter_type": "5ccedaca-881e-438f-99cd-3544e36af456"
+      },
+      "preconditions": []
+    }
+  },
+  "d99a212b-a3fb-4ee0-a871-e73d568de7d8": {
+    "name": "",
+    "typename": "Formula",
+    "type_parameters": [],
+    "constructor": null
+  },
+  "e9f00e3b-f1fd-41b3-891e-e7e0bed5f9ac": {
+    "name": "",
+    "typename": "FormulaSubstitution",
+    "type_parameters": [
+      "98f4100b-ec65-4e12-beb9-cb8e6938ac7f",
+      "5ccedaca-881e-438f-99cd-3544e36af456",
+      "7790e349-da9b-4f4c-b2c0-954231878966",
+      "5ccedaca-881e-438f-99cd-3544e36af456"
+    ],
+    "constructor": {
+      "name": "FormulaSubstitutionHere",
+      "data_arguments": {
+        "v": "5ccedaca-881e-438f-99cd-3544e36af456"
+      },
+      "preconditions": []
+    }
+  },
+  "fb823eec-2ed1-46b2-8dfe-01261f369d4d": {
+    "name": "Bool2",
+    "typename": "Formula",
+    "type_parameters": [],
+    "constructor": {
+      "name": "Abstraction",
+      "data_arguments": {
+        "bindings": "6071c395-dbc9-4875-a4eb-48000482ff93",
+        "body": "b897f785-680c-45d9-a74f-c818ab1d768a",
+        "kind": "c95d2dc3-f48f-475d-bd4b-3fac22d29d90",
+        "parameter_type": "7790e349-da9b-4f4c-b2c0-954231878966"
+      },
       "preconditions": []
     }
   }
