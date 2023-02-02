@@ -517,7 +517,6 @@ impl Interface {
                 if focused || !valid {
                     for (constructor_name, _) in type_definition.constructors.iter() {
                         let text = text!(constructor_name);
-                        dbg!(constructor_name);
                         if self.environment.constructor_possible(id, constructor_name)
                             != CanMatch::No
                         {

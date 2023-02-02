@@ -1,4 +1,5 @@
 use crate::constructors::{Constructors, DataValue};
+use arrayvec::ArrayVec;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeMap;
 use std::iter::zip;
@@ -306,6 +307,7 @@ impl Environment {
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum CanMatch {
+    Yes,
     Maybe,
     No,
 }
@@ -332,7 +334,7 @@ impl Environment {
                     *arg = Some(id)
                 }
                 if *arg == Some(id) {
-                    CanMatch::Maybe
+                    CanMatch::Yes
                 } else {
                     dbg!(argname, arg, id);
                     CanMatch::No
@@ -345,9 +347,9 @@ impl Environment {
                 let Some(constructor) = &metavariable.constructor else { return CanMatch::Maybe; };
                 let constructor_definition = datatype.constructors.get(&constructor.name).unwrap();
                 if constructor.name != *required_constructor_name {
-                    dbg!();
                     return CanMatch::No;
                 }
+                let mut submatch_results = CanMatch::Yes;
                 for (r, a) in zip(
                     required_constructor_arguments,
                     &constructor_definition.data_arguments,
@@ -358,12 +360,13 @@ impl Environment {
                         &a.datatype,
                         data_arguments,
                     );
-                    if submatch_possible == CanMatch::No {
-                        dbg!();
-                        return CanMatch::No;
+                    match submatch_possible {
+                        CanMatch::Yes => {}
+                        CanMatch::Maybe => submatch_results = CanMatch::Maybe,
+                        CanMatch::No => return CanMatch::No,
                     }
                 }
-                CanMatch::Maybe
+                submatch_results
             }
         }
     }
@@ -424,6 +427,7 @@ impl Environment {
             .iter()
             .map(|a| (a.name.clone(), None))
             .collect();
+        let mut match_results = CanMatch::Yes;
         for (&required, (datatype, produced)) in zip(
             &metavariable.type_parameters,
             zip(
@@ -437,12 +441,14 @@ impl Environment {
                 datatype,
                 &mut data_arguments,
             );
-            if match_possible == CanMatch::No {
-                return CanMatch::No;
+            match match_possible {
+                CanMatch::Yes => {}
+                CanMatch::Maybe => match_results = CanMatch::Maybe,
+                CanMatch::No => return CanMatch::No,
             }
         }
 
-        CanMatch::Maybe
+        match_results
     }
 
     pub fn autofill(&mut self, id: MetavariableId) {
@@ -454,14 +460,21 @@ impl Environment {
             .unwrap();
 
         if metavariable.constructor.is_none() {
-            let possible_constructors: Vec<_> = type_definition
-                .constructors
-                .iter()
-                .filter(|(constructor_name, _constructor_definition)| {
-                    self.constructor_possible(id, constructor_name) != CanMatch::No
-                })
-                .collect();
-            if let &[(only_constructor_name, _)] = &*possible_constructors {
+            let mut possible_constructors: ArrayVec<&String, 2> = ArrayVec::new();
+            for constructor_name in type_definition.constructors.keys() {
+                match self.constructor_possible(id, constructor_name) {
+                    CanMatch::Yes => {
+                        possible_constructors.clear();
+                        possible_constructors.push(constructor_name);
+                        break;
+                    }
+                    CanMatch::Maybe => {
+                        let _ = possible_constructors.try_push(constructor_name);
+                    }
+                    CanMatch::No => {}
+                }
+            }
+            if let &[only_constructor_name] = &*possible_constructors {
                 self.set_constructor(id, Some(only_constructor_name.clone()));
             }
         }
