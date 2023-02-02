@@ -8,13 +8,13 @@ data Formula;
 Prop () -> Formula, notated "ℙ";
 Usage () -> Formula, notated "𝒱";
 KnownUsage (type: Formula, namespace_competitors: Formula) -> Formula,
-  notated "𝒱{type}({namespace_competitors})";
+  notated "𝒱:{type}({namespace_competitors})";
 Abstraction (kind: AbstractionKind, parameter_type: Formula, body: Formula, bindings: BindingTree) -> Formula, notated "{kind}({bindings}:{parameter_type}), {body}";
 Apply (m: Formula, n: Formula) -> Formula, notated "({m} {n})";
 
 data BindingTree;
-BindNotThis () -> BindingTree, notated "∅";
-BindVariable () -> BindingTree, notated "𝕍";
+BindNotThis () -> BindingTree, notated "◦";
+BindVariable () -> BindingTree, notated "★";
 BindBranch (m: BindingTree, n: BindingTree) -> BindingTree, notated "({m} {n})";
 
 data WhichLambda;

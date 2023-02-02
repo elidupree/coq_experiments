@@ -3,7 +3,7 @@
 
 use clap::{arg, Parser};
 use coc_rs::constructors::{Constructors, DataValue, Notation, NotationItem};
-use coc_rs::metavariable::{Environment, MetavariableId};
+use coc_rs::metavariable::{CanMatch, Environment, MetavariableId};
 use coc_rs::utils::{read_json_file, write_json_file};
 use quick_and_dirty_web_gui::{callback, callback_with};
 use std::collections::{BTreeMap, HashMap};
@@ -505,17 +505,35 @@ impl Interface {
                 )} /> : String
             });
         }
+        if focused || !valid {
+            child_elements.push(html! {
+                <button onclick={callback(move || autofill(id))}>
+                    "Autofill"
+                </button> : String
+            });
+        }
         match &metavariable.constructor {
             None => {
                 if focused || !valid {
                     for (constructor_name, _) in type_definition.constructors.iter() {
                         let text = text!(constructor_name);
-                        let constructor_name = constructor_name.clone();
-                        child_elements.push(html! {
-                            <button onclick={callback(move || set_constructor(id,Some (constructor_name.clone())))}>
-                                {text}
-                            </button> : String
-                        });
+                        dbg!(constructor_name);
+                        if self.environment.constructor_possible(id, constructor_name)
+                            != CanMatch::No
+                        {
+                            let constructor_name = constructor_name.clone();
+                            child_elements.push(html! {
+                                <button onclick={callback(move || set_constructor(id,Some (constructor_name.clone())))}>
+                                    {text}
+                                </button> : String
+                            });
+                        } else {
+                            child_elements.push(html! {
+                                <button disabled=true>
+                                    {text}
+                                </button> : String
+                            });
+                        }
                     }
                 }
             }
@@ -524,11 +542,6 @@ impl Interface {
                     child_elements.push(html! {
                         <button onclick={callback(move || set_constructor(id,None))}>
                             "Remove constructor"
-                        </button> : String
-                    });
-                    child_elements.push(html! {
-                        <button onclick={callback(move || autofill(id))}>
-                            "Autofill"
                         </button> : String
                     });
                 }
@@ -590,7 +603,6 @@ impl Interface {
                             .get(index)
                             .unwrap();
                         let body = self.inline_data_value(value, typename, &constructor.data_arguments);
-                        self.inline_child(*metavariable.type_parameters.get(index).unwrap());
                         let valid = true; //*validity.type_parameters_valid.get(index).unwrap();
                         let class = if valid {
                             "child valid"

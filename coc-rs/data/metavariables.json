@@ -1,28 +1,110 @@
 {
-  "0bf259eb-1f89-4f50-b4f4-54c47b086e7c": {
+  "10cf5712-fa0c-4f61-b9bf-72c21f5a9a88": {
     "name": "",
-    "typename": "BindingTree",
+    "typename": "Formula",
     "type_parameters": [],
     "constructor": {
-      "name": "BindBranch",
+      "name": "KnownUsage",
       "data_arguments": {
-        "m": "204f0058-b75c-471e-9a8f-a532e13bd618",
-        "n": "dd358366-c4b3-4328-9db8-c1ccb6c86d7b"
+        "namespace_competitors": "7790e349-da9b-4f4c-b2c0-954231878966",
+        "type": "293ddedb-75ed-4ab1-80ca-7f8429bd9b91"
       },
       "preconditions": []
     }
   },
-  "124791da-56f3-48cc-b9dd-c476fdb03d61": {
+  "293ddedb-75ed-4ab1-80ca-7f8429bd9b91": {
     "name": "",
-    "typename": "Term",
+    "typename": "Formula",
     "type_parameters": [],
     "constructor": {
-      "name": "VariableUsage",
+      "name": "Prop",
       "data_arguments": {},
       "preconditions": []
     }
   },
-  "204f0058-b75c-471e-9a8f-a532e13bd618": {
+  "42c50966-2639-4064-8afc-8780a76fc156": {
+    "name": "",
+    "typename": "IsType",
+    "type_parameters": [
+      "293ddedb-75ed-4ab1-80ca-7f8429bd9b91"
+    ],
+    "constructor": {
+      "name": "PropIsType",
+      "data_arguments": {},
+      "preconditions": []
+    }
+  },
+  "543ec8d1-c4a8-48e7-8bbe-c2c0f4fb6766": {
+    "name": "False",
+    "typename": "Formula",
+    "type_parameters": [],
+    "constructor": {
+      "name": "Abstraction",
+      "data_arguments": {
+        "bindings": "98f4100b-ec65-4e12-beb9-cb8e6938ac7f",
+        "body": "7790e349-da9b-4f4c-b2c0-954231878966",
+        "kind": "c95d2dc3-f48f-475d-bd4b-3fac22d29d90",
+        "parameter_type": "293ddedb-75ed-4ab1-80ca-7f8429bd9b91"
+      },
+      "preconditions": []
+    }
+  },
+  "6f3c0553-d119-4908-86ac-af0ef25819e9": {
+    "name": "",
+    "typename": "Formula",
+    "type_parameters": [],
+    "constructor": null
+  },
+  "7790e349-da9b-4f4c-b2c0-954231878966": {
+    "name": "",
+    "typename": "Formula",
+    "type_parameters": [],
+    "constructor": {
+      "name": "Usage",
+      "data_arguments": {},
+      "preconditions": []
+    }
+  },
+  "8b99d48d-cee0-4255-aa75-6250b3718783": {
+    "name": "FalseIsAProp",
+    "typename": "HasType",
+    "type_parameters": [
+      "543ec8d1-c4a8-48e7-8bbe-c2c0f4fb6766",
+      "293ddedb-75ed-4ab1-80ca-7f8429bd9b91"
+    ],
+    "constructor": {
+      "name": "TypeOfForAll",
+      "data_arguments": {
+        "bindings": "98f4100b-ec65-4e12-beb9-cb8e6938ac7f",
+        "parameter_type": "293ddedb-75ed-4ab1-80ca-7f8429bd9b91",
+        "return_type": "7790e349-da9b-4f4c-b2c0-954231878966",
+        "return_type_after_bindings": "10cf5712-fa0c-4f61-b9bf-72c21f5a9a88"
+      },
+      "preconditions": [
+        "42c50966-2639-4064-8afc-8780a76fc156",
+        "9c88eff9-d192-44d9-bbaf-1d42d20d87be",
+        "951a3e14-910b-45b8-86d8-e2d33cc1d795"
+      ]
+    }
+  },
+  "951a3e14-910b-45b8-86d8-e2d33cc1d795": {
+    "name": "",
+    "typename": "FormulaSubstitution",
+    "type_parameters": [
+      "98f4100b-ec65-4e12-beb9-cb8e6938ac7f",
+      "10cf5712-fa0c-4f61-b9bf-72c21f5a9a88",
+      "7790e349-da9b-4f4c-b2c0-954231878966",
+      "10cf5712-fa0c-4f61-b9bf-72c21f5a9a88"
+    ],
+    "constructor": {
+      "name": "FormulaSubstitutionHere",
+      "data_arguments": {
+        "v": "10cf5712-fa0c-4f61-b9bf-72c21f5a9a88"
+      },
+      "preconditions": []
+    }
+  },
+  "98f4100b-ec65-4e12-beb9-cb8e6938ac7f": {
     "name": "",
     "typename": "BindingTree",
     "type_parameters": [],
@@ -32,773 +114,30 @@
       "preconditions": []
     }
   },
-  "23292a56-d007-406a-bbdf-dcef092bbb6c": {
-    "name": "PropIsType",
-    "typename": "HasType",
-    "type_parameters": [
-      "36672dfa-deaa-4f59-9a02-d46f44337963",
-      "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-      "50cea31a-7a6a-48c9-a5c6-a1ab0145c669",
-      "c718c640-6ba3-4f0e-9fce-2ade31143ac9"
-    ],
-    "constructor": {
-      "name": "TypeOfProp",
-      "data_arguments": {},
-      "preconditions": []
-    }
-  },
-  "26a540c3-cee4-4924-b392-1043d1a69478": {
-    "name": "",
-    "typename": "Context",
-    "type_parameters": [],
-    "constructor": {
-      "name": "ContextBranch",
-      "data_arguments": {
-        "m": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-        "n": "a0a9517f-c912-4a0c-96bd-c6556b2d1933"
-      },
-      "preconditions": []
-    }
-  },
-  "30de2bc0-664b-4e45-9740-724bf22521db": {
+  "9c88eff9-d192-44d9-bbaf-1d42d20d87be": {
     "name": "",
     "typename": "HasType",
     "type_parameters": [
-      "83f4d1df-eff2-49d6-b1ca-04777a9941e2",
-      "76cdf04f-d8ff-4e33-bbef-f22329eca165",
-      "36672dfa-deaa-4f59-9a02-d46f44337963",
-      "c718c640-6ba3-4f0e-9fce-2ade31143ac9"
-    ],
-    "constructor": {
-      "name": "TypeOfForAll",
-      "data_arguments": {
-        "argument_context": "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-        "argument_type": "124791da-56f3-48cc-b9dd-c476fdb03d61",
-        "bindings": "cb9bc597-413d-46a2-a7ea-bd334c03668e",
-        "return_context": "8981bb0f-e6ad-4146-909e-67f8f2a51ad2",
-        "return_context_before_bindings": "8981bb0f-e6ad-4146-909e-67f8f2a51ad2",
-        "return_type": "c5745d7c-f46c-4593-aab2-8e46075f5d6a",
-        "s1": "ed22f6a4-e9f1-43a7-9578-4d50d7c027aa",
-        "s2": "ed22f6a4-e9f1-43a7-9578-4d50d7c027aa"
-      },
-      "preconditions": [
-        "59ebeb18-1f35-4f46-ac90-b65163a0db02",
-        "a7bcf332-634c-43cf-ae05-ccc4eee919fc",
-        "a4cb0638-9fcd-4aa5-b676-bb3c1d516ef8"
-      ]
-    }
-  },
-  "36672dfa-deaa-4f59-9a02-d46f44337963": {
-    "name": "",
-    "typename": "Term",
-    "type_parameters": [],
-    "constructor": {
-      "name": "SortTerm",
-      "data_arguments": {
-        "s": "ed22f6a4-e9f1-43a7-9578-4d50d7c027aa"
-      },
-      "preconditions": []
-    }
-  },
-  "466f1a79-20c5-4dd3-966c-24eb99995ce9": {
-    "name": "",
-    "typename": "AbstractionKind",
-    "type_parameters": [],
-    "constructor": {
-      "name": "Lambda",
-      "data_arguments": {},
-      "preconditions": []
-    }
-  },
-  "4de2b50d-5f20-43db-b840-da4f59da39b7": {
-    "name": "",
-    "typename": "Term",
-    "type_parameters": [],
-    "constructor": {
-      "name": "Abstraction",
-      "data_arguments": {
-        "argument_type": "124791da-56f3-48cc-b9dd-c476fdb03d61",
-        "bindings": "faf9f984-0018-498a-b104-34698590fd6b",
-        "body": "124791da-56f3-48cc-b9dd-c476fdb03d61",
-        "kind": "466f1a79-20c5-4dd3-966c-24eb99995ce9"
-      },
-      "preconditions": []
-    }
-  },
-  "4eeabd44-68ff-46cc-8717-e99834d9b963": {
-    "name": "Bool",
-    "typename": "Term",
-    "type_parameters": [],
-    "constructor": {
-      "name": "Abstraction",
-      "data_arguments": {
-        "argument_type": "36672dfa-deaa-4f59-9a02-d46f44337963",
-        "bindings": "0bf259eb-1f89-4f50-b4f4-54c47b086e7c",
-        "body": "83f4d1df-eff2-49d6-b1ca-04777a9941e2",
-        "kind": "70b9cb7f-bee4-4d6d-a788-2cb90051e13e"
-      },
-      "preconditions": []
-    }
-  },
-  "50cea31a-7a6a-48c9-a5c6-a1ab0145c669": {
-    "name": "",
-    "typename": "Term",
-    "type_parameters": [],
-    "constructor": {
-      "name": "SortTerm",
-      "data_arguments": {
-        "s": "70e91b64-7e97-48ca-9145-b0c460c73af9"
-      },
-      "preconditions": []
-    }
-  },
-  "59ebeb18-1f35-4f46-ac90-b65163a0db02": {
-    "name": "",
-    "typename": "HasType",
-    "type_parameters": [
-      "124791da-56f3-48cc-b9dd-c476fdb03d61",
-      "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-      "36672dfa-deaa-4f59-9a02-d46f44337963",
-      "c718c640-6ba3-4f0e-9fce-2ade31143ac9"
+      "10cf5712-fa0c-4f61-b9bf-72c21f5a9a88",
+      "293ddedb-75ed-4ab1-80ca-7f8429bd9b91"
     ],
     "constructor": {
       "name": "TypeOfVariableUsage",
       "data_arguments": {
-        "argument_context": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-        "argument_type": "36672dfa-deaa-4f59-9a02-d46f44337963",
-        "bindings": "0bf259eb-1f89-4f50-b4f4-54c47b086e7c",
-        "body": "83f4d1df-eff2-49d6-b1ca-04777a9941e2",
-        "body_context": "a0a9517f-c912-4a0c-96bd-c6556b2d1933",
-        "kind": "70b9cb7f-bee4-4d6d-a788-2cb90051e13e"
+        "namespace_competitors": "7790e349-da9b-4f4c-b2c0-954231878966",
+        "type": "293ddedb-75ed-4ab1-80ca-7f8429bd9b91"
       },
-      "preconditions": []
+      "preconditions": [
+        "42c50966-2639-4064-8afc-8780a76fc156"
+      ]
     }
   },
-  "67ce6c90-6671-4a9d-8be5-a556208675f0": {
-    "name": "",
-    "typename": "AddBindingsToContext",
-    "type_parameters": [
-      "204f0058-b75c-471e-9a8f-a532e13bd618",
-      "ab469acc-9936-4097-8286-ced7cf5baee5",
-      "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-      "ab469acc-9936-4097-8286-ced7cf5baee5"
-    ],
-    "constructor": {
-      "name": "AddBindingsToContextVariable",
-      "data_arguments": {
-        "inserted_context": "ab469acc-9936-4097-8286-ced7cf5baee5"
-      },
-      "preconditions": []
-    }
-  },
-  "706b29e4-3467-4dde-9e4b-ea115f8b5e81": {
-    "name": "",
-    "typename": "Context",
-    "type_parameters": [],
-    "constructor": {
-      "name": "ContextKnownVariable",
-      "data_arguments": {
-        "binding_context": "26a540c3-cee4-4924-b392-1043d1a69478",
-        "binding_term": "4eeabd44-68ff-46cc-8717-e99834d9b963"
-      },
-      "preconditions": []
-    }
-  },
-  "70b9cb7f-bee4-4d6d-a788-2cb90051e13e": {
+  "c95d2dc3-f48f-475d-bd4b-3fac22d29d90": {
     "name": "",
     "typename": "AbstractionKind",
     "type_parameters": [],
     "constructor": {
       "name": "ForAll",
-      "data_arguments": {},
-      "preconditions": []
-    }
-  },
-  "70e91b64-7e97-48ca-9145-b0c460c73af9": {
-    "name": "",
-    "typename": "Sort",
-    "type_parameters": [],
-    "constructor": {
-      "name": "Type",
-      "data_arguments": {},
-      "preconditions": []
-    }
-  },
-  "76cdf04f-d8ff-4e33-bbef-f22329eca165": {
-    "name": "",
-    "typename": "Context",
-    "type_parameters": [],
-    "constructor": {
-      "name": "ContextBranch",
-      "data_arguments": {
-        "m": "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-        "n": "8981bb0f-e6ad-4146-909e-67f8f2a51ad2"
-      },
-      "preconditions": []
-    }
-  },
-  "807b39a8-faab-46ed-8fb2-bc2a602c72b7": {
-    "name": "",
-    "typename": "BindingTree",
-    "type_parameters": [],
-    "constructor": {
-      "name": "BindBranch",
-      "data_arguments": {
-        "m": "faf9f984-0018-498a-b104-34698590fd6b",
-        "n": "204f0058-b75c-471e-9a8f-a532e13bd618"
-      },
-      "preconditions": []
-    }
-  },
-  "812bae8f-02ff-4ed2-97d9-4b2b268958c2": {
-    "name": "",
-    "typename": "Context",
-    "type_parameters": [],
-    "constructor": {
-      "name": "ContextKnownVariable",
-      "data_arguments": {
-        "binding_context": "76cdf04f-d8ff-4e33-bbef-f22329eca165",
-        "binding_term": "83f4d1df-eff2-49d6-b1ca-04777a9941e2"
-      },
-      "preconditions": []
-    }
-  },
-  "83f4d1df-eff2-49d6-b1ca-04777a9941e2": {
-    "name": "",
-    "typename": "Term",
-    "type_parameters": [],
-    "constructor": {
-      "name": "Abstraction",
-      "data_arguments": {
-        "argument_type": "124791da-56f3-48cc-b9dd-c476fdb03d61",
-        "bindings": "cb9bc597-413d-46a2-a7ea-bd334c03668e",
-        "body": "c5745d7c-f46c-4593-aab2-8e46075f5d6a",
-        "kind": "70b9cb7f-bee4-4d6d-a788-2cb90051e13e"
-      },
-      "preconditions": []
-    }
-  },
-  "84316150-415f-4da0-b5bc-869fd349cb09": {
-    "name": "False",
-    "typename": "Term",
-    "type_parameters": [],
-    "constructor": {
-      "name": "Abstraction",
-      "data_arguments": {
-        "argument_type": "36672dfa-deaa-4f59-9a02-d46f44337963",
-        "bindings": "204f0058-b75c-471e-9a8f-a532e13bd618",
-        "body": "124791da-56f3-48cc-b9dd-c476fdb03d61",
-        "kind": "70b9cb7f-bee4-4d6d-a788-2cb90051e13e"
-      },
-      "preconditions": []
-    }
-  },
-  "8981bb0f-e6ad-4146-909e-67f8f2a51ad2": {
-    "name": "",
-    "typename": "Context",
-    "type_parameters": [],
-    "constructor": {
-      "name": "ContextBranch",
-      "data_arguments": {
-        "m": "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-        "n": "706b29e4-3467-4dde-9e4b-ea115f8b5e81"
-      },
-      "preconditions": []
-    }
-  },
-  "934e8f24-0ee6-4975-b44e-374648a74f89": {
-    "name": "",
-    "typename": "AddBindingsToContext",
-    "type_parameters": [
-      "faf9f984-0018-498a-b104-34698590fd6b",
-      "812bae8f-02ff-4ed2-97d9-4b2b268958c2",
-      "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-      "c718c640-6ba3-4f0e-9fce-2ade31143ac9"
-    ],
-    "constructor": {
-      "name": "AddBindingsToContextNotHere",
-      "data_arguments": {
-        "context": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-        "inserted_context": "812bae8f-02ff-4ed2-97d9-4b2b268958c2"
-      },
-      "preconditions": []
-    }
-  },
-  "a0a9517f-c912-4a0c-96bd-c6556b2d1933": {
-    "name": "",
-    "typename": "Context",
-    "type_parameters": [],
-    "constructor": {
-      "name": "ContextBranch",
-      "data_arguments": {
-        "m": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-        "n": "bf0956bc-79bf-4903-9e5b-876e76376d51"
-      },
-      "preconditions": []
-    }
-  },
-  "a21215f6-1f08-46a0-bc40-97a95d255a5f": {
-    "name": "BoolIsAProp",
-    "typename": "HasType",
-    "type_parameters": [
-      "4eeabd44-68ff-46cc-8717-e99834d9b963",
-      "26a540c3-cee4-4924-b392-1043d1a69478",
-      "36672dfa-deaa-4f59-9a02-d46f44337963",
-      "c718c640-6ba3-4f0e-9fce-2ade31143ac9"
-    ],
-    "constructor": {
-      "name": "TypeOfForAll",
-      "data_arguments": {
-        "argument_context": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-        "argument_type": "36672dfa-deaa-4f59-9a02-d46f44337963",
-        "bindings": "0bf259eb-1f89-4f50-b4f4-54c47b086e7c",
-        "return_context": "76cdf04f-d8ff-4e33-bbef-f22329eca165",
-        "return_context_before_bindings": "a0a9517f-c912-4a0c-96bd-c6556b2d1933",
-        "return_type": "83f4d1df-eff2-49d6-b1ca-04777a9941e2",
-        "s1": "70e91b64-7e97-48ca-9145-b0c460c73af9",
-        "s2": "ed22f6a4-e9f1-43a7-9578-4d50d7c027aa"
-      },
-      "preconditions": [
-        "23292a56-d007-406a-bbdf-dcef092bbb6c",
-        "30de2bc0-664b-4e45-9740-724bf22521db",
-        "a2863007-8b8b-4075-8aef-b0cdc40b2054"
-      ]
-    }
-  },
-  "a247ede9-7bc3-4e59-aaf5-02f9a72323e4": {
-    "name": "",
-    "typename": "Context",
-    "type_parameters": [],
-    "constructor": {
-      "name": "ContextBranch",
-      "data_arguments": {
-        "m": "b903c18f-a1bb-4d8b-b753-44d97282decb",
-        "n": "c718c640-6ba3-4f0e-9fce-2ade31143ac9"
-      },
-      "preconditions": []
-    }
-  },
-  "a2863007-8b8b-4075-8aef-b0cdc40b2054": {
-    "name": "",
-    "typename": "AddBindingsToContext",
-    "type_parameters": [
-      "0bf259eb-1f89-4f50-b4f4-54c47b086e7c",
-      "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-      "a0a9517f-c912-4a0c-96bd-c6556b2d1933",
-      "76cdf04f-d8ff-4e33-bbef-f22329eca165"
-    ],
-    "constructor": {
-      "name": "AddBindingsToContextBranch",
-      "data_arguments": {
-        "inserted_context": "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-        "lb": "204f0058-b75c-471e-9a8f-a532e13bd618",
-        "lc": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-        "lc2": "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-        "rb": "dd358366-c4b3-4328-9db8-c1ccb6c86d7b",
-        "rc": "bf0956bc-79bf-4903-9e5b-876e76376d51",
-        "rc2": "8981bb0f-e6ad-4146-909e-67f8f2a51ad2"
-      },
-      "preconditions": [
-        "df8de63d-667e-48a1-b5d0-2e50019f969a",
-        "d018993a-0242-4d73-8c75-612788394bf6"
-      ]
-    }
-  },
-  "a4cb0638-9fcd-4aa5-b676-bb3c1d516ef8": {
-    "name": "",
-    "typename": "AddBindingsToContext",
-    "type_parameters": [
-      "cb9bc597-413d-46a2-a7ea-bd334c03668e",
-      "812bae8f-02ff-4ed2-97d9-4b2b268958c2",
-      "8981bb0f-e6ad-4146-909e-67f8f2a51ad2",
-      "8981bb0f-e6ad-4146-909e-67f8f2a51ad2"
-    ],
-    "constructor": {
-      "name": "AddBindingsToContextBranch",
-      "data_arguments": {
-        "inserted_context": "812bae8f-02ff-4ed2-97d9-4b2b268958c2",
-        "lb": "faf9f984-0018-498a-b104-34698590fd6b",
-        "lc": "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-        "lc2": "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-        "rb": "faf9f984-0018-498a-b104-34698590fd6b",
-        "rc": "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-        "rc2": "706b29e4-3467-4dde-9e4b-ea115f8b5e81"
-      },
-      "preconditions": [
-        "da8741be-b832-4b3f-80bd-968fa0d1cc04",
-        "da8741be-b832-4b3f-80bd-968fa0d1cc04"
-      ]
-    }
-  },
-  "a7bcf332-634c-43cf-ae05-ccc4eee919fc": {
-    "name": "",
-    "typename": "HasType",
-    "type_parameters": [
-      "c5745d7c-f46c-4593-aab2-8e46075f5d6a",
-      "8981bb0f-e6ad-4146-909e-67f8f2a51ad2",
-      "36672dfa-deaa-4f59-9a02-d46f44337963",
-      "c718c640-6ba3-4f0e-9fce-2ade31143ac9"
-    ],
-    "constructor": {
-      "name": "TypeOfForAll",
-      "data_arguments": {
-        "argument_context": "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-        "argument_type": "124791da-56f3-48cc-b9dd-c476fdb03d61",
-        "bindings": "faf9f984-0018-498a-b104-34698590fd6b",
-        "return_context": "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-        "return_context_before_bindings": "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-        "return_type": "124791da-56f3-48cc-b9dd-c476fdb03d61",
-        "s1": "ed22f6a4-e9f1-43a7-9578-4d50d7c027aa",
-        "s2": "ed22f6a4-e9f1-43a7-9578-4d50d7c027aa"
-      },
-      "preconditions": [
-        "59ebeb18-1f35-4f46-ac90-b65163a0db02",
-        "59ebeb18-1f35-4f46-ac90-b65163a0db02",
-        "de8bb05b-a3ec-465e-9eec-45e785152c73"
-      ]
-    }
-  },
-  "ab469acc-9936-4097-8286-ced7cf5baee5": {
-    "name": "",
-    "typename": "Context",
-    "type_parameters": [],
-    "constructor": {
-      "name": "ContextKnownVariable",
-      "data_arguments": {
-        "binding_context": "bf0956bc-79bf-4903-9e5b-876e76376d51",
-        "binding_term": "84316150-415f-4da0-b5bc-869fd349cb09"
-      },
-      "preconditions": []
-    }
-  },
-  "ac23124b-2e8b-4a09-9755-f486a8dae3bf": {
-    "name": "",
-    "typename": "Term",
-    "type_parameters": [],
-    "constructor": {
-      "name": "Abstraction",
-      "data_arguments": {
-        "argument_type": "124791da-56f3-48cc-b9dd-c476fdb03d61",
-        "bindings": "807b39a8-faab-46ed-8fb2-bc2a602c72b7",
-        "body": "4de2b50d-5f20-43db-b840-da4f59da39b7",
-        "kind": "466f1a79-20c5-4dd3-966c-24eb99995ce9"
-      },
-      "preconditions": []
-    }
-  },
-  "af80af48-b904-47fa-8070-1962566f585a": {
-    "name": "",
-    "typename": "Context",
-    "type_parameters": [],
-    "constructor": {
-      "name": "ContextBranch",
-      "data_arguments": {
-        "m": "b903c18f-a1bb-4d8b-b753-44d97282decb",
-        "n": "a247ede9-7bc3-4e59-aaf5-02f9a72323e4"
-      },
-      "preconditions": []
-    }
-  },
-  "b903c18f-a1bb-4d8b-b753-44d97282decb": {
-    "name": "",
-    "typename": "Context",
-    "type_parameters": [],
-    "constructor": {
-      "name": "ContextKnownVariable",
-      "data_arguments": {
-        "binding_context": "26a540c3-cee4-4924-b392-1043d1a69478",
-        "binding_term": "d6f7c003-47e9-4c1b-951b-5e181a764d50"
-      },
-      "preconditions": []
-    }
-  },
-  "bf0956bc-79bf-4903-9e5b-876e76376d51": {
-    "name": "",
-    "typename": "Context",
-    "type_parameters": [],
-    "constructor": {
-      "name": "ContextBranch",
-      "data_arguments": {
-        "m": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-        "n": "c718c640-6ba3-4f0e-9fce-2ade31143ac9"
-      },
-      "preconditions": []
-    }
-  },
-  "c5745d7c-f46c-4593-aab2-8e46075f5d6a": {
-    "name": "",
-    "typename": "Term",
-    "type_parameters": [],
-    "constructor": {
-      "name": "Abstraction",
-      "data_arguments": {
-        "argument_type": "124791da-56f3-48cc-b9dd-c476fdb03d61",
-        "bindings": "faf9f984-0018-498a-b104-34698590fd6b",
-        "body": "124791da-56f3-48cc-b9dd-c476fdb03d61",
-        "kind": "70b9cb7f-bee4-4d6d-a788-2cb90051e13e"
-      },
-      "preconditions": []
-    }
-  },
-  "c718c640-6ba3-4f0e-9fce-2ade31143ac9": {
-    "name": "",
-    "typename": "Context",
-    "type_parameters": [],
-    "constructor": {
-      "name": "ContextHole",
-      "data_arguments": {},
-      "preconditions": []
-    }
-  },
-  "cb9bc597-413d-46a2-a7ea-bd334c03668e": {
-    "name": "",
-    "typename": "BindingTree",
-    "type_parameters": [],
-    "constructor": {
-      "name": "BindBranch",
-      "data_arguments": {
-        "m": "faf9f984-0018-498a-b104-34698590fd6b",
-        "n": "faf9f984-0018-498a-b104-34698590fd6b"
-      },
-      "preconditions": []
-    }
-  },
-  "cf19156e-1622-4d2a-a7c1-bd202a7977d4": {
-    "name": "",
-    "typename": "AddBindingsToContext",
-    "type_parameters": [
-      "faf9f984-0018-498a-b104-34698590fd6b",
-      "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-      "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-      "c718c640-6ba3-4f0e-9fce-2ade31143ac9"
-    ],
-    "constructor": {
-      "name": "AddBindingsToContextNotHere",
-      "data_arguments": {
-        "context": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-        "inserted_context": "706b29e4-3467-4dde-9e4b-ea115f8b5e81"
-      },
-      "preconditions": []
-    }
-  },
-  "d018993a-0242-4d73-8c75-612788394bf6": {
-    "name": "",
-    "typename": "AddBindingsToContext",
-    "type_parameters": [
-      "dd358366-c4b3-4328-9db8-c1ccb6c86d7b",
-      "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-      "bf0956bc-79bf-4903-9e5b-876e76376d51",
-      "8981bb0f-e6ad-4146-909e-67f8f2a51ad2"
-    ],
-    "constructor": {
-      "name": "AddBindingsToContextBranch",
-      "data_arguments": {
-        "inserted_context": "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-        "lb": "204f0058-b75c-471e-9a8f-a532e13bd618",
-        "lc": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-        "lc2": "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-        "rb": "faf9f984-0018-498a-b104-34698590fd6b",
-        "rc": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-        "rc2": "c718c640-6ba3-4f0e-9fce-2ade31143ac9"
-      },
-      "preconditions": [
-        "df8de63d-667e-48a1-b5d0-2e50019f969a",
-        "cf19156e-1622-4d2a-a7c1-bd202a7977d4"
-      ]
-    }
-  },
-  "d12637c8-06ca-4b92-ab22-48df9026fc75": {
-    "name": "trueIsABool",
-    "typename": "HasType",
-    "type_parameters": [
-      "d6f7c003-47e9-4c1b-951b-5e181a764d50",
-      "26a540c3-cee4-4924-b392-1043d1a69478",
-      "4eeabd44-68ff-46cc-8717-e99834d9b963",
-      "26a540c3-cee4-4924-b392-1043d1a69478"
-    ],
-    "constructor": {
-      "name": "TypeOfLambda",
-      "data_arguments": {
-        "argument_context": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-        "argument_type": "36672dfa-deaa-4f59-9a02-d46f44337963",
-        "body": "ac23124b-2e8b-4a09-9755-f486a8dae3bf",
-        "body_context": "af80af48-b904-47fa-8070-1962566f585a",
-        "body_context_before_bindings": "a0a9517f-c912-4a0c-96bd-c6556b2d1933",
-        "forall_bindings": "0bf259eb-1f89-4f50-b4f4-54c47b086e7c",
-        "lambda_bindings": "0bf259eb-1f89-4f50-b4f4-54c47b086e7c",
-        "return_context": "76cdf04f-d8ff-4e33-bbef-f22329eca165",
-        "return_context_before_bindings": "a0a9517f-c912-4a0c-96bd-c6556b2d1933",
-        "return_type": "83f4d1df-eff2-49d6-b1ca-04777a9941e2",
-        "s": "36672dfa-deaa-4f59-9a02-d46f44337963"
-      },
-      "preconditions": [
-        "a21215f6-1f08-46a0-bc40-97a95d255a5f",
-        null,
-        null,
-        "a2863007-8b8b-4075-8aef-b0cdc40b2054"
-      ]
-    }
-  },
-  "d6f7c003-47e9-4c1b-951b-5e181a764d50": {
-    "name": "true",
-    "typename": "Term",
-    "type_parameters": [],
-    "constructor": {
-      "name": "Abstraction",
-      "data_arguments": {
-        "argument_type": "36672dfa-deaa-4f59-9a02-d46f44337963",
-        "bindings": "0bf259eb-1f89-4f50-b4f4-54c47b086e7c",
-        "body": "ac23124b-2e8b-4a09-9755-f486a8dae3bf",
-        "kind": "466f1a79-20c5-4dd3-966c-24eb99995ce9"
-      },
-      "preconditions": []
-    }
-  },
-  "da8741be-b832-4b3f-80bd-968fa0d1cc04": {
-    "name": "",
-    "typename": "AddBindingsToContext",
-    "type_parameters": [
-      "faf9f984-0018-498a-b104-34698590fd6b",
-      "812bae8f-02ff-4ed2-97d9-4b2b268958c2",
-      "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-      "706b29e4-3467-4dde-9e4b-ea115f8b5e81"
-    ],
-    "constructor": {
-      "name": "AddBindingsToContextNotHere",
-      "data_arguments": {
-        "context": "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-        "inserted_context": "812bae8f-02ff-4ed2-97d9-4b2b268958c2"
-      },
-      "preconditions": []
-    }
-  },
-  "dd358366-c4b3-4328-9db8-c1ccb6c86d7b": {
-    "name": "",
-    "typename": "BindingTree",
-    "type_parameters": [],
-    "constructor": {
-      "name": "BindBranch",
-      "data_arguments": {
-        "m": "204f0058-b75c-471e-9a8f-a532e13bd618",
-        "n": "faf9f984-0018-498a-b104-34698590fd6b"
-      },
-      "preconditions": []
-    }
-  },
-  "de8bb05b-a3ec-465e-9eec-45e785152c73": {
-    "name": "",
-    "typename": "AddBindingsToContext",
-    "type_parameters": [
-      "faf9f984-0018-498a-b104-34698590fd6b",
-      "f4967834-6ff9-4c11-b79a-c78b2d171825",
-      "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-      "706b29e4-3467-4dde-9e4b-ea115f8b5e81"
-    ],
-    "constructor": {
-      "name": "AddBindingsToContextNotHere",
-      "data_arguments": {
-        "context": "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-        "inserted_context": "f4967834-6ff9-4c11-b79a-c78b2d171825"
-      },
-      "preconditions": []
-    }
-  },
-  "df8de63d-667e-48a1-b5d0-2e50019f969a": {
-    "name": "",
-    "typename": "AddBindingsToContext",
-    "type_parameters": [
-      "204f0058-b75c-471e-9a8f-a532e13bd618",
-      "706b29e4-3467-4dde-9e4b-ea115f8b5e81",
-      "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-      "706b29e4-3467-4dde-9e4b-ea115f8b5e81"
-    ],
-    "constructor": {
-      "name": "AddBindingsToContextVariable",
-      "data_arguments": {
-        "inserted_context": "706b29e4-3467-4dde-9e4b-ea115f8b5e81"
-      },
-      "preconditions": []
-    }
-  },
-  "eb63bcd8-0a3f-4065-887e-18754d43e30c": {
-    "name": "FalseIsAProposition",
-    "typename": "HasType",
-    "type_parameters": [
-      "84316150-415f-4da0-b5bc-869fd349cb09",
-      "bf0956bc-79bf-4903-9e5b-876e76376d51",
-      "36672dfa-deaa-4f59-9a02-d46f44337963",
-      "c718c640-6ba3-4f0e-9fce-2ade31143ac9"
-    ],
-    "constructor": {
-      "name": "TypeOfForAll",
-      "data_arguments": {
-        "argument_context": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-        "argument_type": "36672dfa-deaa-4f59-9a02-d46f44337963",
-        "bindings": "204f0058-b75c-471e-9a8f-a532e13bd618",
-        "return_context": "ab469acc-9936-4097-8286-ced7cf5baee5",
-        "return_context_before_bindings": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-        "return_type": "124791da-56f3-48cc-b9dd-c476fdb03d61",
-        "s1": "70e91b64-7e97-48ca-9145-b0c460c73af9",
-        "s2": "ed22f6a4-e9f1-43a7-9578-4d50d7c027aa"
-      },
-      "preconditions": [
-        "23292a56-d007-406a-bbdf-dcef092bbb6c",
-        "edaa355c-81a5-45da-8610-e5c329ef29c6",
-        "67ce6c90-6671-4a9d-8be5-a556208675f0"
-      ]
-    }
-  },
-  "ed22f6a4-e9f1-43a7-9578-4d50d7c027aa": {
-    "name": "",
-    "typename": "Sort",
-    "type_parameters": [],
-    "constructor": {
-      "name": "Prop",
-      "data_arguments": {},
-      "preconditions": []
-    }
-  },
-  "edaa355c-81a5-45da-8610-e5c329ef29c6": {
-    "name": "",
-    "typename": "HasType",
-    "type_parameters": [
-      "124791da-56f3-48cc-b9dd-c476fdb03d61",
-      "ab469acc-9936-4097-8286-ced7cf5baee5",
-      "36672dfa-deaa-4f59-9a02-d46f44337963",
-      "c718c640-6ba3-4f0e-9fce-2ade31143ac9"
-    ],
-    "constructor": {
-      "name": "TypeOfVariableUsage",
-      "data_arguments": {
-        "argument_context": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-        "argument_type": "36672dfa-deaa-4f59-9a02-d46f44337963",
-        "bindings": "204f0058-b75c-471e-9a8f-a532e13bd618",
-        "body": "124791da-56f3-48cc-b9dd-c476fdb03d61",
-        "body_context": "c718c640-6ba3-4f0e-9fce-2ade31143ac9",
-        "kind": "70b9cb7f-bee4-4d6d-a788-2cb90051e13e"
-      },
-      "preconditions": []
-    }
-  },
-  "f4967834-6ff9-4c11-b79a-c78b2d171825": {
-    "name": "",
-    "typename": "Context",
-    "type_parameters": [],
-    "constructor": {
-      "name": "ContextKnownVariable",
-      "data_arguments": {
-        "binding_context": "8981bb0f-e6ad-4146-909e-67f8f2a51ad2",
-        "binding_term": "c5745d7c-f46c-4593-aab2-8e46075f5d6a"
-      },
-      "preconditions": []
-    }
-  },
-  "faf9f984-0018-498a-b104-34698590fd6b": {
-    "name": "",
-    "typename": "BindingTree",
-    "type_parameters": [],
-    "constructor": {
-      "name": "BindNotThis",
       "data_arguments": {},
       "preconditions": []
     }

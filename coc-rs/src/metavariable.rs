@@ -302,50 +302,149 @@ impl Environment {
     pub fn metavariables(&self) -> &BTreeMap<MetavariableId, Metavariable> {
         &self.metavariables
     }
+}
 
-    pub fn make_datavalue_match_metavariable(
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum CanMatch {
+    Maybe,
+    No,
+}
+
+impl Environment {
+    pub fn fill_in_args_to_make_datavalue_match_metavariable(
         &self,
         id: Option<MetavariableId>,
         value: &DataValue,
         datatype: &str,
         data_arguments: &mut BTreeMap<String, Option<MetavariableId>>,
-    ) {
-        let Some(id) = id else { return; };
+    ) -> CanMatch {
+        dbg!(datatype);
+        let Some(id) = id else { return CanMatch::Maybe; };
         let metavariable = self.get(id);
         if metavariable.typename != *datatype {
-            return;
+            return CanMatch::No;
         }
         let datatype = Constructors::coc().types.get(datatype).unwrap();
         match value {
             DataValue::Argument(argname) => {
                 let arg = data_arguments.get_mut(argname).unwrap();
                 if arg.is_none() {
-                    *arg = Some(id);
+                    *arg = Some(id)
+                }
+                if *arg == Some(id) {
+                    CanMatch::Maybe
+                } else {
+                    dbg!(argname, arg, id);
+                    CanMatch::No
                 }
             }
             DataValue::Constructor {
                 constructor: required_constructor_name,
                 arguments: required_constructor_arguments,
             } => {
-                let Some(constructor) = &metavariable.constructor else { return; };
+                let Some(constructor) = &metavariable.constructor else { return CanMatch::Maybe; };
                 let constructor_definition = datatype.constructors.get(&constructor.name).unwrap();
                 if constructor.name != *required_constructor_name {
-                    return;
+                    dbg!();
+                    return CanMatch::No;
                 }
                 for (r, a) in zip(
                     required_constructor_arguments,
                     &constructor_definition.data_arguments,
                 ) {
-                    self.make_datavalue_match_metavariable(
+                    let submatch_possible = self.fill_in_args_to_make_datavalue_match_metavariable(
                         *constructor.data_arguments.get(&a.name).unwrap(),
                         r,
                         &a.datatype,
                         data_arguments,
-                    )
+                    );
+                    if submatch_possible == CanMatch::No {
+                        dbg!();
+                        return CanMatch::No;
+                    }
                 }
+                CanMatch::Maybe
             }
         }
     }
+
+    pub fn make_metavariable_that_matches_data_value(
+        &mut self,
+        value: &DataValue,
+        datatype: &str,
+        data_arguments: &mut BTreeMap<String, Option<MetavariableId>>,
+    ) -> MetavariableId {
+        if let Some(existing) = self.metavariables.keys().copied().find(|&id| {
+            self.metavariable_matches_datavalue(Some(id), value, datatype, data_arguments)
+        }) {
+            return existing;
+        }
+        let new_id = self.create_metavariable(datatype.to_owned());
+        let datatype = Constructors::coc().types.get(datatype).unwrap();
+        match value {
+            DataValue::Argument(argument) => {
+                let existing = data_arguments.get_mut(argument).unwrap();
+                assert!(
+                    existing.is_none(),
+                    "if it was Some then the variable it points to should have matched"
+                );
+                *existing = Some(new_id);
+            }
+            DataValue::Constructor {
+                constructor,
+                arguments,
+            } => {
+                let constructor_definition = datatype.constructors.get(constructor).unwrap();
+                self.set_constructor(new_id, Some(constructor.clone()));
+                for (child_value, argument_definition) in
+                    zip(arguments, &constructor_definition.data_arguments)
+                {
+                    let new_child_id = self.make_metavariable_that_matches_data_value(
+                        child_value,
+                        &argument_definition.datatype,
+                        data_arguments,
+                    );
+                    self.set_data_argument(new_id, &argument_definition.name, Some(new_child_id));
+                }
+            }
+        }
+        new_id
+    }
+
+    pub fn constructor_possible(&self, id: MetavariableId, constructor_name: &str) -> CanMatch {
+        let metavariable = self.get(id);
+
+        let type_definition = Constructors::coc()
+            .types
+            .get(&metavariable.typename)
+            .unwrap();
+        let constructor_definition = type_definition.constructors.get(constructor_name).unwrap();
+        let mut data_arguments: BTreeMap<String, Option<MetavariableId>> = constructor_definition
+            .data_arguments
+            .iter()
+            .map(|a| (a.name.clone(), None))
+            .collect();
+        for (&required, (datatype, produced)) in zip(
+            &metavariable.type_parameters,
+            zip(
+                &type_definition.type_parameters,
+                &constructor_definition.resulting_type_parameters,
+            ),
+        ) {
+            let match_possible = self.fill_in_args_to_make_datavalue_match_metavariable(
+                required,
+                produced,
+                datatype,
+                &mut data_arguments,
+            );
+            if match_possible == CanMatch::No {
+                return CanMatch::No;
+            }
+        }
+
+        CanMatch::Maybe
+    }
+
     pub fn autofill(&mut self, id: MetavariableId) {
         let metavariable = self.get(id);
 
@@ -353,6 +452,21 @@ impl Environment {
             .types
             .get(&metavariable.typename)
             .unwrap();
+
+        if metavariable.constructor.is_none() {
+            let possible_constructors: Vec<_> = type_definition
+                .constructors
+                .iter()
+                .filter(|(constructor_name, _constructor_definition)| {
+                    self.constructor_possible(id, constructor_name) != CanMatch::No
+                })
+                .collect();
+            if let &[(only_constructor_name, _)] = &*possible_constructors {
+                self.set_constructor(id, Some(only_constructor_name.clone()));
+            }
+        }
+        let metavariable = self.get(id);
+
         if let Some(constructor) = &metavariable.constructor {
             let constructor_definition =
                 type_definition.constructors.get(&constructor.name).unwrap();
@@ -364,7 +478,7 @@ impl Environment {
                     &constructor_definition.resulting_type_parameters,
                 ),
             ) {
-                self.make_datavalue_match_metavariable(
+                self.fill_in_args_to_make_datavalue_match_metavariable(
                     defined,
                     resulting,
                     typename,
@@ -388,7 +502,7 @@ impl Environment {
                             &other.type_parameters,
                         ),
                     ) {
-                        self.make_datavalue_match_metavariable(
+                        self.fill_in_args_to_make_datavalue_match_metavariable(
                             defined,
                             required,
                             typename,
@@ -417,7 +531,9 @@ impl Environment {
                         .types
                         .get(&precondition_definition.predicate_type)
                         .unwrap();
+                    // if there's already a metavariable that satisfies this, use it:
                     for (&other_id, other) in &self.metavariables {
+                        let mut set_data_arg = None;
                         if other.typename == precondition_definition.predicate_type
                             && zip(
                                 &predicate_definition.type_parameters,
@@ -426,8 +542,22 @@ impl Environment {
                                     &other.type_parameters,
                                 ),
                             )
+                            .enumerate()
                             .all(
-                                |(typename, (required, &provided))| {
+                                |(index, (typename, (required, &provided)))| {
+                                    // certain parameters are "fully determined" by the other parameters,
+                                    // so we count something as "matching" if we do not specify that parameter
+                                    // TODO fix duplicate code id f9gd67fg8re8g
+                                    if (typename == "FormulaSubstitution"
+                                            || typename == "BindingSubstitution")
+                                        && index == 3
+                                    {
+                                        let DataValue::Argument(name) = &required else {unreachable!()};
+                                        if data_arguments[name].is_none() {
+                                            set_data_arg = Some((name.clone(), other.type_parameters[index], typename.clone()));
+                                            return true
+                                        }
+                                    }
                                     self.metavariable_matches_datavalue(
                                         provided,
                                         required,
@@ -439,9 +569,44 @@ impl Environment {
                         {
                             self.get_mut(id).constructor.as_mut().unwrap().preconditions
                                 [precondition_index] = Some(other_id);
+                            if let Some((argname, existing, typename)) = set_data_arg{
+                                let new_id = existing.unwrap_or_else(|| {
+                                    let new_id = self.create_metavariable(typename);
+                                    // TODO fix duplicate code id f9gd67fg8re8g
+                                    self.get_mut(other_id).type_parameters[3] = Some(new_id);
+                                    new_id
+                                });
+                                *self.get_mut(id).constructor.as_mut().unwrap().data_arguments.get_mut (&argname).unwrap() = Some (new_id);
+                            }
                             return self.autofill(id);
                         }
                     }
+
+                    // If there's not one already ... create it!
+                    let new_precondition_id =
+                        self.create_metavariable(precondition_definition.predicate_type.clone());
+                    self.get_mut(id).constructor.as_mut().unwrap().preconditions
+                        [precondition_index] = Some(new_precondition_id);
+                    for (index, (typename, required)) in zip(
+                        &predicate_definition.type_parameters,
+                        &precondition_definition.type_parameters,
+                    )
+                    .enumerate()
+                    {
+                        let new_parameter_id = self.make_metavariable_that_matches_data_value(
+                            required,
+                            typename,
+                            &mut data_arguments,
+                        );
+                        self.get_mut(new_precondition_id).type_parameters[index] =
+                            Some(new_parameter_id);
+                    }
+                    self.get_mut(id)
+                        .constructor
+                        .as_mut()
+                        .unwrap()
+                        .data_arguments = data_arguments;
+                    return self.autofill(id);
                 }
             }
         }
