@@ -361,7 +361,7 @@ impl TermEnvironment {
                 let child_options = FormatTermOptions {
                     parens_if_recursive: true,
                     depth: options.depth - 1,
-                    ..*options
+                    //..*options
                 };
                 self.format_term(f, &child_options, a)?;
                 if kind == Apply {

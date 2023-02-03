@@ -2,7 +2,9 @@
 #![feature(once_cell)]
 
 use clap::{arg, Parser};
-use coc_rs::constructors::{Constructors, DataValue, Notation, NotationItem};
+use coc_rs::constructors::{
+    ArgsCompoundView, ArgsCompoundViewCases, Constructors, Notation, NotationItem, COC,
+};
 use coc_rs::metavariable::{CanMatch, Environment, MetavariableId};
 use coc_rs::utils::{read_json_file, write_json_file};
 use quick_and_dirty_web_gui::{callback, callback_with};
@@ -319,32 +321,20 @@ impl Interface {
 
     fn inline_data_value(
         &self,
-        value: &DataValue,
-        typename: &str,
+        value: &ArgsCompoundView,
         data_arguments: &BTreeMap<String, Option<MetavariableId>>,
     ) -> Span {
-        let datatype = Constructors::coc().types.get(typename).unwrap();
-        match value {
-            DataValue::Argument(argname) => {
-                self.inline_child(*data_arguments.get(argname).unwrap())
+        match value.cases() {
+            ArgsCompoundViewCases::Argument(argument) => {
+                self.inline_child(*data_arguments.get(argument.name()).unwrap())
             }
-            DataValue::Constructor {
+            ArgsCompoundViewCases::Constructor {
                 constructor,
                 arguments,
-            } => {
-                let constructor_definition = datatype.constructors.get(constructor).unwrap();
-                let arguments_map: HashMap<&String, (&DataValue, &String)> =
-                    zip(&constructor_definition.data_arguments, arguments)
-                        .map(|(a, v)| (&a.name, (v, &a.datatype)))
-                        .collect();
-                self.inline_notation(
-                    constructor_definition.notation.as_ref().unwrap(),
-                    |argument_name| {
-                        let &(v, t) = arguments_map.get(argument_name).unwrap();
-                        self.inline_data_value(v, t, data_arguments)
-                    },
-                )
-            }
+            } => self.inline_notation(constructor.notation().unwrap(), |argument_name| {
+                let v = &arguments[constructor.data_argument_named(argument_name).index()];
+                self.inline_data_value(v, data_arguments)
+            }),
         }
     }
 
@@ -400,10 +390,7 @@ impl Interface {
 
     fn node_element(&self, id: MetavariableId) -> FlowElement {
         let metavariable = self.environment.get(id);
-        let type_definition = Constructors::coc()
-            .types
-            .get(&metavariable.typename)
-            .unwrap();
+        let type_definition = COC.get(&metavariable.typename);
         let validity = self.environment.local_validity(id);
         let mut lines: Vec<FlowElement> = Vec::new();
         let mut self_elements: Vec<FlowElement> = Vec::new();
@@ -416,7 +403,7 @@ impl Interface {
         let implicit_name = self.implicit_name(id);
         let unfolded_name = self.unfolded_name(id, true);
 
-        let type_element = self.inline_notation(&type_definition.notation, |&index| {
+        let type_element = self.inline_notation(type_definition.notation(), |&index| {
             let body = self.inline_child(*metavariable.type_parameters.get(index).unwrap());
             let child_valid = *validity.type_parameters_valid.get(index).unwrap();
             let class = if matches!(self.focus, Some((i,Some(WhichChild::TypeParameter(j)))) if i==id && j==index)
@@ -452,18 +439,11 @@ impl Interface {
                 </div>
             });
             if let Some(constructor) = &metavariable.constructor {
-                let constructor_definition =
-                    type_definition.constructors.get(&constructor.name).unwrap();
-                if let Some(notation) = &constructor_definition.notation {
-                    let argument_indices: HashMap<&str, usize> = constructor_definition
-                        .data_arguments
-                        .iter()
-                        .enumerate()
-                        .map(|(index, argument)| (&*argument.name, index))
-                        .collect();
+                let constructor_definition = type_definition.constructor(&constructor.name);
+                if let Some(notation) = constructor_definition.notation() {
                     let value_element = self.inline_notation(notation, |name| {
                         let body = self.inline_child(*constructor.data_arguments.get(name).unwrap());
-                        let index = argument_indices[&**name];
+                        let index = constructor_definition.data_argument_named(name).index();
                         let child_valid = *validity.data_arguments_valid.get(name).unwrap();
                         let class = if matches!(self.focus, Some((i,Some(WhichChild::DataArgument(j)))) if i==id && j==index)
                         {
@@ -526,12 +506,14 @@ impl Interface {
         match &metavariable.constructor {
             None => {
                 if focused || !valid {
-                    for (constructor_name, _) in type_definition.constructors.iter() {
-                        let text = text!(constructor_name);
-                        if self.environment.constructor_possible(id, constructor_name)
+                    for constructor in type_definition.constructors() {
+                        let text = text!(constructor.name());
+                        if self
+                            .environment
+                            .constructor_possible(id, constructor.name())
                             != CanMatch::No
                         {
-                            let constructor_name = constructor_name.clone();
+                            let constructor_name = constructor.name().to_owned();
                             child_elements.push(html! {
                                 <button onclick={callback(move || set_constructor(id,Some (constructor_name.clone())))}>
                                     {text}
@@ -555,19 +537,17 @@ impl Interface {
                         </button> : String
                     });
                 }
-                let constructor_definition =
-                    type_definition.constructors.get(&constructor.name).unwrap();
-                for (index, argument_definition) in
-                    constructor_definition.data_arguments.iter().enumerate()
-                {
+                let constructor_definition = type_definition.constructor(&constructor.name);
+                for argument_definition in constructor_definition.data_arguments() {
                     let body = self.inline_child(
                         *constructor
                             .data_arguments
-                            .get(&argument_definition.name)
+                            .get(argument_definition.name())
                             .unwrap(),
                     );
-                    let argument_name = argument_definition.name.clone();
+                    let argument_name = argument_definition.name().to_owned();
                     let child_valid = *validity.data_arguments_valid.get(&argument_name).unwrap();
+                    let index = argument_definition.index();
                     let class = if matches!(self.focus, Some((i,Some(WhichChild::DataArgument(j)))) if i==id && j==index)
                     {
                         "child focused"
@@ -586,7 +566,7 @@ impl Interface {
                     }
                 }
                 for (index, (argument_definition, child_valid)) in zip(
-                    &constructor_definition.preconditions,
+                    constructor_definition.preconditions(),
                     validity.preconditions_valid,
                 )
                 .enumerate()
@@ -600,19 +580,9 @@ impl Interface {
                     } else {
                         "child invalid"
                     };
-
-                    let predicate_definition = Constructors::coc()
-                        .types
-                        .get(&argument_definition.predicate_type)
-                        .unwrap();
-
-                    let full_type = self.inline_notation(&predicate_definition.notation, |&index| {
-                        let value = argument_definition.type_parameters.get(index).unwrap();
-                        let typename = predicate_definition
-                            .type_parameters
-                            .get(index)
-                            .unwrap();
-                        let body = self.inline_data_value(value, typename, &constructor.data_arguments);
+                    let full_type = self.inline_notation(argument_definition.predicate_type().notation(), |&index| {
+                        let value = argument_definition.type_parameter(index);
+                        let body = self.inline_data_value(&value, &constructor.data_arguments);
                         let valid = true; //*validity.type_parameters_valid.get(index).unwrap();
                         let class = if valid {
                             "child valid"
@@ -637,13 +607,9 @@ impl Interface {
                 if focused || !valid {
                     child_elements.push(text!("->"));
                     child_elements.push(self.inline_notation(
-                        &type_definition.notation,
+                        type_definition.notation(),
                         |&index: &usize| {
-                            let typename = type_definition.type_parameters.get(index).unwrap();
-                            let value = constructor_definition
-                                .resulting_type_parameters
-                                .get(index)
-                                .unwrap();
+                            let value = constructor_definition.resulting_type_parameter(index);
                             let valid = *validity.return_type_parameters_valid.get(index).unwrap();
 
                             let class = if valid {
@@ -654,7 +620,7 @@ impl Interface {
 
                             html! {
                                 <span class=class>
-                                    {self.inline_data_value(value,typename,&constructor.data_arguments)}
+                                    {self.inline_data_value(&value,&constructor.data_arguments)}
                                 </span> : String
                             }
                         },

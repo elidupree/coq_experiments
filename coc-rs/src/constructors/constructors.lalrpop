@@ -1,4 +1,4 @@
-use crate::constructors::{Constructors, ConstructorEntry, DataArgument, Precondition, DataValue};
+use crate::constructors::{Constructors, ConstructorEntry, DataArgumentDefinition, PreconditionDefinition, ArgsCompoundDefinition};
 use lalrpop_util::ParseError;
 
 grammar;
@@ -35,17 +35,17 @@ Entry: Option<ConstructorEntry> = {
   "predicate" <name:TypeName> <type_parameters:TypeName+> "," "notated" <notation:Notation> ";"
     => Some(ConstructorEntry::PredicateType{<>}),
 
-  <name:TypeName> "(" <data_arguments:Comma<DataArgument>> <preconditions:Comma<Precondition>> ")"
-    "->" <constructed_type:TypeName> <resulting_type_parameters:DataValue*> <notation:("," "notated" <Notation>)?> ";"
+  <name:TypeName> "(" <data_arguments:Comma<DataArgumentDefinition>> <preconditions:Comma<PreconditionDefinition>> ")"
+    "->" <constructed_type:TypeName> <resulting_type_parameters:ArgsCompoundDefinition*> <notation:("," "notated" <Notation>)?> ";"
     => Some(ConstructorEntry::Constructor{<>}),
 }
 
-DataArgument: DataArgument = <name:ArgumentName> ":" <datatype:TypeName> => DataArgument {<>};
-Precondition: Precondition = "_" ":" <predicate_type:TypeName> <type_parameters:DataValue+> => Precondition {<>};
-DataValue: DataValue = {
-  <name:ArgumentName> => DataValue::Argument(name),
-  <constructor:TypeName> => DataValue::Constructor{<>, arguments: Vec::new()},
-  "("<constructor:TypeName> <arguments:DataValue*>")" => DataValue::Constructor{<>},
+DataArgumentDefinition: DataArgumentDefinition = <name:ArgumentName> ":" <datatype:TypeName> => DataArgumentDefinition {<>};
+PreconditionDefinition: PreconditionDefinition = "_" ":" <predicate_type:TypeName> <type_parameters:ArgsCompoundDefinition+> => PreconditionDefinition {<>};
+ArgsCompoundDefinition: ArgsCompoundDefinition = {
+  <name:ArgumentName> => ArgsCompoundDefinition::Argument(name),
+  <constructor:TypeName> => ArgsCompoundDefinition::Constructor{<>, arguments: Vec::new()},
+  "("<constructor:TypeName> <arguments:ArgsCompoundDefinition*>")" => ArgsCompoundDefinition::Constructor{<>},
 }
 
 TypeName: String = r"[A-Z][a-zA-Z0-9]*" => <>.to_string();

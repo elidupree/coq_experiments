@@ -1,9 +1,8 @@
 #![feature(default_free_fn)]
 
-use coc_rs::term::{FormatTermOptions, RecursiveTermKind, Term};
+use coc_rs::term::{RecursiveTermKind, Term};
 use coc_rs::types::{is_fully_reduced, naive_fully_reduce, naive_type_check, TypeCheckResult};
 use std::collections::HashMap;
-use std::default::default;
 use std::rc::Rc;
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]

@@ -335,7 +335,7 @@ impl Interface {
         }
     }
 
-    fn node_element(&self, id: TermVariableId, focused: bool, depth: usize) -> FlowElement {
+    fn node_element(&self, id: TermVariableId, focused: bool, _depth: usize) -> FlowElement {
         let term = self.terms.get_term(id);
         let mut self_elements: Vec<FlowElement> = Vec::new();
         let mut context_elements: Vec<FlowElement> = Vec::new();
