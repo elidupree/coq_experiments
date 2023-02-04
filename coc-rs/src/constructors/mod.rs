@@ -231,15 +231,16 @@ impl<'a> PreconditionView<'a> {
             .constructors
             .get(&self.definition.predicate_type)
     }
-    pub fn type_parameters(&self) -> impl Iterator<Item = ArgsCompoundView<'a>> + '_ {
+    pub fn type_parameters(&self) -> impl Iterator<Item = ArgsCompoundView<'a>> + 'a {
+        let constructor_view = self.constructor_view;
         zip(
             &self.definition.type_parameters,
             &self.predicate_type().definition.type_parameters,
         )
-        .map(|(parameter, datatype)| ArgsCompoundView {
+        .map(move |(parameter, datatype)| ArgsCompoundView {
             datatype,
             definition: parameter,
-            constructor_view: self.constructor_view,
+            constructor_view,
         })
     }
     pub fn type_parameter(&self, index: usize) -> ArgsCompoundView<'a> {

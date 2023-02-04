@@ -74,6 +74,21 @@ pub struct MetavariableResultingTypeParameterView<'a> {
     constructor: MetavariableConstructorView<'a>,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct MetavariableArgsCompoundView<'a> {
+    definition: ArgsCompoundView<'static>,
+    constructor: MetavariableConstructorView<'a>,
+}
+
+#[derive(Debug)]
+pub enum MetavariableArgsCompoundViewCases<'a> {
+    Argument(MetavariableDataArgumentView<'a>),
+    Constructor {
+        constructor: ConstructorView<'a>,
+        arguments: Vec<MetavariableArgsCompoundView<'a>>,
+    },
+}
+
 #[derive(Default, Debug)]
 pub struct Environment {
     metavariables: BTreeMap<MetavariableId, Metavariable>,
@@ -226,6 +241,18 @@ impl<'a> MetavariableConstructorView<'a> {
             },
         )
     }
+    pub fn resulting_type_parameter(
+        &self,
+        index: usize,
+    ) -> MetavariableResultingTypeParameterView<'a> {
+        let definition = self.constructor_definition.resulting_type_parameter(index);
+        let goal = self.metavariable.instance.type_parameters[index];
+        MetavariableResultingTypeParameterView {
+            goal,
+            definition,
+            constructor: *self,
+        }
+    }
 }
 
 impl<'a> MetavariableDataArgumentView<'a> {
@@ -258,11 +285,20 @@ impl<'a> MetavariablePreconditionView<'a> {
         self.instance
             .map(|id| self.constructor.metavariable.environment.get(id).unwrap())
     }
-    pub fn type_parameters(&self) -> impl Iterator<Item = ArgsCompoundView<'static>> + '_ {
-        self.definition.type_parameters()
+    pub fn type_parameters(&self) -> impl Iterator<Item = MetavariableArgsCompoundView<'a>> + 'a {
+        let constructor = self.constructor;
+        self.definition
+            .type_parameters()
+            .map(move |definition| MetavariableArgsCompoundView {
+                definition,
+                constructor,
+            })
     }
-    pub fn type_parameter(&self, index: usize) -> ArgsCompoundView<'static> {
-        self.definition.type_parameter(index)
+    pub fn type_parameter(&self, index: usize) -> MetavariableArgsCompoundView<'a> {
+        MetavariableArgsCompoundView {
+            definition: self.definition.type_parameter(index),
+            constructor: self.constructor,
+        }
     }
 }
 impl<'a> MetavariableResultingTypeParameterView<'a> {
@@ -273,8 +309,46 @@ impl<'a> MetavariableResultingTypeParameterView<'a> {
         self.goal
             .map(|id| self.constructor.metavariable.environment.get(id).unwrap())
     }
-    pub fn inferred(&self) -> ArgsCompoundView<'static> {
-        self.definition
+    pub fn inferred(&self) -> MetavariableArgsCompoundView<'a> {
+        MetavariableArgsCompoundView {
+            definition: self.definition,
+            constructor: self.constructor,
+        }
+    }
+}
+
+impl<'a> MetavariableArgsCompoundView<'a> {
+    pub fn datatype(&self) -> TypeView<'a> {
+        self.definition.datatype()
+    }
+    pub fn cases(&self) -> MetavariableArgsCompoundViewCases<'a> {
+        match self.definition.cases() {
+            ArgsCompoundViewCases::Argument(argument) => {
+                MetavariableArgsCompoundViewCases::Argument(
+                    self.constructor.data_argument_named(argument.name()),
+                )
+            }
+            ArgsCompoundViewCases::Constructor {
+                constructor,
+                arguments,
+            } => MetavariableArgsCompoundViewCases::Constructor {
+                constructor,
+                arguments: arguments
+                    .into_iter()
+                    .map(|argument| MetavariableArgsCompoundView {
+                        definition: argument,
+                        constructor: self.constructor,
+                    })
+                    .collect(),
+            },
+        }
+    }
+    pub fn matches_metavariable(&self, metavariable: Option<MetavariableView>) -> bool {
+        Environment::metavariable_matches_datavalue_impl(
+            metavariable,
+            &self.definition,
+            &self.constructor.instance.data_arguments,
+        )
     }
 }
 
@@ -313,9 +387,7 @@ impl Environment {
         self.metavariables.get_mut(&id).unwrap()
     }
 
-    #[allow(clippy::only_used_in_recursion)]
-    pub fn metavariable_matches_datavalue(
-        &self,
+    fn metavariable_matches_datavalue_impl(
         metavariable: Option<MetavariableView>,
         value: &ArgsCompoundView,
         data_arguments: &BTreeMap<String, Option<MetavariableId>>,
@@ -335,7 +407,9 @@ impl Environment {
                 let Some(constructor) = metavariable.constructor() else { return false; };
                 constructor.name() == required_constructor.name()
                     && zip(required_constructor_arguments, constructor.data_arguments()).all(
-                        |(r, a)| self.metavariable_matches_datavalue(a.child(), &r, data_arguments),
+                        |(r, a)| {
+                            Self::metavariable_matches_datavalue_impl(a.child(), &r, data_arguments)
+                        },
                     )
             }
         }
@@ -375,28 +449,15 @@ impl Environment {
                         if other.typename() != precondition.predicate_type().name() {
                             return false;
                         }
-                        zip(other.type_parameters(), precondition.type_parameters()).all(
-                            |(provided, needed)| {
-                                self.metavariable_matches_datavalue(
-                                    provided.child(),
-                                    &needed,
-                                    &constructor.instance.data_arguments,
-                                )
-                            },
-                        )
+                        zip(other.type_parameters(), precondition.type_parameters())
+                            .all(|(provided, needed)| needed.matches_metavariable(provided.child()))
                     }
                 })
                 .collect();
 
             return_type_parameters_valid = constructor
                 .resulting_type_parameters()
-                .map(|parameter| {
-                    self.metavariable_matches_datavalue(
-                        parameter.goal(),
-                        &parameter.inferred(),
-                        &constructor.instance.data_arguments,
-                    )
-                })
+                .map(|parameter| parameter.inferred().matches_metavariable(parameter.goal()))
                 .collect();
         } else {
             constructor_valid = false;
@@ -593,7 +654,7 @@ impl Environment {
         data_arguments: &mut BTreeMap<String, Option<MetavariableId>>,
     ) -> MetavariableId {
         if let Some(existing) = self.metavariables().find(|&metavariable| {
-            self.metavariable_matches_datavalue(Some(metavariable), value, data_arguments)
+            Self::metavariable_matches_datavalue_impl(Some(metavariable), value, data_arguments)
         }) {
             return existing.id();
         }
@@ -686,7 +747,7 @@ impl Environment {
             for parameter in constructor.resulting_type_parameters() {
                 self.fill_in_args_to_make_datavalue_match_metavariable(
                     parameter.goal(),
-                    &parameter.inferred(),
+                    &parameter.inferred().definition,
                     &mut data_arguments,
                 );
             }
@@ -697,7 +758,7 @@ impl Environment {
                     {
                         self.fill_in_args_to_make_datavalue_match_metavariable(
                             defined.child(),
-                            &required,
+                            &required.definition,
                             &mut data_arguments,
                         );
                     }
@@ -736,17 +797,13 @@ impl Environment {
                                             || typename == "BindingSubstitution")
                                         && index == 3
                                     {
-                                        let ArgsCompoundViewCases::Argument(argument) = required.cases() else {unreachable!()};
+                                        let MetavariableArgsCompoundViewCases::Argument(argument) = required.cases() else {unreachable!()};
                                         if data_arguments[argument.name()].is_none() {
                                             set_data_arg = Some((argument.name(), provided.instance, typename));
                                             return true
                                         }
                                     }
-                                    self.metavariable_matches_datavalue(
-                                        provided.child(),
-                                        &required,
-                                        &constructor.instance.data_arguments,
-                                    )
+                                    required.matches_metavariable(provided.child())
                                 },
                             )
                         {
@@ -771,7 +828,11 @@ impl Environment {
                     let precondition_index = precondition.index();
                     let precondition_typename = precondition.predicate_type().name().to_owned();
                     let precondition_type_parameters: Vec<(usize, ArgsCompoundView<'static>)> =
-                        precondition.type_parameters().enumerate().collect();
+                        precondition
+                            .type_parameters()
+                            .map(|a| a.definition)
+                            .enumerate()
+                            .collect();
                     drop((metavariable, preconditions, others));
                     // If there's not one already ... create it!
                     let new_precondition_id = self.create_metavariable(precondition_typename);

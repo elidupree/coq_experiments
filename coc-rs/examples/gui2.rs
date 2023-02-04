@@ -2,11 +2,14 @@
 #![feature(once_cell)]
 
 use clap::{arg, Parser};
-use coc_rs::constructors::{ArgsCompoundView, ArgsCompoundViewCases, Notation, NotationItem, COC};
-use coc_rs::metavariable::{CanMatch, Environment, MetavariableId, MetavariableView};
+use coc_rs::constructors::{Notation, NotationItem, COC};
+use coc_rs::metavariable::{
+    CanMatch, Environment, MetavariableArgsCompoundView, MetavariableArgsCompoundViewCases,
+    MetavariableId, MetavariableView,
+};
 use coc_rs::utils::{read_json_file, write_json_file};
 use quick_and_dirty_web_gui::{callback, callback_with};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::iter::zip;
 use std::sync::{LazyLock, Mutex};
 use typed_html::elements::{FlowContent, PhrasingContent};
@@ -297,21 +300,17 @@ impl Interface {
         }
     }
 
-    fn inline_data_value(
-        &self,
-        value: &ArgsCompoundView,
-        data_arguments: &BTreeMap<String, Option<MetavariableId>>,
-    ) -> Span {
+    fn inline_data_value(&self, value: &MetavariableArgsCompoundView) -> Span {
         match value.cases() {
-            ArgsCompoundViewCases::Argument(argument) => {
-                self.inline_child(*data_arguments.get(argument.name()).unwrap())
+            MetavariableArgsCompoundViewCases::Argument(argument) => {
+                self.inline_child(argument.child())
             }
-            ArgsCompoundViewCases::Constructor {
+            MetavariableArgsCompoundViewCases::Constructor {
                 constructor,
                 arguments,
             } => self.inline_notation(constructor.notation().unwrap(), |argument_name| {
                 let v = &arguments[constructor.data_argument_named(argument_name).index()];
-                self.inline_data_value(v, data_arguments)
+                self.inline_data_value(v)
             }),
         }
     }
@@ -546,7 +545,7 @@ impl Interface {
                     };
                     let full_type = self.inline_notation(precondition.predicate_type().notation(), |&index| {
                         let value = precondition.type_parameter(index);
-                        let body = self.inline_data_value(&value, &constructor.data_arguments);
+                        let body = self.inline_data_value(&value);
                         let valid = true; //*validity.type_parameters_valid.get(index).unwrap();
                         let class = if valid {
                             "child valid"
@@ -584,7 +583,7 @@ impl Interface {
 
                             html! {
                                 <span class=class>
-                                    {self.inline_data_value(&value,&constructor.data_arguments)}
+                                    {self.inline_data_value(&value.inferred())}
                                 </span> : String
                             }
                         },
