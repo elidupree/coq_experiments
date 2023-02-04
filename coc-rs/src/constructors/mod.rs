@@ -58,7 +58,7 @@ pub struct PreconditionDefinition {
     pub type_parameters: Vec<ArgsCompoundDefinition>,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct PreconditionView<'a> {
     index: usize,
     definition: &'a PreconditionDefinition,
@@ -178,6 +178,9 @@ impl<'a> DataArgumentView<'a> {
     pub fn name(&self) -> &'a str {
         &self.definition.name
     }
+    pub fn typename(&self) -> &'a str {
+        &self.definition.datatype
+    }
     pub fn datatype(&self) -> TypeView<'a> {
         self.constructor_view
             .type_view
@@ -258,15 +261,16 @@ impl<'a> ConstructorView<'a> {
     pub fn notation(&self) -> Option<&'a Notation<String>> {
         self.definition.notation.as_ref()
     }
-    pub fn data_arguments(&self) -> impl Iterator<Item = DataArgumentView<'a>> + '_ {
+    pub fn data_arguments(&self) -> impl Iterator<Item = DataArgumentView<'a>> + 'a {
+        let constructor_view = *self;
         self.definition
             .data_arguments
             .iter()
             .enumerate()
-            .map(|(index, argument)| DataArgumentView {
+            .map(move |(index, argument)| DataArgumentView {
                 index,
                 definition: argument,
-                constructor_view: *self,
+                constructor_view,
             })
     }
     pub fn data_argument_indexed(&self, index: usize) -> DataArgumentView<'a> {
@@ -289,15 +293,16 @@ impl<'a> ConstructorView<'a> {
             constructor_view: *self,
         }
     }
-    pub fn preconditions(&self) -> impl Iterator<Item = PreconditionView<'a>> + '_ {
+    pub fn preconditions(&self) -> impl Iterator<Item = PreconditionView<'a>> + 'a {
+        let constructor_view = *self;
         self.definition
             .preconditions
             .iter()
             .enumerate()
-            .map(|(index, precondition)| PreconditionView {
+            .map(move |(index, precondition)| PreconditionView {
                 index,
                 definition: precondition,
-                constructor_view: *self,
+                constructor_view,
             })
     }
     pub fn precondition(&self, index: usize) -> PreconditionView<'a> {

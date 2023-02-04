@@ -1,4 +1,7 @@
-use crate::constructors::{ArgsCompoundView, ArgsCompoundViewCases, COC};
+use crate::constructors::{
+    ArgsCompoundView, ArgsCompoundViewCases, ConstructorView, DataArgumentView, Notation,
+    PreconditionView, TypeView, COC,
+};
 use arrayvec::ArrayVec;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeMap;
@@ -20,6 +23,22 @@ pub struct Metavariable {
     // pub back_references: Vec<MetavariableId>,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct MetavariableView<'a> {
+    id: MetavariableId,
+    type_definition: TypeView<'static>,
+    instance: &'a Metavariable,
+    environment: &'a Environment,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct MetavariableTypeParameterView<'a> {
+    index: usize,
+    instance: Option<MetavariableId>,
+    datatype: TypeView<'static>,
+    metavariable: MetavariableView<'a>,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MetavariableConstructor {
     pub name: String,
@@ -27,9 +46,236 @@ pub struct MetavariableConstructor {
     pub preconditions: Vec<Option<MetavariableId>>,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct MetavariableConstructorView<'a> {
+    instance: &'a MetavariableConstructor,
+    constructor_definition: ConstructorView<'static>,
+    metavariable: MetavariableView<'a>,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct MetavariableDataArgumentView<'a> {
+    instance: Option<MetavariableId>,
+    definition: DataArgumentView<'static>,
+    constructor: MetavariableConstructorView<'a>,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct MetavariablePreconditionView<'a> {
+    instance: Option<MetavariableId>,
+    definition: PreconditionView<'static>,
+    constructor: MetavariableConstructorView<'a>,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct MetavariableResultingTypeParameterView<'a> {
+    goal: Option<MetavariableId>,
+    definition: ArgsCompoundView<'static>,
+    constructor: MetavariableConstructorView<'a>,
+}
+
 #[derive(Default, Debug)]
 pub struct Environment {
     metavariables: BTreeMap<MetavariableId, Metavariable>,
+}
+
+impl<'a> MetavariableView<'a> {
+    pub fn id(&self) -> MetavariableId {
+        self.id
+    }
+    pub fn name(&self) -> &'a str {
+        &self.instance.name
+    }
+    pub fn typename(&self) -> &'static str {
+        self.type_definition.name()
+    }
+    pub fn ty(&self) -> TypeView<'static> {
+        self.type_definition
+    }
+    pub fn type_parameters(&self) -> impl Iterator<Item = MetavariableTypeParameterView<'a>> + '_ {
+        zip(
+            self.instance.type_parameters.iter().copied(),
+            self.type_definition.type_parameters(),
+        )
+        .enumerate()
+        .map(
+            |(index, (definition, datatype))| MetavariableTypeParameterView {
+                index,
+                instance: definition,
+                datatype,
+                metavariable: *self,
+            },
+        )
+    }
+    pub fn type_parameter(&self, index: usize) -> MetavariableTypeParameterView<'a> {
+        MetavariableTypeParameterView {
+            index,
+            instance: self.instance.type_parameters[index],
+            datatype: self.type_definition.type_parameter(index),
+            metavariable: *self,
+        }
+    }
+    pub fn constructor(&self) -> Option<MetavariableConstructorView<'a>> {
+        self.instance
+            .constructor
+            .as_ref()
+            .map(|constructor| MetavariableConstructorView {
+                instance: constructor,
+                constructor_definition: self.type_definition.constructor(&constructor.name),
+                metavariable: *self,
+            })
+    }
+    pub fn existing_children(&self) -> impl Iterator<Item = MetavariableView<'a>> + '_ {
+        let constructor = self.constructor();
+        self.type_parameters()
+            .map(|a| a.child())
+            .chain(constructor.into_iter().flat_map(|constructor| {
+                constructor
+                    .data_arguments()
+                    .map(|a| a.child())
+                    .chain(constructor.preconditions().map(|a| a.child()))
+            }))
+            .flatten()
+    }
+}
+impl<'a> MetavariableTypeParameterView<'a> {
+    pub fn index(&self) -> usize {
+        self.index
+    }
+    pub fn typename(&self) -> &'static str {
+        self.datatype.name()
+    }
+    pub fn datatype(&self) -> TypeView<'static> {
+        self.datatype
+    }
+    pub fn child(&self) -> Option<MetavariableView<'a>> {
+        self.instance
+            .map(|id| self.metavariable.environment.get(id).unwrap())
+    }
+}
+impl<'a> MetavariableConstructorView<'a> {
+    pub fn name(&self) -> &'static str {
+        self.constructor_definition.name()
+    }
+    pub fn notation(&self) -> Option<&'static Notation<String>> {
+        self.constructor_definition.notation()
+    }
+    pub fn data_arguments(&self) -> impl Iterator<Item = MetavariableDataArgumentView<'a>> + 'a {
+        let constructor = *self;
+        self.constructor_definition
+            .data_arguments()
+            .map(move |definition| MetavariableDataArgumentView {
+                instance: *constructor
+                    .instance
+                    .data_arguments
+                    .get(definition.name())
+                    .unwrap(),
+                definition,
+                constructor,
+            })
+    }
+    pub fn data_argument_indexed(&self, index: usize) -> MetavariableDataArgumentView<'a> {
+        let definition = self.constructor_definition.data_argument_indexed(index);
+        MetavariableDataArgumentView {
+            instance: *self.instance.data_arguments.get(definition.name()).unwrap(),
+            definition,
+            constructor: *self,
+        }
+    }
+    pub fn data_argument_named(&self, name: &str) -> MetavariableDataArgumentView<'a> {
+        MetavariableDataArgumentView {
+            instance: *self.instance.data_arguments.get(name).unwrap(),
+            definition: self.constructor_definition.data_argument_named(name),
+            constructor: *self,
+        }
+    }
+    pub fn preconditions(&self) -> impl Iterator<Item = MetavariablePreconditionView<'a>> + 'a {
+        let constructor = *self;
+        zip(
+            &self.instance.preconditions,
+            self.constructor_definition.preconditions(),
+        )
+        .map(
+            move |(&instance, definition)| MetavariablePreconditionView {
+                instance,
+                definition,
+                constructor,
+            },
+        )
+    }
+    pub fn precondition(&self, index: usize) -> MetavariablePreconditionView<'a> {
+        let definition = self.constructor_definition.precondition(index);
+        MetavariablePreconditionView {
+            instance: self.instance.preconditions[index],
+            definition,
+            constructor: *self,
+        }
+    }
+    pub fn resulting_type_parameters(
+        &self,
+    ) -> impl Iterator<Item = MetavariableResultingTypeParameterView<'a>> + '_ {
+        zip(
+            self.constructor_definition.resulting_type_parameters(),
+            &self.metavariable.instance.type_parameters,
+        )
+        .map(
+            |(definition, &goal)| MetavariableResultingTypeParameterView {
+                goal,
+                definition,
+                constructor: *self,
+            },
+        )
+    }
+}
+
+impl<'a> MetavariableDataArgumentView<'a> {
+    pub fn index(&self) -> usize {
+        self.definition.index()
+    }
+    pub fn name(&self) -> &'static str {
+        self.definition.name()
+    }
+    pub fn typename(&self) -> &'static str {
+        self.definition.typename()
+    }
+    pub fn datatype(&self) -> TypeView<'static> {
+        self.definition.datatype()
+    }
+    pub fn child(&self) -> Option<MetavariableView<'a>> {
+        self.instance
+            .map(|id| self.constructor.metavariable.environment.get(id).unwrap())
+    }
+}
+
+impl<'a> MetavariablePreconditionView<'a> {
+    pub fn index(&self) -> usize {
+        self.definition.index()
+    }
+    pub fn predicate_type(&self) -> TypeView<'static> {
+        self.definition.predicate_type()
+    }
+    pub fn child(&self) -> Option<MetavariableView<'a>> {
+        self.instance
+            .map(|id| self.constructor.metavariable.environment.get(id).unwrap())
+    }
+    pub fn type_parameters(&self) -> impl Iterator<Item = ArgsCompoundView<'static>> + '_ {
+        self.definition.type_parameters()
+    }
+    pub fn type_parameter(&self, index: usize) -> ArgsCompoundView<'static> {
+        self.definition.type_parameter(index)
+    }
+}
+impl<'a> MetavariableResultingTypeParameterView<'a> {
+    pub fn datatype(&self) -> TypeView<'static> {
+        self.definition.datatype()
+    }
+    pub fn goal(&self) -> Option<MetavariableView<'a>> {
+        self.goal
+            .map(|id| self.constructor.metavariable.environment.get(id).unwrap())
+    }
+    pub fn inferred(&self) -> ArgsCompoundView<'static> {
+        self.definition
+    }
 }
 
 #[derive(Debug)]
@@ -54,127 +300,104 @@ impl LocalValidity {
 }
 
 impl Environment {
-    pub fn get(&self, id: MetavariableId) -> &Metavariable {
-        self.metavariables.get(&id).unwrap()
+    pub fn get(&self, id: MetavariableId) -> Option<MetavariableView> {
+        let definition = self.metavariables.get(&id)?;
+        Some(MetavariableView {
+            id,
+            type_definition: COC.get(&definition.typename),
+            instance: definition,
+            environment: self,
+        })
     }
     pub fn get_mut(&mut self, id: MetavariableId) -> &mut Metavariable {
         self.metavariables.get_mut(&id).unwrap()
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     pub fn metavariable_matches_datavalue(
         &self,
-        id: Option<MetavariableId>,
+        metavariable: Option<MetavariableView>,
         value: &ArgsCompoundView,
         data_arguments: &BTreeMap<String, Option<MetavariableId>>,
     ) -> bool {
-        let Some(id) = id else { return false; };
-        let metavariable = self.get(id);
-        if metavariable.typename != *value.datatype().name() {
+        let Some(metavariable) = metavariable else { return false; };
+        if metavariable.typename() != value.datatype().name() {
             return false;
         }
         match value.cases() {
             ArgsCompoundViewCases::Argument(argument) => {
-                data_arguments.get(argument.name()).unwrap() == &Some(id)
+                data_arguments.get(argument.name()).unwrap() == &Some(metavariable.id())
             }
             ArgsCompoundViewCases::Constructor {
                 constructor: required_constructor,
                 arguments: required_constructor_arguments,
             } => {
-                let Some(constructor) = &metavariable.constructor else { return false; };
-                constructor.name == *required_constructor.name()
-                    && required_constructor_arguments
-                        .iter()
-                        .enumerate()
-                        .all(|(index, r)| {
-                            self.metavariable_matches_datavalue(
-                                *constructor
-                                    .data_arguments
-                                    .get(required_constructor.data_argument_indexed(index).name())
-                                    .unwrap(),
-                                r,
-                                data_arguments,
-                            )
-                        })
+                let Some(constructor) = metavariable.constructor() else { return false; };
+                constructor.name() == required_constructor.name()
+                    && zip(required_constructor_arguments, constructor.data_arguments()).all(
+                        |(r, a)| self.metavariable_matches_datavalue(a.child(), &r, data_arguments),
+                    )
             }
         }
     }
-    pub fn local_validity(&self, id: MetavariableId) -> LocalValidity {
-        let metavariable = self.get(id);
-        let type_definition = COC.get(&metavariable.typename);
-        let type_parameters_valid = zip(
-            &metavariable.type_parameters,
-            type_definition.type_parameters(),
-        )
-        .map(|(p, parameter_type)| match p {
-            None => false,
-            Some(other_id) => {
-                let other = self.get(*other_id);
-                other.typename == *parameter_type.name()
-            }
-        })
-        .collect();
+    pub fn local_validity(&self, metavariable: MetavariableView) -> LocalValidity {
+        let type_parameters_valid = metavariable
+            .type_parameters()
+            .map(|parameter| match parameter.child() {
+                None => false,
+                Some(other) => other.typename() == parameter.datatype().name(),
+            })
+            .collect();
         let constructor_valid;
         let data_arguments_valid;
         let preconditions_valid;
         let return_type_parameters_valid;
-        if let Some(constructor) = &metavariable.constructor {
+        if let Some(constructor) = metavariable.constructor() {
             constructor_valid = true;
-
-            let constructor_definition = type_definition.constructor(&constructor.name);
-            data_arguments_valid = constructor_definition
+            data_arguments_valid = constructor
                 .data_arguments()
-                .map(|argument_definition| {
-                    let &a = constructor
-                        .data_arguments
-                        .get(argument_definition.name())
-                        .unwrap();
+                .map(|argument| {
                     (
-                        argument_definition.name().to_owned(),
-                        match a {
+                        argument.name().to_owned(),
+                        match argument.child() {
                             None => false,
-                            Some(other_id) => {
-                                let other = self.get(other_id);
-                                other.typename == argument_definition.datatype().name()
-                            }
+                            Some(other) => other.typename() == argument.datatype().name(),
                         },
                     )
                 })
                 .collect();
 
-            preconditions_valid = zip(
-                &constructor.preconditions,
-                constructor_definition.preconditions(),
-            )
-            .map(|(p, precondition_definition)| match p {
-                None => false,
-                Some(other_id) => {
-                    let other = self.get(*other_id);
-                    if other.typename != *precondition_definition.predicate_type().name() {
-                        return false;
-                    }
-                    zip(
-                        &other.type_parameters,
-                        precondition_definition.type_parameters(),
-                    )
-                    .all(|(&provided, needed)| {
-                        self.metavariable_matches_datavalue(
-                            provided,
-                            &needed,
-                            &constructor.data_arguments,
+            preconditions_valid = constructor
+                .preconditions()
+                .map(|precondition| match precondition.child() {
+                    None => false,
+                    Some(other) => {
+                        if other.typename() != precondition.predicate_type().name() {
+                            return false;
+                        }
+                        zip(other.type_parameters(), precondition.type_parameters()).all(
+                            |(provided, needed)| {
+                                self.metavariable_matches_datavalue(
+                                    provided.child(),
+                                    &needed,
+                                    &constructor.instance.data_arguments,
+                                )
+                            },
                         )
-                    })
-                }
-            })
-            .collect();
+                    }
+                })
+                .collect();
 
-            return_type_parameters_valid = zip(
-                constructor_definition.resulting_type_parameters(),
-                &metavariable.type_parameters,
-            )
-            .map(|(provided, &needed)| {
-                self.metavariable_matches_datavalue(needed, &provided, &constructor.data_arguments)
-            })
-            .collect();
+            return_type_parameters_valid = constructor
+                .resulting_type_parameters()
+                .map(|parameter| {
+                    self.metavariable_matches_datavalue(
+                        parameter.goal(),
+                        &parameter.inferred(),
+                        &constructor.instance.data_arguments,
+                    )
+                })
+                .collect();
         } else {
             constructor_valid = false;
             data_arguments_valid = Default::default();
@@ -249,7 +472,7 @@ impl Environment {
         });
     }
 
-    pub fn set_data_argument(
+    pub fn set_data_argument_named(
         &mut self,
         id: MetavariableId,
         name: &str,
@@ -257,6 +480,22 @@ impl Environment {
     ) {
         let constructor = self.get_mut(id).constructor.as_mut().unwrap();
         *constructor.data_arguments.get_mut(name).unwrap() = value;
+    }
+
+    pub fn set_data_argument_indexed(
+        &mut self,
+        id: MetavariableId,
+        index: usize,
+        value: Option<MetavariableId>,
+    ) {
+        let name = self
+            .get(id)
+            .unwrap()
+            .constructor()
+            .unwrap()
+            .data_argument_indexed(index)
+            .name();
+        self.set_data_argument_named(id, name, value);
     }
 
     pub fn set_precondition(
@@ -273,8 +512,15 @@ impl Environment {
         self.get_mut(id).name = new_name.into();
     }
 
-    pub fn metavariables(&self) -> &BTreeMap<MetavariableId, Metavariable> {
-        &self.metavariables
+    pub fn metavariables(&self) -> impl Iterator<Item = MetavariableView> + '_ {
+        self.metavariables
+            .iter()
+            .map(|(&id, instance)| MetavariableView {
+                id,
+                type_definition: COC.get(&instance.typename),
+                instance,
+                environment: self,
+            })
     }
 }
 
@@ -286,24 +532,24 @@ pub enum CanMatch {
 }
 
 impl Environment {
-    pub fn fill_in_args_to_make_datavalue_match_metavariable(
+    #[allow(clippy::only_used_in_recursion)]
+    fn fill_in_args_to_make_datavalue_match_metavariable(
         &self,
-        id: Option<MetavariableId>,
+        metavariable: Option<MetavariableView>,
         value: &ArgsCompoundView,
         data_arguments: &mut BTreeMap<String, Option<MetavariableId>>,
     ) -> CanMatch {
-        let Some(id) = id else { return CanMatch::Maybe; };
-        let metavariable = self.get(id);
-        if metavariable.typename != *value.datatype().name() {
+        let Some(metavariable) = metavariable else { return CanMatch::Maybe; };
+        if metavariable.typename() != value.datatype().name() {
             return CanMatch::No;
         }
         match value.cases() {
             ArgsCompoundViewCases::Argument(argument) => {
                 let arg = data_arguments.get_mut(argument.name()).unwrap();
                 if arg.is_none() {
-                    *arg = Some(id)
+                    *arg = Some(metavariable.id())
                 }
-                if *arg == Some(id) {
+                if *arg == Some(metavariable.id()) {
                     CanMatch::Yes
                 } else {
                     // if {
@@ -316,8 +562,8 @@ impl Environment {
                 constructor: required_constructor,
                 arguments: required_constructor_arguments,
             } => {
-                let Some(constructor) = &metavariable.constructor else { return CanMatch::Maybe; };
-                if constructor.name != *required_constructor.name() {
+                let Some(constructor) = metavariable.constructor() else { return CanMatch::Maybe; };
+                if constructor.name() != required_constructor.name() {
                     return CanMatch::No;
                 }
                 let mut submatch_results = CanMatch::Yes;
@@ -326,7 +572,7 @@ impl Environment {
                     required_constructor.data_arguments(),
                 ) {
                     let submatch_possible = self.fill_in_args_to_make_datavalue_match_metavariable(
-                        *constructor.data_arguments.get(a.name()).unwrap(),
+                        constructor.data_argument_named(a.name()).child(),
                         &r,
                         data_arguments,
                     );
@@ -341,18 +587,15 @@ impl Environment {
         }
     }
 
-    pub fn make_metavariable_that_matches_data_value(
+    fn make_metavariable_that_matches_data_value(
         &mut self,
         value: &ArgsCompoundView,
         data_arguments: &mut BTreeMap<String, Option<MetavariableId>>,
     ) -> MetavariableId {
-        if let Some(existing) = self
-            .metavariables
-            .keys()
-            .copied()
-            .find(|&id| self.metavariable_matches_datavalue(Some(id), value, data_arguments))
-        {
-            return existing;
+        if let Some(existing) = self.metavariables().find(|&metavariable| {
+            self.metavariable_matches_datavalue(Some(metavariable), value, data_arguments)
+        }) {
+            return existing.id();
         }
         let new_id = self.create_metavariable(value.datatype().name().to_owned());
         match value.cases() {
@@ -373,29 +616,34 @@ impl Environment {
                 {
                     let new_child_id =
                         self.make_metavariable_that_matches_data_value(&argument, data_arguments);
-                    self.set_data_argument(new_id, argument_definition.name(), Some(new_child_id));
+                    self.set_data_argument_named(
+                        new_id,
+                        argument_definition.name(),
+                        Some(new_child_id),
+                    );
                 }
             }
         }
         new_id
     }
 
-    pub fn constructor_possible(&self, id: MetavariableId, constructor_name: &str) -> CanMatch {
-        let metavariable = self.get(id);
-
-        let type_definition = COC.get(&metavariable.typename);
-        let constructor_definition = type_definition.constructor(constructor_name);
+    pub fn constructor_possible(
+        &self,
+        metavariable: MetavariableView,
+        constructor_name: &str,
+    ) -> CanMatch {
+        let constructor_definition = metavariable.ty().constructor(constructor_name);
         let mut data_arguments: BTreeMap<String, Option<MetavariableId>> = constructor_definition
             .data_arguments()
             .map(|a| (a.name().to_owned(), None))
             .collect();
         let mut match_results = CanMatch::Yes;
-        for (&required, produced) in zip(
-            &metavariable.type_parameters,
+        for (required, produced) in zip(
+            metavariable.type_parameters(),
             constructor_definition.resulting_type_parameters(),
         ) {
             let match_possible = self.fill_in_args_to_make_datavalue_match_metavariable(
-                required,
+                required.child(),
                 &produced,
                 &mut data_arguments,
             );
@@ -410,14 +658,12 @@ impl Environment {
     }
 
     pub fn autofill(&mut self, id: MetavariableId) {
-        let metavariable = self.get(id);
+        let metavariable = self.get(id).unwrap();
 
-        let type_definition = COC.get(&metavariable.typename);
-
-        if metavariable.constructor.is_none() {
+        if metavariable.constructor().is_none() {
             let mut possible_constructors: ArrayVec<&str, 2> = ArrayVec::new();
-            for constructor in type_definition.constructors() {
-                match self.constructor_possible(id, constructor.name()) {
+            for constructor in metavariable.ty().constructors() {
+                match self.constructor_possible(metavariable, constructor.name()) {
                     CanMatch::Yes => {
                         possible_constructors.clear();
                         possible_constructors.push(constructor.name());
@@ -433,40 +679,31 @@ impl Environment {
                 self.set_constructor(id, Some(only_constructor_name.to_owned()));
             }
         }
-        let metavariable = self.get(id);
+        let metavariable = self.get(id).unwrap();
 
-        if let Some(constructor) = &metavariable.constructor {
-            let constructor_definition = type_definition.constructor(&constructor.name);
-            let mut data_arguments = constructor.data_arguments.clone();
-            for (&defined, resulting) in zip(
-                &metavariable.type_parameters,
-                constructor_definition.resulting_type_parameters(),
-            ) {
+        if let Some(constructor) = metavariable.constructor() {
+            let mut data_arguments = constructor.instance.data_arguments.clone();
+            for parameter in constructor.resulting_type_parameters() {
                 self.fill_in_args_to_make_datavalue_match_metavariable(
-                    defined,
-                    &resulting,
+                    parameter.goal(),
+                    &parameter.inferred(),
                     &mut data_arguments,
                 );
             }
-            for (precondition_definition, &defined) in zip(
-                constructor_definition.preconditions(),
-                &constructor.preconditions,
-            ) {
-                if let Some(defined) = defined {
-                    let other = self.get(defined);
-                    for (required, &defined) in zip(
-                        precondition_definition.type_parameters(),
-                        &other.type_parameters,
-                    ) {
+            for precondition in constructor.preconditions() {
+                if let Some(child) = precondition.child() {
+                    for (required, defined) in
+                        zip(precondition.type_parameters(), child.type_parameters())
+                    {
                         self.fill_in_args_to_make_datavalue_match_metavariable(
-                            defined,
+                            defined.child(),
                             &required,
                             &mut data_arguments,
                         );
                     }
                 }
             }
-            if data_arguments != constructor.data_arguments {
+            if data_arguments != constructor.instance.data_arguments {
                 self.get_mut(id)
                     .constructor
                     .as_mut()
@@ -474,26 +711,24 @@ impl Environment {
                     .data_arguments = data_arguments;
                 return self.autofill(id);
             }
-
-            for (precondition_index, (precondition_definition, &defined)) in zip(
-                constructor_definition.preconditions(),
-                &constructor.preconditions,
-            )
-            .enumerate()
-            {
-                if defined.is_none() {
+            // should be a for loop, but Rust won't let us drop the borrow before returning
+            let mut preconditions = constructor.preconditions();
+            while let Some(precondition) = preconditions.next() {
+                if precondition.child().is_none() {
                     // if there's already a metavariable that satisfies this, use it:
-                    for (&other_id, other) in &self.metavariables {
+                    // should be a for loop, but Rust won't let us drop the borrow before returning
+                    let mut others = self.metavariables();
+                    while let Some(other) = others.next() {
                         let mut set_data_arg = None;
-                        let typename = precondition_definition.predicate_type().name();
-                        if other.typename == *typename
+                        let typename = precondition.predicate_type().name();
+                        if other.typename() == typename
                             && zip(
-                                    precondition_definition.type_parameters(),
-                                    &other.type_parameters,
+                                    precondition.type_parameters(),
+                                    other.type_parameters(),
                             )
                             .enumerate()
                             .all(
-                                |(index, (required, &provided))| {
+                                |(index, (required, provided))| {
                                     // certain parameters are "fully determined" by the other parameters,
                                     // so we count something as "matching" if we do not specify that parameter
                                     // TODO fix duplicate code id f9gd67fg8re8g
@@ -503,18 +738,21 @@ impl Environment {
                                     {
                                         let ArgsCompoundViewCases::Argument(argument) = required.cases() else {unreachable!()};
                                         if data_arguments[argument.name()].is_none() {
-                                            set_data_arg = Some((argument.name(), other.type_parameters[index], typename));
+                                            set_data_arg = Some((argument.name(), provided.instance, typename));
                                             return true
                                         }
                                     }
                                     self.metavariable_matches_datavalue(
-                                        provided,
+                                        provided.child(),
                                         &required,
-                                        &constructor.data_arguments,
+                                        &constructor.instance.data_arguments,
                                     )
                                 },
                             )
                         {
+                            let precondition_index = precondition.index();
+                            let other_id = other.id();
+                            drop((metavariable, preconditions, others));
                             self.get_mut(id).constructor.as_mut().unwrap().preconditions
                                 [precondition_index] = Some(other_id);
                             if let Some((argname, existing, typename)) = set_data_arg{
@@ -530,13 +768,16 @@ impl Environment {
                         }
                     }
 
+                    let precondition_index = precondition.index();
+                    let precondition_typename = precondition.predicate_type().name().to_owned();
+                    let precondition_type_parameters: Vec<(usize, ArgsCompoundView<'static>)> =
+                        precondition.type_parameters().enumerate().collect();
+                    drop((metavariable, preconditions, others));
                     // If there's not one already ... create it!
-                    let new_precondition_id = self.create_metavariable(
-                        precondition_definition.predicate_type().name().to_owned(),
-                    );
+                    let new_precondition_id = self.create_metavariable(precondition_typename);
                     self.get_mut(id).constructor.as_mut().unwrap().preconditions
                         [precondition_index] = Some(new_precondition_id);
-                    for (index, required) in precondition_definition.type_parameters().enumerate() {
+                    for (index, required) in precondition_type_parameters {
                         let new_parameter_id = self.make_metavariable_that_matches_data_value(
                             &required,
                             &mut data_arguments,

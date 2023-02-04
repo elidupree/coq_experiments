@@ -2,10 +2,8 @@
 #![feature(once_cell)]
 
 use clap::{arg, Parser};
-use coc_rs::constructors::{
-    ArgsCompoundView, ArgsCompoundViewCases, Constructors, Notation, NotationItem, COC,
-};
-use coc_rs::metavariable::{CanMatch, Environment, MetavariableId};
+use coc_rs::constructors::{ArgsCompoundView, ArgsCompoundViewCases, Notation, NotationItem, COC};
+use coc_rs::metavariable::{CanMatch, Environment, MetavariableId, MetavariableView};
 use coc_rs::utils::{read_json_file, write_json_file};
 use quick_and_dirty_web_gui::{callback, callback_with};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -45,30 +43,17 @@ impl Interface {
         let references: HashMap<MetavariableId, Vec<MetavariableId>> = self
             .environment
             .metavariables()
-            .iter()
-            .map(|(&id, metavariable)| {
+            .map(|metavariable| {
                 (
-                    id,
-                    metavariable
-                        .type_parameters
-                        .iter()
-                        .chain(metavariable.constructor.iter().flat_map(|constructor| {
-                            constructor
-                                .data_arguments
-                                .values()
-                                .chain(&constructor.preconditions)
-                        }))
-                        .flatten()
-                        .copied()
-                        .collect(),
+                    metavariable.id(),
+                    metavariable.existing_children().map(|c| c.id()).collect(),
                 )
             })
             .collect();
         let mut back_references: HashMap<MetavariableId, Vec<MetavariableId>> = self
             .environment
             .metavariables()
-            .iter()
-            .map(|(&id, _)| (id, Vec::new()))
+            .map(|m| (m.id(), Vec::new()))
             .collect();
         for (&parent, children) in &references {
             for child in children {
@@ -80,7 +65,7 @@ impl Interface {
     fn optimized_ordering(&self) -> Vec<MetavariableId> {
         let [references, back_references] = self.all_references();
         let mut ordering: Vec<MetavariableId> =
-            self.environment.metavariables().keys().copied().collect();
+            self.environment.metavariables().map(|m| m.id()).collect();
         let mut indices: HashMap<MetavariableId, usize> = ordering
             .iter()
             .enumerate()
@@ -164,8 +149,8 @@ impl Interface {
         }
         ordering
     }
-    fn metavariable_colors(&self, id: MetavariableId) -> MetavariableColors {
-        if matches!(self.focus_slot_needed_typename(),  Some(need) if self.environment.get(id).typename != *need )
+    fn metavariable_colors(&self, metavariable: MetavariableView) -> MetavariableColors {
+        if matches!(self.focus_slot_needed_typename(),  Some(need) if metavariable.typename() != need )
         {
             return MetavariableColors {
                 name_foreground: format!("hsl(0turn 0% 40%)"),
@@ -174,7 +159,7 @@ impl Interface {
                 border: format!("hsl(0turn 0% 80%)"),
             };
         }
-        let bytes = id.0.as_u128().to_le_bytes();
+        let bytes = metavariable.id().0.as_u128().to_le_bytes();
         let [h1, h2, b, w, ..] = bytes;
         let h1 = (h1 as f64) / 255.0;
         let h2 = (h1 + 1.0 / 4.0 + ((h2 as f64) / 255.0) / 4.0).fract();
@@ -189,10 +174,10 @@ impl Interface {
             border: format!("hwb({h2}turn {w3}% 0.0%)"),
         }
     }
-    fn implicit_name(&self, id: MetavariableId) -> String {
-        let mut name = self.environment.get(id).name.clone();
+    fn implicit_name(&self, metavariable: MetavariableView) -> String {
+        let mut name = metavariable.name().to_owned();
         if name.is_empty() {
-            let [_, _, _, _, abc @ ..] = id.0.as_u128().to_le_bytes();
+            let [_, _, _, _, abc @ ..] = metavariable.id().0.as_u128().to_le_bytes();
             name.extend(
                 abc.into_iter()
                     .take(3)
@@ -201,14 +186,14 @@ impl Interface {
         }
         name
     }
-    fn inline_metavariable_reference(&self, id: MetavariableId, name: &str) -> Span {
+    fn inline_metavariable_reference(&self, metavariable: MetavariableView, name: &str) -> Span {
         let MetavariableColors {
             name_foreground,
             name_background,
             ..
-        } = self.metavariable_colors(id);
+        } = self.metavariable_colors(metavariable);
         let style = format!("color: {name_foreground}; background-color: {name_background}");
-        let id_string = id.0.to_string();
+        let id_string = metavariable.id().0.to_string();
 
         html! {
             <span class="metavariable_reference" style=style data-targetid=id_string/* onclick={callback(move || set_focus(id, None))}*/>
@@ -216,7 +201,7 @@ impl Interface {
             </span> : String
         }
     }
-    fn inline_child(&self, id: Option<MetavariableId>) -> Span {
+    fn inline_child(&self, id: Option<MetavariableView>) -> Span {
         match id {
             None => {
                 html! {
@@ -228,13 +213,13 @@ impl Interface {
             Some(id) => self.inline_metavariable_reference(id, &self.unfolded_name(id, false)),
         }
     }
-    fn unfolded_name(&self, id: MetavariableId, force_unfold: bool) -> String {
+    fn unfolded_name(&self, metavariable: MetavariableView, force_unfold: bool) -> String {
         #[derive(Debug)]
-        pub enum Item {
+        pub enum Item<'a> {
             Text(String),
-            Variable(MetavariableId),
+            Variable(MetavariableView<'a>),
         }
-        let mut items = vec![Item::Variable(id)];
+        let mut items = vec![Item::Variable(metavariable)];
         let length = |items: &[Item]| -> usize {
             items
                 .iter()
@@ -252,28 +237,21 @@ impl Interface {
             for item in &items {
                 match item {
                     Item::Text(text) => next.push(Item::Text(text.clone())),
-                    &Item::Variable(id) => {
-                        let metavariable = self.environment.get(id);
-                        if !metavariable.name.is_empty() && !force_unfold {
+                    &Item::Variable(metavariable) => {
+                        if !metavariable.name().is_empty() && !force_unfold {
                             changed_anything = true;
-                            next.push(Item::Text(metavariable.name.clone()));
-                        } else if let Some(constructor) = &metavariable.constructor {
-                            let type_definition = Constructors::coc()
-                                .types
-                                .get(&metavariable.typename)
-                                .unwrap();
-                            let constructor_definition =
-                                type_definition.constructors.get(&constructor.name).unwrap();
-                            if let Some(notation) = &constructor_definition.notation {
+                            next.push(Item::Text(metavariable.name().to_owned()));
+                        } else if let Some(constructor) = metavariable.constructor() {
+                            if let Some(notation) = constructor.notation() {
                                 let new_items: Vec<_> = notation
                                     .items
                                     .iter()
                                     .map(|item| match item {
                                         NotationItem::Text(text) => Item::Text(text.clone()),
                                         NotationItem::Argument(argument) => {
-                                            match constructor.data_arguments.get(argument).unwrap()
+                                            match constructor.data_argument_named(argument).child()
                                             {
-                                                &Some(id) => Item::Variable(id),
+                                                Some(child) => Item::Variable(child),
                                                 None => Item::Text("_".to_owned()),
                                             }
                                         }
@@ -283,13 +261,13 @@ impl Interface {
                                     changed_anything = true;
                                     next.extend(new_items);
                                 } else {
-                                    next.push(Item::Variable(id));
+                                    next.push(Item::Variable(metavariable));
                                 }
                             } else if force_unfold {
                                 changed_anything = true;
-                                next.push(Item::Text(format!("{} [...]", constructor.name)));
+                                next.push(Item::Text(format!("{} [...]", constructor.name())));
                             } else {
-                                next.push(Item::Variable(id));
+                                next.push(Item::Variable(metavariable));
                             }
                         } else {
                             changed_anything = true;
@@ -303,7 +281,7 @@ impl Interface {
                 for item in items {
                     result.push_str(&match item {
                         Item::Text(text) => text,
-                        Item::Variable(id) => self.implicit_name(id),
+                        Item::Variable(metavariable) => self.implicit_name(metavariable),
                     })
                 }
                 return result;
@@ -358,29 +336,26 @@ impl Interface {
         }
     }
 
-    fn focus_slot_needed_typename(&self) -> Option<&String> {
+    fn focus_slot_needed_typename(&self) -> Option<&str> {
         match &self.focus {
             Some((id, Some(child))) => {
-                let focus_metavariable = self.environment.get(*id);
-                let focus_type_definition = Constructors::coc()
-                    .types
-                    .get(&focus_metavariable.typename)
-                    .unwrap();
-                let focus_constructor_definition = focus_metavariable
-                    .constructor
-                    .as_ref()
-                    .map(|c| focus_type_definition.constructors.get(&c.name).unwrap());
+                let focus_metavariable = self.environment.get(*id).unwrap();
                 let needed_typename = match *child {
                     WhichChild::TypeParameter(index) => {
-                        &focus_type_definition.type_parameters[index]
+                        &focus_metavariable.type_parameter(index).typename()
                     }
-                    WhichChild::DataArgument(index) => {
-                        &focus_constructor_definition.unwrap().data_arguments[index].datatype
-                    }
-                    WhichChild::Precondition(index) => {
-                        &focus_constructor_definition.unwrap().preconditions[index].predicate_type
-                    }
-                    WhichChild::Replace => &focus_metavariable.typename,
+                    WhichChild::DataArgument(index) => &focus_metavariable
+                        .constructor()
+                        .unwrap()
+                        .data_argument_indexed(index)
+                        .typename(),
+                    WhichChild::Precondition(index) => &focus_metavariable
+                        .constructor()
+                        .unwrap()
+                        .precondition(index)
+                        .predicate_type()
+                        .name(),
+                    WhichChild::Replace => focus_metavariable.typename(),
                 };
                 Some(needed_typename)
             }
@@ -388,23 +363,22 @@ impl Interface {
         }
     }
 
-    fn node_element(&self, id: MetavariableId) -> FlowElement {
-        let metavariable = self.environment.get(id);
-        let type_definition = COC.get(&metavariable.typename);
-        let validity = self.environment.local_validity(id);
+    fn node_element(&self, metavariable: MetavariableView) -> FlowElement {
+        let id = metavariable.id();
+        let validity = self.environment.local_validity(metavariable);
         let mut lines: Vec<FlowElement> = Vec::new();
         let mut self_elements: Vec<FlowElement> = Vec::new();
         let mut child_elements: Vec<FlowElement> = Vec::new();
-        let focused = matches!(self.focus, Some((i, _)) if i == id);
+        let focused = matches!(self.focus, Some((i, _)) if i == metavariable.id());
         let valid = validity.is_valid();
 
-        let use_allowed = self.focus_slot_needed_typename() == Some(&metavariable.typename);
+        let use_allowed = self.focus_slot_needed_typename() == Some(metavariable.typename());
 
-        let implicit_name = self.implicit_name(id);
-        let unfolded_name = self.unfolded_name(id, true);
+        let implicit_name = self.implicit_name(metavariable);
+        let unfolded_name = self.unfolded_name(metavariable, true);
 
-        let type_element = self.inline_notation(type_definition.notation(), |&index| {
-            let body = self.inline_child(*metavariable.type_parameters.get(index).unwrap());
+        let type_element = self.inline_notation(metavariable.ty().notation(), |&index| {
+            let body = self.inline_child(metavariable.type_parameter(index).child());
             let child_valid = *validity.type_parameters_valid.get(index).unwrap();
             let class = if matches!(self.focus, Some((i,Some(WhichChild::TypeParameter(j)))) if i==id && j==index)
             {
@@ -416,34 +390,34 @@ impl Interface {
             };
 
             html! {
-                <span class=class onclick={callback(move || set_focus(id,Some (WhichChild::TypeParameter (index))))}>
+                <span class=class onclick={callback(move || set_focus(id, Some(WhichChild::TypeParameter(index))))}>
                     {body}
                 </span> : String
             }
         });
-        if metavariable.name.is_empty()
-            && metavariable.constructor.is_some()
+        if metavariable.name().is_empty()
+            && metavariable.constructor().is_some()
             && unfolded_name.chars().count() <= 3
         {
-            let unfolded = self.inline_metavariable_reference(id, &unfolded_name);
+            let unfolded = self.inline_metavariable_reference(metavariable, &unfolded_name);
             lines.push(html! {
                 <div>
                     {unfolded} " : "{type_element}
                 </div>
             });
         } else {
-            let name_id = self.inline_metavariable_reference(id, &implicit_name);
+            let name_id = self.inline_metavariable_reference(metavariable, &implicit_name);
             lines.push(html! {
                 <div>
                     {name_id} " : "{type_element}
                 </div>
             });
-            if let Some(constructor) = &metavariable.constructor {
-                let constructor_definition = type_definition.constructor(&constructor.name);
-                if let Some(notation) = constructor_definition.notation() {
+            if let Some(constructor) = metavariable.constructor() {
+                if let Some(notation) = constructor.notation() {
                     let value_element = self.inline_notation(notation, |name| {
-                        let body = self.inline_child(*constructor.data_arguments.get(name).unwrap());
-                        let index = constructor_definition.data_argument_named(name).index();
+                        let argument =constructor.data_argument_named(name);
+                        let body = self.inline_child(argument.child());
+                        let index = argument.index();
                         let child_valid = *validity.data_arguments_valid.get(name).unwrap();
                         let class = if matches!(self.focus, Some((i,Some(WhichChild::DataArgument(j)))) if i==id && j==index)
                         {
@@ -482,9 +456,9 @@ impl Interface {
         }
 
         if focused {
-            let name_element_id = format!("metavariable_{}_name", id.0);
+            let name_element_id = format!("metavariable_{}_name", metavariable.id().0);
             self_elements.push(html! {
-                <input id=Id::new(&*name_element_id) type="text" value=&metavariable.name
+                <input id=Id::new(&*name_element_id) type="text" value=metavariable.name()
                   oninput={callback_with(
                     &format!(r##"document.getElementById("{name_element_id}").value"##),
                     move |name: String| rename_metavariable (id,name)
@@ -503,19 +477,19 @@ impl Interface {
                 </button> : String
             });
         }
-        match &metavariable.constructor {
+        match metavariable.constructor() {
             None => {
                 if focused || !valid {
-                    for constructor in type_definition.constructors() {
+                    for constructor in metavariable.ty().constructors() {
                         let text = text!(constructor.name());
                         if self
                             .environment
-                            .constructor_possible(id, constructor.name())
+                            .constructor_possible(metavariable, constructor.name())
                             != CanMatch::No
                         {
                             let constructor_name = constructor.name().to_owned();
                             child_elements.push(html! {
-                                <button onclick={callback(move || set_constructor(id,Some (constructor_name.clone())))}>
+                                <button onclick={callback(move || set_constructor(id, Some(constructor_name.clone())))}>
                                     {text}
                                 </button> : String
                             });
@@ -537,17 +511,10 @@ impl Interface {
                         </button> : String
                     });
                 }
-                let constructor_definition = type_definition.constructor(&constructor.name);
-                for argument_definition in constructor_definition.data_arguments() {
-                    let body = self.inline_child(
-                        *constructor
-                            .data_arguments
-                            .get(argument_definition.name())
-                            .unwrap(),
-                    );
-                    let argument_name = argument_definition.name().to_owned();
-                    let child_valid = *validity.data_arguments_valid.get(&argument_name).unwrap();
-                    let index = argument_definition.index();
+                for argument in constructor.data_arguments() {
+                    let body = self.inline_child(argument.child());
+                    let child_valid = *validity.data_arguments_valid.get(argument.name()).unwrap();
+                    let index = argument.index();
                     let class = if matches!(self.focus, Some((i,Some(WhichChild::DataArgument(j)))) if i==id && j==index)
                     {
                         "child focused"
@@ -560,18 +527,15 @@ impl Interface {
                     if focused || !valid {
                         child_elements.push(html! {
                             <div class=class onclick={callback(move || set_focus(id,Some (WhichChild::DataArgument (index))))}>
-                                {text!(argument_name)} " = " {body}
+                                {text!(argument.name())} " = " {body}
                             </div> : String
                         });
                     }
                 }
-                for (index, (argument_definition, child_valid)) in zip(
-                    constructor_definition.preconditions(),
-                    validity.preconditions_valid,
-                )
-                .enumerate()
+                for (index, (precondition, child_valid)) in
+                    zip(constructor.preconditions(), validity.preconditions_valid).enumerate()
                 {
-                    let body = self.inline_child(*constructor.preconditions.get(index).unwrap());
+                    let body = self.inline_child(precondition.child());
                     let class = if matches!(self.focus, Some((i,Some(WhichChild::Precondition(j)))) if i==id && j==index)
                     {
                         "child focused"
@@ -580,8 +544,8 @@ impl Interface {
                     } else {
                         "child invalid"
                     };
-                    let full_type = self.inline_notation(argument_definition.predicate_type().notation(), |&index| {
-                        let value = argument_definition.type_parameter(index);
+                    let full_type = self.inline_notation(precondition.predicate_type().notation(), |&index| {
+                        let value = precondition.type_parameter(index);
                         let body = self.inline_data_value(&value, &constructor.data_arguments);
                         let valid = true; //*validity.type_parameters_valid.get(index).unwrap();
                         let class = if valid {
@@ -598,7 +562,7 @@ impl Interface {
                     });
 
                     child_elements.push(html! {
-                        <div class=class onclick={callback(move || set_focus(id,Some (WhichChild::Precondition (index))))}>
+                        <div class=class onclick={callback(move || set_focus(id, Some(WhichChild::Precondition(index))))}>
                             {body}" : "{full_type}  
                         </div> : String
                     });
@@ -607,9 +571,9 @@ impl Interface {
                 if focused || !valid {
                     child_elements.push(text!("->"));
                     child_elements.push(self.inline_notation(
-                        type_definition.notation(),
+                        metavariable.ty().notation(),
                         |&index: &usize| {
-                            let value = constructor_definition.resulting_type_parameter(index);
+                            let value = constructor.resulting_type_parameter(index);
                             let valid = *validity.return_type_parameters_valid.get(index).unwrap();
 
                             let class = if valid {
@@ -632,7 +596,7 @@ impl Interface {
             node_background,
             border,
             ..
-        } = self.metavariable_colors(id);
+        } = self.metavariable_colors(metavariable);
         let style = format!("background-color: {node_background}; border-color: {border};");
         let onclick = callback(move || {
             if use_allowed {
@@ -664,17 +628,16 @@ impl Interface {
         //     .map(|(&id, _)| self.node_element(id));
         let [references, back_references] = self.all_references();
         let mut included_nodes = HashSet::new();
-        for (&id, _) in self.environment.metavariables() {
-            let metavariable = self.environment.get(id);
-            if !metavariable.name.is_empty()
-                || !self.environment.local_validity(id).is_valid()
-                || matches!(self.focus, Some((a,_)) if a == id)
+        for metavariable in self.environment.metavariables() {
+            if !metavariable.name().is_empty()
+                || !self.environment.local_validity(metavariable).is_valid()
+                || matches!(self.focus, Some((a,_)) if a == metavariable.id())
             {
-                included_nodes.insert(id);
-                for &id2 in &references[&id] {
+                included_nodes.insert(metavariable.id());
+                for &id2 in &references[&metavariable.id()] {
                     included_nodes.insert(id2);
                 }
-                for &id2 in &back_references[&id] {
+                for &id2 in &back_references[&metavariable.id()] {
                     included_nodes.insert(id2);
                 }
             }
@@ -684,7 +647,7 @@ impl Interface {
             .optimized_ordering()
             .into_iter()
             .filter(|id| included_nodes.contains(id))
-            .map(|id| self.node_element(id));
+            .map(|id| self.node_element(self.environment.get(id).unwrap()));
         let new = if let Some((_id, Some(_child))) = &self.focus {
             let style = format!(
                 "background-color: hsl(0turn 100% 97% / 0.8); border-color: hsl(0turn 100% 80%);"
@@ -706,7 +669,7 @@ impl Interface {
     }
     fn whole_page(&self) -> FlowElement {
         let nodes = self.nodes();
-        let new_buttons = Constructors::coc().types.keys().cloned().map(|typename| {
+        let new_buttons = COC.types.keys().cloned().map(|typename| {
             let text = text!(&typename);
             html! {
                 <div class="new_metavariable">
@@ -733,35 +696,24 @@ impl Interface {
 
     fn set_focus(&mut self, id: MetavariableId, child: Option<WhichChild>) {
         if child.is_none() {
-            let metavariable = self.environment.get(id);
-            for (index, parameter) in metavariable.type_parameters.iter().enumerate() {
-                if parameter.is_none() {
-                    self.focus = Some((id, Some(WhichChild::TypeParameter(index))));
+            let metavariable = self.environment.get(id).unwrap();
+            for parameter in metavariable.type_parameters() {
+                if parameter.child().is_none() {
+                    self.focus = Some((id, Some(WhichChild::TypeParameter(parameter.index()))));
                     return;
                 }
             }
-            if let Some(constructor) = &metavariable.constructor {
-                let constructor_definition = Constructors::coc()
-                    .types
-                    .get(&metavariable.typename)
-                    .unwrap()
-                    .constructors
-                    .get(&constructor.name)
-                    .unwrap();
-                for (index, argument) in constructor_definition.data_arguments.iter().enumerate() {
-                    if constructor
-                        .data_arguments
-                        .get(&argument.name)
-                        .unwrap()
-                        .is_none()
-                    {
-                        self.focus = Some((id, Some(WhichChild::DataArgument(index))));
+            if let Some(constructor) = metavariable.constructor() {
+                for argument in constructor.data_arguments() {
+                    if argument.child().is_none() {
+                        self.focus = Some((id, Some(WhichChild::DataArgument(argument.index()))));
                         return;
                     }
                 }
-                for (index, argument) in constructor.preconditions.iter().enumerate() {
-                    if argument.is_none() {
-                        self.focus = Some((id, Some(WhichChild::Precondition(index))));
+                for precondition in constructor.preconditions() {
+                    if precondition.child().is_none() {
+                        self.focus =
+                            Some((id, Some(WhichChild::Precondition(precondition.index()))));
                         return;
                     }
                 }
@@ -773,44 +725,36 @@ impl Interface {
     fn new_child(&mut self) {
         let Some((id, Some(which_child))) = self.focus.take() else { return };
 
-        let metavariable = self.environment.get(id);
-        let type_definition = Constructors::coc()
-            .types
-            .get(&metavariable.typename)
-            .unwrap();
+        let metavariable = self.environment.get(id).unwrap();
 
         match which_child {
             WhichChild::TypeParameter(index) => {
                 let new_id = self
                     .environment
-                    .create_metavariable(type_definition.type_parameters[index].clone());
+                    .create_metavariable(metavariable.type_parameter(index).typename().to_owned());
                 self.environment.set_type_parameter(id, index, Some(new_id));
                 self.set_focus(new_id, None);
             }
             WhichChild::DataArgument(index) => {
-                let Some(constructor) = &metavariable.constructor else { return };
-                let constructor_definition =
-                    type_definition.constructors.get(&constructor.name).unwrap();
+                let Some(constructor) = metavariable.constructor() else { return };
                 let new_id = self.environment.create_metavariable(
-                    constructor_definition.data_arguments[index]
-                        .datatype
-                        .clone(),
+                    constructor
+                        .data_argument_indexed(index)
+                        .typename()
+                        .to_owned(),
                 );
-                self.environment.set_data_argument(
-                    id,
-                    &constructor_definition.data_arguments[index].name,
-                    Some(new_id),
-                );
+                self.environment
+                    .set_data_argument_indexed(id, index, Some(new_id));
                 self.set_focus(new_id, None);
             }
             WhichChild::Precondition(index) => {
-                let Some(constructor) = &metavariable.constructor else { return };
-                let constructor_definition =
-                    type_definition.constructors.get(&constructor.name).unwrap();
+                let Some(constructor) = &metavariable.constructor() else { return };
                 let new_id = self.environment.create_metavariable(
-                    constructor_definition.preconditions[index]
-                        .predicate_type
-                        .clone(),
+                    constructor
+                        .precondition(index)
+                        .predicate_type()
+                        .name()
+                        .to_owned(),
                 );
                 self.environment.set_precondition(id, index, Some(new_id));
                 // for (tpi, &type_parameter) in something.type_parameters.iter().enumerate() {
@@ -883,20 +827,9 @@ fn use_metavariable(id: MetavariableId) {
                         .set_type_parameter(focus_id, index, Some(id));
                 }
                 WhichChild::DataArgument(index) => {
-                    let focus = interface.environment.get(focus_id);
-                    // TODO this should be 1 line of code or less
-                    let name = &Constructors::coc()
-                        .types
-                        .get(&focus.typename)
-                        .unwrap()
-                        .constructors
-                        .get(&focus.constructor.as_ref().unwrap().name)
-                        .unwrap()
-                        .data_arguments[index]
-                        .name;
                     interface
                         .environment
-                        .set_data_argument(focus_id, name, Some(id));
+                        .set_data_argument_indexed(focus_id, index, Some(id));
                 }
                 WhichChild::Precondition(index) => {
                     interface
