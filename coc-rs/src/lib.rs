@@ -4,6 +4,7 @@
 //pub mod incomplete_term;
 pub mod constructors;
 //pub mod inductive_type;
+pub mod coc_text_format_1;
 pub mod metavariable;
 pub mod term;
 pub mod term_variable;
