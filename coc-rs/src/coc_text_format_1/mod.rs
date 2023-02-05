@@ -5,7 +5,8 @@ mod lalrpop_wrapper {
 }
 
 pub use self::lalrpop_wrapper::coc_text_format_1::CommandParser;
-use crate::metavariable::Environment;
+use crate::metavariable::{Environment, MetavariableId};
+use regex::Regex;
 use std::collections::HashMap;
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -41,12 +42,36 @@ pub struct Document {
     commands: Vec<Command>,
 }
 
-// impl Document {
-//     pub fn inject_as_metavariables(environment: &mut Environment) {
-//         let mut existing_names =HashMap:: new();
-//         environment.metavariables()
-//     }
-// }
+struct MetavariablesInjectionContext {
+    existing_names: HashMap<String, Vec<MetavariableId>>,
+    ids_by_complete_structure: HashMap<u128, Vec<MetavariableId>>,
+    unused_ids_by_unshared_incomplete_structure: HashMap<u128, Vec<MetavariableId>>,
+}
+
+impl Document {
+    pub fn parse(text: &str) -> Self {
+        let re = Regex::new(r"(?m)^>([^\.]*)\.").unwrap();
+        let parser = CommandParser::new();
+        let mut commands = Vec::new();
+        for captures in re.captures_iter(text) {
+            let command_text = captures.get(1).unwrap().as_str();
+            match parser.parse(command_text) {
+                Ok(command) => commands.push(command),
+                Err(e) => panic!("While parsing:\n    {command_text}\nGot error:\n    {e}"),
+            }
+        }
+        Document { commands }
+    }
+    pub fn inject_as_metavariables(environment: &mut Environment) {
+        let mut existing_names: HashMap<String, Vec<MetavariableId>> = HashMap::new();
+        for metavariable in environment.metavariables() {
+            existing_names
+                .entry(metavariable.name().to_owned())
+                .or_default()
+                .push(metavariable.id());
+        }
+    }
+}
 
 #[test]
 fn tests() {
@@ -72,5 +97,14 @@ fn tests() {
     )];
     for (text, command) in tests {
         assert_eq!(CommandParser::new().parse(text).unwrap(), command)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn load_boxes() {
+        Document::parse(&std::fs::read_to_string("data/boxes.coc_1").unwrap());
     }
 }

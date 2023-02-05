@@ -15,7 +15,7 @@ Formula: Formula = {
   "ℙ" => Formula::Prop,
   "_" => Formula::Hole,
   Name => Formula::Usage(<>),
-  <kind:AbstractionKind> <parameter_name:Name> ":" <parameter_type:Formula> "," <body:Formula>
+  <kind:AbstractionKind> <parameter_name:NameOrIgnore> ":" <parameter_type:Formula> "," <body:Formula>
     => Formula::Abstraction(Box::new(Abstraction{<>})),
   "(" <ApplyChain> ")" => <>,
 }
@@ -25,7 +25,11 @@ ApplyChain: Formula = {
   Formula => <>,
 }
 
-Name: String = r"[A-Za-z][a-zA-Z0-9]*" => <>.to_string();
+NameOrIgnore: String = {
+  Name => <>,
+  "_" => <>.to_string(),
+}
+Name: String = r"[a-zA-Z0-9][a-zA-Z0-9_]*" => <>.to_string();
 AbstractionKind: AbstractionKind = {
   "λ" => AbstractionKind::Lambda,
   "∀" => AbstractionKind::ForAll,
