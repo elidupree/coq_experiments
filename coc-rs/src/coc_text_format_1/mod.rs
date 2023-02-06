@@ -194,8 +194,13 @@ fn tests() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn load_boxes() {
         Document::parse(&std::fs::read_to_string("data/boxes.coc_1").unwrap());
+    }
+    #[test]
+    fn load_inductive() {
+        Document::parse(&std::fs::read_to_string("data/inductive_types.coc_1").unwrap());
     }
 }

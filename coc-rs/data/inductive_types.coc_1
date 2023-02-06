@@ -1,0 +1,46 @@
+In CoC, all ordinary types are foralls. In effect, a type definition is the definition of what you can *do* if you have an object of the type.
+
+With typical data types, the first thing you want to do is to match on their constructors. A type has a fixed list of constructors; each constructor has a fixed list of arguments. If you have an instance of the type, then you can specify what you *would* do, depending on which constructor it is, and then tell the type to do whichever thing it actually is. We express this by first passing an arbitrary ordinary type (the "return type"), and saying: If every constructor lets me get a value of this type, then I can get a value of this type.
+
+The simplest type is False, the type with no constructors. Its definition *only* takes the return type; if you have a False, then you can get anything.
+
+> False : ℙ.
+> False := ∀P:ℙ, P.
+
+Next is True, the type with only one constructor, which has no arguments. To say "given a value with this nullary constructor, I can give you a P" is to say "I can give you a P unconditionally."
+
+> True : ℙ.
+> True := ∀P:ℙ, ∀p:P, P.
+
+There is only one possible value of True, because someone trying to construct a True has no way of producing a `P` other than by using the one provided. By convention, if a type has only one constructor, that constructor is named TypenameCons:
+
+> TrueCons : True.
+> TrueCons := λP:ℙ, λp:P, p.
+
+However, you can't prove within CoC that this is the only value of True. We will return to this issue later.
+
+Next we have Bool, the type with 2 trivial constructors. A value of Bool can only choose which of the 2 provided `P` values to use; by convention, `true` selects the first one, and `false` the second:
+
+> Bool : ℙ.
+> Bool := ∀P:ℙ, ∀a:P, ∀b:P, P.
+> true : Bool.
+> true := λP:ℙ, λa:P, λb:P, a.
+> false : Bool.
+> false := λP:ℙ, λa:P, λb:P, b.
+
+As shown, additional constructors are additional parameters to the type (additional foralls in the top-level chain). But when a *constructor* has additional parameters, those parameters are passed to the callback defined for that constructor. Here, we have the type of pairs of Bools, which has only one constructor, containing two Bools:
+
+> TwoBools : ℙ
+> TwoBools := ∀P:ℙ, ∀_:(∀_:Bool, ∀_:Bool, P), P.
+
+Now, in order to produce a `P`, you would have to be able to call the provided callback: That is, you would have to explicitly pass two bools. We can write an explicit constructor that does so, given arbitrary bools. 
+
+> TwoBoolsCons : ∀_:Bool, ∀_:Bool, TwoBools.
+> TwoBoolsCons := λ a: Bool, λ b: Bool, λ P:ℙ, λ callback :(∀_:Bool, ∀_:Bool, P), (callback a b).
+
+There's no limitation on constructor parameter types being dependent on previous parameters to the same constructor. Here is the type family of dependent pairs, for arbitrary predicates on the first element of the pair:
+
+> Pair : ∀A:ℙ, ∀B:(∀_:A, ℙ), ℙ
+> Pair := λA:ℙ, λB:(∀_:A, ℙ), ∀P:ℙ, ∀_:(∀a:A, ∀_:(B a), P), P.
+> PairCons : ∀A:ℙ, ∀B:(∀_:A, ℙ), ∀a:A, ∀b:(B a), (Pair A B).
+> PairCons := λA:ℙ, λB:(∀_:A, ℙ), λa:A, λb:(B a), λP:ℙ, λcallback:(∀a:A, ∀_:(B a), P), (callback a b).
