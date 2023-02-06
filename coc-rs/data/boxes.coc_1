@@ -97,10 +97,10 @@ As one might predict, since TBox1 is defined in multiple cases, both the Contain
     λPropItselfCase: (Q TBox1_OfPropItself),
     λ_: (∀P:ℙ, Q (TBox1_OfP P)),
     PropItselfCase.
-> TBox1_OfP_I : ∀P: ℙ,(TBox1I TBox1_OfP P.
+> TBox1_OfP_I : ∀P: ℙ,(TBox1I (TBox1_OfP P)).
 > TBox1_OfP_I := λ P: ℙ,λQ:(∀_:TBox1,ℙ),
     λ_: (Q TBox1_OfPropItself),
-    λPCase: (∀P:ℙ, Q (TBox1_OfP P)),
+    λPCase: (∀P:ℙ, (Q (TBox1_OfP P))),
     (PCase P).
 
 > TBox1ContainsP : ∀_:TBox1,∀_:ℙ,ℙ.

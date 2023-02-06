@@ -6,8 +6,10 @@ mod lalrpop_wrapper {
 
 pub use self::lalrpop_wrapper::coc_text_format_1::CommandParser;
 use crate::metavariable::{Environment, MetavariableId};
+use live_prop_test::{live_prop_test, lpt_assert_eq};
 use regex::Regex;
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Command {
@@ -51,14 +53,10 @@ struct MetavariablesInjectionContext {
 impl Document {
     pub fn parse(text: &str) -> Self {
         let re = Regex::new(r"(?m)^>([^\.]*)\.").unwrap();
-        let parser = CommandParser::new();
         let mut commands = Vec::new();
         for captures in re.captures_iter(text) {
             let command_text = captures.get(1).unwrap().as_str();
-            match parser.parse(command_text) {
-                Ok(command) => commands.push(command),
-                Err(e) => panic!("While parsing:\n    {command_text}\nGot error:\n    {e}"),
-            }
+            commands.push(Command::parse(command_text));
         }
         Document { commands }
     }
@@ -69,6 +67,99 @@ impl Document {
                 .entry(metavariable.name().to_owned())
                 .or_default()
                 .push(metavariable.id());
+        }
+    }
+}
+
+#[live_prop_test]
+impl Command {
+    #[live_prop_test(postcondition = "result.check_roundtrip()")]
+    pub fn parse(text: &str) -> Self {
+        let parser = CommandParser::new();
+        match parser.parse(text) {
+            Ok(command) => command,
+            Err(e) => panic!("While parsing:\n    {text}\nGot error:\n    {e}"),
+        }
+    }
+    fn check_roundtrip(&self) -> Result<(), String> {
+        let text = self.to_string();
+        let result = CommandParser::new()
+            .parse(&text)
+            .map_err(|e| e.to_string())?;
+        lpt_assert_eq!(self, &result);
+        Ok(())
+    }
+}
+
+impl Display for Command {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Command::Assign(name, formula) => {
+                write!(f, "{name} := {formula}")
+            }
+            Command::ClaimType(value_formula, type_formula) => {
+                write!(f, "{value_formula} : {type_formula}")
+            }
+        }
+    }
+}
+
+impl Display for Formula {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Formula::Prop => {
+                write!(f, "ℙ")
+            }
+            Formula::Usage(name) => {
+                write!(f, "{name}")
+            }
+            Formula::Hole => {
+                write!(f, "_")
+            }
+            Formula::Abstraction(abstraction) => {
+                let Abstraction {
+                    kind,
+                    parameter_name,
+                    parameter_type,
+                    body,
+                } = &**abstraction;
+                write!(f, "{kind}{parameter_name}:{parameter_type}, {body}")
+            }
+            Formula::Apply(children) => {
+                let mut chain_members = vec![&children[1]];
+                let mut walker = &children[0];
+                while let Formula::Apply(cx) = walker {
+                    chain_members.push(&cx[1]);
+                    walker = &cx[0];
+                }
+                chain_members.push(walker);
+                write!(f, "(")?;
+                for (index, member) in chain_members.into_iter().enumerate().rev() {
+                    if matches!(member, Formula::Abstraction(_)) {
+                        write!(f, "({member})")?;
+                    } else {
+                        write!(f, "{member}")?;
+                    }
+                    if index != 0 {
+                        write!(f, " ")?;
+                    }
+                }
+                write!(f, ")")?;
+                Ok(())
+            }
+        }
+    }
+}
+
+impl Display for AbstractionKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AbstractionKind::Lambda => {
+                write!(f, "λ")
+            }
+            AbstractionKind::ForAll => {
+                write!(f, "∀")
+            }
         }
     }
 }
