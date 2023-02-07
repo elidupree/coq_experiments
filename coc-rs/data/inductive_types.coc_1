@@ -36,14 +36,28 @@ As shown, additional constructors are additional parameters to the type (additio
 Now, in order to produce a `P`, you would have to be able to call the provided callback: That is, you would have to explicitly pass two bools. We can write an explicit constructor that does so, given arbitrary bools. 
 
 > TwoBoolsCons : ∀_:Bool, ∀_:Bool, TwoBools.
-> TwoBoolsCons := λ a: Bool, λ b: Bool, λ P:ℙ, λ callback :(∀_:Bool, ∀_:Bool, P), (callback a b).
+> TwoBoolsCons := (
+    λa:Bool,
+    λb:Bool,
+    λP:ℙ,
+    λcallback:(∀_:Bool, ∀_:Bool, P),
+    (callback a b)
+  ).
 
 There's no limitation on constructor parameter types being dependent on previous parameters to the same constructor. Here is the type family of dependent pairs, for arbitrary predicates on the first element of the pair:
 
 > Pair : ∀A:ℙ, ∀B:(∀_:A, ℙ), ℙ.
 > Pair := λA:ℙ, λB:(∀_:A, ℙ), ∀P:ℙ, ∀_:(∀a:A, ∀_:(B a), P), P.
 > PairCons : ∀A:ℙ, ∀B:(∀_:A, ℙ), ∀a:A, ∀b:(B a), (Pair A B).
-> PairCons := λA:ℙ, λB:(∀_:A, ℙ), λa:A, λb:(B a), λP:ℙ, λcallback:(∀a:A, ∀_:(B a), P), (callback a b).
+> PairCons := (
+    λA:ℙ,
+    λB:(∀_:A, ℙ),
+    λa:A,
+    λb:(B a),
+    λP:ℙ,
+    λcallback:(∀a:A, ∀_:(B a), P),
+    (callback a b)
+  ).
 
 Now for recursive types. CoC does not have any built-in recursion, so we must describe the nature of recursion ourselves. Here is that nature: If you were to run a recursive function over a recursive datatype, each entry would have to process the *return values* of sub-calls into its own return value. Therefore, to define a recursive constructor, you pass instances of the *return type* into the handler for that constructor:
 
@@ -52,7 +66,15 @@ Now for recursive types. CoC does not have any built-in recursion, so we must de
 > ListNil : ∀A:ℙ, (List A).
 > ListNil := λA:ℙ, λP:ℙ, λnil_case:P, λcons_case:(∀_:A, ∀_:P, P), nil_case.
 > ListCons : ∀A:ℙ, ∀_:A, ∀_:(List A), (List A).
-> ListCons := λA:ℙ, λ head:A, λ tail:(List A), λP:ℙ, λnil_case:P, λcons_case:(∀_:A, ∀_:P, P), (cons_case head (tail P nil_case cons_case)).
+> ListCons := (
+    λA:ℙ,
+    λhead:A,
+    λtail:(List A),
+    λP:ℙ,
+    λnil_case:P,
+    λcons_case:(∀_:A, ∀_:P, P),
+    (cons_case head (tail P nil_case cons_case))
+  ).
 
 And the simplest recursive type is the natural numbers, defined by the 0 and successor constructors:
 
@@ -61,7 +83,13 @@ And the simplest recursive type is the natural numbers, defined by the 0 and suc
 > 0 : Natural.
 > 0 := λA:ℙ, λ0_case:P, ∀successor_case:(∀_:P, P), 0_case.
 > successor : ∀_:Natural, Natural.
-> successor := λ n:Natural, λA:ℙ, λ0_case:P, ∀successor_case:(∀_:P, P), (successor_case (n P 0_case successor_case)).
+> successor := (
+    λn:Natural,
+    λA:ℙ,
+    λ0_case:P,
+    λsuccessor_case:(∀_:P, P),
+    (successor_case (n P 0_case successor_case))
+  ).
 
 Which allows a natural number `n` to be viewed as the function that calls successor_case `n` times on whatever its input is.
 
@@ -70,42 +98,134 @@ But what about *dependent* recursion, also known as induction? We would like to 
 Thus, to implement induction, we augment a datatype with an *induction predicate*, saying that a specific member of the base type obeys the induction rules. Any time you want to do induction, you must take a member of this predicate as an additional argument. Effectively, an *inductive type* is a dependent pair of a base type with the induction predicate.
 
 > NaturalI : ∀n:Natural, ℙ.
-> NaturalI := λn:Natural, ∀P:(∀n:Natural, ℙ), ∀0_case:(P 0), ∀successor_case:(∀m:Natural, ∀_:(P m), (P (successor n))), P.
+> NaturalI := (
+    λn:Natural,
+    (
+      ∀P:(∀n:Natural, ℙ),
+      ∀0_case:(P 0),
+      ∀successor_case:(∀m:Natural, ∀_:(P m), (P (successor n))),
+      P
+    )
+  ).
 
 > ListI : ∀A:ℙ, ∀l:(List A), ℙ.
-> ListI := λA:ℙ, λl: (List A),∀P:(∀l:(List A), ℙ),
-    ∀nil_case:(P (ListNil A)),
-    ∀cons_case:(∀head:A, ∀tail:(List A), ∀_:(P tail), (P (ListCons A head tail))),
-    (P l).
+> ListI := (
+    λA:ℙ,
+    λl:(List A),
+    (
+      ∀P:(∀l:(List A), ℙ),
+      ∀nil_case:(P (ListNil A)),
+      ∀cons_case:(
+        ∀head:A,
+        ∀tail:(List A),
+        ∀_:(P tail),
+        (P (ListCons A head tail))
+      ),
+      (P l)
+    )
+  ).
 
 If you have an inductive proof with a nil case and a cons case, CoC cannot prove that it is true of every *List*; but CoC can prove that it is true for every List `l` where you can construct a `(ListI l)`, which includes all of the lists you can construct using ListNil and ListCons (and indeed, we believe on a metatheory level that these are the only members of List that exist):
 
 > ListNil_I : ∀A:ℙ, (ListI A (ListNil A)).
-> ListNil_I := λA:ℙ, λP:(∀l:(List A), ℙ),
+> ListNil_I := (
+    λA:ℙ,
+    λP:(∀l:(List A), ℙ),
     λnil_case:(P (ListNil A)),
-    λcons_case:(∀head:A, ∀tail:(List A), ∀_:(P (ListCons) head tail), P),
-    nil_case.
-> ListCons_I : ∀A:ℙ, ∀head:A, ∀tail:(List A), ∀tail_i:(ListI A tail), (ListI A (ListCons A head tail)).
-> ListCons_I := λA:ℙ, λ head:A, λ tail:(List A), λtail_i:(ListI A tail), λP:(∀l:(List A), ℙ),
+    λcons_case:(∀head:A, ∀tail:(List A), ∀_:(P ListCons head tail), P),
+    nil_case
+  ).
+> ListCons_I : (
+    ∀A:ℙ,
+    ∀head:A,
+    ∀tail:(List A),
+    ∀tail_i:(ListI A tail),
+    (ListI A (ListCons A head tail))
+  ).
+> ListCons_I := (
+    λA:ℙ,
+    λhead:A,
+    λtail:(List A),
+    λtail_i:(ListI A tail),
+    λP:(∀l:(List A), ℙ),
     λnil_case:(P (ListNil A)),
-    λcons_case:(∀head2:A, ∀tail2:(List A), ∀_:(P tail2), (P (ListCons A head tail))),
-    (cons_case head tail tail_i).
+    λcons_case:(
+      ∀head2:A,
+      ∀tail2:(List A),
+      ∀_:(P tail2),
+      (P (ListCons A head tail))
+    ),
+    (cons_case head tail tail_i)
+  ).
 
 Induction predicates can be defined analogously for all of the types we've seen so far. If you ever need proof that a Bool is either `true` or `false`, you need to take the `BoolI` predicate.
 
 Next, let's talk about mutual recursion. In mutually recursive functions, the functions might have different return types. Here's an "alternating list" type, with different entries at even and odd indices:
 
 > EvenList : ∀A:ℙ, ∀B:ℙ, ℙ.
-> EvenList := λA:ℙ, λB:ℙ, ∀P:ℙ, ∀Q:ℙ, ∀nil_case:P, ∀odd_case:(∀_:A, ∀_:Q, P), ∀even_case:(∀_:B, ∀_:P, Q), P.
+> EvenList := (
+    λA:ℙ,
+    λB:ℙ,
+    (
+      ∀P:ℙ,
+      ∀Q:ℙ,
+      ∀nil_case:P,
+      ∀odd_case:(∀_:A, ∀_:Q, P),
+      ∀even_case:(∀_:B, ∀_:P, Q),
+      P
+    )
+  ).
 > OddList : ∀A:ℙ, ∀B:ℙ, ℙ.
-> OddList := λA:ℙ, λB:ℙ, ∀P:ℙ, ∀Q:ℙ, ∀nil_case:P, ∀odd_case:(∀_:A, ∀_:Q, P), ∀even_case:(∀_:B, ∀_:P, Q), P.
+> OddList := (
+    λA:ℙ,
+    λB:ℙ,
+    (
+      ∀P:ℙ,
+      ∀Q:ℙ,
+      ∀nil_case:P,
+      ∀odd_case:(∀_:A, ∀_:Q, P),
+      ∀even_case:(∀_:B, ∀_:P, Q),
+      P
+    )
+  ).
 
 > EvenNil : ∀A:ℙ, ∀B:ℙ, (EvenList A B).
-> EvenNil := λA:ℙ, λB:ℙ, λP:ℙ, λQ:ℙ, λnil_case:P, λodd_case:(∀_:A, ∀_:Q, P), ∀even_case:(∀_:B, ∀_:P, Q), nil_case.
+> EvenNil := (
+    λA:ℙ,
+    λB:ℙ,
+    λP:ℙ,
+    λQ:ℙ,
+    λnil_case:P,
+    λodd_case:(∀_:A, ∀_:Q, P),
+    λeven_case:(∀_:B, ∀_:P, Q),
+    nil_case
+  ).
 > OddCons : ∀A:ℙ, ∀B:ℙ, ∀_:A, ∀_:(EvenList A B), (OddList A B).
-> OddCons := λA:ℙ, λB:ℙ, λhead:A, λ tail:(EvenList A B), λP:ℙ, λQ:ℙ, λnil_case:P, λodd_case:(∀_:A, ∀_:Q, P), ∀even_case:(∀_:B, ∀_:P, Q), (odd_case head (tail P Q nil_case odd_case even_case)).
+> OddCons := (
+    λA:ℙ,
+    λB:ℙ,
+    λhead:A,
+    λtail:(EvenList A B),
+    λP:ℙ,
+    λQ:ℙ,
+    λnil_case:P,
+    λodd_case:(∀_:A, ∀_:Q, P),
+    λeven_case:(∀_:B, ∀_:P, Q),
+    (odd_case head (tail P Q nil_case odd_case even_case))
+  ).
 > EvenCons : ∀A:ℙ, ∀B:ℙ, ∀_:B, ∀_:(OddList A B), (EvenList A B).
-> EvenCons := λA:ℙ, λB:ℙ, λhead:B, λ tail:(OddList A B), λP:ℙ, λQ:ℙ, λnil_case:P, λodd_case:(∀_:A, ∀_:Q, P), ∀even_case:(∀_:B, ∀_:P, Q), (even_case head (tail P Q nil_case odd_case even_case)).
+> EvenCons := (
+    λA:ℙ,
+    λB:ℙ,
+    λhead:B,
+    λtail:(OddList A B),
+    λP:ℙ,
+    λQ:ℙ,
+    λnil_case:P,
+    λodd_case:(∀_:A, ∀_:Q, P),
+    λeven_case:(∀_:B, ∀_:P, Q),
+    (even_case head (tail P Q nil_case odd_case even_case))
+  ).
 
 These definitions are getting tedious to write manually, and I will soon automate them. But first, let's consider mutual recursion over arbitrary members of the same type family. In this case, rather than two propositions P and Q, we would have a forall, which produces a different proposition depending on the parameters to the type family.
 

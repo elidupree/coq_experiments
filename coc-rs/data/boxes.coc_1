@@ -3,34 +3,42 @@ We often want to use functions that return propositions. Unfortunately, such fun
 To work around this, we put them in boxes:
 
 > PBox : ℙ.
-> PBox := ∀Q:ℙ,∀_: (∀_:ℙ, Q), Q.
+> PBox := ∀Q:ℙ, ∀_:(∀_:ℙ, Q), Q.
 
 Here, we're using a continuation-passing approach: It's unwieldy to return a ℙ, but it's not unwieldy to *pass* one, and it's not unwieldy to return a *function* that will pass one to an arbitrary other function that you might put in later.
 
 We will also need the constructor (to construct a PBox from a ℙ), and the induction predicate (proving that a particular PBox is just a wrapper around some particular ℙ, rather than, say, a nonstandard formula). Since we'll be a using this a lot, we give them short names:
 
 > PBoxC : ∀_:ℙ, PBox.
-> PBoxC :=λ P: ℙ,λ Q:ℙ, λ consumer:(∀_: ℙ, Q),(consumer P).
-> PBoxContains : ∀_:PBox,∀_:ℙ,ℙ.
-> PBoxContains : λp: PBox, λP:ℙ, ∀Q:(∀_:PBox,ℙ),∀_: (Q (PBoxC P)),(Q p).
-> PBoxI : ∀_: PBox,ℙ.
-> PBoxI := λpb:PBox,∀Q:(∀_:PBox,ℙ),∀_: (∀P:ℙ,(Q(PBoxC P))),(Q pb).
+> PBoxC := λP:ℙ, λQ:ℙ, λconsumer:(∀_:ℙ, Q), (consumer P).
+> PBoxContains : ∀_:PBox, ∀_:ℙ, ℙ.
+> PBoxContains : λp:PBox, λP:ℙ, ∀Q:(∀_:PBox, ℙ), ∀_:(Q (PBoxC P)), (Q p).
+> PBoxI : ∀_:PBox, ℙ.
+> PBoxI := λpb:PBox, ∀Q:(∀_:PBox, ℙ), ∀_:(∀P:ℙ, (Q (PBoxC P))), (Q pb).
 > PBoxC_Contains : ∀R:ℙ, (PBoxContains (PBoxC R) R).
-> PBoxC_Contains := λR: ℙ,λQ:(∀_:PBox,ℙ),λresult: (Q (PBoxC R)), result.
+> PBoxC_Contains := λR:ℙ, λQ:(∀_:PBox, ℙ), λresult:(Q (PBoxC R)), result.
 > PBoxC_I : ∀R:ℙ, (PBoxI (PBoxC R)).
-> PBoxC_I := λR: ℙ,λQ:(∀_:PBox,ℙ),λprop_user: (∀P:ℙ,(Q(PBoxC P))), (prop_user R).
+> PBoxC_I := (
+    λR:ℙ,
+    λQ:(∀_:PBox, ℙ),
+    λprop_user:(∀P:ℙ, (Q (PBoxC P))),
+    (prop_user R)
+  ).
 
 Naming convention note: We use snake_case names for ordinary values, and PascalCase names for both unwieldy values and unwieldy types.
 
 Now, let's consider what we can do with these boxes. A ∀ that returns a proposition is also a proposition; we would like to map this into boxes, by constructing an explicit function that takes any ∀ that returns a *PBox*, and returns another PBox containing the ∀ that returns the proposition. In this case, the return type of the ∀ may be dependent on the input type, so we have to pass that mapping into the compound constructor:
 
-> PBoxForAll : ∀P:ℙ,∀_:(∀_:P,ℙ),PBox.
-> PBoxForAll := λ P: ℙ,λReturnType:(∀_:P,ℙ), (PBoxC (∀p:P,(ReturnType p))).
+> PBoxForAll : ∀P:ℙ, ∀_:(∀_:P, ℙ), PBox.
+> PBoxForAll := λP:ℙ, λReturnType:(∀_:P, ℙ), (PBoxC (∀p:P, (ReturnType p))).
 
 Note the limits of this definition: `P`, the parameter type of the ∀, can only be an ordinary type, not an unwieldy type. Suppose, for example, that we wanted to wrap some `∀_:ℙ,...` in a PBox: We can do that, but not with this function.
 
-> PBoxForAll_Prop_Explicit : ∀_:(∀_:ℙ,ℙ),PBox.
-> PBoxForAll_Prop_Explicit := λReturnType:(∀_:ℙ,ℙ), (PBoxC (∀P:ℙ,(ReturnType P))).
+> PBoxForAll_Prop_Explicit : ∀_:(∀_:ℙ, ℙ), PBox.
+> PBoxForAll_Prop_Explicit := (
+    λReturnType:(∀_:ℙ, ℙ),
+    (PBoxC (∀P:ℙ, (ReturnType P)))
+  ).
 
 However, we could certainly wrap `∀_:PBox,...`! And if the return type was an ordinary type, you could easily transform `λP:ℙ,Q` into `λp:PBox,(p (λP:ℙ,Q))`. However, that still doesn't allow you to use the above definition. The following is ill-typed, because `ReturnTypeP` returns ℙ, and we can't pass ℙ as the type to return from a PBox continuation:
 
@@ -49,88 +57,154 @@ So if we actually want to abstract over ordinary types and ℙ, we need a bit mo
 Abstracting over *all* parameter types is hard. Let's start with the simplest step: abstracting over ordinary types and a *single* unwieldy type, namely ℙ itself.
 
 > TBox1 : ℙ.
-> TBox1 := ∀Q:ℙ,∀PropItselfCase:Q,∀PCase:(∀_:ℙ, Q), Q.
+> TBox1 := ∀Q:ℙ, ∀PropItselfCase:Q, ∀PCase:(∀_:ℙ, Q), Q.
 > TBox1_OfPropItself : TBox1.
-> TBox1_OfPropItself := λ Q: ℙ,λ PropItselfCase: Q,λ_:(∀_:ℙ, Q), PropItselfCase.
-> TBox1_OfP := ∀_: ℙ,TBox1.
-> TBox1_OfP := λP:ℙ,λ Q: ℙ,λ _: Q,λPCase:(∀_:ℙ, Q), (PCase P).
+> TBox1_OfPropItself := λQ:ℙ, λPropItselfCase:Q, λ_:(∀_:ℙ, Q), PropItselfCase.
+> TBox1_OfP := ∀_:ℙ, TBox1.
+> TBox1_OfP := λP:ℙ, λQ:ℙ, λ_:Q, λPCase:(∀_:ℙ, Q), (PCase P).
 
 Fortunately, we can easily inject the PBoxes into TBox1:
 
-> TBox1_OfPBox := ∀_: PBox,TBox1.
+> TBox1_OfPBox := ∀_:PBox, TBox1.
 > TBox1_OfPBox := λp:PBox, (p TBox1_OfP).
 
 And now we can implement a more abstract PBoxForAll!
 
-> PBoxForAll_TBox1_NonDependent : ∀_:TBox1,∀_:ℙ, PBox.
-> PBoxForAll_TBox1_NonDependent := λ t:TBox1,λReturnType:ℙ, (t PBox
-    (PBoxC (∀P: ℙ,ReturnType))
-    (λ P:ℙ,(PBoxC (∀p: P,ReturnType)))
+> PBoxForAll_TBox1_NonDependent : ∀_:TBox1, ∀_:ℙ, PBox.
+> PBoxForAll_TBox1_NonDependent := (
+    λt:TBox1,
+    λReturnType:ℙ,
+    (t PBox (PBoxC (∀P:ℙ, ReturnType)) (λP:ℙ, (PBoxC (∀p:P, ReturnType))))
   ).
-> PBoxForAll_TBox1_VeryDependent : ∀_:TBox1,∀PropItselfCase:(∀_:ℙ,ℙ),∀PCase:(∀P:ℙ,∀_:P, ℙ), PBox.
-> PBoxForAll_TBox1_VeryDependent := λ t:TBox1,λPropItselfCase:(∀_:ℙ,ℙ),λPCase:(∀P:ℙ,∀_:P, ℙ), (t PBox
-    (PBoxC (∀P: ℙ,(PropItselfCase P)))
-    (λ P:ℙ,(PBoxC (∀p: P,(PCase P p))))
+> PBoxForAll_TBox1_VeryDependent : (
+    ∀_:TBox1,
+    ∀PropItselfCase:(∀_:ℙ, ℙ),
+    ∀PCase:(∀P:ℙ, ∀_:P, ℙ),
+    PBox
+  ).
+> PBoxForAll_TBox1_VeryDependent := (
+    λt:TBox1,
+    λPropItselfCase:(∀_:ℙ, ℙ),
+    λPCase:(∀P:ℙ, ∀_:P, ℙ),
+    (
+      t
+      PBox
+      (PBoxC (∀P:ℙ, (PropItselfCase P)))
+      (λP:ℙ, (PBoxC (∀p:P, (PCase P p))))
+    )
   ).
   
 These both leave something to be desired. We do want a dependent return type; but we only need it to be dependent on the specific type boxed in `t`, and our second definition requires you to define a return type for all possible TBox1s. So we now need an additional type to represent a *member* of one of these boxed types, so that we can write abstractions that abstract over members of a specific type.
 
 To express the proposition "there exists a member of the boxed P", we must say "any function that would need to take a member of the boxed P, can be called". And to claim that there is such a boxed type, we need the Contains predicate:
 
-> MemberOfBoxedP : ∀_:PBox,ℙ.
-> MemberOfBoxedP := λp:PBox,∀Q:ℙ,∀_:(∀P:ℙ,∀_:P,∀_:(PBoxContains p P), Q), Q.
-> MemberOfBoxedP_OfMemberOfP : ∀P:ℙ,∀_:P,(MemberOfBoxedP (PBoxC P)).
-> MemberOfBoxedP_OfMemberOfP := λP:ℙ,λp:P,λQ:ℙ,λconsumer:(∀P:ℙ,∀_:P,∀_:(PBoxContains (PBoxC P) P), Q),
-  (consumer P p (PBoxC_Contains P)).
+> MemberOfBoxedP : ∀_:PBox, ℙ.
+> MemberOfBoxedP := λp:PBox, ∀Q:ℙ, ∀_:(∀P:ℙ, ∀_:P, ∀_:(PBoxContains p P), Q), Q.
+> MemberOfBoxedP_OfMemberOfP : ∀P:ℙ, ∀_:P, (MemberOfBoxedP (PBoxC P)).
+> MemberOfBoxedP_OfMemberOfP := (
+    λP:ℙ,
+    λp:P,
+    λQ:ℙ,
+    λconsumer:(∀P:ℙ, ∀_:P, ∀_:(PBoxContains (PBoxC P) P), Q),
+    (consumer P p (PBoxC_Contains P))
+  ).
 
 
 As one might predict, since TBox1 is defined in multiple cases, both the Contains predicate and the MemberOf predicate will also need more cases. Also, before we can use the membership predicate, we will often need to match on which constructor of TBox was used, which means we need this induction predicate:
 
-> TBox1I : ∀_:TBox1,ℙ.
-> TBox1I : λt: TBox1, ∀Q:(∀_:TBox1,ℙ),
-    ∀_: (Q TBox1_OfPropItself),
-    ∀_: (∀P:ℙ, Q (TBox1_OfP P)),
-    (Q t).
+> TBox1I : ∀_:TBox1, ℙ.
+> TBox1I : (
+    λt:TBox1,
+    (
+      ∀Q:(∀_:TBox1, ℙ),
+      ∀_:(Q TBox1_OfPropItself),
+      ∀_:((∀P:ℙ, Q) (TBox1_OfP P)),
+      (Q t)
+    )
+  ).
 
 > TBox1_OfPropItself_I : (TBox1I TBox1_OfPropItself).
-> TBox1_OfPropItself_I := λQ:(∀_:TBox1,ℙ),
-    λPropItselfCase: (Q TBox1_OfPropItself),
-    λ_: (∀P:ℙ, Q (TBox1_OfP P)),
-    PropItselfCase.
-> TBox1_OfP_I : ∀P: ℙ,(TBox1I (TBox1_OfP P)).
-> TBox1_OfP_I := λ P: ℙ,λQ:(∀_:TBox1,ℙ),
-    λ_: (Q TBox1_OfPropItself),
-    λPCase: (∀P:ℙ, (Q (TBox1_OfP P))),
-    (PCase P).
+> TBox1_OfPropItself_I := (
+    λQ:(∀_:TBox1, ℙ),
+    λPropItselfCase:(Q TBox1_OfPropItself),
+    λ_:((∀P:ℙ, Q) (TBox1_OfP P)),
+    PropItselfCase
+  ).
+> TBox1_OfP_I : ∀P:ℙ, (TBox1I (TBox1_OfP P)).
+> TBox1_OfP_I := (
+    λP:ℙ,
+    λQ:(∀_:TBox1, ℙ),
+    λ_:(Q TBox1_OfPropItself),
+    λPCase:(∀P:ℙ, (Q (TBox1_OfP P))),
+    (PCase P)
+  ).
 
-> TBox1ContainsP : ∀_:TBox1,∀_:ℙ,ℙ.
-> TBox1ContainsP : λt: TBox1, λP:ℙ, ∀Q:(∀_:TBox1,ℙ),∀_: (Q (TBox1_OfP P)),(Q p).
-> TBox1ContainsPropItself : ∀_:TBox1,ℙ.
-> TBox1ContainsPropItself : λt: TBox1, ∀Q:(∀_:TBox1,ℙ),∀_: (Q TBox1_OfPropItself),(Q p).
+> TBox1ContainsP : ∀_:TBox1, ∀_:ℙ, ℙ.
+> TBox1ContainsP : λt:TBox1, λP:ℙ, ∀Q:(∀_:TBox1, ℙ), ∀_:(Q (TBox1_OfP P)), (Q p).
+> TBox1ContainsPropItself : ∀_:TBox1, ℙ.
+> TBox1ContainsPropItself : (
+    λt:TBox1,
+    ∀Q:(∀_:TBox1, ℙ), ∀_:(Q TBox1_OfPropItself), (Q p)
+  ).
 
 We now define the MemberOf predicate by saying "either a member of a proposition it contains, or a member of ℙ if it contains that". This definition is actually going to cause trouble in a moment, and we will replace it, but it's educational to see how:
 
-> MemberOfBoxedT1_Wrong : ∀_:TBox1,ℙ.
-> MemberOfBoxedT1_Wrong := λt:TBox1,∀Q:ℙ,
-  ∀_:(∀_:ℙ,∀_:(TBox1ContainsPropItself t), Q),
-  ∀_:(∀P:ℙ,∀_:P,∀_:(TBox1ContainsP t P), Q),
-  Q.
+> MemberOfBoxedT1_Wrong : ∀_:TBox1, ℙ.
+> MemberOfBoxedT1_Wrong := (
+    λt:TBox1,
+    (
+      ∀Q:ℙ,
+      ∀_:(∀_:ℙ, ∀_:(TBox1ContainsPropItself t), Q),
+      ∀_:(∀P:ℙ, ∀_:P, ∀_:(TBox1ContainsP t P), Q),
+      Q
+    )
+  ).
 
-> MemberOfBoxedT1_Wrong_OfP : ∀P:ℙ,(MemberOfBoxedT1_Wrong TBox1_OfPropItself).
-> MemberOfBoxedT1_Wrong_OfP := λP:ℙ,λQ:ℙ,λconsumer:(∀_:ℙ,∀_:(TBox1ContainsPropItself t), Q),
-  (consumer P TBox1_OfPropItself_ContainsPropItself).
+> MemberOfBoxedT1_Wrong_OfP : ∀P:ℙ, (MemberOfBoxedT1_Wrong TBox1_OfPropItself).
+> MemberOfBoxedT1_Wrong_OfP := (
+    λP:ℙ,
+    λQ:ℙ,
+    λconsumer:(∀_:ℙ, ∀_:(TBox1ContainsPropItself t), Q),
+    (consumer P TBox1_OfPropItself_ContainsPropItself)
+  ).
 
-> MemberOfBoxedT1_Wrong_OfMemberOfP : ∀P:ℙ,∀_:P,(MemberOfBoxedT1_Wrong (TBox1_OfP P)).
-> MemberOfBoxedT1_Wrong_OfMemberOfP := λP:ℙ,λp:P,λQ:ℙ,λconsumer:(∀P:ℙ,∀_:P,∀_:(TBox1ContainsP t P), Q),
-  (consumer P p (TBox1_OfP_ContainsP P)).
+> MemberOfBoxedT1_Wrong_OfMemberOfP : (
+    ∀P:ℙ,
+    ∀_:P,
+    (MemberOfBoxedT1_Wrong (TBox1_OfP P))
+  ).
+> MemberOfBoxedT1_Wrong_OfMemberOfP := (
+    λP:ℙ,
+    λp:P,
+    λQ:ℙ,
+    λconsumer:(∀P:ℙ, ∀_:P, ∀_:(TBox1ContainsP t P), Q),
+    (consumer P p (TBox1_OfP_ContainsP P))
+  ).
   
 With these definitions established, we can now implement the proper `PBoxForAll_TBox1`!
 
-> PBoxForAll_TBox1_Wrong : ∀t:TBox1,∀_:(TBox1I t),∀_:(∀_:(MemberOfBoxedT1_Wrong t), ℙ), PBox.
-> PBoxForAll_TBox1_Wrong := λt:TBox1,λi:TBox1I,
-  (i (∀_:(∀_:(MemberOfBoxedT1_Wrong t2), ℙ), PBox)
-    (λReturnType:(∀_:(MemberOfBoxedT1_Wrong TBox1_OfPropItself), ℙ), (PBoxC (∀P:ℙ,(ReturnType (MemberOfBoxedT1_Wrong_OfP P)))))
-    (λ P:ℙ, λReturnType:(∀_:(MemberOfBoxedT1_Wrong (TBox1_OfP P)), ℙ), (PBoxC (∀p:P,(ReturnType (MemberOfBoxedT1_Wrong_OfMemberOfP p)))))
+> PBoxForAll_TBox1_Wrong : (
+    ∀t:TBox1,
+    ∀_:(TBox1I t),
+    ∀_:(∀_:(MemberOfBoxedT1_Wrong t), ℙ),
+    PBox
+  ).
+> PBoxForAll_TBox1_Wrong := (
+    λt:TBox1,
+    λi:TBox1I,
+    (
+      i
+      (∀_:(∀_:(MemberOfBoxedT1_Wrong t2), ℙ), PBox)
+      (
+        λReturnType:(∀_:(MemberOfBoxedT1_Wrong TBox1_OfPropItself), ℙ),
+        (PBoxC (∀P:ℙ, (ReturnType (MemberOfBoxedT1_Wrong_OfP P))))
+      )
+      (
+        λP:ℙ,
+        λReturnType:(∀_:(MemberOfBoxedT1_Wrong (TBox1_OfP P)), ℙ),
+        (PBoxC (∀p:P, (ReturnType (MemberOfBoxedT1_Wrong_OfMemberOfP p))))
+      )
+    )
   ).
 
 Now let's proceed to actually use this definition:

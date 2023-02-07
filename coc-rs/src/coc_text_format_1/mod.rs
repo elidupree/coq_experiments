@@ -7,7 +7,8 @@ mod lalrpop_wrapper {
 pub use self::lalrpop_wrapper::coc_text_format_1::CommandParser;
 use crate::metavariable::{Environment, MetavariableId};
 use live_prop_test::{live_prop_test, lpt_assert_eq};
-use regex::Regex;
+use regex::{Captures, Regex};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Write};
 use std::{fmt, iter};
@@ -51,15 +52,31 @@ struct MetavariablesInjectionContext {
     unused_ids_by_unshared_incomplete_structure: HashMap<u128, Vec<MetavariableId>>,
 }
 
+fn command_regex() -> Regex {
+    Regex::new(r"(?m)^>([^\.]*)\.").unwrap()
+}
+
 impl Document {
     pub fn parse(text: &str) -> Self {
-        let re = Regex::new(r"(?m)^>([^\.]*)\.").unwrap();
+        let re = command_regex();
         let mut commands = Vec::new();
         for captures in re.captures_iter(text) {
             let command_text = captures.get(1).unwrap().as_str();
             commands.push(Command::parse(command_text));
         }
         Document { commands }
+    }
+    pub fn reformat(text: &str) -> Cow<str> {
+        let re = command_regex();
+        re.replace_all(text, |captures: &Captures| {
+            let command_text = captures.get(1).unwrap().as_str();
+            format!(
+                "> {}.",
+                Command::parse(command_text)
+                    .to_display_item()
+                    .display_to_string()
+            )
+        })
     }
     pub fn inject_as_metavariables(environment: &mut Environment) {
         let mut existing_names: HashMap<String, Vec<MetavariableId>> = HashMap::new();
@@ -127,7 +144,7 @@ trait DisplayItem {
     }
     fn display_to_string(&self) -> String {
         let mut result = String::new();
-        self.display_with_splits_if_needed(80, 4, &mut result)
+        self.display_with_splits_if_needed(80, 2, &mut result)
             .unwrap();
         result
     }
@@ -305,7 +322,7 @@ impl Formula {
                     items: chain_members
                         .into_iter()
                         .rev()
-                        .map(|f| f.to_display_item(false))
+                        .map(|f| f.to_display_item(true))
                         .collect(),
                 })
             }
