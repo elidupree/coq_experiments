@@ -8,7 +8,7 @@ extern {
 
 pub Command: Command = {
   <Name> ":=" <Formula> => Command::Assign(<>),
-  <Formula> ":" <Formula> => Command::ClaimType(<>),
+  <Name> ":" <Formula> => Command::ClaimType(<>),
 }
 
 Formula: Formula = {
