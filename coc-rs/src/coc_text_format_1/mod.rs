@@ -1,4 +1,5 @@
 mod display;
+mod from_constructors;
 
 #[allow(clippy::all)]
 mod lalrpop_wrapper {
@@ -19,13 +20,14 @@ pub enum Command {
     ClaimType(String, Formula),
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub enum AbstractionKind {
     Lambda,
+    #[default]
     ForAll,
 }
 
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Default)]
 pub struct Abstraction {
     kind: AbstractionKind,
     parameter_name: String,
@@ -33,10 +35,11 @@ pub struct Abstraction {
     body: Formula,
 }
 
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Default)]
 pub enum Formula {
     Prop,
     Usage(String),
+    #[default]
     Hole,
     Abstraction(Box<Abstraction>),
     Apply(Box<[Formula; 2]>),

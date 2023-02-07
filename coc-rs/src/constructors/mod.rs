@@ -262,6 +262,9 @@ impl<'a> ConstructorView<'a> {
     pub fn notation(&self) -> Option<&'a Notation<String>> {
         self.definition.notation.as_ref()
     }
+    pub fn containing_type(&self) -> TypeView<'a> {
+        self.type_view
+    }
     pub fn data_arguments(&self) -> impl Iterator<Item = DataArgumentView<'a>> + 'a {
         let constructor_view = *self;
         self.definition
@@ -316,15 +319,16 @@ impl<'a> ConstructorView<'a> {
             constructor_view: *self,
         }
     }
-    pub fn resulting_type_parameters(&self) -> impl Iterator<Item = ArgsCompoundView<'a>> + '_ {
+    pub fn resulting_type_parameters(&self) -> impl Iterator<Item = ArgsCompoundView<'a>> + 'a {
+        let constructor_view = *self;
         zip(
             &self.definition.resulting_type_parameters,
             &self.type_view.definition.type_parameters,
         )
-        .map(|(parameter, datatype)| ArgsCompoundView {
+        .map(move |(parameter, datatype)| ArgsCompoundView {
             datatype,
             definition: parameter,
-            constructor_view: *self,
+            constructor_view,
         })
     }
     pub fn resulting_type_parameter(&self, index: usize) -> ArgsCompoundView<'a> {
@@ -343,7 +347,10 @@ impl<'a> TypeView<'a> {
     pub fn name(&self) -> &'a str {
         self.name
     }
-    pub fn type_parameters(&self) -> impl Iterator<Item = TypeView<'a>> + '_ {
+    pub fn notation(&self) -> &'a Notation<usize> {
+        &self.definition.notation
+    }
+    pub fn type_parameters(self) -> impl Iterator<Item = TypeView<'a>> + 'a {
         self.definition
             .type_parameters
             .iter()
@@ -355,18 +362,15 @@ impl<'a> TypeView<'a> {
         };
         self.constructors.get(typename)
     }
-    pub fn constructors(&self) -> impl Iterator<Item = ConstructorView<'a>> + '_ {
+    pub fn constructors(self) -> impl Iterator<Item = ConstructorView<'a>> + 'a {
         self.definition
             .constructors
             .iter()
-            .map(|(name, definition)| ConstructorView {
+            .map(move |(name, definition)| ConstructorView {
                 name,
                 definition,
-                type_view: *self,
+                type_view: self,
             })
-    }
-    pub fn notation(&self) -> &'a Notation<usize> {
-        &self.definition.notation
     }
     pub fn constructor(&self, name: &str) -> ConstructorView<'a> {
         let Some ((name, definition)) = self.definition.constructors.get_key_value(name) else {
@@ -377,6 +381,15 @@ impl<'a> TypeView<'a> {
             definition,
             type_view: *self,
         }
+    }
+    pub fn all_referenced_types(&self) -> impl Iterator<Item = TypeView<'a>> + 'a {
+        self.type_parameters()
+            .chain(self.constructors().flat_map(|constructor| {
+                constructor
+                    .data_arguments()
+                    .map(|a| a.datatype())
+                    .chain(constructor.preconditions().map(|a| a.predicate_type()))
+            }))
     }
 }
 
@@ -400,6 +413,14 @@ impl Constructors {
             definition,
             constructors: self,
         }
+    }
+
+    pub fn types(&self) -> impl Iterator<Item = TypeView> + '_ {
+        self.types.iter().map(move |(name, definition)| TypeView {
+            name,
+            definition,
+            constructors: self,
+        })
     }
 
     pub(crate) fn add_entry(&mut self, entry: ConstructorEntry) -> Result<(), String> {

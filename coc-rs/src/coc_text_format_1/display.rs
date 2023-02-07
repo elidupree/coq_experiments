@@ -1,4 +1,4 @@
-use crate::coc_text_format_1::{Abstraction, AbstractionKind, Command, Formula};
+use crate::coc_text_format_1::{Abstraction, AbstractionKind, Command, Document, Formula};
 use std::fmt::{Display, Formatter, Write};
 use std::{fmt, iter};
 
@@ -88,11 +88,11 @@ impl DisplayItem for &str {
 }
 impl DisplayItem for String {
     fn try_one_liner(&self, writer: &mut dyn Write) -> fmt::Result {
-        writer.write_str(&self)
+        writer.write_str(self)
     }
 
     fn display_with_splits(&self, _prior_indentation: usize, writer: &mut String) -> fmt::Result {
-        writer.write_str(&self)
+        writer.write_str(self)
     }
 }
 
@@ -280,5 +280,19 @@ impl Display for AbstractionKind {
                 write!(f, "∀")
             }
         }
+    }
+}
+
+impl Display for Document {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut last = None;
+        for command in &self.commands {
+            if last.is_some() && matches!(command, Command::ClaimType(_, _)) {
+                writeln!(f)?;
+            }
+            writeln!(f, "> {}.", command.to_display_item().display_to_string())?;
+            last = Some(command);
+        }
+        Ok(())
     }
 }
