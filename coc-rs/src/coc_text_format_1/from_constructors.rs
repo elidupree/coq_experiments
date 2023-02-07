@@ -106,28 +106,24 @@ impl StronglyConnectedComponent<'_> {
     fn case_handler_usage(&self, constructor: ConstructorView) -> Formula {
         Formula::Usage(self.case_handler_name(constructor))
     }
-    fn case_handlers<'a>(
-        &'a self,
-        ty: TypeView<'a>,
-    ) -> impl Iterator<Item = (String, Formula)> + 'a {
-        ty.constructors().map(move |constructor| {
-            (
-                self.case_handler_name(constructor),
-                ForAll.of(
-                    self.constructor_parameters(constructor),
-                    apply(
-                        self.usage_representing(ty),
-                        self.resulting_type_parameters(constructor),
+    fn case_handlers(&self) -> impl Iterator<Item = (String, Formula)> + '_ {
+        self.types.values().flat_map(move |&ty| {
+            ty.constructors().map(move |constructor| {
+                (
+                    self.case_handler_name(constructor),
+                    ForAll.of(
+                        self.constructor_parameters(constructor),
+                        apply(
+                            self.usage_representing(ty),
+                            self.resulting_type_parameters(constructor),
+                        ),
                     ),
-                ),
-            )
+                )
+            })
         })
     }
-    fn return_types_and_case_handlers<'a>(
-        &'a self,
-        ty: TypeView<'a>,
-    ) -> impl Iterator<Item = (String, Formula)> + 'a {
-        self.return_types().chain(self.case_handlers(ty))
+    fn return_types_and_case_handlers(&self) -> impl Iterator<Item = (String, Formula)> + '_ {
+        self.return_types().chain(self.case_handlers())
     }
     fn args_compound_formula(&self, compound: ArgsCompoundView) -> Formula {
         match compound.cases() {
@@ -160,7 +156,7 @@ impl StronglyConnectedComponent<'_> {
                 Lambda.of(
                     self.type_parameters(ty),
                     ForAll.of(
-                        self.return_types_and_case_handlers(ty),
+                        self.return_types_and_case_handlers(),
                         apply(self.usage_representing(ty), self.type_parameter_usages(ty)),
                     ),
                 ),
@@ -191,7 +187,7 @@ impl StronglyConnectedComponent<'_> {
                     self.type_parameters(ty)
                         .chain(self.constructor_parameters(constructor)),
                     Lambda.of(
-                        self.return_types_and_case_handlers(ty),
+                        self.return_types_and_case_handlers(),
                         apply(
                             self.case_handler_usage(constructor),
                             self.constructor_parameter_usages(constructor),
@@ -216,40 +212,37 @@ impl Document {
         }
         impl<'a> StrongComponentSearch<'a> {
             fn discover(&mut self, ty: TypeView<'a>) {
-                if !self.preorder_numbers.contains_key(ty.name()) {
-                    self.preorder_numbers
-                        .insert(ty.name(), self.preorder_numbers.len());
-                    self.unassigned_stack.push(ty.name());
-                    self.p_stack.push(ty.name());
-                    for other in ty.all_referenced_types() {
-                        if let Some(other_preorder_number) = self.preorder_numbers.get(other.name())
-                        {
-                            if !self.component_assignments.contains_key(other.name()) {
-                                while let Some(last) = self.p_stack.pop() {
-                                    if self.preorder_numbers.get(last).unwrap()
-                                        <= other_preorder_number
-                                    {
-                                        self.p_stack.push(last);
-                                        break;
-                                    }
+                self.preorder_numbers
+                    .insert(ty.name(), self.preorder_numbers.len());
+                self.unassigned_stack.push(ty.name());
+                self.p_stack.push(ty.name());
+                for other in ty.all_referenced_types() {
+                    if let Some(other_preorder_number) = self.preorder_numbers.get(other.name()) {
+                        if !self.component_assignments.contains_key(other.name()) {
+                            while let Some(last) = self.p_stack.pop() {
+                                if self.preorder_numbers.get(last).unwrap() <= other_preorder_number
+                                {
+                                    self.p_stack.push(last);
+                                    break;
                                 }
                             }
-                        } else {
-                            self.discover(other);
+                        }
+                    } else {
+                        self.discover(other);
+                    }
+                }
+                if self.p_stack.last() == Some(&ty.name()) {
+                    let mut new_component = BTreeMap::new();
+                    while let Some(last) = self.unassigned_stack.pop() {
+                        new_component.insert(last, self.constructors.get(last));
+                        self.component_assignments
+                            .insert(last, self.components.len());
+                        if last == ty.name() {
+                            break;
                         }
                     }
-                    if self.p_stack.last() == Some(&ty.name()) {
-                        let mut new_component = BTreeMap::new();
-                        while let Some(last) = self.unassigned_stack.pop() {
-                            new_component.insert(last, self.constructors.get(last));
-                            self.component_assignments
-                                .insert(last, self.components.len());
-                            if last == ty.name() {
-                                break;
-                            }
-                        }
-                        self.components.push(new_component);
-                    }
+                    self.components.push(new_component);
+                    self.p_stack.pop();
                 }
             }
         }
@@ -262,7 +255,9 @@ impl Document {
             p_stack: vec![],
         };
         for ty in constructors.types() {
-            search.discover(ty);
+            if !search.preorder_numbers.contains_key(ty.name()) {
+                search.discover(ty);
+            }
         }
         let mut commands = Vec::new();
         for component in search.components {
