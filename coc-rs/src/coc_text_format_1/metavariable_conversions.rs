@@ -278,13 +278,13 @@ impl MetavariablesInjectionContext<'_> {
         if let Some(name) = name {
             id_maker.name = name.to_owned();
         }
-        if let Formula::Usage(uname) = formula {
-            assert!(
-                name.is_none(),
-                "You can't have explicit aliases right now for technical reasons"
-            );
-            id_maker.name = uname.to_owned();
-        }
+        // if let Formula::Usage(uname) = formula {
+        //     assert!(
+        //         name.is_none(),
+        //         "You can't have explicit aliases right now for technical reasons"
+        //     );
+        //     id_maker.name = uname.to_owned();
+        // }
         for id in self.formula_child_ids(formula, child_results) {
             id_maker
                 .data_arguments
@@ -342,6 +342,9 @@ impl MetavariablesInjectionContext<'_> {
         });
         let id = preexisting.unwrap_or_else(|| {
             let id = self.environment.create_metavariable("Formula".to_string());
+            if let Some(name) = name {
+                self.environment.rename(id, name.to_owned());
+            }
             self.environment
                 .set_constructor(id, formula.constructor_name().map(ToOwned::to_owned));
             for (index, &child_id) in self

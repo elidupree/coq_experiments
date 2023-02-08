@@ -2,6 +2,7 @@
 #![feature(once_cell)]
 
 use clap::{arg, Parser};
+use coc_rs::coc_text_format_1::Document;
 use coc_rs::constructors::{Notation, NotationItem, COC};
 use coc_rs::metavariable::{
     CanMatch, Environment, MetavariableArgsCompoundView, MetavariableArgsCompoundViewCases,
@@ -770,8 +771,11 @@ impl Interface {
 
 static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
     let args = Args::parse();
-    let environment = read_json_file::<_, Environment>(&args.file_path)
+    let mut environment = read_json_file::<_, Environment>(&args.file_path)
         .unwrap_or_else(|_| Environment::default());
+    if let Some(inject) = args.inject_coc_1 {
+        Document::parse(&std::fs::read_to_string(&inject).unwrap()).inject_into(&mut environment);
+    }
     Mutex::new(Interface {
         file_path: args.file_path,
         environment,
@@ -865,6 +869,10 @@ struct Args {
     /// Path to data file
     #[arg(short, long)]
     file_path: String,
+
+    /// .coc_1 file to inject
+    #[arg(short, long)]
+    inject_coc_1: Option<String>,
 }
 
 #[actix_web::main]
