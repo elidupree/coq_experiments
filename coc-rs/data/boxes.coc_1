@@ -12,7 +12,7 @@ We will also need the constructor (to construct a PBox from a ℙ), and the indu
 > PBoxC : ∀_:ℙ, PBox.
 > PBoxC := λP:ℙ, λQ:ℙ, λconsumer:(∀_:ℙ, Q), (consumer P).
 > PBoxContains : ∀_:PBox, ∀_:ℙ, ℙ.
-> PBoxContains : λp:PBox, λP:ℙ, ∀Q:(∀_:PBox, ℙ), ∀_:(Q (PBoxC P)), (Q p).
+> PBoxContains := λp:PBox, λP:ℙ, ∀Q:(∀_:PBox, ℙ), ∀_:(Q (PBoxC P)), (Q p).
 > PBoxI : ∀_:PBox, ℙ.
 > PBoxI := λpb:PBox, ∀Q:(∀_:PBox, ℙ), ∀_:(∀P:ℙ, (Q (PBoxC P))), (Q pb).
 > PBoxC_Contains : ∀R:ℙ, (PBoxContains (PBoxC R) R).
@@ -113,7 +113,7 @@ To express the proposition "there exists a member of the boxed P", we must say "
 As one might predict, since TBox1 is defined in multiple cases, both the Contains predicate and the MemberOf predicate will also need more cases. Also, before we can use the membership predicate, we will often need to match on which constructor of TBox was used, which means we need this induction predicate:
 
 > TBox1I : ∀_:TBox1, ℙ.
-> TBox1I : (
+> TBox1I := (
     λt:TBox1,
     (
       ∀Q:(∀_:TBox1, ℙ),
@@ -140,9 +140,9 @@ As one might predict, since TBox1 is defined in multiple cases, both the Contain
   ).
 
 > TBox1ContainsP : ∀_:TBox1, ∀_:ℙ, ℙ.
-> TBox1ContainsP : λt:TBox1, λP:ℙ, ∀Q:(∀_:TBox1, ℙ), ∀_:(Q (TBox1_OfP P)), (Q p).
+> TBox1ContainsP := λt:TBox1, λP:ℙ, ∀Q:(∀_:TBox1, ℙ), ∀_:(Q (TBox1_OfP P)), (Q p).
 > TBox1ContainsPropItself : ∀_:TBox1, ℙ.
-> TBox1ContainsPropItself : (
+> TBox1ContainsPropItself := (
     λt:TBox1,
     ∀Q:(∀_:TBox1, ℙ), ∀_:(Q TBox1_OfPropItself), (Q p)
   ).

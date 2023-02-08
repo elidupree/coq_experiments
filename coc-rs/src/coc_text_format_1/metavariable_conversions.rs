@@ -47,6 +47,7 @@ impl StructuralIdMaker {
     }
 }
 
+#[derive(Debug)]
 struct InjectFormulaResult {
     id: MetavariableId,
     binding_trees_by_free_variable: HashMap<String, MetavariableId>,
@@ -60,6 +61,24 @@ impl Formula {
             Formula::Hole => return None,
             Formula::Abstraction(_) => "Abstraction",
             Formula::Apply(_) => "Apply",
+        })
+    }
+}
+
+enum BindingTree {
+    Hole,
+    BindNotThis,
+    BindVariable,
+    BindBranch([MetavariableId; 2]),
+}
+
+impl BindingTree {
+    fn constructor_name(&self) -> Option<&'static str> {
+        Some(match self {
+            BindingTree::Hole => return None,
+            BindingTree::BindNotThis => "BindNotThis",
+            BindingTree::BindVariable => "BindVariable",
+            BindingTree::BindBranch(_) => "BindBranch",
         })
     }
 }
@@ -183,7 +202,8 @@ impl MetavariablesInjectionContext<'_> {
 
         for kind in [Lambda, ForAll] {
             let structural_id = StructuralIdMaker::abstraction_kind(kind).make_id();
-            self.ids_by_complete_structure
+            let ids = self
+                .ids_by_complete_structure
                 .entry(structural_id)
                 .or_insert_with(|| {
                     let id = self
@@ -193,6 +213,7 @@ impl MetavariablesInjectionContext<'_> {
                         .set_constructor(id, Some(format!("{:?}", kind)));
                     vec![id]
                 });
+            self.ids_by_abstraction_kind.insert(kind, ids[0]);
         }
     }
     fn formula_child_ids(
@@ -221,6 +242,28 @@ impl MetavariablesInjectionContext<'_> {
         }
         result
     }
+    fn binding_tree_structural_id(
+        &self,
+        tree: &BindingTree,
+        name: Option<&str>,
+    ) -> Option<StructuralId> {
+        let mut id_maker = StructuralIdMaker {
+            typename: "BindingTree".to_owned(),
+            constructor: tree.constructor_name()?.to_owned(),
+            ..default()
+        };
+        if let Some(name) = name {
+            id_maker.name = name.to_owned();
+        }
+        if let BindingTree::BindBranch(child_ids) = tree {
+            for id in child_ids {
+                id_maker
+                    .data_arguments
+                    .push(*self.structures_by_id.get(&id)?);
+            }
+        }
+        Some(id_maker.make_id())
+    }
     fn formula_structural_id(
         &self,
         formula: &Formula,
@@ -248,6 +291,35 @@ impl MetavariablesInjectionContext<'_> {
                 .push(*self.structures_by_id.get(&id)?);
         }
         Some(id_maker.make_id())
+    }
+    fn inject_binding_tree(&mut self, tree: &BindingTree, name: Option<&str>) -> MetavariableId {
+        let mut child_ids: ArrayVec<MetavariableId, 2> = ArrayVec::new();
+
+        let structural_id = self.binding_tree_structural_id(tree, name);
+        let preexisting = structural_id.and_then(|structural_id| {
+            self.ids_by_complete_structure
+                .get(&structural_id)
+                .and_then(|a| a.first())
+                .copied()
+        });
+        preexisting.unwrap_or_else(|| {
+            let id = self
+                .environment
+                .create_metavariable("BindingTree".to_string());
+            self.environment
+                .set_constructor(id, tree.constructor_name().map(ToOwned::to_owned));
+            for (index, &child_id) in child_ids.iter().enumerate() {
+                self.environment
+                    .set_data_argument_indexed(id, index, Some(child_id));
+            }
+            if let Some(structural_id) = structural_id {
+                self.ids_by_complete_structure
+                    .entry(structural_id)
+                    .or_default()
+                    .push(id);
+            }
+            id
+        })
     }
     fn inject_formula(&mut self, formula: &Formula, name: Option<&str>) -> InjectFormulaResult {
         let mut child_results: ArrayVec<InjectFormulaResult, 2> = ArrayVec::new();
@@ -292,15 +364,70 @@ impl MetavariablesInjectionContext<'_> {
             self.injected_formulas_by_name.insert(name.to_owned(), id);
         }
 
+        let mut binding_trees_by_free_variable = HashMap::new();
+        if let [left, right] = child_results.as_slice() {
+            let left_trees = &left.binding_trees_by_free_variable;
+            let mut right_trees = right.binding_trees_by_free_variable.clone();
+            if let Formula::Abstraction(a) = formula {
+                if a.parameter_name != "_" {
+                    right_trees.remove(&a.parameter_name);
+                }
+            }
+            for (name, &left_tree) in left_trees {
+                let right_tree = right_trees
+                    .get(name)
+                    .copied()
+                    .unwrap_or_else(|| right_trees["_"]);
+                binding_trees_by_free_variable.insert(
+                    name.clone(),
+                    self.inject_binding_tree(
+                        &BindingTree::BindBranch([left_tree, right_tree]),
+                        None,
+                    ),
+                );
+            }
+            for (name, right_tree) in right_trees {
+                if !left_trees.contains_key(&name) {
+                    let left_tree = left_trees["_"];
+                    binding_trees_by_free_variable.insert(
+                        name,
+                        self.inject_binding_tree(
+                            &BindingTree::BindBranch([left_tree, right_tree]),
+                            None,
+                        ),
+                    );
+                }
+            }
+        }
+
         match formula {
-            Formula::Prop => {}
-            Formula::Usage(_) => {}
-            Formula::Hole => {}
-            Formula::Abstraction(_) | Formula::Apply(_) => {}
+            Formula::Prop => {
+                binding_trees_by_free_variable.insert(
+                    "_".to_string(),
+                    self.inject_binding_tree(&BindingTree::BindNotThis, None),
+                );
+            }
+            Formula::Usage(n) => {
+                binding_trees_by_free_variable.insert(
+                    n.to_string(),
+                    self.inject_binding_tree(&BindingTree::BindVariable, None),
+                );
+                binding_trees_by_free_variable.insert(
+                    "_".to_string(),
+                    self.inject_binding_tree(&BindingTree::BindNotThis, None),
+                );
+            }
+            Formula::Hole => {
+                binding_trees_by_free_variable.insert(
+                    "_".to_string(),
+                    self.inject_binding_tree(&BindingTree::Hole, None),
+                );
+            }
+            _ => {}
         }
         InjectFormulaResult {
             id,
-            binding_trees_by_free_variable: Default::default(),
+            binding_trees_by_free_variable,
         }
     }
     pub fn inject_commands(&mut self, commands: &[Command]) {
@@ -312,7 +439,9 @@ impl MetavariablesInjectionContext<'_> {
         for command in commands {
             if let Command::ClaimType(name, formula) = command {
                 let type_result = self.inject_formula(formula, None);
-                let value_id = *self.injected_formulas_by_name.get(name).unwrap();
+                let Some(&value_id) = self.injected_formulas_by_name.get(name) else {
+                    panic!("Tried to claim type of formula with name {name}, but it didn't exist");
+                };
                 let mut preexisting = None;
                 if let (Some(&vs), Some(&ts)) = (
                     self.structures_by_id.get(&value_id),
