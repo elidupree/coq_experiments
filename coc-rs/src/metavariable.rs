@@ -140,7 +140,7 @@ impl<'a> MetavariableView<'a> {
                 metavariable: *self,
             })
     }
-    pub fn existing_children(&self) -> impl Iterator<Item = MetavariableView<'a>> + '_ {
+    pub fn all_children(&self) -> impl Iterator<Item = Option<MetavariableView<'a>>> + '_ {
         let constructor = self.constructor();
         self.type_parameters()
             .map(|a| a.child())
@@ -150,7 +150,9 @@ impl<'a> MetavariableView<'a> {
                     .map(|a| a.child())
                     .chain(constructor.preconditions().map(|a| a.child()))
             }))
-            .flatten()
+    }
+    pub fn existing_children(&self) -> impl Iterator<Item = MetavariableView<'a>> + '_ {
+        self.all_children().flatten()
     }
 }
 impl<'a> MetavariableTypeParameterView<'a> {

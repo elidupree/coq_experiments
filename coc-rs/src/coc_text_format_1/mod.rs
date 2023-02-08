@@ -1,5 +1,6 @@
 mod display;
 mod from_constructors;
+mod metavariable_conversions;
 
 #[allow(clippy::all)]
 mod lalrpop_wrapper {
@@ -8,11 +9,9 @@ mod lalrpop_wrapper {
 }
 
 pub use self::lalrpop_wrapper::coc_text_format_1::CommandParser;
-use crate::metavariable::{Environment, MetavariableId};
 use live_prop_test::{live_prop_test, lpt_assert_eq};
 use regex::{Captures, Regex};
 use std::borrow::Cow;
-use std::collections::HashMap;
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Command {
@@ -20,7 +19,7 @@ pub enum Command {
     ClaimType(String, Formula),
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub enum AbstractionKind {
     Lambda,
     #[default]
@@ -49,12 +48,6 @@ pub struct Document {
     commands: Vec<Command>,
 }
 
-struct MetavariablesInjectionContext {
-    existing_names: HashMap<String, Vec<MetavariableId>>,
-    ids_by_complete_structure: HashMap<u128, Vec<MetavariableId>>,
-    unused_ids_by_unshared_incomplete_structure: HashMap<u128, Vec<MetavariableId>>,
-}
-
 fn command_regex() -> Regex {
     Regex::new(r"(?m)^>([^\.]*)\.").unwrap()
 }
@@ -80,15 +73,6 @@ impl Document {
                     .display_to_string()
             )
         })
-    }
-    pub fn inject_as_metavariables(environment: &mut Environment) {
-        let mut existing_names: HashMap<String, Vec<MetavariableId>> = HashMap::new();
-        for metavariable in environment.metavariables() {
-            existing_names
-                .entry(metavariable.name().to_owned())
-                .or_default()
-                .push(metavariable.id());
-        }
     }
 }
 
@@ -155,13 +139,20 @@ fn tests() {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use crate::coc_text_format_1::metavariable_conversions::MetavariablesInjectionContext;
+    use crate::metavariable::Environment;
+    fn check_document(path: &str) {
+        let document = Document::parse(&std::fs::read_to_string(path).unwrap());
+        let mut environment = Environment::default();
+        let mut injector = MetavariablesInjectionContext::for_environment(&mut environment);
+        injector.inject_commands(&document.commands);
+    }
     #[test]
     fn load_boxes() {
-        Document::parse(&std::fs::read_to_string("data/boxes.coc_1").unwrap());
+        check_document("data/boxes.coc_1");
     }
     #[test]
     fn load_inductive() {
-        Document::parse(&std::fs::read_to_string("data/inductive_types.coc_1").unwrap());
+        check_document("data/inductive_types.coc_1");
     }
 }
