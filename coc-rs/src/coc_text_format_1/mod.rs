@@ -9,6 +9,8 @@ mod lalrpop_wrapper {
 }
 
 pub use self::lalrpop_wrapper::coc_text_format_1::CommandParser;
+use crate::coc_text_format_1::metavariable_conversions::MetavariablesInjectionContext;
+use crate::metavariable::Environment;
 use live_prop_test::{live_prop_test, lpt_assert_eq};
 use regex::{Captures, Regex};
 use std::borrow::Cow;
@@ -73,6 +75,10 @@ impl Document {
                     .display_to_string()
             )
         })
+    }
+    pub fn inject_into(&self, environment: &mut Environment) {
+        let mut injector = MetavariablesInjectionContext::for_environment(environment);
+        injector.inject_commands(&self.commands);
     }
 }
 
@@ -139,13 +145,11 @@ fn tests() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::coc_text_format_1::metavariable_conversions::MetavariablesInjectionContext;
     use crate::metavariable::Environment;
     fn check_document(path: &str) {
         let document = Document::parse(&std::fs::read_to_string(path).unwrap());
         let mut environment = Environment::default();
-        let mut injector = MetavariablesInjectionContext::for_environment(&mut environment);
-        injector.inject_commands(&document.commands);
+        document.inject_into(&mut environment);
     }
     #[test]
     fn load_boxes() {

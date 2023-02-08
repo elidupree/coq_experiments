@@ -259,7 +259,7 @@ impl MetavariablesInjectionContext<'_> {
             for id in child_ids {
                 id_maker
                     .data_arguments
-                    .push(*self.structures_by_id.get(&id)?);
+                    .push(*self.structures_by_id.get(id)?);
             }
         }
         Some(id_maker.make_id())
@@ -293,8 +293,6 @@ impl MetavariablesInjectionContext<'_> {
         Some(id_maker.make_id())
     }
     fn inject_binding_tree(&mut self, tree: &BindingTree, name: Option<&str>) -> MetavariableId {
-        let mut child_ids: ArrayVec<MetavariableId, 2> = ArrayVec::new();
-
         let structural_id = self.binding_tree_structural_id(tree, name);
         let preexisting = structural_id.and_then(|structural_id| {
             self.ids_by_complete_structure
@@ -308,9 +306,11 @@ impl MetavariablesInjectionContext<'_> {
                 .create_metavariable("BindingTree".to_string());
             self.environment
                 .set_constructor(id, tree.constructor_name().map(ToOwned::to_owned));
-            for (index, &child_id) in child_ids.iter().enumerate() {
-                self.environment
-                    .set_data_argument_indexed(id, index, Some(child_id));
+            if let BindingTree::BindBranch(child_ids) = tree {
+                for (index, &child_id) in child_ids.iter().enumerate() {
+                    self.environment
+                        .set_data_argument_indexed(id, index, Some(child_id));
+                }
             }
             if let Some(structural_id) = structural_id {
                 self.ids_by_complete_structure
