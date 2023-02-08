@@ -296,9 +296,7 @@ impl MetavariablesInjectionContext<'_> {
             Formula::Prop => {}
             Formula::Usage(_) => {}
             Formula::Hole => {}
-            Formula::Abstraction(_) | Formula::Apply(_) => {
-                child_results.extend(children.iter().map(|c| self.inject_formula(c, None)))
-            }
+            Formula::Abstraction(_) | Formula::Apply(_) => {}
         }
         InjectFormulaResult {
             id,
