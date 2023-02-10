@@ -104,7 +104,7 @@ Thus, to implement induction, we augment a datatype with an *induction predicate
       ∀P:(∀n:Natural, ℙ),
       ∀0_case:(P 0),
       ∀successor_case:(∀m:Natural, ∀_:(P m), (P (successor n))),
-      P
+      (P n)
     )
   ).
 
@@ -170,8 +170,8 @@ Next, let's talk about mutual recursion. In mutually recursive functions, the fu
       ∀P:ℙ,
       ∀Q:ℙ,
       ∀nil_case:P,
-      ∀odd_case:(∀_:A, ∀_:Q, P),
-      ∀even_case:(∀_:B, ∀_:P, Q),
+      ∀odd_case:(∀_:A, ∀_:P, Q),
+      ∀even_case:(∀_:B, ∀_:Q, P),
       P
     )
   ).
@@ -183,9 +183,9 @@ Next, let's talk about mutual recursion. In mutually recursive functions, the fu
       ∀P:ℙ,
       ∀Q:ℙ,
       ∀nil_case:P,
-      ∀odd_case:(∀_:A, ∀_:Q, P),
-      ∀even_case:(∀_:B, ∀_:P, Q),
-      P
+      ∀odd_case:(∀_:A, ∀_:P, Q),
+      ∀even_case:(∀_:B, ∀_:Q, P),
+      Q
     )
   ).
 
@@ -196,8 +196,8 @@ Next, let's talk about mutual recursion. In mutually recursive functions, the fu
     λP:ℙ,
     λQ:ℙ,
     λnil_case:P,
-    λodd_case:(∀_:A, ∀_:Q, P),
-    λeven_case:(∀_:B, ∀_:P, Q),
+    λodd_case:(∀_:A, ∀_:P, Q),
+    λeven_case:(∀_:B, ∀_:Q, P),
     nil_case
   ).
 > OddCons : ∀A:ℙ, ∀B:ℙ, ∀_:A, ∀_:(EvenList A B), (OddList A B).
@@ -209,8 +209,8 @@ Next, let's talk about mutual recursion. In mutually recursive functions, the fu
     λP:ℙ,
     λQ:ℙ,
     λnil_case:P,
-    λodd_case:(∀_:A, ∀_:Q, P),
-    λeven_case:(∀_:B, ∀_:P, Q),
+    λodd_case:(∀_:A, ∀_:P, Q),
+    λeven_case:(∀_:B, ∀_:Q, P),
     (odd_case head (tail P Q nil_case odd_case even_case))
   ).
 > EvenCons : ∀A:ℙ, ∀B:ℙ, ∀_:B, ∀_:(OddList A B), (EvenList A B).
@@ -222,8 +222,8 @@ Next, let's talk about mutual recursion. In mutually recursive functions, the fu
     λP:ℙ,
     λQ:ℙ,
     λnil_case:P,
-    λodd_case:(∀_:A, ∀_:Q, P),
-    λeven_case:(∀_:B, ∀_:P, Q),
+    λodd_case:(∀_:A, ∀_:P, Q),
+    λeven_case:(∀_:B, ∀_:Q, P),
     (even_case head (tail P Q nil_case odd_case even_case))
   ).
 
