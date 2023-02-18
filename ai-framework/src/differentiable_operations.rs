@@ -1,5 +1,5 @@
 use live_prop_test::{live_prop_test, lpt_assert_eq};
-use ndarray::{arr0, ArrayD, ArrayViewD, Ix0, Zip};
+use ndarray::{arr0, ArrayD, ArrayViewD, Axis, Ix0, Zip};
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
@@ -210,5 +210,28 @@ impl DifferentiableOperation for SparseSoftmaxCrossEntropy {
         });
 
         vec![a, b]
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct MeanAxis(usize);
+pub fn mean_axis(axis: usize) -> AnyDifferentiableOperation {
+    AnyDifferentiableOperation::new(MeanAxis(axis))
+}
+
+impl DifferentiableOperation for MeanAxis {
+    fn forward(&self, inputs: &[ArrayViewD<f32>]) -> ArrayD<f32> {
+        let [a]: &[ArrayViewD<f32>; 1] = inputs.try_into().unwrap();
+        a.mean_axis(Axis(self.0)).unwrap()
+    }
+
+    fn gradient(
+        &self,
+        inputs: &[ArrayViewD<f32>],
+        output_gradient: ArrayViewD<f32>,
+    ) -> Vec<ArrayD<f32>> {
+        let [a]: &[ArrayViewD<f32>; 1] = inputs.try_into().unwrap();
+        let axis_length = a.len_of(Axis(self.0));
+        vec![(output_gradient).broadcast(a.shape()).unwrap().to_owned() * axis_length as f32]
     }
 }
