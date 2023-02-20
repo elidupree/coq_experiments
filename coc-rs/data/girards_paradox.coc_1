@@ -1,5 +1,11 @@
 An implementation of Girard's paradox, as stated in the paper "A Simplification of Girard's Paradox" (Antonius J.C. Hurkens), except that instead of being written in System U, it's written in "CoC plus ℙ:ℙ", which I believe is strictly more permissive.
 
+> False : ℙ.
+> False := ∀P:ℙ, P.
+
+> not := ∀_:ℙ, ℙ.
+> not := ∀_:ℙ, False.
+
 > power : ∀_:ℙ, ℙ.
 > power := λS:ℙ, ∀_:S, ℙ.
 
@@ -9,7 +15,7 @@ An implementation of Girard's paradox, as stated in the paper "A Simplification 
 > U : ℙ.
 > U := ∀X:ℙ, ∀_:(∀_:(pp X), X), (pp X).
 
-Hurkens says we will not consider tau and sigma as formulas (why? perhaps they are not valid formulas of System U? but it looks like they would be…). At any rate, in "CoC plus ℙ:ℙ", they can be formulas.
+Hurkens says we will not consider tau and sigma as formulas, because they wanted to emphasize that the subformulas of `Paradox` are _normal_. I don't really care if the subformulas are normal (just that there is an instance of `False` at all), so I'm going to just write them as formulas.
 
 > tau : ∀_:(pp U), U.
 > tau := (
@@ -23,6 +29,13 @@ Hurkens says we will not consider tau and sigma as formulas (why? perhaps they a
 > sigma : ∀_:U, (pp U).
 > sigma := λs:U, (s U (λt:(pp U), (tau t))).
 
+> Delta : (power U).
+> Delta := λy:U, (not (∀p:(power U), ∀_:(sigma y p), (p (tau (sigma y))))).
+
+> Omega : U.
+> Omega := (tau (λp:(power U), ∀x:U, ∀_:(sigma x p), (p x))).
+
+> Paradox : False.
 > Paradox := (
     (
       λ0:(∀p:(power U), ∀x:U, ∀_:(∀_:(sigma x p), (p x)), (p Omega)),
