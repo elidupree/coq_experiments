@@ -12,3 +12,5 @@ serde = { version = "1.0.152", features = ["derive"] }
 live-prop-test = { git = "https://github.com/elidupree/live-prop-test" }
 map-macro = "0.2.5"
 autograd = {git="https://github.com/elidupree/rust-autograd/"}
+rand = "0.8.5"
+ordered-float = "3.4.0"
