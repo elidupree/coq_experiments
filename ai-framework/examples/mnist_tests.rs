@@ -5,10 +5,10 @@ use ai_framework::differentiable_operations::{
 };
 use ai_framework::graph;
 use ai_framework::model_1::{
-    calculate_loss, loss_graph_observed_output_variable_id, loss_output_id, train_1,
-    InputOutputSampleBatch,
+    calculate_loss, loss_graph_observed_output_variable_id, loss_output_id, InputOutputSampleBatch,
+    Optimizer,
 };
-use ai_framework::optimizers_1::NaiveGradientDescent;
+use ai_framework::optimizers_1::{AdaptiveGradientDescent, NaiveGradientDescent};
 use map_macro::map;
 use ndarray::{s, Array2};
 use std::env::args;
@@ -56,25 +56,24 @@ fn main() {
     };
 
     let mut parameter_value = Array2::zeros((28 * 28, 10)).into_dyn();
+    let lg = graph.compose(&train_samples.output_loss_graph);
+    let mut optimizer = AdaptiveGradientDescent { learning_rate: 1.0 };
     for iteration in 0..100000 {
-        train_1(
+        optimizer.step(
             map! {"weights".to_owned() => &mut parameter_value},
-            &graph,
-            &train_samples,
-            &mut NaiveGradientDescent {
-                learning_rate: 0.006,
-            },
+            train_samples.variable_values_including_observed_outputs(),
+            &lg,
         );
 
         let train_loss = calculate_loss(
             map! {"weights".to_owned() => & parameter_value},
-            &graph,
+            &lg,
             &train_samples,
         );
 
         let test_loss = calculate_loss(
             map! {"weights".to_owned() => & parameter_value},
-            &graph,
+            &lg,
             &test_samples,
         );
         println!("{iteration}:\n  Train loss: {train_loss}\n  Test loss:{test_loss}");

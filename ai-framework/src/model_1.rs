@@ -76,12 +76,12 @@ pub struct Node {
     pub operation: Operation,
 }
 
-pub trait Optimize {
-    fn optimize(
+pub trait Optimizer {
+    fn step(
         &mut self,
         parameters: HashMap<VariableId, &mut ValueMaybeBatch>,
         variables_being_held_constant: HashMap<VariableId, ValueMaybeBatch>,
-        graph: &Graph,
+        loss_graph: &Graph,
     );
 }
 
@@ -92,7 +92,9 @@ pub struct InputOutputSampleBatch {
 }
 
 impl InputOutputSampleBatch {
-    fn variable_values_including_observed_outputs(&self) -> HashMap<VariableId, ValueMaybeBatch> {
+    pub fn variable_values_including_observed_outputs(
+        &self,
+    ) -> HashMap<VariableId, ValueMaybeBatch> {
         let mut result = self.inputs.clone();
         result.extend(
             self.outputs
@@ -400,7 +402,7 @@ pub fn loss_graph_observed_output_variable_id(output_id: impl Into<OutputId>) ->
 
 pub fn calculate_loss(
     parameters: HashMap<VariableId, &ValueMaybeBatch>,
-    graph: &Graph,
+    loss_graph: &Graph,
     samples: &InputOutputSampleBatch,
 ) -> f32 {
     let mut variable_values: HashMap<VariableId, ValueMaybeBatch> =
@@ -410,8 +412,7 @@ pub fn calculate_loss(
             .iter()
             .map(|(id, &val)| (id.clone(), val.clone())),
     );
-    let lg = graph.compose(&samples.output_loss_graph);
-    *get_only_value(do_inference(&lg, &variable_values).outputs[&loss_output_id()].view())
+    *get_only_value(do_inference(&loss_graph, &variable_values).outputs[&loss_output_id()].view())
 }
 
 // fn loss_graph(graph: &Graph, output_loss_function: Graph) -> Graph {
@@ -495,19 +496,19 @@ pub fn calculate_loss(
 //         .collect()
 // }
 
-pub fn train_1(
-    parameters: HashMap<VariableId, &mut ValueMaybeBatch>,
-    graph: &Graph,
-    samples: &InputOutputSampleBatch,
-    optimizer: &mut impl Optimize,
-) {
-    let lg = graph.compose(&samples.output_loss_graph);
-    optimizer.optimize(
-        parameters,
-        samples.variable_values_including_observed_outputs(),
-        &lg,
-    );
-}
+// pub fn train_1(
+//     parameters: HashMap<VariableId, &mut ValueMaybeBatch>,
+//     graph: &Graph,
+//     samples: &InputOutputSampleBatch,
+//     optimizer: &mut impl Optimizer,
+// ) {
+//     let lg = graph.compose(&samples.output_loss_graph);
+//     optimizer.step(
+//         parameters,
+//         samples.variable_values_including_observed_outputs(),
+//         &lg,
+//     );
+// }
 
 // pub fn train_2(
 //     mut parameters: HashMap<VariableId, &mut ValueMaybeBatch>,
