@@ -7,6 +7,13 @@ use std::fmt::{Debug, Formatter};
 use std::iter::zip;
 use std::sync::Arc;
 
+pub fn get_only_value<T>(i: impl IntoIterator<Item = T>) -> T {
+    let mut i = i.into_iter();
+    let result = i.next().unwrap();
+    assert!(i.next().is_none());
+    result
+}
+
 #[live_prop_test]
 pub trait DifferentiableOperation: Send + Sync {
     fn forward(&self, inputs: &[ArrayViewD<f32>]) -> ArrayD<f32>;
@@ -254,27 +261,16 @@ impl DifferentiableOperation for MeanSquaredDifference {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-struct MatrixMultiply;
 pub fn matrix_multiply() -> AnyDifferentiableOperation {
-    AnyDifferentiableOperation::new("matrix_multiply", MatrixMultiply)
-}
-
-impl DifferentiableOperation for MatrixMultiply {
-    fn forward(&self, inputs: &[ArrayViewD<f32>]) -> ArrayD<f32> {
-        let [a, b]: &[ArrayViewD<f32>; 2] = inputs.try_into().unwrap();
-        let a = a.clone().into_dimensionality::<Ix2>().unwrap();
-        let b = b.clone().into_dimensionality::<Ix2>().unwrap();
-        a.dot(&b).into_dyn()
-    }
-
-    fn gradient(
-        &self,
-        inputs: &[ArrayViewD<f32>],
-        output_gradient: ArrayViewD<f32>,
-    ) -> Vec<ArrayD<f32>> {
-        todo!()
-    }
+    AnyDifferentiableOperation::new(
+        "matrix_multiply",
+        AutogradWrapper {
+            graph_setup: Arc::new(|context, inputs| {
+                let [a, b]: &[Tensor<f32>; 2] = inputs.try_into().unwrap();
+                tensor_ops::matmul(a, b)
+            }),
+        },
+    )
 }
 
 pub fn sparse_softmax_cross_entropy() -> AnyDifferentiableOperation {
@@ -308,6 +304,6 @@ impl DifferentiableOperation for MeanAxis {
     ) -> Vec<ArrayD<f32>> {
         let [a]: &[ArrayViewD<f32>; 1] = inputs.try_into().unwrap();
         let axis_length = a.len_of(Axis(self.0));
-        vec![(output_gradient).broadcast(a.shape()).unwrap().to_owned() * axis_length as f32]
+        vec![(output_gradient).broadcast(a.shape()).unwrap().to_owned() / axis_length as f32]
     }
 }

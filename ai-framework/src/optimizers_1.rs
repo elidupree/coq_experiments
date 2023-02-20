@@ -18,7 +18,7 @@ impl Optimize for NaiveGradientDescent {
         let inference_result = do_inference(graph, &variable_values);
         let gradients = backprop(graph, &variable_values, &inference_result);
         for (id, value) in &mut parameters {
-            **value += &(gradients.variables[id].clone() * self.learning_rate);
+            **value -= &(gradients.variables[id].clone() * self.learning_rate);
         }
     }
 }

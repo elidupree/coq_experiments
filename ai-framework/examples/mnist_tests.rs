@@ -10,7 +10,7 @@ use ai_framework::model_1::{
 };
 use ai_framework::optimizers_1::NaiveGradientDescent;
 use map_macro::map;
-use ndarray::Array2;
+use ndarray::{s, Array2};
 use std::env::args;
 
 mod mnist_data;
@@ -19,6 +19,9 @@ fn main() {
     live_prop_test::initialize();
     let path = args().collect::<Vec<_>>()[1].clone();
     let ((x_train, y_train), (x_test, y_test)) = mnist_data::load(path);
+    let n = 1000;
+    let x_train = x_train.slice(s![..n, ..]).to_owned().into_dyn();
+    let y_train = y_train.slice(s![..n, ..]).to_owned().into_dyn();
     println!(
         "Loaded of shape {:?}, {:?}, {:?}, {:?}",
         x_train.shape(),
@@ -48,13 +51,13 @@ fn main() {
     };
 
     let mut parameter_value = Array2::zeros((28 * 28, 10)).into_dyn();
-    for iteration in 0..100 {
+    for iteration in 0..100000 {
         train_1(
             map! {"weights".to_owned() => &mut parameter_value},
             &graph,
             &samples,
             &mut NaiveGradientDescent {
-                learning_rate: 0.0006,
+                learning_rate: 0.006,
             },
         );
 

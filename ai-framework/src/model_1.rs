@@ -1,5 +1,5 @@
 use crate::differentiable_operations::{
-    AnyDifferentiableOperation as Operation, DifferentiableOperation,
+    get_only_value, AnyDifferentiableOperation as Operation, DifferentiableOperation,
 };
 use ndarray::{arr0, ArrayD, ArrayViewD, Ix0};
 use serde::{Deserialize, Serialize};
@@ -92,7 +92,7 @@ pub struct TrainingSampleBatch {
 }
 
 impl TrainingSampleBatch {
-    fn for_optimizer(&self) -> HashMap<VariableId, ValueMaybeBatch> {
+    fn variable_values_including_observed_outputs(&self) -> HashMap<VariableId, ValueMaybeBatch> {
         let mut result = self.inputs.clone();
         result.extend(
             self.outputs
@@ -365,7 +365,7 @@ pub fn backprop(
             context.output_gradient(id),
         );
         for (i, g) in zip(&node.inputs, node_input_gradients) {
-            dbg!(i, g.shape());
+            //dbg!(i, g.shape());
             match i {
                 NodeInput::Variable(i) => {
                     *context
@@ -403,17 +403,15 @@ pub fn calculate_loss(
     graph: &Graph,
     samples: &TrainingSampleBatch,
 ) -> f32 {
-    let mut variable_values: HashMap<VariableId, ValueMaybeBatch> = samples.inputs.clone();
+    let mut variable_values: HashMap<VariableId, ValueMaybeBatch> =
+        samples.variable_values_including_observed_outputs();
     variable_values.extend(
         parameters
             .iter()
             .map(|(id, &val)| (id.clone(), val.clone())),
     );
     let lg = graph.compose(&samples.output_loss_graph);
-    do_inference(&lg, &variable_values).outputs[&loss_output_id()]
-        .view()
-        .into_dimensionality::<Ix0>()
-        .unwrap()[()]
+    *get_only_value(do_inference(&lg, &variable_values).outputs[&loss_output_id()].view())
 }
 
 // fn loss_graph(graph: &Graph, output_loss_function: Graph) -> Graph {
@@ -504,7 +502,11 @@ pub fn train_1(
     optimizer: &mut impl Optimize,
 ) {
     let lg = graph.compose(&samples.output_loss_graph);
-    optimizer.optimize(parameters, samples.for_optimizer(), &lg);
+    optimizer.optimize(
+        parameters,
+        samples.variable_values_including_observed_outputs(),
+        &lg,
+    );
 }
 
 // pub fn train_2(
