@@ -11,3 +11,4 @@ uuid = { version = "1.2.2", features = ["v4", "serde"] }
 serde = { version = "1.0.152", features = ["derive"] }
 live-prop-test = { git = "https://github.com/elidupree/live-prop-test" }
 map-macro = "0.2.5"
+autograd = {git="https://github.com/elidupree/rust-autograd/"}

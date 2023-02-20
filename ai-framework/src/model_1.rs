@@ -43,7 +43,7 @@ pub fn merge<K: Eq + Hash, V>(a: HashMap<K, V>, b: HashMap<K, V>) -> HashMap<K, 
 
 #[derive(Clone, Debug, Default)]
 pub struct Graph {
-    variables: HashSet<VariableId>,
+    // variables: HashSet<VariableId>,
     nodes: HashMap<NodeId, Node>,
     outputs: HashMap<OutputId, NodeId>,
 }
@@ -137,7 +137,11 @@ impl Graph {
             result.push((id, node));
             for neighbor in &node.inputs {
                 if let NodeInput::Node(neighbor) = neighbor {
-                    *num_out_edges.get_mut(neighbor).unwrap() -= 1;
+                    let count = num_out_edges.get_mut(neighbor).unwrap();
+                    *count -= 1;
+                    if *count == 0 {
+                        ready_stack.push(*neighbor);
+                    }
                 }
             }
         }
@@ -151,23 +155,16 @@ impl Graph {
 
     pub fn compose(&self, other: &Graph) -> Graph {
         let mut result = Graph {
-            variables: self.variables.clone(),
+            // variables: self.variables.clone(),
             nodes: self.nodes.clone(),
             outputs: other.outputs.clone(),
         };
-        let mut replacements = HashMap::new();
-        for id in &other.variables {
-            if let Some(&output) = self.outputs.get(id) {
-                replacements.insert(id, output);
-            } else {
-                result.variables.insert(id.clone());
-            }
-        }
+        // let mut replacements = HashMap::new();
         for (&id, node) in &other.nodes {
             let mut new_node = node.clone();
             for input in &mut new_node.inputs {
                 if let NodeInput::Variable(vi) = input {
-                    if let Some(&repl) = replacements.get(vi) {
+                    if let Some(&repl) = self.outputs.get(vi) {
                         *input = NodeInput::Node(repl);
                     }
                 }
@@ -246,20 +243,24 @@ macro_rules! graph {
     };
 }
 
+#[derive(Debug)]
 pub struct InferenceResult {
     pub outputs: HashMap<OutputId, ValueMaybeBatch>,
     pub internal_values: HashMap<NodeId, ValueMaybeBatch>,
 }
+#[derive(Debug)]
 pub struct LossGradients {
     pub variables: HashMap<VariableId, ValueMaybeBatchDerivative>,
     pub internal_values: HashMap<NodeId, ValueMaybeBatchDerivative>,
 }
 
+#[derive(Debug)]
 struct InferenceContext<'a> {
     // graph: &'a Graph,
     variable_values: &'a HashMap<VariableId, ValueMaybeBatch>,
     result_so_far: InferenceResult,
 }
+#[derive(Debug)]
 struct BackpropContext<'a> {
     // graph: &'a Graph,
     variable_values: &'a HashMap<VariableId, ValueMaybeBatch>,
@@ -272,7 +273,15 @@ impl InferenceContext<'_> {
         node.inputs
             .iter()
             .map(|i| match i {
-                NodeInput::Variable(variable_id) => self.variable_values[variable_id].view(),
+                NodeInput::Variable(variable_id) => match self.variable_values.get(variable_id) {
+                    Some(v) => v.view(),
+                    None => {
+                        panic!(
+                            "Tried to get variable `{variable_id}` but inputs only provided {:?}",
+                            self.variable_values.keys().collect::<Vec<_>>(),
+                        );
+                    }
+                },
                 NodeInput::Node(node_id) => self.result_so_far.internal_values[node_id].view(),
             })
             .collect()
@@ -306,6 +315,17 @@ pub fn do_inference(
         },
     };
     for (id, node) in graph.forward_topological_order() {
+        // dbg!(
+        //     graph,
+        //     &context
+        //         .result_so_far
+        //         .internal_values
+        //         .keys()
+        //         .collect::<Vec<_>>(),
+        //     id,
+        //     node,
+        //     graph.forward_topological_order()
+        // );
         let node_output = node.operation.forward(&context.node_input_values(node));
         context
             .result_so_far
@@ -345,16 +365,25 @@ pub fn backprop(
             context.output_gradient(id),
         );
         for (i, g) in zip(&node.inputs, node_input_gradients) {
+            dbg!(i, g.shape());
             match i {
                 NodeInput::Variable(i) => {
                     *context
                         .result_so_far
                         .variables
                         .entry(i.clone())
-                        .or_default() += &g;
+                        .or_insert_with(|| {
+                            ArrayD::zeros(variable_values.get(i).unwrap().shape())
+                        }) += &g;
                 }
                 NodeInput::Node(i) => {
-                    *context.result_so_far.internal_values.entry(*i).or_default() += &g;
+                    *context
+                        .result_so_far
+                        .internal_values
+                        .entry(*i)
+                        .or_insert_with(|| {
+                            ArrayD::zeros(inference_result.internal_values.get(i).unwrap().shape())
+                        }) += &g;
                 }
             }
         }
@@ -380,7 +409,8 @@ pub fn calculate_loss(
             .iter()
             .map(|(id, &val)| (id.clone(), val.clone())),
     );
-    do_inference(graph, &variable_values).outputs[&loss_output_id()]
+    let lg = graph.compose(&samples.output_loss_graph);
+    do_inference(&lg, &variable_values).outputs[&loss_output_id()]
         .view()
         .into_dimensionality::<Ix0>()
         .unwrap()[()]

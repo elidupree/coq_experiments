@@ -16,6 +16,7 @@ use std::env::args;
 mod mnist_data;
 
 fn main() {
+    live_prop_test::initialize();
     let path = args().collect::<Vec<_>>()[1].clone();
     let ((x_train, y_train), (x_test, y_test)) = mnist_data::load(path);
     println!(
