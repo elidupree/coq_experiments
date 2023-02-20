@@ -85,13 +85,13 @@ pub trait Optimize {
     );
 }
 
-pub struct TrainingSampleBatch {
+pub struct InputOutputSampleBatch {
     pub inputs: HashMap<VariableId, ValueMaybeBatch>,
     pub outputs: HashMap<OutputId, ValueMaybeBatch>,
     pub output_loss_graph: Graph,
 }
 
-impl TrainingSampleBatch {
+impl InputOutputSampleBatch {
     fn variable_values_including_observed_outputs(&self) -> HashMap<VariableId, ValueMaybeBatch> {
         let mut result = self.inputs.clone();
         result.extend(
@@ -401,7 +401,7 @@ pub fn loss_graph_observed_output_variable_id(output_id: impl Into<OutputId>) ->
 pub fn calculate_loss(
     parameters: HashMap<VariableId, &ValueMaybeBatch>,
     graph: &Graph,
-    samples: &TrainingSampleBatch,
+    samples: &InputOutputSampleBatch,
 ) -> f32 {
     let mut variable_values: HashMap<VariableId, ValueMaybeBatch> =
         samples.variable_values_including_observed_outputs();
@@ -498,7 +498,7 @@ pub fn calculate_loss(
 pub fn train_1(
     parameters: HashMap<VariableId, &mut ValueMaybeBatch>,
     graph: &Graph,
-    samples: &TrainingSampleBatch,
+    samples: &InputOutputSampleBatch,
     optimizer: &mut impl Optimize,
 ) {
     let lg = graph.compose(&samples.output_loss_graph);

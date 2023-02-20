@@ -6,7 +6,7 @@ use ai_framework::differentiable_operations::{
 use ai_framework::graph;
 use ai_framework::model_1::{
     calculate_loss, loss_graph_observed_output_variable_id, loss_output_id, train_1,
-    TrainingSampleBatch,
+    InputOutputSampleBatch,
 };
 use ai_framework::optimizers_1::NaiveGradientDescent;
 use map_macro::map;
@@ -34,15 +34,20 @@ fn main() {
     let parameter = "weights";
     let output = "output";
 
-    let inputs = map! {image_variable.to_owned() => x_train};
     let output_loss_graph = graph! {
         [let a = (sparse_softmax_cross_entropy())(output, loss_graph_observed_output_variable_id(output))];
         [@(loss_output_id()) = (mean_axis(0))(a)];
     };
 
-    let samples = TrainingSampleBatch {
-        inputs: inputs.clone(),
-        outputs: map! {"output".to_owned() => y_train},
+    let train_samples = InputOutputSampleBatch {
+        inputs: map! {image_variable.to_owned() => x_train},
+        outputs: map! {output.to_owned() => y_train},
+        output_loss_graph: output_loss_graph.clone(),
+    };
+
+    let test_samples = InputOutputSampleBatch {
+        inputs: map! {image_variable.to_owned() => x_test},
+        outputs: map! {output.to_owned() => y_test},
         output_loss_graph,
     };
 
@@ -55,18 +60,24 @@ fn main() {
         train_1(
             map! {"weights".to_owned() => &mut parameter_value},
             &graph,
-            &samples,
+            &train_samples,
             &mut NaiveGradientDescent {
                 learning_rate: 0.006,
             },
         );
 
-        let loss = calculate_loss(
+        let train_loss = calculate_loss(
             map! {"weights".to_owned() => & parameter_value},
             &graph,
-            &samples,
+            &train_samples,
         );
-        println!("{iteration}: Loss: {loss}");
+
+        let test_loss = calculate_loss(
+            map! {"weights".to_owned() => & parameter_value},
+            &graph,
+            &test_samples,
+        );
+        println!("{iteration}:\n  Train loss: {train_loss}\n  Test loss:{test_loss}");
     }
     println!("Done!")
 }
