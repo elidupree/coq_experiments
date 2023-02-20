@@ -1,0 +1,46 @@
+An implementation of Girard's paradox, as stated in the paper "A Simplification of Girard's Paradox" (Antonius J.C. Hurkens), except that instead of being written in System U, it's written in "CoC plus ℙ:ℙ", which I believe is strictly more permissive.
+
+> power : ∀_:ℙ, ℙ.
+> power := λS:ℙ, ∀_:S, ℙ.
+
+> pp : ∀_:ℙ, ℙ.
+> pp := λS:ℙ, (power (power S)).
+
+> U : ℙ.
+> U := ∀X:ℙ, ∀_:(∀_:(pp X), X), (pp X).
+
+Hurkens says we will not consider tau and sigma as formulas (why? perhaps they are not valid formulas of System U? but it looks like they would be…). At any rate, in "CoC plus ℙ:ℙ", they can be formulas.
+
+> tau : ∀_:(pp U), U.
+> tau := (
+    λt:(pp U),
+    λX:ℙ,
+    λf:(∀_:(pp X), X),
+    λp:(power X),
+    (t (λx:U, (p (f (x X f)))))
+  ).
+
+> sigma : ∀_:U, (pp U).
+> sigma := λs:U, (s U (λt:(pp U), (tau t))).
+
+> Paradox := (
+    (
+      λ0:(∀p:(power U), ∀x:U, ∀_:(∀_:(sigma x p), (p x)), (p Omega)),
+      (
+        0
+        Delta
+        (
+          λx:U,
+          λ2:(sigma x Delta),
+          λ3:(∀p:(power U), ∀_:(sigma x p), (p (tau (sigma x)))),
+          (3 Delta 2 (λp:(power U), (3 (λy:U, (p (tau y))))))
+        )
+        (λp:(power U), (0 (λy:U, (p (tau (sigma y))))))
+      )
+    )
+    (
+      λp:(power U),
+      λ1:(∀x:U, ∀_:(sigma x p), (p x)),
+      (1 Omega (λx:U, (1 (tau (sigma x)))))
+    )
+  ).
