@@ -1,6 +1,6 @@
 use crate::model_1::{Array, ArrayExt};
 use autograd::tensor_ops::grad_with_default;
-use autograd::{tensor_ops, Context, Evaluator, Tensor};
+use autograd::{Context, Evaluator, Tensor};
 use live_prop_test::{live_prop_test, lpt_assert_eq};
 use ndarray::{ArrayViewD, Axis, Ix0, Zip};
 use std::cell::RefCell;
@@ -234,30 +234,6 @@ impl DifferentiableOperation for MeanSquaredDifference {
     }
 }
 
-pub fn matrix_multiply() -> AnyDifferentiableOperation {
-    AnyDifferentiableOperation::new(
-        "matrix_multiply",
-        AutogradWrapper {
-            graph_setup: Arc::new(|_context, inputs| {
-                let [a, b]: &[Tensor<f32>; 2] = inputs.try_into().unwrap();
-                tensor_ops::matmul(a, b)
-            }),
-        },
-    )
-}
-
-pub fn sparse_softmax_cross_entropy() -> AnyDifferentiableOperation {
-    AnyDifferentiableOperation::new(
-        "sparse_softmax_cross_entropy",
-        AutogradWrapper {
-            graph_setup: Arc::new(|_context, inputs| {
-                let [a, b]: &[Tensor<f32>; 2] = inputs.try_into().unwrap();
-                tensor_ops::sparse_softmax_cross_entropy(a, b)
-            }),
-        },
-    )
-}
-
 #[derive(Copy, Clone, Debug)]
 struct MeanAxis(usize);
 pub fn mean_axis(axis: usize) -> AnyDifferentiableOperation {
@@ -276,3 +252,24 @@ impl DifferentiableOperation for MeanAxis {
         vec![(output_gradient).broadcast(a.shape()).unwrap().to_shared() / axis_length as f32]
     }
 }
+
+macro_rules! autograd_wrapper {
+    ($name:ident()[$($input_binding: ident),*$(,)*] => $body:expr) => {
+        pub fn $name() -> AnyDifferentiableOperation {
+            AnyDifferentiableOperation::new(
+                ::std::stringify!($name),
+                AutogradWrapper {
+                    graph_setup: Arc::new(|_context, inputs| {
+                        #[allow(unused_imports)]
+                        use autograd::tensor_ops::*;
+                        let [$($input_binding),*] = inputs else { panic!("Wrong number of inputs to {} operation", ::std::stringify!($name)) };
+                        $body
+                    }),
+                },
+            )
+        }
+    };
+}
+
+autograd_wrapper!(matrix_multiply()[a, b] => matmul(a, b));
+autograd_wrapper!(sparse_softmax_cross_entropy()[a, b] => sparse_softmax_cross_entropy(a, b));
