@@ -1,7 +1,8 @@
+use crate::model_1::{Array, ArrayExt};
 use autograd::tensor_ops::grad_with_default;
 use autograd::{tensor_ops, Context, Evaluator, Tensor};
 use live_prop_test::{live_prop_test, lpt_assert_eq};
-use ndarray::{arr0, ArrayD, ArrayViewD, Axis, Ix0, Ix2, Zip};
+use ndarray::{ArrayViewD, Axis, Ix0, Zip};
 use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
 use std::iter::zip;
@@ -16,23 +17,19 @@ pub fn get_only_value<T>(i: impl IntoIterator<Item = T>) -> T {
 
 #[live_prop_test]
 pub trait DifferentiableOperation: Send + Sync {
-    fn forward(&self, inputs: &[ArrayViewD<f32>]) -> ArrayD<f32>;
+    fn forward(&self, inputs: &[Array]) -> Array;
 
     #[live_prop_test(
         postcondition = "gradient_reasonably_correct(self, inputs, old(output_gradient.clone()), &result)"
     )]
-    fn gradient(
-        &self,
-        inputs: &[ArrayViewD<f32>],
-        output_gradient: ArrayViewD<f32>,
-    ) -> Vec<ArrayD<f32>>;
+    fn gradient(&self, inputs: &[Array], output_gradient: Array) -> Vec<Array>;
 }
 
 fn gradient_reasonably_correct(
     _operation: &(impl DifferentiableOperation + ?Sized),
-    inputs: &[ArrayViewD<f32>],
-    _output_gradient: ArrayViewD<f32>,
-    result: &[ArrayD<f32>],
+    inputs: &[Array],
+    _output_gradient: Array,
+    result: &[Array],
 ) -> Result<(), String> {
     lpt_assert_eq!(inputs.len(), result.len());
     for (i, r) in zip(inputs, result) {
@@ -58,6 +55,7 @@ pub struct AnyDifferentiableOperation {
 
 #[derive(Clone)]
 pub struct AutogradWrapper {
+    #[allow(clippy::type_complexity)]
     graph_setup: Arc<
         dyn for<'a> Fn(&'a Context<'a, f32>, &[Tensor<'a, f32>]) -> Tensor<'a, f32> + Send + Sync,
     >,
@@ -111,44 +109,27 @@ impl<'graph, 'env, 'feed> AutogradContextHack<'graph, 'env, 'feed> {
             result
         })
     }
-    fn placeholders<'b>(
-        &'b mut self,
-        inputs: &[ArrayViewD<'feed, f32>],
-    ) -> Vec<Tensor<'graph, f32>> {
+    fn placeholders<'b>(&'b mut self, inputs: &'feed [Array]) -> Vec<Tensor<'graph, f32>> {
         inputs
             .iter()
-            .map(|input| self.placeholder(input.clone()))
+            .map(|input| self.placeholder(input.view()))
             .collect()
-    }
-    fn run<R>(f: impl FnOnce(AutogradContextHack) -> R) -> R {
-        autograd::run(|context| {
-            let mut this = AutogradContextHack {
-                context,
-                evaluator: context.evaluator(),
-                next_placeholder_index: 0,
-            };
-            f(this)
-        })
     }
 }
 
 #[live_prop_test(use_trait_tests)]
 impl DifferentiableOperation for AnyDifferentiableOperation {
-    fn forward(&self, inputs: &[ArrayViewD<f32>]) -> ArrayD<f32> {
+    fn forward(&self, inputs: &[Array]) -> Array {
         self.operation_impl.forward(inputs)
     }
 
-    fn gradient(
-        &self,
-        inputs: &[ArrayViewD<f32>],
-        output_gradient: ArrayViewD<f32>,
-    ) -> Vec<ArrayD<f32>> {
+    fn gradient(&self, inputs: &[Array], output_gradient: Array) -> Vec<Array> {
         self.operation_impl.gradient(inputs, output_gradient)
     }
 }
 
 impl DifferentiableOperation for AutogradWrapper {
-    fn forward(&self, inputs: &[ArrayViewD<f32>]) -> ArrayD<f32> {
+    fn forward(&self, inputs: &[Array]) -> Array {
         autograd::run(|context| {
             let mut context = AutogradContextHack {
                 context,
@@ -156,31 +137,29 @@ impl DifferentiableOperation for AutogradWrapper {
                 next_placeholder_index: 0,
             };
             let output = (self.graph_setup)(context.context, &context.placeholders(inputs));
-            context.evaluator.push(output).run().pop().unwrap().unwrap()
+            context
+                .evaluator
+                .push(output)
+                .run()
+                .pop()
+                .unwrap()
+                .unwrap()
+                .into_shared()
         })
     }
 
-    fn gradient(
-        &self,
-        inputs: &[ArrayViewD<f32>],
-        output_gradient: ArrayViewD<f32>,
-    ) -> Vec<ArrayD<f32>> {
+    fn gradient(&self, inputs: &[Array], output_gradient: Array) -> Vec<Array> {
         autograd::run(|context| {
             let mut context = AutogradContextHack {
                 context,
                 evaluator: context.evaluator(),
                 next_placeholder_index: 0,
             };
-            let input_tensors = context.placeholders(
-                &inputs
-                    .iter()
-                    .map(|v| v.clone().reborrow())
-                    .collect::<Vec<_>>(),
-            );
-            let output_gradient = context.placeholder(output_gradient.reborrow());
+            let input_tensors = context.placeholders(inputs);
+            let output_gradient = context.placeholder(output_gradient.view());
             let output = (self.graph_setup)(context.context, &input_tensors);
             let grads = grad_with_default(&[output], &input_tensors, &[output_gradient]);
-            let mut result = context
+            let result = context
                 .evaluator
                 .extend(&grads)
                 .run()
@@ -188,12 +167,15 @@ impl DifferentiableOperation for AutogradWrapper {
                 .collect::<Result<Vec<_>, _>>()
                 .unwrap();
 
-            for (input, grad) in zip(inputs, &mut result) {
-                if grad.shape() != input.shape() {
-                    *grad = ArrayD::zeros(input.shape());
-                }
-            }
-            result
+            zip(inputs, result)
+                .map(|(input, grad)| {
+                    if grad.shape() != input.shape() {
+                        Array::zeros(input.shape())
+                    } else {
+                        grad.into_shared()
+                    }
+                })
+                .collect()
         })
     }
 }
@@ -205,20 +187,16 @@ pub fn sum_inputs() -> AnyDifferentiableOperation {
 }
 
 impl DifferentiableOperation for SumInputs {
-    fn forward(&self, inputs: &[ArrayViewD<f32>]) -> ArrayD<f32> {
-        let mut result = ArrayD::zeros(inputs[0].shape());
+    fn forward(&self, inputs: &[Array]) -> Array {
+        let mut result = Array::zeros(inputs[0].shape());
         for input in inputs {
             result += input;
         }
         result
     }
 
-    fn gradient(
-        &self,
-        inputs: &[ArrayViewD<f32>],
-        output_gradient: ArrayViewD<f32>,
-    ) -> Vec<ArrayD<f32>> {
-        inputs.iter().map(|_| output_gradient.to_owned()).collect()
+    fn gradient(&self, inputs: &[Array], output_gradient: Array) -> Vec<Array> {
+        inputs.iter().map(|_| output_gradient.clone()).collect()
     }
 }
 
@@ -229,28 +207,23 @@ pub fn mean_squared_difference() -> AnyDifferentiableOperation {
 }
 
 impl DifferentiableOperation for MeanSquaredDifference {
-    fn forward(&self, inputs: &[ArrayViewD<f32>]) -> ArrayD<f32> {
-        let [a, b]: &[ArrayViewD<f32>; 2] = inputs.try_into().unwrap();
-        arr0(
+    fn forward(&self, inputs: &[Array]) -> Array {
+        let [a, b]: &[Array; 2] = inputs.try_into().unwrap();
+        Array::from_scalar(
             Zip::from(a).and(b).par_fold(
                 || 0.0,
                 |sum, a, b| sum + (a - b).powi(2),
                 |sum1, sum2| sum1 + sum2,
             ) / a.len() as f32,
         )
-        .into_dyn()
     }
 
-    fn gradient(
-        &self,
-        inputs: &[ArrayViewD<f32>],
-        output_gradient: ArrayViewD<f32>,
-    ) -> Vec<ArrayD<f32>> {
-        let [a, b]: &[ArrayViewD<f32>; 2] = inputs.try_into().unwrap();
+    fn gradient(&self, inputs: &[Array], output_gradient: Array) -> Vec<Array> {
+        let [a, b]: &[Array; 2] = inputs.try_into().unwrap();
         let output_gradient = output_gradient.into_dimensionality::<Ix0>().unwrap()[()];
         let factor = output_gradient / a.len() as f32;
-        let mut a = a.to_owned();
-        let mut b = b.to_owned();
+        let mut a = a.clone();
+        let mut b = b.clone();
         Zip::from(&mut a).and(&mut b).par_for_each(|a, b| {
             let d = 2.0 * (*a - *b);
             *a = d * factor;
@@ -265,7 +238,7 @@ pub fn matrix_multiply() -> AnyDifferentiableOperation {
     AnyDifferentiableOperation::new(
         "matrix_multiply",
         AutogradWrapper {
-            graph_setup: Arc::new(|context, inputs| {
+            graph_setup: Arc::new(|_context, inputs| {
                 let [a, b]: &[Tensor<f32>; 2] = inputs.try_into().unwrap();
                 tensor_ops::matmul(a, b)
             }),
@@ -277,7 +250,7 @@ pub fn sparse_softmax_cross_entropy() -> AnyDifferentiableOperation {
     AnyDifferentiableOperation::new(
         "sparse_softmax_cross_entropy",
         AutogradWrapper {
-            graph_setup: Arc::new(|context, inputs| {
+            graph_setup: Arc::new(|_context, inputs| {
                 let [a, b]: &[Tensor<f32>; 2] = inputs.try_into().unwrap();
                 tensor_ops::sparse_softmax_cross_entropy(a, b)
             }),
@@ -292,18 +265,14 @@ pub fn mean_axis(axis: usize) -> AnyDifferentiableOperation {
 }
 
 impl DifferentiableOperation for MeanAxis {
-    fn forward(&self, inputs: &[ArrayViewD<f32>]) -> ArrayD<f32> {
-        let [a]: &[ArrayViewD<f32>; 1] = inputs.try_into().unwrap();
-        a.mean_axis(Axis(self.0)).unwrap()
+    fn forward(&self, inputs: &[Array]) -> Array {
+        let [a]: &[Array; 1] = inputs.try_into().unwrap();
+        a.mean_axis(Axis(self.0)).unwrap().into_shared()
     }
 
-    fn gradient(
-        &self,
-        inputs: &[ArrayViewD<f32>],
-        output_gradient: ArrayViewD<f32>,
-    ) -> Vec<ArrayD<f32>> {
-        let [a]: &[ArrayViewD<f32>; 1] = inputs.try_into().unwrap();
+    fn gradient(&self, inputs: &[Array], output_gradient: Array) -> Vec<Array> {
+        let [a]: &[Array; 1] = inputs.try_into().unwrap();
         let axis_length = a.len_of(Axis(self.0));
-        vec![(output_gradient).broadcast(a.shape()).unwrap().to_owned() / axis_length as f32]
+        vec![(output_gradient).broadcast(a.shape()).unwrap().to_shared() / axis_length as f32]
     }
 }

@@ -1,12 +1,14 @@
 use crate::differentiable_operations::{
     get_only_value, AnyDifferentiableOperation as Operation, DifferentiableOperation,
 };
-use ndarray::{arr0, ArrayD, ArrayViewD, Ix0};
+use ndarray::{arr0, stack, ArcArray, Axis, IxDyn, Slice};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::borrow::Borrow;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::iter::zip;
+use std::ops::{Deref, DerefMut};
 use uuid::Uuid;
 
 #[derive(
@@ -20,25 +22,27 @@ impl NodeId {
     }
 }
 
-pub type VariableId = String;
-pub type OutputId = VariableId;
-// the value of a variable, which can either be a batch, or not
-pub type ValueMaybeBatch = ArrayD<f32>;
-pub type ValueMaybeBatchView<'a> = ArrayViewD<'a, f32>;
-pub type ValueMaybeBatchDerivative = ArrayD<f32>;
-pub type ValueMaybeBatchDerivativeView<'a> = ArrayViewD<'a, f32>;
-
-pub fn merge<K: Eq + Hash, V>(a: HashMap<K, V>, b: HashMap<K, V>) -> HashMap<K, V> {
-    let mut a = a;
-    a.extend(b.into_iter());
-    a
+pub type Array = ArcArray<f32, IxDyn>;
+pub trait ArrayExt {
+    fn from_scalar(x: f32) -> Self;
+    fn as_scalar(&self) -> f32;
+}
+impl ArrayExt for Array {
+    fn from_scalar(x: f32) -> Self {
+        arr0(x).into_dyn().into_shared()
+    }
+    fn as_scalar(&self) -> f32 {
+        *get_only_value(self)
+    }
 }
 
-// pub trait Model {
-//     type Value;
-//     type Derivative;
-//     fn nodes() -> Vec<NodeId>;
-//     fn parameters() -> Vec<ParameterId>;
+pub type VariableId = String;
+pub type OutputId = VariableId;
+
+// pub fn merge<K: Eq + Hash, V>(a: HashMap<K, V>, b: HashMap<K, V>) -> HashMap<K, V> {
+//     let mut a = a;
+//     a.extend(b.into_iter());
+//     a
 // }
 
 #[derive(Clone, Debug, Default)]
@@ -76,32 +80,195 @@ pub struct Node {
     pub operation: Operation,
 }
 
-pub trait Optimizer {
+pub trait ParametersOptimizer {
     fn step(
         &mut self,
-        parameters: HashMap<VariableId, &mut ValueMaybeBatch>,
-        variables_being_held_constant: HashMap<VariableId, ValueMaybeBatch>,
+        parameters: &mut VariableValues,
+        training_batch: &BatchValues,
         loss_graph: &Graph,
     );
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct VariableValues {
+    values: HashMap<VariableId, Array>,
+}
+#[derive(Clone, Debug)]
+pub struct BatchValues {
+    values: VariableValues,
+    batch_size: usize,
+}
+
+impl Deref for VariableValues {
+    type Target = HashMap<VariableId, Array>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.values
+    }
+}
+impl DerefMut for VariableValues {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.values
+    }
+}
+
+impl Deref for BatchValues {
+    type Target = VariableValues;
+
+    fn deref(&self) -> &Self::Target {
+        &self.values
+    }
+}
+impl DerefMut for BatchValues {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.values
+    }
+}
+
+pub trait Merge<Other> {
+    fn merge(&self, other: &Other) -> Self;
+}
+
+impl VariableValues {
+    pub fn new(values: impl IntoIterator<Item = (VariableId, Array)>) -> VariableValues {
+        let values = values.into_iter().collect();
+        VariableValues { values }
+    }
+
+    pub fn get<Q>(&self, id: &Q) -> Array
+    where
+        VariableId: Borrow<Q>,
+        Q: Hash + Eq + Debug + ?Sized,
+    {
+        self.values
+            .get(id)
+            .unwrap_or_else(|| {
+                panic!("Tried to get value of variable {id:?} in a batch without that variable")
+            })
+            .clone()
+    }
+
+    pub fn get_mut<Q: Debug>(&mut self, id: &Q) -> &mut Array
+    where
+        VariableId: Borrow<Q>,
+        Q: Hash + Eq + Debug + ?Sized,
+    {
+        self.values.get_mut(id).unwrap_or_else(|| {
+            panic!("Tried to get value of variable {id:?} in a batch without that variable")
+        })
+    }
+
+    pub fn merge(&self, other: &VariableValues) -> VariableValues {
+        let mut values = self.values.clone();
+        values.extend(other.values.iter().map(|(i, v)| (i.clone(), v.clone())));
+        VariableValues { values }
+    }
+
+    pub fn update(&mut self, other: &VariableValues, factor: f32) {
+        for (id, value) in &mut self.values {
+            *value = (other[id].clone() * factor) + value.view();
+        }
+    }
+}
+
+impl Merge<BatchValues> for VariableValues {
+    fn merge(&self, other: &BatchValues) -> Self {
+        self.merge(other)
+    }
+}
+
+impl Merge<BatchValues> for BatchValues {
+    fn merge(&self, other: &BatchValues) -> Self {
+        assert_eq!(self.batch_size, other.batch_size);
+        BatchValues {
+            batch_size: self.batch_size,
+            values: self.values.merge(&other.values),
+        }
+    }
+}
+
+impl BatchValues {
+    pub fn new(values: impl IntoIterator<Item = (VariableId, Array)>) -> BatchValues {
+        let values = VariableValues::new(values);
+        let mut iter = values.values.values();
+        let first = iter.next().unwrap();
+        let batch_size = first.len_of(Axis(0));
+        for a in iter {
+            assert_eq!(a.len_of(Axis(0)), batch_size);
+        }
+        BatchValues { values, batch_size }
+    }
+
+    pub fn batch_size(&self) -> usize {
+        self.batch_size
+    }
+
+    pub fn slice_batch(&self, slice: Slice) -> BatchValues {
+        let values: HashMap<VariableId, Array> = self
+            .values
+            .values
+            .iter()
+            .map(|(id, value)| {
+                (id.clone(), {
+                    let mut value = value.clone();
+                    value.slice_axis_inplace(Axis(0), slice);
+                    value
+                })
+            })
+            .collect();
+        let batch_size = values.values().next().unwrap().len_of(Axis(0));
+        BatchValues {
+            batch_size,
+            values: VariableValues { values },
+        }
+    }
+
+    pub fn sample_batch(&self, samples: &[usize]) -> BatchValues {
+        let values = self
+            .values
+            .values
+            .iter()
+            .map(|(id, value)| {
+                (
+                    id.clone(),
+                    stack(
+                        Axis(0),
+                        &samples
+                            .iter()
+                            .map(|&i| value.index_axis(Axis(0), i))
+                            .collect::<Vec<_>>(),
+                    )
+                    .unwrap()
+                    .into_shared(),
+                )
+            })
+            .collect();
+        let batch_size = samples.len();
+        BatchValues {
+            batch_size,
+            values: VariableValues { values },
+        }
+    }
+
+    pub fn merge<Other: Merge<BatchValues>>(&self, other: &Other) -> Other {
+        other.merge(self)
+    }
+}
+
 pub struct InputOutputSampleBatch {
-    pub inputs: HashMap<VariableId, ValueMaybeBatch>,
-    pub outputs: HashMap<OutputId, ValueMaybeBatch>,
-    pub output_loss_graph: Graph,
+    pub inputs: BatchValues,
+    pub outputs: BatchValues,
 }
 
 impl InputOutputSampleBatch {
-    pub fn variable_values_including_observed_outputs(
-        &self,
-    ) -> HashMap<VariableId, ValueMaybeBatch> {
-        let mut result = self.inputs.clone();
+    pub fn variable_values_including_observed_outputs(&self) -> BatchValues {
+        let mut result = (**self.inputs).clone();
         result.extend(
             self.outputs
                 .iter()
                 .map(|(id, value)| (loss_graph_observed_output_variable_id(id), value.clone())),
         );
-        result
+        BatchValues::new(result)
     }
 }
 
@@ -186,41 +353,6 @@ macro_rules! graph {
             g
         }
     };
-    // (@line) => {};
-    // (@line: let $binding:ident $($rest:tt)*) => {
-    //     graph!(@name: $binding $($rest)*)
-    // };
-    // (@line: $($rest:tt)*) => {
-    //     graph!(@name: _ $($rest)*)
-    // };
-    // (@name: $binding:tt @($name:expr) = $($rest:tt)*) => {
-    //     {
-    //         graph!(@node: $binding {graph.new_output($name, node_id);} $($rest)*);
-    //         graph.new_output($name, node_id);
-    //         node_id
-    //     }
-    // };
-    // (@name: $binding:tt = $($rest:tt)*) => {
-    //     graph!(@node: $binding $($rest)*);
-    // };
-    // (@node: $binding:tt {$extra:stmt} = ($operation:expr)($($args:expr),*$(,)*); $($rest:tt)*) => {
-    //     let $binding = {
-    //         let node_id = graph.new_node(Node {
-    //             inputs: vec![$(($args).into()),*],
-    //             operation: $operation,
-    //         });
-    //         $extra
-    //         node_id
-    //     };
-    //     $(graph!(@line: $($rest)*))*
-    // };
-    // ($($stuff:tt)*) => {
-    //     {
-    //         let mut graph = Graph::default();
-    //         graph!(@line: $($stuff)*);
-    //         graph
-    //     }
-    // };
     (@line $g:ident: let $binding:ident $($rest:tt)*) => {
         let $binding = $crate::graph!(@name $g: $($rest)*);
     };
@@ -247,67 +379,62 @@ macro_rules! graph {
 
 #[derive(Debug)]
 pub struct InferenceResult {
-    pub outputs: HashMap<OutputId, ValueMaybeBatch>,
-    pub internal_values: HashMap<NodeId, ValueMaybeBatch>,
+    pub outputs: VariableValues,
+    pub internal_values: HashMap<NodeId, Array>,
 }
 #[derive(Debug)]
 pub struct LossGradients {
-    pub variables: HashMap<VariableId, ValueMaybeBatchDerivative>,
-    pub internal_values: HashMap<NodeId, ValueMaybeBatchDerivative>,
+    pub variables: VariableValues,
+    pub internal_values: HashMap<NodeId, Array>,
+}
+
+impl InferenceResult {
+    pub fn loss(&self) -> f32 {
+        self.outputs[&loss_output_id()].as_scalar()
+    }
 }
 
 #[derive(Debug)]
 struct InferenceContext<'a> {
     // graph: &'a Graph,
-    variable_values: &'a HashMap<VariableId, ValueMaybeBatch>,
+    variable_values: &'a VariableValues,
     result_so_far: InferenceResult,
 }
 #[derive(Debug)]
 struct BackpropContext<'a> {
     // graph: &'a Graph,
-    variable_values: &'a HashMap<VariableId, ValueMaybeBatch>,
+    variable_values: &'a VariableValues,
     inference_result: &'a InferenceResult,
     result_so_far: LossGradients,
 }
 
 impl InferenceContext<'_> {
-    fn node_input_values(&self, node: &Node) -> Vec<ValueMaybeBatchView> {
+    fn node_input_values(&self, node: &Node) -> Vec<Array> {
         node.inputs
             .iter()
             .map(|i| match i {
-                NodeInput::Variable(variable_id) => match self.variable_values.get(variable_id) {
-                    Some(v) => v.view(),
-                    None => {
-                        panic!(
-                            "Tried to get variable `{variable_id}` but inputs only provided {:?}",
-                            self.variable_values.keys().collect::<Vec<_>>(),
-                        );
-                    }
-                },
-                NodeInput::Node(node_id) => self.result_so_far.internal_values[node_id].view(),
+                NodeInput::Variable(variable_id) => self.variable_values.get(variable_id),
+                NodeInput::Node(node_id) => self.result_so_far.internal_values[node_id].clone(),
             })
             .collect()
     }
 }
 impl BackpropContext<'_> {
-    fn node_input_values(&self, node: &Node) -> Vec<ValueMaybeBatchView> {
+    fn node_input_values(&self, node: &Node) -> Vec<Array> {
         node.inputs
             .iter()
             .map(|i| match i {
-                NodeInput::Variable(variable_id) => self.variable_values[variable_id].view(),
-                NodeInput::Node(node_id) => self.inference_result.internal_values[node_id].view(),
+                NodeInput::Variable(variable_id) => self.variable_values.get(variable_id),
+                NodeInput::Node(node_id) => self.inference_result.internal_values[node_id].clone(),
             })
             .collect()
     }
-    fn output_gradient(&self, id: NodeId) -> ValueMaybeBatchDerivativeView {
-        self.result_so_far.internal_values[&id].view()
+    fn output_gradient(&self, id: NodeId) -> Array {
+        self.result_so_far.internal_values[&id].clone()
     }
 }
 
-pub fn do_inference(
-    graph: &Graph,
-    variable_values: &HashMap<VariableId, ValueMaybeBatch>,
-) -> InferenceResult {
+pub fn do_inference(graph: &Graph, variable_values: &VariableValues) -> InferenceResult {
     let mut context = InferenceContext {
         // graph,
         variable_values,
@@ -317,17 +444,6 @@ pub fn do_inference(
         },
     };
     for (id, node) in graph.forward_topological_order() {
-        // dbg!(
-        //     graph,
-        //     &context
-        //         .result_so_far
-        //         .internal_values
-        //         .keys()
-        //         .collect::<Vec<_>>(),
-        //     id,
-        //     node,
-        //     graph.forward_topological_order()
-        // );
         let node_output = node.operation.forward(&context.node_input_values(node));
         context
             .result_so_far
@@ -345,7 +461,7 @@ pub fn do_inference(
 
 pub fn backprop(
     graph: &Graph,
-    variable_values: &HashMap<VariableId, ValueMaybeBatch>,
+    variable_values: &VariableValues,
     inference_result: &InferenceResult,
 ) -> LossGradients {
     let mut context = BackpropContext {
@@ -360,7 +476,7 @@ pub fn backprop(
     context
         .result_so_far
         .internal_values
-        .insert(graph.outputs[&loss_output_id()], arr0(1.0).into_dyn());
+        .insert(graph.outputs[&loss_output_id()], Array::from_scalar(1.0));
     for (id, node) in graph.backward_topological_order() {
         let node_input_gradients = node.operation.gradient(
             &context.node_input_values(node),
@@ -374,9 +490,7 @@ pub fn backprop(
                         .result_so_far
                         .variables
                         .entry(i.clone())
-                        .or_insert_with(|| {
-                            ArrayD::zeros(variable_values.get(i).unwrap().shape())
-                        }) += &g;
+                        .or_insert_with(|| Array::zeros(variable_values.get(i).shape())) += &g;
                 }
                 NodeInput::Node(i) => {
                     *context
@@ -384,7 +498,7 @@ pub fn backprop(
                         .internal_values
                         .entry(*i)
                         .or_insert_with(|| {
-                            ArrayD::zeros(inference_result.internal_values.get(i).unwrap().shape())
+                            Array::zeros(inference_result.internal_values.get(i).unwrap().shape())
                         }) += &g;
                 }
             }
@@ -401,133 +515,15 @@ pub fn loss_graph_observed_output_variable_id(output_id: impl Into<OutputId>) ->
 }
 
 pub fn calculate_loss(
-    parameters: HashMap<VariableId, &ValueMaybeBatch>,
+    parameters: &VariableValues,
     loss_graph: &Graph,
     samples: &InputOutputSampleBatch,
 ) -> f32 {
-    let mut variable_values: HashMap<VariableId, ValueMaybeBatch> =
-        samples.variable_values_including_observed_outputs();
-    variable_values.extend(
-        parameters
-            .iter()
-            .map(|(id, &val)| (id.clone(), val.clone())),
-    );
-    *get_only_value(do_inference(&loss_graph, &variable_values).outputs[&loss_output_id()].view())
+    do_inference(
+        loss_graph,
+        &samples
+            .variable_values_including_observed_outputs()
+            .merge(parameters),
+    )
+    .loss()
 }
-
-// fn loss_graph(graph: &Graph, output_loss_function: Graph) -> Graph {
-//     let mut result = graph.clone();
-//     let observed_output_nodes: Vec<_> = graph
-//         .outputs
-//         .keys()
-//         .map(|output_id| result.new_variable(loss_graph_observed_output_variable_id(output_id)))
-//         .collect();
-//     let loss_node = result.new_node(Node {
-//         inputs: graph
-//             .outputs
-//             .values()
-//             .copied()
-//             .chain(observed_output_nodes)
-//             .collect(),
-//         operation: output_loss_function,
-//     });
-//     result.outputs = [(loss_output_id(), loss_node)].into_iter().collect();
-//     result
-// }
-// fn loss_graph2_node_output_variable_id(node_id: NodeId) -> VariableId {
-//     format!("output_for_{node_id:?}")
-// }
-// fn intermediate_value_loss_function() -> Operation {
-//     mean_squared_difference()
-// }
-//
-// fn loss_graph2(graph: &Graph, output_loss_function: Operation) -> Graph {
-//     let mut result = graph.clone();
-//     let intermediate_value_variables: Vec<(VariableId, NodeId, NodeId)> = graph
-//         .nodes
-//         .keys()
-//         .map(|&id| {
-//             let variable_id = loss_graph2_node_output_variable_id(id);
-//             (variable_id.clone(), id, result.new_variable(variable_id))
-//         })
-//         .collect();
-//     let observed_output_nodes: Vec<NodeId> = graph
-//         .outputs
-//         .keys()
-//         .map(|output_id| result.new_variable(loss_graph_observed_output_variable_id(output_id)))
-//         .collect();
-//     let original_loss_node = result.new_node(Node {
-//         inputs: graph
-//             .outputs
-//             .values()
-//             .copied()
-//             .chain(observed_output_nodes)
-//             .collect(),
-//         operation: output_loss_function,
-//     });
-//     let all_loss_nodes = iter::once(original_loss_node)
-//         .chain(
-//             intermediate_value_variables
-//                 .iter()
-//                 .map(|&(_, original, new)| {
-//                     result.new_node(Node {
-//                         inputs: vec![original, new],
-//                         operation: intermediate_value_loss_function(),
-//                     })
-//                 }),
-//         )
-//         .collect();
-//     let loss_node = result.new_node(Node {
-//         inputs: all_loss_nodes,
-//         operation: sum_inputs(),
-//     });
-//     result.outputs = [(loss_output_id(), loss_node)].into_iter().collect();
-//     result
-// }
-//
-// fn lossgraph2_internal_parameters(
-//     graph: &Graph,
-//     samples: &TrainingSampleBatch,
-// ) -> HashMap<VariableId, ValueMaybeBatch> {
-//     let internal_values = do_inference(graph, &samples.inputs).internal_values;
-//     internal_values
-//         .into_iter()
-//         .map(|(id, value)| (loss_graph2_node_output_variable_id(id), value))
-//         .collect()
-// }
-
-// pub fn train_1(
-//     parameters: HashMap<VariableId, &mut ValueMaybeBatch>,
-//     graph: &Graph,
-//     samples: &InputOutputSampleBatch,
-//     optimizer: &mut impl Optimizer,
-// ) {
-//     let lg = graph.compose(&samples.output_loss_graph);
-//     optimizer.step(
-//         parameters,
-//         samples.variable_values_including_observed_outputs(),
-//         &lg,
-//     );
-// }
-
-// pub fn train_2(
-//     mut parameters: HashMap<VariableId, &mut ValueMaybeBatch>,
-//     graph: &Graph,
-//     samples: &TrainingSampleBatch,
-//     optimizer: &mut impl Optimize,
-// ) {
-//     let lg = loss_graph2(graph, samples.output_loss_function.clone());
-//     let mut extra_parameters = lossgraph2_internal_parameters(graph, samples);
-//     let mut all_parameters = HashMap::new();
-//     all_parameters.extend(
-//         parameters
-//             .iter_mut()
-//             .map(|(id, value)| (id.clone(), &mut **value)),
-//     );
-//     all_parameters.extend(
-//         extra_parameters
-//             .iter_mut()
-//             .map(|(id, value)| (id.clone(), value)),
-//     );
-//     optimizer.optimize(all_parameters, samples.for_optimizer(), &lg);
-// }

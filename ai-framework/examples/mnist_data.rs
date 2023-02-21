@@ -1,12 +1,10 @@
 // EliDupree's note: copied and slightly modified from rust-autograd https://github.com/raskr/rust-autograd/blob/master/examples/download_mnist.sh
 
-use ndarray;
+use ai_framework::model_1::Array;
 use std::fs::File;
 use std::io;
 use std::io::Read;
 use std::path::Path;
-
-type NdArray = ndarray::Array<f32, ndarray::IxDyn>;
 
 /// load mnist dataset as "ndarray" objects.
 ///
@@ -14,7 +12,7 @@ type NdArray = ndarray::Array<f32, ndarray::IxDyn>;
 ///
 /// Shape of x_train and x_test: (num_samples, 28)
 /// Shape of y_train and y_test: (num_samples, 1)
-pub fn load<P: AsRef<Path>>(path: P) -> ((NdArray, NdArray), (NdArray, NdArray)) {
+pub fn load<P: AsRef<Path>>(path: P) -> ((Array, Array), (Array, Array)) {
     let path = path.as_ref();
     // load dataset as `Vec`s
     let (train_x, num_image_train): (Vec<f32>, usize) =
@@ -27,7 +25,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> ((NdArray, NdArray), (NdArray, NdArray))
         load_labels(path.join("t10k-labels-idx1-ubyte"));
 
     // Vec to ndarray
-    let as_arr = NdArray::from_shape_vec;
+    let as_arr = Array::from_shape_vec;
     let x_train = as_arr(ndarray::IxDyn(&[num_image_train, 28 * 28]), train_x).unwrap();
     let y_train = as_arr(ndarray::IxDyn(&[num_label_train, 1]), train_y).unwrap();
     let x_test = as_arr(ndarray::IxDyn(&[num_image_test, 28 * 28]), test_x).unwrap();
