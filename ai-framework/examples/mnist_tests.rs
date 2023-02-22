@@ -10,7 +10,7 @@ use ai_framework::model_1::{
 };
 #[allow(unused_imports)]
 use ai_framework::optimizers_1::{AdaptiveGradientDescent, AdaptiveSGD, NaiveGradientDescent};
-use ndarray::{s, ArcArray2, Axis};
+use ndarray::{s, Axis};
 use ordered_float::OrderedFloat;
 use std::env::args;
 use std::iter::zip;
@@ -34,7 +34,7 @@ fn main() {
     );
 
     let image_variable = "image";
-    let parameter = "weights";
+    // let parameter = "weights";
     let output = "output";
 
     let output_loss_graph = graph! {
@@ -58,11 +58,23 @@ fn main() {
     };
 
     let graph = graph! {
-        [@(output) = (matrix_multiply())(image_variable, parameter)];
+        [let a = (matrix_multiply())(image_variable, "p1")];
+        // [let b = (matrix_multiply())(a, "p2")];
+        [@(output) = (matrix_multiply())(a, "p3")];
     };
 
-    let parameter_value = ArcArray2::zeros((28 * 28, 10)).into_dyn();
-    let mut parameters = VariableValues::new([(parameter.to_owned(), parameter_value)]);
+    let array_gen = autograd::ndarray_ext::ArrayRng::default();
+    let mut parameters = VariableValues::new([
+        (
+            "p1".to_owned(),
+            array_gen.glorot_uniform(&[28 * 28, 10]).into_shared(),
+        ),
+        // ("p2".to_owned(), ArcArray2::zeros((10, 10)).into_dyn()),
+        (
+            "p3".to_owned(),
+            array_gen.glorot_uniform(&[10, 10]).into_shared(),
+        ),
+    ]);
     let lg = graph.compose(&output_loss_graph);
     //let mut optimizer = NaiveGradientDescent { learning_rate: 0.006 };
     //let mut optimizer = AdaptiveGradientDescent { learning_rate: 1.0 };
@@ -73,7 +85,7 @@ fn main() {
         adapt_on_failure: 0.96,
     };
     let start = Instant::now();
-    for iteration in 0..10000 {
+    for iteration in 0..1000 {
         optimizer.step(
             &mut parameters,
             &train_samples.variable_values_including_observed_outputs(),
