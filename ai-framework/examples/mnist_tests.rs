@@ -14,6 +14,7 @@ use ndarray::{s, ArcArray2, Axis};
 use ordered_float::OrderedFloat;
 use std::env::args;
 use std::iter::zip;
+use std::time::Instant;
 
 mod mnist_data;
 
@@ -68,15 +69,18 @@ fn main() {
     let mut optimizer = AdaptiveSGD {
         learning_rate: 1.0,
         batch_size: 200,
+        adapt_on_success: 1.03,
+        adapt_on_failure: 0.96,
     };
-    for iteration in 0..100 {
+    let start = Instant::now();
+    for iteration in 0..10000 {
         optimizer.step(
             &mut parameters,
             &train_samples.variable_values_including_observed_outputs(),
             &lg,
         );
 
-        if iteration % 20 == 0 {
+        if iteration % 50 == 0 {
             let train_loss = calculate_loss(&parameters, &lg, &train_samples);
 
             let test_loss = calculate_loss(&parameters, &lg, &test_samples);
@@ -102,7 +106,7 @@ fn main() {
             }
             let accuracy = num_correct as f32 / y_test.len_of(Axis(0)) as f32;
 
-            println!("{iteration}:\n  Train loss: {train_loss}\n  Test loss:{test_loss}\n  Test accuracy: {accuracy}");
+            println!("{iteration}:\n  Train loss: {train_loss}\n  Test loss:{test_loss}\n  Test accuracy: {accuracy}\n  Learning rate:{},\n  Time:{:?}", optimizer.learning_rate, start.elapsed());
         }
     }
     println!("Done!")

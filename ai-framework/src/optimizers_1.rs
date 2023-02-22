@@ -54,6 +54,8 @@ impl ParametersOptimizer for AdaptiveGradientDescent {
 pub struct AdaptiveSGD {
     pub learning_rate: f32,
     pub batch_size: usize,
+    pub adapt_on_success: f32,
+    pub adapt_on_failure: f32,
 }
 
 // impl AdaptiveSGD {
@@ -72,25 +74,29 @@ impl ParametersOptimizer for AdaptiveSGD {
         training_batch: &BatchValues,
         loss_graph: &Graph,
     ) {
-        let samples: Vec<usize> = (0..self.batch_size)
+        let train_samples: Vec<usize> = (0..self.batch_size)
+            .map(|_| (0..training_batch.batch_size()).sample_single(&mut rand::thread_rng()))
+            .collect();
+        let test_samples: Vec<usize> = (0..self.batch_size)
             .map(|_| (0..training_batch.batch_size()).sample_single(&mut rand::thread_rng()))
             .collect();
         let old_parameters = parameters.clone();
-        let training_batch = training_batch.sample_batch(&samples);
+        let test_batch = training_batch.sample_batch(&test_samples);
+        let training_batch = training_batch.sample_batch(&train_samples);
+
+        let old_test_loss = do_inference(loss_graph, &test_batch.merge(parameters)).loss();
 
         let variable_values = training_batch.merge(parameters);
         let inference_result = do_inference(loss_graph, &variable_values);
-        let old_loss = inference_result.loss();
         let gradients = backprop(loss_graph, &variable_values, &inference_result);
         parameters.update(&gradients.variables, -self.learning_rate);
 
-        let variable_values = training_batch.merge(parameters);
-        let new_loss = do_inference(loss_graph, &variable_values).loss();
-        if new_loss > old_loss {
+        let new_test_loss = do_inference(loss_graph, &test_batch.merge(parameters)).loss();
+        if new_test_loss > old_test_loss {
             parameters.clone_from(&old_parameters);
-            self.learning_rate /= 2.0;
+            self.learning_rate *= self.adapt_on_failure;
         } else {
-            self.learning_rate *= 1.03;
+            self.learning_rate *= self.adapt_on_success;
         }
     }
 }
