@@ -1,6 +1,5 @@
-use crate::model_1::{
-    backprop, do_inference, BatchValues, Graph, ParametersOptimizer, VariableValues,
-};
+use crate::model_1::{backprop, do_inference, Graph, ParametersOptimizer};
+use crate::model_shared::{BatchValues, VariableValues};
 use autograd::rand;
 use autograd::rand::distributions::uniform::SampleRange;
 

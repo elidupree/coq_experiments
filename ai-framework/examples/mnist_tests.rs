@@ -1,12 +1,13 @@
 #![recursion_limit = "2560"]
 
 use ai_framework::differentiable_operations::{
-    matrix_multiply, mean_axis, sparse_softmax_cross_entropy,
+    matrix_multiply, mean_axis, softplus, sparse_softmax_cross_entropy,
 };
-use ai_framework::graph;
-use ai_framework::model_1::{
-    calculate_loss, do_inference, loss_graph_observed_output_variable_id, loss_output_id,
-    BatchValues, InputOutputSampleBatch, ParametersOptimizer, VariableValues,
+use ai_framework::graph_1;
+use ai_framework::model_1::{calculate_loss, do_inference, ParametersOptimizer};
+use ai_framework::model_shared::{
+    loss_graph_observed_output_variable_id, loss_output_id, BatchValues, InputOutputSampleBatch,
+    VariableValues,
 };
 #[allow(unused_imports)]
 use ai_framework::optimizers_1::{AdaptiveGradientDescent, AdaptiveSGD, NaiveGradientDescent};
@@ -37,7 +38,7 @@ fn main() {
     // let parameter = "weights";
     let output = "output";
 
-    let output_loss_graph = graph! {
+    let output_loss_graph = graph_1! {
         [let a = (sparse_softmax_cross_entropy())(output, loss_graph_observed_output_variable_id(output))];
         [@(loss_output_id()) = (mean_axis(0))(a)];
     };
@@ -57,10 +58,11 @@ fn main() {
         outputs: test_outputs,
     };
 
-    let graph = graph! {
+    let graph = graph_1! {
         [let a = (matrix_multiply())(image_variable, "p1")];
+        [let b = (softplus())(a)];
         // [let b = (matrix_multiply())(a, "p2")];
-        [@(output) = (matrix_multiply())(a, "p3")];
+        [@(output) = (matrix_multiply())(b, "p3")];
     };
 
     let array_gen = autograd::ndarray_ext::ArrayRng::default();

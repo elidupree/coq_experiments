@@ -1,6 +1,6 @@
 // EliDupree's note: copied and slightly modified from rust-autograd https://github.com/raskr/rust-autograd/blob/master/examples/download_mnist.sh
 
-use ai_framework::model_1::Array;
+use ai_framework::model_shared::Array;
 use std::fs::File;
 use std::io;
 use std::io::Read;

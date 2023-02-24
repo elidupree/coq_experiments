@@ -1,4 +1,4 @@
-use crate::model_1::{Array, ArrayExt};
+use crate::model_shared::{Array, ArrayExt};
 use autograd::tensor_ops::grad_with_default;
 use autograd::{Context, Evaluator, Tensor};
 use live_prop_test::{live_prop_test, lpt_assert_eq};
@@ -273,3 +273,4 @@ macro_rules! autograd_wrapper {
 
 autograd_wrapper!(matrix_multiply()[a, b] => matmul(a, b));
 autograd_wrapper!(sparse_softmax_cross_entropy()[a, b] => sparse_softmax_cross_entropy(a, b));
+autograd_wrapper!(softplus()[a] => softplus(a));
