@@ -35,25 +35,31 @@ Hurkens says we will not consider tau and sigma as formulas, because they wanted
 > Omega : U.
 > Omega := (tau (λp:(power U), ∀x:U, ∀_:(sigma x p), (p x))).
 
-> Paradox : False.
-> Paradox := (
+> P2Type : ℙ.
+> P2Type := ∀p:(power U), ∀_:(∀x:U, ∀_:(sigma x p), (p x)), (p Omega).
+
+> P2 : P2Type.
+> P2 := (
+    λp:(power U),
+    λ1:(∀x:U, ∀_:(sigma x p), (p x)),
+    (1 Omega (λx:U, (1 (tau (sigma x)))))
+  ).
+
+> P1 : ∀_:P2Type, False.
+> P1 := (
+    λ0:P2Type,
     (
-      λ0:(∀p:(power U), ∀x:U, ∀_:(∀_:(sigma x p), (p x)), (p Omega)),
+      0
+      Delta
       (
-        0
-        Delta
-        (
-          λx:U,
-          λ2:(sigma x Delta),
-          λ3:(∀p:(power U), ∀_:(sigma x p), (p (tau (sigma x)))),
-          (3 Delta 2 (λp:(power U), (3 (λy:U, (p (tau y))))))
-        )
-        (λp:(power U), (0 (λy:U, (p (tau (sigma y))))))
+        λx:U,
+        λ2:(sigma x Delta),
+        λ3:(∀p:(power U), ∀_:(sigma x p), (p (tau (sigma x)))),
+        (3 Delta 2 (λp:(power U), (3 (λy:U, (p (tau y))))))
       )
-    )
-    (
-      λp:(power U),
-      λ1:(∀x:U, ∀_:(sigma x p), (p x)),
-      (1 Omega (λx:U, (1 (tau (sigma x)))))
+      (λp:(power U), (0 (λy:U, (p (tau (sigma y))))))
     )
   ).
+
+> Paradox : False.
+> Paradox := (P1 P2).
