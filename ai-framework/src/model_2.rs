@@ -2,31 +2,30 @@ use crate::differentiable_operations::{
     AnyDifferentiableOperation as Operation, DifferentiableOperation,
 };
 use crate::model_shared::{
-    loss_output_id, Array, ArrayExt, BatchValues, InputOutputSampleBatch, NodeId, OutputId,
-    VariableId,
+    loss_output_id, Array, ArrayExt, BatchValues, NodeId, OutputId, VariableId,
 };
-use ndarray::{IxDyn, SliceInfo, SliceInfoElem};
+use ndarray::SliceInfoElem;
 use std::collections::HashMap;
 use std::iter::zip;
 
 #[derive(Clone, Debug, Default)]
 pub struct Graph {
     // variables: HashSet<VariableId>,
-    nodes: HashMap<NodeId, Node>,
-    outputs: HashMap<OutputId, NodeId>,
+    pub nodes: HashMap<NodeId, Node>,
+    pub outputs: HashMap<OutputId, NodeId>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum NodeInputKind {
     Variable(VariableId),
     Parameter(Array),
     Node(NodeId),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct NodeInput {
-    kind: NodeInputKind,
-    slice: Option<SliceInfo<Vec<SliceInfoElem>, IxDyn, IxDyn>>,
+    pub kind: NodeInputKind,
+    pub slice: Option<Vec<SliceInfoElem>>,
 }
 
 impl<'a> From<&'a str> for NodeInput {
@@ -215,111 +214,110 @@ impl BackpropContext<'_> {
     }
 }
 
-pub fn do_inference(graph: &Graph, variable_values: &BatchValues) -> InferenceResult {
-    let mut context = InferenceContext {
-        // graph,
-        variable_values,
-        result_so_far: InferenceResult {
-            outputs: BatchValues::empty_with_batch_size(variable_values.batch_size()),
-            internal_values: Default::default(),
-        },
-    };
-    for (id, node) in graph.forward_topological_order() {
-        let node_output = node.operation.forward(&context.node_input_values(node));
-        context
-            .result_so_far
-            .internal_values
-            .insert(id, node_output);
-    }
-    for (output_id, node_id) in &graph.outputs {
-        context.result_so_far.outputs.insert(
-            output_id.clone(),
-            context.result_so_far.internal_values[node_id].clone(),
-        );
-    }
-    context.result_so_far
-}
-
-pub fn backprop(
-    graph: &Graph,
-    variable_values: &BatchValues,
-    inference_result: &InferenceResult,
-) -> LossGradients {
-    let mut context = BackpropContext {
-        // graph,
-        variable_values,
-        inference_result,
-        result_so_far: LossGradients {
-            variables: BatchValues::empty_with_batch_size(variable_values.batch_size()),
-            internal_values: Default::default(),
-        },
-    };
-    context.result_so_far.internal_values.insert(
-        graph.outputs[&loss_output_id()],
-        NodeGradients {
-            output_gradient: Array::from_scalar(1.0),
-            parameter_gradients: Default::default(),
-        },
-    );
-    for (id, node) in graph.backward_topological_order() {
-        // take out to put back later, to simplify borrow checker stuff
-        let mut this_node_gradients = context.result_so_far.internal_values.remove(&id).unwrap();
-        let node_input_gradients = node.operation.gradient(
-            &context.node_input_values(node),
-            this_node_gradients.output_gradient.clone(),
-        );
-        this_node_gradients.parameter_gradients = node_input_gradients
-            .iter()
-            .map(|_| Default::default())
-            .collect();
-        for ((input, gradient), parameter_gradient_slot) in zip(
-            zip(&node.inputs, node_input_gradients),
-            &mut this_node_gradients.parameter_gradients,
-        ) {
-            //dbg!(i, g.shape());
-            let full_array: &mut Array = match &input.kind {
-                NodeInputKind::Variable(i) => context
-                    .result_so_far
-                    .variables
-                    .entry(i.clone())
-                    .or_insert_with(|| Array::zeros(variable_values.get(i).shape())),
-                NodeInputKind::Node(i) => {
-                    &mut context
-                        .result_so_far
-                        .internal_values
-                        .entry(*i)
-                        .or_insert_with(|| NodeGradients {
-                            output_gradient: Array::zeros(
-                                inference_result.internal_values.get(i).unwrap().shape(),
-                            ),
-                            parameter_gradients: Default::default(),
-                        })
-                        .output_gradient
-                }
-                NodeInputKind::Parameter(_parameter) => {
-                    assert!(input.slice.is_none());
-                    *parameter_gradient_slot = gradient;
-                    continue;
-                }
-            };
-            let mut relevant_part = match &input.slice {
-                None => full_array.view_mut(),
-                Some(slice) => full_array.slice_mut(slice),
-            };
-            relevant_part += &gradient;
+impl Graph {
+    pub fn do_inference(&self, variable_values: &BatchValues) -> InferenceResult {
+        let mut context = InferenceContext {
+            // graph,
+            variable_values,
+            result_so_far: InferenceResult {
+                outputs: BatchValues::empty_with_batch_size(variable_values.batch_size()),
+                internal_values: Default::default(),
+            },
+        };
+        for (id, node) in self.forward_topological_order() {
+            let node_output = node.operation.forward(&context.node_input_values(node));
+            context
+                .result_so_far
+                .internal_values
+                .insert(id, node_output);
         }
-        context
-            .result_so_far
-            .internal_values
-            .insert(id, this_node_gradients);
+        for (output_id, node_id) in &self.outputs {
+            context.result_so_far.outputs.insert(
+                output_id.clone(),
+                context.result_so_far.internal_values[node_id].clone(),
+            );
+        }
+        context.result_so_far
     }
-    context.result_so_far
-}
 
-pub fn calculate_loss(loss_graph: &Graph, samples: &InputOutputSampleBatch) -> f32 {
-    do_inference(
-        loss_graph,
-        &samples.variable_values_including_observed_outputs(),
-    )
-    .loss()
+    pub fn backprop(
+        &self,
+        variable_values: &BatchValues,
+        inference_result: &InferenceResult,
+    ) -> LossGradients {
+        let mut context = BackpropContext {
+            // graph,
+            variable_values,
+            inference_result,
+            result_so_far: LossGradients {
+                variables: BatchValues::empty_with_batch_size(variable_values.batch_size()),
+                internal_values: Default::default(),
+            },
+        };
+        context.result_so_far.internal_values.insert(
+            self.outputs[&loss_output_id()],
+            NodeGradients {
+                output_gradient: Array::from_scalar(1.0),
+                parameter_gradients: Default::default(),
+            },
+        );
+        for (id, node) in self.backward_topological_order() {
+            // take out to put back later, to simplify borrow checker stuff
+            let mut this_node_gradients =
+                context.result_so_far.internal_values.remove(&id).unwrap();
+            let node_input_gradients = node.operation.gradient(
+                &context.node_input_values(node),
+                this_node_gradients.output_gradient.clone(),
+            );
+            this_node_gradients.parameter_gradients = node_input_gradients
+                .iter()
+                .map(|_| Default::default())
+                .collect();
+            for ((input, gradient), parameter_gradient_slot) in zip(
+                zip(&node.inputs, node_input_gradients),
+                &mut this_node_gradients.parameter_gradients,
+            ) {
+                //dbg!(i, g.shape());
+                let full_array: &mut Array = match &input.kind {
+                    NodeInputKind::Variable(i) => context
+                        .result_so_far
+                        .variables
+                        .entry(i.clone())
+                        .or_insert_with(|| Array::zeros(variable_values.get(i).shape())),
+                    NodeInputKind::Node(i) => {
+                        &mut context
+                            .result_so_far
+                            .internal_values
+                            .entry(*i)
+                            .or_insert_with(|| NodeGradients {
+                                output_gradient: Array::zeros(
+                                    inference_result.internal_values.get(i).unwrap().shape(),
+                                ),
+                                parameter_gradients: Default::default(),
+                            })
+                            .output_gradient
+                    }
+                    NodeInputKind::Parameter(_parameter) => {
+                        assert!(input.slice.is_none());
+                        *parameter_gradient_slot = gradient;
+                        continue;
+                    }
+                };
+                let mut relevant_part = match &input.slice {
+                    None => full_array.view_mut(),
+                    Some(slice) => full_array.slice_mut(&**slice),
+                };
+                relevant_part += &gradient;
+            }
+            context
+                .result_so_far
+                .internal_values
+                .insert(id, this_node_gradients);
+        }
+        context.result_so_far
+    }
+
+    pub fn loss(&self, samples: &BatchValues) -> f32 {
+        self.do_inference(samples).loss()
+    }
 }

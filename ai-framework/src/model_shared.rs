@@ -1,5 +1,6 @@
 use crate::differentiable_operations::get_only_value;
-use ndarray::{arr0, stack, ArcArray, Axis, IxDyn, Slice};
+use ndarray::parallel::prelude::{IntoParallelRefIterator, ParallelIterator};
+use ndarray::{arr0, stack, ArcArray, Axis, IxDyn, Slice, Zip};
 use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
 use std::collections::HashMap;
@@ -24,6 +25,10 @@ pub type Array = ArcArray<f32, IxDyn>;
 pub trait ArrayExt {
     fn from_scalar(x: f32) -> Self;
     fn as_scalar(&self) -> f32;
+    fn norm(&self) -> f32;
+    fn normalize(&mut self);
+    fn normalized(self) -> Self;
+    fn squared_difference(&self, other: &Array) -> f32;
 }
 
 impl ArrayExt for Array {
@@ -32,6 +37,28 @@ impl ArrayExt for Array {
     }
     fn as_scalar(&self) -> f32 {
         *get_only_value(self)
+    }
+
+    fn norm(&self) -> f32 {
+        self.par_iter().map(|a| a * a).sum()
+    }
+
+    fn normalize(&mut self) {
+        let norm = self.norm();
+        *self /= norm;
+    }
+
+    fn normalized(self) -> Self {
+        let norm = self.norm();
+        self / norm
+    }
+
+    fn squared_difference(&self, other: &Array) -> f32 {
+        Zip::from(self).and(other).par_fold(
+            || 0.0,
+            |sum, a, b| sum + (a - b).powi(2),
+            |sum1, sum2| sum1 + sum2,
+        )
     }
 }
 

@@ -23,6 +23,10 @@ pub trait DifferentiableOperation: Send + Sync {
         postcondition = "gradient_reasonably_correct(self, inputs, old(output_gradient.clone()), &result)"
     )]
     fn gradient(&self, inputs: &[Array], output_gradient: Array) -> Vec<Array>;
+
+    fn forward_scalar(&self, input: f32) -> f32 {
+        self.forward(&[Array::from_scalar(input)]).as_scalar()
+    }
 }
 
 fn gradient_reasonably_correct(
@@ -201,6 +205,24 @@ impl DifferentiableOperation for SumInputs {
 }
 
 #[derive(Copy, Clone, Debug)]
+struct ScalarMultiply;
+pub fn scalar_multiply() -> AnyDifferentiableOperation {
+    AnyDifferentiableOperation::new("scalar_multiply", SumInputs)
+}
+
+impl DifferentiableOperation for ScalarMultiply {
+    fn forward(&self, inputs: &[Array]) -> Array {
+        let [a, b]: &[Array; 2] = inputs.try_into().unwrap();
+        a.clone() * b.as_scalar()
+    }
+
+    fn gradient(&self, inputs: &[Array], output_gradient: Array) -> Vec<Array> {
+        let [a, b]: &[Array; 2] = inputs.try_into().unwrap();
+        vec![output_gradient.clone() * b.as_scalar(), output_gradient * a]
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
 struct MeanSquaredDifference;
 pub fn mean_squared_difference() -> AnyDifferentiableOperation {
     AnyDifferentiableOperation::new("mean_squared_difference", MeanSquaredDifference)
@@ -209,13 +231,8 @@ pub fn mean_squared_difference() -> AnyDifferentiableOperation {
 impl DifferentiableOperation for MeanSquaredDifference {
     fn forward(&self, inputs: &[Array]) -> Array {
         let [a, b]: &[Array; 2] = inputs.try_into().unwrap();
-        Array::from_scalar(
-            Zip::from(a).and(b).par_fold(
-                || 0.0,
-                |sum, a, b| sum + (a - b).powi(2),
-                |sum1, sum2| sum1 + sum2,
-            ) / a.len() as f32,
-        )
+        assert_eq!(a.len(), b.len());
+        Array::from_scalar(a.squared_difference(b) / a.len() as f32)
     }
 
     fn gradient(&self, inputs: &[Array], output_gradient: Array) -> Vec<Array> {
@@ -274,3 +291,12 @@ macro_rules! autograd_wrapper {
 autograd_wrapper!(matrix_multiply()[a, b] => matmul(a, b));
 autograd_wrapper!(sparse_softmax_cross_entropy()[a, b] => sparse_softmax_cross_entropy(a, b));
 autograd_wrapper!(softplus()[a] => softplus(a));
+autograd_wrapper!(sigmoid()[a] => sigmoid(a));
+
+pub fn activation_functions() -> Vec<AnyDifferentiableOperation> {
+    vec![
+        sum_inputs(), // i.e. identity
+        softplus(),
+        sigmoid(),
+    ]
+}
