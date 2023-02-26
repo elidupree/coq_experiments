@@ -4,7 +4,7 @@ An implementation of Girard's paradox, as stated in the paper "A Simplification 
 > False := ∀P:ℙ, P.
 
 > not := ∀_:ℙ, ℙ.
-> not := ∀_:ℙ, False.
+> not := λP:ℙ, ∀_:P, False.
 
 > power : ∀_:ℙ, ℙ.
 > power := λS:ℙ, ∀_:S, ℙ.
@@ -30,13 +30,16 @@ Hurkens says we will not consider tau and sigma as formulas, because they wanted
 > sigma := λs:U, (s U (λt:(pp U), (tau t))).
 
 > Delta : (power U).
-> Delta := λy:U, (not (∀p:(power U), ∀_:(sigma y p), (p (tau (sigma y))))).
+> Delta := λy:U, ∀_:(∀p:(power U), ∀_:(sigma y p), (p (tau (sigma y)))), False.
 
 > Omega : U.
 > Omega := (tau (λp:(power U), ∀x:U, ∀_:(sigma x p), (p x))).
 
+> P2TypeL : ∀p:(power U), ℙ.
+> P2TypeL := λp:(power U), ∀_:(∀x:U, ∀_:(sigma x p), (p x)), (p Omega).
+
 > P2Type : ℙ.
-> P2Type := ∀p:(power U), ∀_:(∀x:U, ∀_:(sigma x p), (p x)), (p Omega).
+> P2Type := ∀p:(power U), (P2TypeL p).
 
 > P2 : P2Type.
 > P2 := (
@@ -45,8 +48,9 @@ Hurkens says we will not consider tau and sigma as formulas, because they wanted
     (1 Omega (λx:U, (1 (tau (sigma x)))))
   ).
 
-> P1 : ∀_:P2Type, False.
-> P1 := (
+> P11 : ∀_:P2Type, (Delta Omega).
+> P11 : ∀_:P2Type, ∀_:(∀p:(power U), ∀_:(sigma Omega p), (p (tau (sigma Omega)))), False.
+> P11 := (
     λ0:P2Type,
     (
       0
@@ -57,9 +61,18 @@ Hurkens says we will not consider tau and sigma as formulas, because they wanted
         λ3:(∀p:(power U), ∀_:(sigma x p), (p (tau (sigma x)))),
         (3 Delta 2 (λp:(power U), (3 (λy:U, (p (tau y))))))
       )
-      (λp:(power U), (0 (λy:U, (p (tau (sigma y))))))
     )
   ).
+
+> P12 : ∀_:P2Type, ∀p:(power U), (P2TypeL (λy:U, (p (tau (sigma y))))).
+> P12 : ∀_:P2Type, ∀p:(power U), ∀_:(∀x:U, ∀_:(sigma x (λy:U, (p (tau (sigma y))))), (p (tau (sigma x)))), (p (tau (sigma Omega))).
+?????
+> P12 : ∀_:P2Type, ∀p:(power U), ∀_:((Omega U (λt:(pp U), (tau t))) p), (p (tau (sigma Omega))).
+> P12 : ∀_:P2Type, ∀p:(power U), ∀_:(sigma Omega p), (p (tau (sigma Omega))).
+> P12 := λ0:P2Type, λp:(power U), (0 (λy:U, (p (tau (sigma y))))).
+
+> P1 : ∀_:P2Type, False.
+> P1 := λ0:P2Type, (P11 0 (P12 0)).
 
 > Paradox : False.
 > Paradox := (P1 P2).
