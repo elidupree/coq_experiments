@@ -7,3 +7,4 @@ pub mod model_1;
 pub mod model_2;
 pub mod model_shared;
 pub mod optimizers_1;
+pub mod optimizers_2;

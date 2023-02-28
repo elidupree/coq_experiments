@@ -22,12 +22,13 @@ impl NodeId {
 
 pub type Array = ArcArray<f32, IxDyn>;
 
-pub trait ArrayExt {
+pub trait ArrayExt: Sized {
     fn from_scalar(x: f32) -> Self;
     fn as_scalar(&self) -> f32;
+    fn norm_squared(&self) -> f32;
     fn norm(&self) -> f32;
     fn normalize(&mut self);
-    fn normalized(self) -> Self;
+    fn normalized(self) -> Option<Self>;
     fn squared_difference(&self, other: &Array) -> f32;
 }
 
@@ -39,8 +40,12 @@ impl ArrayExt for Array {
         *get_only_value(self)
     }
 
-    fn norm(&self) -> f32 {
+    fn norm_squared(&self) -> f32 {
         self.par_iter().map(|a| a * a).sum()
+    }
+
+    fn norm(&self) -> f32 {
+        self.norm_squared().sqrt()
     }
 
     fn normalize(&mut self) {
@@ -48,9 +53,9 @@ impl ArrayExt for Array {
         *self /= norm;
     }
 
-    fn normalized(self) -> Self {
+    fn normalized(self) -> Option<Self> {
         let norm = self.norm();
-        self / norm
+        (norm != 0.0).then(|| self / norm)
     }
 
     fn squared_difference(&self, other: &Array) -> f32 {

@@ -4,7 +4,7 @@ use autograd::{Context, Evaluator, Tensor};
 use live_prop_test::{live_prop_test, lpt_assert_eq};
 use ndarray::{ArrayViewD, Axis, Ix0, Zip};
 use std::cell::RefCell;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::iter::zip;
 use std::sync::Arc;
 
@@ -79,7 +79,13 @@ impl AnyDifferentiableOperation {
 
 impl Debug for AnyDifferentiableOperation {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        self.name.fmt(f)
+        Debug::fmt(&self.name, f)
+    }
+}
+
+impl Display for AnyDifferentiableOperation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.name, f)
     }
 }
 
@@ -124,10 +130,18 @@ impl<'graph, 'env, 'feed> AutogradContextHack<'graph, 'env, 'feed> {
 #[live_prop_test(use_trait_tests)]
 impl DifferentiableOperation for AnyDifferentiableOperation {
     fn forward(&self, inputs: &[Array]) -> Array {
+        // dbg!(
+        //     &self.name,
+        //     inputs.iter().map(|a| a.shape()).collect::<Vec<_>>()
+        // );
         self.operation_impl.forward(inputs)
     }
 
     fn gradient(&self, inputs: &[Array], output_gradient: Array) -> Vec<Array> {
+        // dbg!(
+        //     &self.name,
+        //     inputs.iter().map(|a| a.shape()).collect::<Vec<_>>()
+        // );
         self.operation_impl.gradient(inputs, output_gradient)
     }
 }
@@ -174,7 +188,7 @@ impl DifferentiableOperation for AutogradWrapper {
             zip(inputs, result)
                 .map(|(input, grad)| {
                     if grad.shape() != input.shape() {
-                        Array::zeros(input.shape())
+                        Array::ones(input.shape())
                     } else {
                         grad.into_shared()
                     }
@@ -185,29 +199,66 @@ impl DifferentiableOperation for AutogradWrapper {
 }
 
 #[derive(Copy, Clone, Debug)]
-struct SumInputs;
-pub fn sum_inputs() -> AnyDifferentiableOperation {
-    AnyDifferentiableOperation::new("sum_inputs", SumInputs)
+struct Identity;
+pub fn identity() -> AnyDifferentiableOperation {
+    AnyDifferentiableOperation::new("identity", Identity)
 }
 
-impl DifferentiableOperation for SumInputs {
+impl DifferentiableOperation for Identity {
     fn forward(&self, inputs: &[Array]) -> Array {
-        let mut result = Array::zeros(inputs[0].shape());
-        for input in inputs {
-            result += input;
-        }
-        result
+        let [a]: &[Array; 1] = inputs.try_into().unwrap();
+        a.clone()
     }
 
-    fn gradient(&self, inputs: &[Array], output_gradient: Array) -> Vec<Array> {
-        inputs.iter().map(|_| output_gradient.clone()).collect()
+    fn gradient(&self, _inputs: &[Array], output_gradient: Array) -> Vec<Array> {
+        vec![output_gradient]
+    }
+}
+
+// #[derive(Copy, Clone, Debug)]
+// struct SumInputs;
+// pub fn sum_inputs() -> AnyDifferentiableOperation {
+//     AnyDifferentiableOperation::new("sum_inputs", SumInputs)
+// }
+//
+// impl DifferentiableOperation for SumInputs {
+//     fn forward(&self, inputs: &[Array]) -> Array {
+//         let mut result = Array::zeros(inputs[0].shape());
+//         for input in inputs {
+//             result += input;
+//         }
+//         result
+//     }
+//
+//     fn gradient(&self, inputs: &[Array], output_gradient: Array) -> Vec<Array> {
+//         inputs.iter().map(|_| output_gradient.clone()).collect()
+//     }
+// }
+
+#[derive(Copy, Clone, Debug)]
+struct ScalarAdd;
+pub fn scalar_add() -> AnyDifferentiableOperation {
+    AnyDifferentiableOperation::new("scalar_multiply", ScalarAdd)
+}
+
+impl DifferentiableOperation for ScalarAdd {
+    fn forward(&self, inputs: &[Array]) -> Array {
+        let [a, b]: &[Array; 2] = inputs.try_into().unwrap();
+        a.clone() + b.as_scalar()
+    }
+
+    fn gradient(&self, _inputs: &[Array], output_gradient: Array) -> Vec<Array> {
+        vec![
+            output_gradient.clone(),
+            Array::from_scalar(output_gradient.sum()),
+        ]
     }
 }
 
 #[derive(Copy, Clone, Debug)]
 struct ScalarMultiply;
 pub fn scalar_multiply() -> AnyDifferentiableOperation {
-    AnyDifferentiableOperation::new("scalar_multiply", SumInputs)
+    AnyDifferentiableOperation::new("scalar_multiply", ScalarMultiply)
 }
 
 impl DifferentiableOperation for ScalarMultiply {
@@ -218,7 +269,10 @@ impl DifferentiableOperation for ScalarMultiply {
 
     fn gradient(&self, inputs: &[Array], output_gradient: Array) -> Vec<Array> {
         let [a, b]: &[Array; 2] = inputs.try_into().unwrap();
-        vec![output_gradient.clone() * b.as_scalar(), output_gradient * a]
+        vec![
+            output_gradient.clone() * b.as_scalar(),
+            Array::from_scalar((output_gradient * a).sum()),
+        ]
     }
 }
 
@@ -270,6 +324,30 @@ impl DifferentiableOperation for MeanAxis {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+struct Stack(usize);
+pub fn stack(axis: usize) -> AnyDifferentiableOperation {
+    AnyDifferentiableOperation::new("stack", Stack(axis))
+}
+
+impl DifferentiableOperation for Stack {
+    fn forward(&self, inputs: &[Array]) -> Array {
+        ndarray::stack(
+            Axis(self.0),
+            &inputs.iter().map(|a| a.view()).collect::<Vec<_>>(),
+        )
+        .unwrap()
+        .into_shared()
+    }
+
+    fn gradient(&self, _inputs: &[Array], output_gradient: Array) -> Vec<Array> {
+        output_gradient
+            .axis_iter(Axis(self.0))
+            .map(|a| a.to_shared())
+            .collect()
+    }
+}
+
 macro_rules! autograd_wrapper {
     ($name:ident()[$($input_binding: ident),*$(,)*] => $body:expr) => {
         pub fn $name() -> AnyDifferentiableOperation {
@@ -286,17 +364,31 @@ macro_rules! autograd_wrapper {
             )
         }
     };
+    ($name:ident()($input_binding: ident) => $body:expr) => {
+        pub fn $name() -> AnyDifferentiableOperation {
+            AnyDifferentiableOperation::new(
+                ::std::stringify!($name),
+                AutogradWrapper {
+                    graph_setup: Arc::new(|_context, inputs| {
+                        #[allow(unused_imports)]
+                        use autograd::tensor_ops::*;
+                        let $input_binding = inputs;
+                        $body
+                    }),
+                },
+            )
+        }
+    };
 }
 
+// TODO: fix bug when inputs has length 1
+autograd_wrapper!(sum_inputs()(inputs) => add_n(inputs));
 autograd_wrapper!(matrix_multiply()[a, b] => matmul(a, b));
+// autograd_wrapper!(mul()[a, b] => mul(a, b));
 autograd_wrapper!(sparse_softmax_cross_entropy()[a, b] => sparse_softmax_cross_entropy(a, b));
 autograd_wrapper!(softplus()[a] => softplus(a));
 autograd_wrapper!(sigmoid()[a] => sigmoid(a));
 
 pub fn activation_functions() -> Vec<AnyDifferentiableOperation> {
-    vec![
-        sum_inputs(), // i.e. identity
-        softplus(),
-        sigmoid(),
-    ]
+    vec![identity(), softplus(), sigmoid()]
 }

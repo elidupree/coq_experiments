@@ -187,30 +187,35 @@ struct BackpropContext<'a> {
     result_so_far: LossGradients,
 }
 
-impl InferenceContext<'_> {
-    fn node_input_values(&self, node: &Node) -> Vec<Array> {
+impl InferenceResult {
+    fn node_input_values(&self, node: &Node, variable_values: &BatchValues) -> Vec<Array> {
         node.inputs
             .iter()
-            .map(|i| match &i.kind {
-                NodeInputKind::Variable(variable_id) => self.variable_values.get(variable_id),
-                NodeInputKind::Node(node_id) => self.result_so_far.internal_values[node_id].clone(),
-                NodeInputKind::Parameter(parameter) => parameter.clone(),
+            .map(|i| {
+                let full_array = match &i.kind {
+                    NodeInputKind::Variable(variable_id) => variable_values.get(variable_id),
+                    NodeInputKind::Node(node_id) => self.internal_values[node_id].clone(),
+                    NodeInputKind::Parameter(parameter) => parameter.clone(),
+                };
+                if let Some(slice) = &i.slice {
+                    full_array.slice_move(&**slice)
+                } else {
+                    full_array
+                }
             })
             .collect()
     }
 }
+impl InferenceContext<'_> {
+    fn node_input_values(&self, node: &Node) -> Vec<Array> {
+        self.result_so_far
+            .node_input_values(node, self.variable_values)
+    }
+}
 impl BackpropContext<'_> {
     fn node_input_values(&self, node: &Node) -> Vec<Array> {
-        node.inputs
-            .iter()
-            .map(|i| match &i.kind {
-                NodeInputKind::Variable(variable_id) => self.variable_values.get(variable_id),
-                NodeInputKind::Node(node_id) => {
-                    self.inference_result.internal_values[node_id].clone()
-                }
-                NodeInputKind::Parameter(parameter) => parameter.clone(),
-            })
-            .collect()
+        self.inference_result
+            .node_input_values(node, self.variable_values)
     }
 }
 
