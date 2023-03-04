@@ -1,6 +1,7 @@
 mod display;
 mod from_constructors;
 mod metavariable_conversions;
+pub mod unfolding;
 
 #[allow(clippy::all)]
 mod lalrpop_wrapper {
@@ -14,6 +15,7 @@ use crate::metavariable::Environment;
 use live_prop_test::{live_prop_test, lpt_assert_eq};
 use regex::{Captures, Regex};
 use std::borrow::Cow;
+use std::collections::HashMap;
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Command {
@@ -50,6 +52,10 @@ pub struct Document {
     commands: Vec<Command>,
 }
 
+pub struct GlobalContext {
+    pub definitions: HashMap<String, Formula>,
+}
+
 fn command_regex() -> Regex {
     Regex::new(r"(?m)^>([^\.]*)\.").unwrap()
 }
@@ -79,6 +85,18 @@ impl Document {
     pub fn inject_into(&self, environment: &mut Environment) {
         let mut injector = MetavariablesInjectionContext::for_environment(environment);
         injector.inject_commands(&self.commands);
+    }
+    pub fn into_globals(self) -> GlobalContext {
+        GlobalContext {
+            definitions: self
+                .commands
+                .into_iter()
+                .filter_map(|command| match command {
+                    Command::ClaimType(_, _) => None,
+                    Command::Assign(name, formula) => Some((name, formula)),
+                })
+                .collect(),
+        }
     }
 }
 
@@ -152,11 +170,15 @@ mod tests {
         document.inject_into(&mut environment);
     }
     #[test]
-    fn load_boxes() {
+    fn check_boxes() {
         check_document("data/boxes.coc_1");
     }
     #[test]
-    fn load_inductive() {
+    fn check_inductive() {
         check_document("data/inductive_types.coc_1");
+    }
+    #[test]
+    fn check_girards_paradox() {
+        check_document("data/girards_paradox.coc_1");
     }
 }
