@@ -11,6 +11,7 @@ use ai_framework::model_shared::{
 use ai_framework::optimizers_2::AdaptiveSGD;
 use ndarray::{s, Axis};
 use ordered_float::OrderedFloat;
+use rand::distributions::uniform::SampleRange;
 use std::env::args;
 use std::iter::zip;
 use std::process::Command;
@@ -79,52 +80,62 @@ fn main() {
 
     let mut optimizer = AdaptiveSGD {
         learning_rate: 1.0,
-        batch_size: 10,
+        batch_size: 200,
         adapt_on_success: 1.03,
         adapt_on_failure: 0.96,
     };
     let start = Instant::now();
-    for pass in 0..10 {
-        model.add_promising_edges(&train_samples);
+    for pass in 0..100 {
+        println!("{pass} adding edges...");
+        let train_sample_indices: Vec<usize> = (0..optimizer.batch_size * 10)
+            .map(|_| (0..train_samples.batch_size()).sample_single(&mut rand::thread_rng()))
+            .collect();
+        model.add_promising_edges(&train_samples.sample_batch(&train_sample_indices));
+        // if pass > 10 {
+        //     model.remove_random_edges();
+        // }
         // dbg!(&model);
+        println!("{pass} optimizing...");
         for _iteration in 0..50 {
             optimizer.step(&mut model.graph, &train_samples);
         }
 
-        let train_loss = model.graph.loss(&train_samples);
+        if pass % 10 == 9 {
+            let train_loss = model.graph.loss(&train_samples);
 
-        let test_loss = model.graph.loss(&test_samples);
+            let test_loss = model.graph.loss(&test_samples);
 
-        let mut file = std::fs::File::create("mnist_model_2_graph.dot").unwrap();
-        model.draw_graphviz(&train_samples, &mut file).unwrap();
-        dbg!(Command::new("sh")
-            .args([
-                "-c",
-                "dot -Tpng mnist_model_2_graph.dot > mnist_model_2_graph.png",
-            ])
-            .output())
-        .unwrap();
+            let mut file = std::fs::File::create("mnist_model_2_graph.dot").unwrap();
+            model.draw_graphviz(&train_samples, &mut file).unwrap();
+            dbg!(Command::new("sh")
+                .args([
+                    "-c",
+                    "dot -Tpng mnist_model_2_graph.dot > mnist_model_2_graph.png",
+                ])
+                .output())
+            .unwrap();
 
-        // let train_results = model.graph.do_inference(&train_samples);
-        // let train_gradients = model.graph.backprop(&train_samples, &train_results);
-        // dbg!(train_gradients);
-        let test_results = model.graph.do_inference(&test_samples).outputs[output].clone();
-        let mut num_correct = 0;
-        for (&given, predictions) in zip(&y_test, test_results.axis_iter(Axis(0))) {
-            let guessed = predictions
-                .iter()
-                .enumerate()
-                .max_by_key(|(_i, x)| OrderedFloat(**x))
-                .unwrap()
-                .0;
-            let given = given as usize;
-            if given == guessed {
-                num_correct += 1;
+            // let train_results = model.graph.do_inference(&train_samples);
+            // let train_gradients = model.graph.backprop(&train_samples, &train_results);
+            // dbg!(train_gradients);
+            let test_results = model.graph.do_inference(&test_samples).outputs[output].clone();
+            let mut num_correct = 0;
+            for (&given, predictions) in zip(&y_test, test_results.axis_iter(Axis(0))) {
+                let guessed = predictions
+                    .iter()
+                    .enumerate()
+                    .max_by_key(|(_i, x)| OrderedFloat(**x))
+                    .unwrap()
+                    .0;
+                let given = given as usize;
+                if given == guessed {
+                    num_correct += 1;
+                }
             }
-        }
-        let accuracy = num_correct as f32 / y_test.len_of(Axis(0)) as f32;
+            let accuracy = num_correct as f32 / y_test.len_of(Axis(0)) as f32;
 
-        println!("{pass}:\n  Train loss: {train_loss}\n  Test loss:{test_loss}\n  Test accuracy: {accuracy}\n  Learning rate:{},\n  Time:{:?}", optimizer.learning_rate, start.elapsed());
+            println!("{pass}:\n  Train loss: {train_loss}\n  Test loss:{test_loss}\n  Test accuracy: {accuracy}\n  Learning rate:{},\n  Time:{:?}", optimizer.learning_rate, start.elapsed());
+        }
     }
     println!("Done!")
 }

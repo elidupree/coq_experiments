@@ -4,7 +4,7 @@ use crate::differentiable_operations::{
 };
 use crate::model_2::{Graph, InferenceResult, LossGradients, Node, NodeInput, NodeInputKind};
 use crate::model_shared::{Array, ArrayExt, BatchValues, NodeId, OutputId, VariableId};
-use ndarray::{s, SliceInfoElem};
+use ndarray::{s, Ix1, SliceInfoElem};
 use ordered_float::OrderedFloat;
 use rand::Rng;
 use std::collections::HashMap;
@@ -47,6 +47,7 @@ impl Model {
             .map(|_| {
                 let id = graph.new_node(Node {
                     inputs: vec![
+                        // Mega hack: Always have two entries to work around bug with using autograd's add_n on less than 2
                         NodeInput {
                             kind: NodeInputKind::Variable(input_id.clone()),
                             slice: Some(vec![(..).into(), 0.into()]),
@@ -97,7 +98,7 @@ impl Model {
                     .get_mut(id)
                     .unwrap()
                     .inputs
-                    .remove(index + 1);
+                    .remove(index + 2);
                 assert_eq!(removed_input, NodeInput::from(removed_edge.weight_id));
                 self.graph.nodes.remove(&removed_edge.weight_id);
                 self.graph.nodes.remove(&removed_edge.activation_id);
@@ -245,10 +246,16 @@ impl BruteForceSpatialDataStructure {
         &self,
         query: Array,
     ) -> Option<(RawInputOption, AnyDifferentiableOperation)> {
-        let (_array, input, operation) = self
-            .entries
-            .iter()
-            .max_by_key(|(array, _, _)| OrderedFloat(array.squared_difference(&query)))?;
+        let (_array, input, operation) = self.entries.iter().max_by_key(|(array, _, _)| {
+            OrderedFloat(
+                array
+                    .view()
+                    .into_dimensionality::<Ix1>()
+                    .unwrap()
+                    .dot(&query.view().into_dimensionality::<Ix1>().unwrap())
+                    .abs(),
+            )
+        })?;
         Some((input.clone(), operation.clone()))
     }
 }

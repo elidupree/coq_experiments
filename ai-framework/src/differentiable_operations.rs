@@ -295,7 +295,7 @@ impl DifferentiableOperation for MeanSquaredDifference {
         let factor = output_gradient / a.len() as f32;
         let mut a = a.clone();
         let mut b = b.clone();
-        Zip::from(&mut a).and(&mut b).par_for_each(|a, b| {
+        Zip::from(&mut a).and(&mut b).for_each(|a, b| {
             let d = 2.0 * (*a - *b);
             *a = d * factor;
             *b = -d * factor;

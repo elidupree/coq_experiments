@@ -1,5 +1,4 @@
 use crate::differentiable_operations::get_only_value;
-use ndarray::parallel::prelude::{IntoParallelRefIterator, ParallelIterator};
 use ndarray::{arr0, stack, ArcArray, Axis, IxDyn, Slice, Zip};
 use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
@@ -41,7 +40,7 @@ impl ArrayExt for Array {
     }
 
     fn norm_squared(&self) -> f32 {
-        self.par_iter().map(|a| a * a).sum()
+        self.iter().map(|a| a * a).sum()
     }
 
     fn norm(&self) -> f32 {
@@ -59,11 +58,9 @@ impl ArrayExt for Array {
     }
 
     fn squared_difference(&self, other: &Array) -> f32 {
-        Zip::from(self).and(other).par_fold(
-            || 0.0,
-            |sum, a, b| sum + (a - b).powi(2),
-            |sum1, sum2| sum1 + sum2,
-        )
+        Zip::from(self)
+            .and(other)
+            .fold(0.0, |sum, a, b| sum + (a - b).powi(2))
     }
 }
 
