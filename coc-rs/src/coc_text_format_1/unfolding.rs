@@ -2,7 +2,7 @@ use crate::coc_text_format_1::{Abstraction, AbstractionKind, Formula, GlobalCont
 use std::collections::HashMap;
 use std::mem;
 
-pub enum UnfoldPathStep {
+pub enum SubformulaPathStep {
     Left,
     Right,
 }
@@ -53,9 +53,27 @@ impl Formula {
         }
     }
 
+    pub fn subformula(&self, location: &[SubformulaPathStep]) -> &Formula {
+        match (self, location.split_first()) {
+            (_, None) => self,
+
+            (Formula::Apply(children), Some((first, rest))) => match first {
+                SubformulaPathStep::Left => children[0].subformula(rest),
+                SubformulaPathStep::Right => children[1].subformula(rest),
+            },
+
+            (Formula::Abstraction(abstraction), Some((first, rest))) => match first {
+                SubformulaPathStep::Left => abstraction.parameter_type.subformula(rest),
+                SubformulaPathStep::Right => abstraction.body.subformula(rest),
+            },
+
+            _ => panic!("invalid subformula path"),
+        }
+    }
+
     pub fn unfold(
         &mut self,
-        location: &[UnfoldPathStep],
+        location: &[SubformulaPathStep],
         globals: &GlobalContext,
     ) -> Result<(), &'static str> {
         match (&mut *self, location.split_first()) {
@@ -79,16 +97,16 @@ impl Formula {
 
             (Formula::Apply(children), Some((first, rest))) => {
                 let child = match first {
-                    UnfoldPathStep::Left => &mut children[0],
-                    UnfoldPathStep::Right => &mut children[1],
+                    SubformulaPathStep::Left => &mut children[0],
+                    SubformulaPathStep::Right => &mut children[1],
                 };
                 child.unfold(rest, globals)?;
             }
 
             (Formula::Abstraction(abstraction), Some((first, rest))) => {
                 let child = match first {
-                    UnfoldPathStep::Left => &mut abstraction.parameter_type,
-                    UnfoldPathStep::Right => &mut abstraction.body,
+                    SubformulaPathStep::Left => &mut abstraction.parameter_type,
+                    SubformulaPathStep::Right => &mut abstraction.body,
                 };
                 child.unfold(rest, globals)?;
             }
@@ -102,7 +120,7 @@ impl Formula {
         &'a self,
         globals: &GlobalContext,
         mut context_variables: Vec<&'a str>,
-    ) -> Option<Vec<UnfoldPathStep>> {
+    ) -> Option<Vec<SubformulaPathStep>> {
         match self {
             Formula::Prop => None,
             Formula::Usage(name) => {
@@ -122,7 +140,7 @@ impl Formula {
                 let mut result = a
                     .body
                     .favored_crease_in_closed_formula(globals, context_variables)?;
-                result.insert(0, UnfoldPathStep::Right);
+                result.insert(0, SubformulaPathStep::Right);
                 Some(result)
             }
             Formula::Apply(children) => {
@@ -133,7 +151,7 @@ impl Formula {
                 } else {
                     let mut result =
                         children[0].favored_crease_in_closed_formula(globals, context_variables)?;
-                    result.insert(0, UnfoldPathStep::Left);
+                    result.insert(0, SubformulaPathStep::Left);
                     Some(result)
                 }
             }

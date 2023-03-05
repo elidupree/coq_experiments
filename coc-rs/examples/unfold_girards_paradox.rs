@@ -1,4 +1,5 @@
 use coc_rs::coc_text_format_1::{Document, Formula};
+use colored::Colorize;
 
 fn on_left_spine(f: &Formula, g: &str) -> bool {
     match f {
@@ -13,9 +14,9 @@ fn main() {
         .into_globals();
 
     let mut running_paradox = globals.definitions.get("Paradox").unwrap().clone();
-    for step in 0..10000 {
+    for step in 0..30 {
         // if on_left_spine(&running_paradox, "P2") {
-        // println!("{step}: {running_paradox}");
+        println!("{step}: {running_paradox}");
         // }
         // let mut ty = running_paradox.naive_type(&globals, Default::default());
         // println!(" : {}", ty);
@@ -27,6 +28,13 @@ fn main() {
         let crease = running_paradox
             .favored_crease_in_closed_formula(&globals, Default::default())
             .unwrap();
+        let redex = running_paradox.subformula(&crease).clone();
         running_paradox.unfold(&crease, &globals).unwrap();
+        let contractum = running_paradox.subformula(&crease);
+        println!(
+            "- {}\n+ {}",
+            redex.to_string().red(),
+            contractum.to_string().green()
+        );
     }
 }
