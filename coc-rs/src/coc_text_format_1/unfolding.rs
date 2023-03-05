@@ -42,7 +42,9 @@ impl Formula {
                         .substitute(&a.parameter_name, &Formula::Usage(new_name.clone()));
                     a.parameter_name = new_name;
                 }
-                a.body.substitute(replaced, replacement);
+                if replaced != a.parameter_name {
+                    a.body.substitute(replaced, replacement);
+                }
             }
             Formula::Apply(children) => {
                 for child in &mut **children {
@@ -155,6 +157,28 @@ impl Formula {
                     Some(result)
                 }
             }
+        }
+    }
+
+    pub fn unfold_all_ignored_parameters(&mut self) {
+        match &mut *self {
+            Formula::Apply(children) => {
+                let [f, v] = &mut **children;
+                f.unfold_all_ignored_parameters();
+                v.unfold_all_ignored_parameters();
+                if let Formula::Abstraction(f) = f {
+                    if !f.body.contains_free_usage(&f.parameter_name) {
+                        *self = mem::take(&mut f.body);
+                    }
+                }
+            }
+
+            Formula::Abstraction(abstraction) => {
+                abstraction.parameter_type.unfold_all_ignored_parameters();
+                abstraction.body.unfold_all_ignored_parameters();
+            }
+
+            _ => {}
         }
     }
 

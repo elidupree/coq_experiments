@@ -36,5 +36,11 @@ fn main() {
             redex.to_string().red(),
             contractum.to_string().green()
         );
+
+        let old = running_paradox.clone();
+        running_paradox.unfold_all_ignored_parameters();
+        if running_paradox != old {
+            println!("Unfolded ignored parameters: {running_paradox}");
+        }
     }
 }
