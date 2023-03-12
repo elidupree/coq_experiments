@@ -40,6 +40,7 @@
 \newcommand{\treemappinguntyped}[2]{\Rightarrow\hspace{-0.4em}[#1]\,#2}
 \newcommand{\treemappingtype}[3]{#1 \treemappinguntyped{#2}{#3}}
 \newcommand{\unfoldsin}[1]{\overset{#1}{\rightarrow}}
+\newcommand{\assuming}[3]{\mathrm{given}\ #1:#2, #3}
 
 \begin{document}
   \maketitle
@@ -86,33 +87,41 @@
   \[ \frac{\hastypemeta{a}{A}}{\hastypemeta{\mathrm{Axiomatic}}{(\hastype{a}{A})}} \]
 
 
+%  hereafter $\frac{P\dots}{C}$ means that if there are formulas $p :: P\dots$, then $\hastypemeta{\mathrm{Axiomatic}}{C}$
+
+  $::$ can be read as "has type globally", and $:$ as "is assumed to have type"
+
   \[ \frac{
-    \hastype{a}{A}
+    \hastypemeta{a}{A}
   }{
-    \hastype{a}{(\unfoldsin{l}A)}
+    \hastypemeta{a}{(\unfoldsin{l}A)}
   } \]
 
   \[ \frac{
-    \hastype{a}{(\unfoldsin{l}\unfoldsin{m}A)}
+    \hastypemeta{a}{(\unfoldsin{l}\unfoldsin{m}A)}
   }{
-    \hastype{a}{(\unfoldsin{(l m)}A)}
+    \hastypemeta{a}{(\unfoldsin{(l m)}A)}
   } \]
+
+  i.e. $\hastypemeta{\mathrm{Axiomatic}}{C}$:
 
   \[\subst{\hole}{\bindvariable}{v} = v\]
   \[\subst{a}{\hole}{v} = a\]
   \[\subst{(f a)}{(bc)}{v} = (\subst{f}{b}{v}\ \subst{a}{c}{v})\]
 
   \[ \frac{
-    \hastype{f}{(\unfoldsin{l_f} (\treemappingtype{A}{x}{B}))}
+    \hastypemeta{f}{(\unfoldsin{l_f} (\treemappingtype{A}{x}{B}))}
     \presep
-    \hastype{a}{(\unfoldsin{l_a} A)}
+    \hastypemeta{a}{(\unfoldsin{l_a} A)}
+    \presep
+    \hastypemeta{s}{(\subst{B}{x}{a} = B')}
   }{
-    \hastype{(f a)}{(\unfoldsin{(l_f l_a)+1} \subst{B}{x}{a})}
+    \hastypemeta{(f a)}{(\unfoldsin{(l_f l_a)+1} B')}
   } \]
 
   \subsection{Embedded Axioms}
   
-  Translation to embedded form: There are variables of types V. The premises and conclusions are all stated as types P, C. The true axiom is $\hastypemeta{\mathrm{Axiomatic}}{(\namemappingtype{v}{V\dots}{\namemappingtype{\hole}{P\dots}{C}})}$.
+  We must embed all axioms with premises, but the ones with zero premises are taken care of by Axiom 0. Translation to embedded form: There are variables of types V. The premises and conclusions are all stated as types P, C. The true axiom is $\hastypemeta{\mathrm{Axiomatic}}{(\namemappingtype{v}{V\dots}{\namemappingtype{\hole}{P\dots}{C}})}$. We don't have to embed the embedded axioms because they have no premises, so they are covered.
 
 %  \[ \frac{
 %    \hastype{a}{(\unfoldsin{(l \hole)}A)}
@@ -123,18 +132,21 @@
   \[ \frac{
 \varnothing
   }{
-    \hastype{\usageKnown{A}{i}}{A}
+    \hastype{a}{(\assuming{a}{A}{A})}
   } \]
 
   \[ \frac{
     \hastype{\subst{b}{x}{\usageKnown{A}{bB}}}{\subst{B}{y}{\usageKnown{A}{bB}}}
   }{
-    \hastype{
+    \hastypemeta{
       (\treemappinguntyped{x} b)
     }{
       (\treemappingtype{A}{y}{B})
     }
   } \]
+
+
+
   \section{Examples}\label{structure}
   \[
     \mathrm{False} := \namemappingtype{P}{\mathrm{Formula}}{P}
