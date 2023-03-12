@@ -1,0 +1,153 @@
+\documentclass{article}
+
+\usepackage{tikz}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{nameref}
+\usepackage{xcolor}
+
+\usepackage[english]{babel}
+\usepackage[autostyle]{csquotes}
+\MakeOuterQuote{"}
+
+%\usepackage[backend=biber,style=numeric]{biblatex}
+%\addbibresource{Introspective_Calculus.bib}
+
+\title{The Introspective Calculus}
+\author{Eli Dupree}
+\date{\today}
+
+\DeclareMathSymbol{\mlq}{\mathord}{operators}{``}
+\DeclareMathSymbol{\mrq}{\mathord}{operators}{`'}
+
+\newcommand{\usage}{\mathcal{V}}
+\newcommand{\usageKnown}[2]{{\usage_{\mlq\hspace{-0.06em}#2\hspace{-0.06em}\mrq}^{:#1}}}
+\newcommand{\presep}{\hspace{1.8em}}
+\newcommand{\subst}[3]{#1^{[{#2}{/}{#3}]}}
+\newcommand{\subty}[1]{#1^*}
+\newcommand{\bindvariable}{\bigstar}
+\newcommand{\hole}{\circ}
+\newcommand{\emptybindingslike}[1]{\varnothing #1}
+\newcommand{\betaeq}{\cong}
+\newcommand{\anywhat}{\ell}
+\newcommand{\hastype}[2]{#1 : #2}
+\newcommand{\hastypemeta}[2]{#1 :: #2}
+\newcommand{\stricterthan}{\subseteq}
+\newcommand{\unfoldingswithinlimit}[2]{#1 \subseteq #2}
+\newcommand{\namemappinguntyped}[2]{#1 \Rightarrow #2}
+\newcommand{\namemappingtype}[3]{#1:#2 \Rightarrow #3}
+\newcommand{\treemappinguntyped}[2]{\Rightarrow\hspace{-0.4em}[#1]\,#2}
+\newcommand{\treemappingtype}[3]{#1 \treemappinguntyped{#2}{#3}}
+\newcommand{\unfoldsin}[1]{\overset{#1}{\rightarrow}}
+
+\begin{document}
+  \maketitle
+  
+  \section{Introduction}
+  
+  This document isn't built to be a good explanation (yet); I'm building it for myself while I get things organized, so if it's a good explanation for others, that is coincidental. I plan to later develop it into a good explanation for others.
+  
+  The source of type-theoretic paradoxes like Girard's paradox (and Russell's paradox) is that you make infinite assumptions (by taking a parameter type that is a function type and must therefore be correct for all the infinite values of its parameter), then use those infinite assumptions to prove infinite claims, jiggling the infinities to make them line up slightly offset from each other so that you can also pull out a False.
+  
+  Type theories typically prevent this by limiting how you can jiggle the infinities. The present work's innovation is to prevent you from making infinite assumptions, by requiring that each parameter is only applied a fixed finite number of times. This allows us to remove the limitations.
+  
+  In particular, the source of the name "Introspective Calculus" is that every(?) meta-type is represented, and can be reasoned about, within the calculus itself.
+  
+  Section \ref{fundamentals} (\textit{\nameref{fundamentals}}) gives a formal definition of IC.  
+
+  \section{Fundamentals}\label{fundamentals}
+  \subsection{Uhh}
+  
+  most meta-types can be embedded completely within the theory: if you have a meta-type M, and need an instance of it for something, you can just ask for a formula with type M.
+  
+  the exception is HasType itself. If we need a formula with type M, what we need is F : M; if this was embedded, we'd be needing a formula G : (F : M), and H : (G : (F : M)), indefinitely. So this has to be split. There is a second meta-type MetaHasType, written :!. A parameter of type M can be satisfied either by $\hastypemeta{F}{M}$ or
+  
+  
+  atoms:
+  \begin{multline*}
+   Atom := \mathrm{Formula} \mid \mathrm{HasType} \mid \mathrm{Substitution} \mid \mathrm{UnfoldsTo} \mid \mathrm{StricterThan} \mid\\
+   \mathrm{ApplicationsWithinLimit} \mid \mathrm{Axiomatic}
+  \end{multline*}
+
+
+  \[ F := Atom \mid (F F) \]
+
+
+  \subsection{Notations}
+
+  \[ A\ B\ C \dots Y\ Z := ((\dots ((A B) C) \dots Y) Z) \]
+  \[ \treemappingtype{F}{F}{F} := \]
+  \[ \hastype{A}{B} := (\mathrm{HasType}\ A\ B) \]
+  \[ \subst{A}{B}{C} := (\mathrm{Substitution}\ A\ B\ C) \]
+
+  \subsection{Bootstrapping Axioms}
+
+  \[ \frac{\hastypemeta{a}{A}}{\hastypemeta{\mathrm{Axiomatic}}{(\hastype{a}{A})}} \]
+
+
+  \[ \frac{
+    \hastype{a}{A}
+  }{
+    \hastype{a}{(\unfoldsin{l}A)}
+  } \]
+
+  \[ \frac{
+    \hastype{a}{(\unfoldsin{l}\unfoldsin{m}A)}
+  }{
+    \hastype{a}{(\unfoldsin{(l m)}A)}
+  } \]
+
+  \[\subst{\hole}{\bindvariable}{v} = v\]
+  \[\subst{a}{\hole}{v} = a\]
+  \[\subst{(f a)}{(bc)}{v} = (\subst{f}{b}{v}\ \subst{a}{c}{v})\]
+
+  \[ \frac{
+    \hastype{f}{(\unfoldsin{l_f} (\treemappingtype{A}{x}{B}))}
+    \presep
+    \hastype{a}{(\unfoldsin{l_a} A)}
+  }{
+    \hastype{(f a)}{(\unfoldsin{(l_f l_a)+1} \subst{B}{x}{a})}
+  } \]
+
+  \subsection{Embedded Axioms}
+  
+  Translation to embedded form: There are variables of types V. The premises and conclusions are all stated as types P, C. The true axiom is $\hastypemeta{\mathrm{Axiomatic}}{(\namemappingtype{v}{V\dots}{\namemappingtype{\hole}{P\dots}{C}})}$.
+
+%  \[ \frac{
+%    \hastype{a}{(\unfoldsin{(l \hole)}A)}
+%  }{
+%    \hastype{a}{(\unfoldsin{l}A)}
+%  } \]
+
+  \[ \frac{
+\varnothing
+  }{
+    \hastype{\usageKnown{A}{i}}{A}
+  } \]
+
+  \[ \frac{
+    \hastype{\subst{b}{x}{\usageKnown{A}{bB}}}{\subst{B}{y}{\usageKnown{A}{bB}}}
+  }{
+    \hastype{
+      (\treemappinguntyped{x} b)
+    }{
+      (\treemappingtype{A}{y}{B})
+    }
+  } \]
+  \section{Examples}\label{structure}
+  \[
+    \mathrm{False} := \namemappingtype{P}{\mathrm{Formula}}{P}
+  \]
+  \[
+    \mathrm{idT} := \namemappinguntyped{T}{\namemappingtype{\hole}{T}{T}}
+  \]
+  \[
+    \mathrm{id} := \namemappinguntyped{x}{x}
+  \]
+  \[
+    \mathrm{id\_idT} : (\namemappingtype{T}{\mathrm{Formula}}{(\unfoldsin{l}{(\hastype{\mathrm{id}}{(\mathrm{idT}\ T)})})}) := (\namemappinguntyped{T}{\mathrm{Axiomatic \_ \_}})
+  \]
+
+  %\printbibliography
+\end{document}
