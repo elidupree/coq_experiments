@@ -1,4 +1,5 @@
-#h = "hole"
+o = "o" # hole, "○"
+h = "here" # "★"
 i = "implies" # "→"
 d = "delay" # "►"
 u = "unfoldsto" # "↬"
@@ -18,14 +19,14 @@ axioms = [
         ((i,"A"),"B"),
         ((i, (d, "A")), (d, "B"))
     ],
-    [((u,((("λ","★"),"B"),"v")), "v")],
-    [((u,((("λ","○"),"B"),"v")), "B")],
-    [((u,((("λ","a"),"B"),"c")),"d"),
-     ((u,((("λ","e"),"F"),"g")),"h"),
-     ((u,((("λ", ("a","e")),("B","F")),("c","g"))), ("d","h"))],
+    [((u,((("λ",h),"B"),"V")), "V")],
+    [((u,((("λ",o),"B"),"V")), "B")],
+    [((u,((("λ","A"),"B"),"C")),"D"),
+     ((u,((("λ","E"),"F"),"G")),"H"),
+     ((u,((("λ", ("A","E")),("B","F")),("C","G"))), ("D","H"))],
     [
         (("λ","x"),"B"),
-        ((u,((("λ","x"),"B"),"v")), "C"),
+        ((u,((("λ","x"),"B"),"V")), "C"),
         (d, "C")
     ],
     [
@@ -44,9 +45,9 @@ def render_axiom (axiom):
         if proposition [0].isupper():
             variables.add (proposition)
             return proposition
-        return f"'{proposition}'"
+        return f"{proposition}"
 
-    props = [render_proposition(p) for p in axiom]
+    props = [f"true({render_proposition(p)})" for p in axiom]
     premises = ", ".join (props[:-1])
     conclusion = props[-1]
     if len(props) > 1:
@@ -61,28 +62,28 @@ def render_axiom (axiom):
     def variable_locations(proposition, variable):
         if type(proposition) is tuple:
             a,b = tuple(variable_locations(a, variable) for a in proposition)
-            if a == ("○","○"):
-                a = "○"
-            if b == ("○","○"):
-                b = "○"
+            if a == (o,o):
+                a = o
+            if b == (o,o):
+                b = o
             return (a,b)
         if proposition [0] == variable:
-            return "★"
+            return h
         else:
-            return "○"
+            return o
 
     for variable in sorted (variables):
         embedded_form = (("λ", variable_locations(embedded_form, variable)), embedded_form)
 
     def render_embedded(proposition):
         if type(proposition) is tuple:
-            a,b = tuple(render_proposition(a) for a in proposition)
+            a,b = tuple(render_embedded(a) for a in proposition)
             return f"a({a}, {b})"
         if proposition [0].isupper():
-            return "'○'"
-        return f"'{proposition}'"
+            return f"{o}"
+        return f"{proposition}"
 
-    embedded_axiom = render_embedded(embedded_form)+"."
+    embedded_axiom = f"true({render_embedded(embedded_form)})."
 
     return meta_axiom, embedded_axiom
 
