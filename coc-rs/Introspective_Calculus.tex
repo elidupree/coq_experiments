@@ -25,183 +25,116 @@
 \DeclareMathSymbol{\mlq}{\mathord}{operators}{``}
 \DeclareMathSymbol{\mrq}{\mathord}{operators}{`'}
 
-\newcommand{\usage}{\mathcal{V}}
-\newcommand{\usageId}[1]{{\usage_{\mlq\hspace{-0.06em}#1\hspace{-0.06em}\mrq}}}
-\newcommand{\usageKnown}[2]{{\usage_{\mlq\hspace{-0.06em}#2\hspace{-0.06em}\mrq}^{:#1}}}
-\newcommand{\presep}{\hspace{1.8em}}
-\newcommand{\subst}[3]{#1^{[{#2}{/}{#3}]}}
-\newcommand{\subty}[1]{#1^*}
-\newcommand{\bindvariable}{\bigstar}
-\newcommand{\hole}{\circ}
-\newcommand{\emptybindingslike}[1]{\varnothing #1}
-\newcommand{\betaeq}{\cong}
-\newcommand{\anywhat}{\ell}
-\newcommand{\hastype}[2]{#1 : #2}
-\newcommand{\hastypemeta}[2]{#1 :: #2}
-\newcommand{\stricterthan}{\subseteq}
-\newcommand{\unfoldingswithinlimit}[2]{#1 \subseteq #2}
-\newcommand{\namemappinguntyped}[2]{#1 \Rightarrow #2}
-\newcommand{\namemappingtype}[3]{#1:#2 \Rightarrow #3}
-\newcommand{\treemappinguntyped}[2]{\Rightarrow\hspace{-0.4em}[#1]\,#2}
-\newcommand{\treemappingtype}[3]{#1 \treemappinguntyped{#2}{#3}}
-\newcommand{\unfoldsin}[1]{\overset{#1}{\rightarrow}}
-\newcommand{\assuming}[3]{\mathrm{given}\ #1:#2, #3}
-
 \begin{document}
   \maketitle
   
   \section{Introduction}
   
-  This document isn't built to be a good explanation (yet); I'm building it for myself while I get things organized, so if it's a good explanation for others, that is coincidental. I plan to later develop it into a good explanation for others.
+  This document is a bare-bones explanation of my current definitions of this calculus.
+  I plan to later develop it into a full, polished explanation, once I'm more confident in its soundness.
   
-  The source of type-theoretic paradoxes like Girard's paradox (and Russell's paradox) is that you make infinite assumptions (by taking a parameter type that is a function type and must therefore be correct for all the infinite values of its parameter), then use those infinite assumptions to prove infinite claims, jiggling the infinities to make them line up slightly offset from each other so that you can also pull out a False.
+  In type theory, the source of paradoxes (like Russell's paradox and Girard's paradox) is this:
   
-  Type theories typically prevent this by limiting how you can jiggle the infinities. The present work's innovation is to prevent you from making infinite assumptions, by requiring that each parameter is only applied a fixed finite number of times. This allows us to remove the limitations.
+  \begin{itemize}
+    \item A function $F$ takes a parameter $x$ whose type is a function type, and thereby defines \emph{infinite premises} (because $x$ must be correct for every possible value of $x$'s own parameter).
+    \item The type derivation for $F$ then uses these infinite premises to derive \emph{infinite conclusions} (the fact that $F$ itself is correct for every possible value of $x$).
+    \item By jiggling the infinities, the paradox makes these two infinities line up with each other with a slight offset, so it can pull an instance of False out of the loose end.
+  \end{itemize}
   
-  In particular, the source of the name "Introspective Calculus" is that every(?) meta-type is represented, and can be reasoned about, within the calculus itself.
+  Type theories typically prevent this by limiting how you can jiggle the infinities.
+  The present work's innovation is to prevent you from making infinite assumptions at all, by adding an unremovable placeholder for every time you apply an abstraction. Thus, the finite-ness of the placeholder stack proves the finite-ness of the proof.
+  This allows us to remove the other limitations.
+  
+  In particular, the source of the name "Introspective Calculus" is that every axiom is represented, and can be reasoned about, within the calculus itself.
   
   Section \ref{fundamentals} (\textit{\nameref{fundamentals}}) gives a formal definition of IC.  
 
   \section{Fundamentals}\label{fundamentals}
-  \subsection{Uhh}
-  
-  most meta-types can be embedded completely within the theory: if you have a meta-type M, and need an instance of it for something, you can just ask for a formula with type M.
-  
-  the exception is HasType itself. If we need a formula with type M, what we need is F : M; if this was embedded, we'd be needing a formula G : (F : M), and H : (G : (F : M)), indefinitely. So this has to be split. There is a second meta-type MetaHasType, written :!. A parameter of type M can be satisfied either by $\hastypemeta{F}{M}$ or
-  
-  
-  atoms:
-  \begin{multline*}
-   Atom := \mathrm{Formula} \mid \mathrm{HasType} \mid \mathrm{Substitution} \mid \mathrm{UnfoldsTo} \mid \mathrm{StricterThan} \mid\\
-   \mathrm{ApplicationsWithinLimit} \mid \mathrm{Axiomatic}
-  \end{multline*}
 
-
-  \[ F := Atom \mid (F F) \]
-
+  \subsection{Syntax}
+  \begin{align*}
+     Atom &:= \mathrm{true} \mid \mathrm{hole} \mid \mathrm{implies} \mid \mathrm{unfoldsto} \mid \mathrm{abstraction} \mid \mathrm{variable}\\
+     F &:= Atom \mid (F F)
+  \end{align*}
 
   \subsection{Notations}
-
-  \[ A\ B\ C \dots Y\ Z := ((\dots ((A B) C) \dots Y) Z) \]
-  \[ \treemappingtype{F}{F}{F} := \]
-  \[ \hastype{A}{B} := (\mathrm{HasType}\ A\ B) \]
-  \[ \subst{A}{B}{C} := (\mathrm{Substitution}\ A\ B\ C) \]
-
-
+  
+%  \[ A\ B\ C \dots Y\ Z := ((\dots ((A B) C) \dots Y) Z) \]
+  
+  \newcommand{\true}{\top}
+  \newcommand{\hole}{\circ}
+  
   \renewcommand{\implies}{\rightarrow}
-  \newcommand{\treemapping}[2]{\treemappinguntyped{#1}{#2}}
-  \[ \treemapping{x}{B} := (\mathrm{Mapping}\ x\ B) \]
   \newcommand{\unfoldsto}{\looparrowright}
-  \newcommand{\here}{\bindvariable}
-  \newcommand{\later}{\blacktriangleright}
+  \newcommand{\abstraction}[2]{\Rightarrow\hspace{-0.4em}[#1]\,#2}
+  \newcommand{\variable}[1]{{\mathcal{V}_{\mlq\hspace{-0.06em}#1\hspace{-0.06em}\mrq}}}
+  \begin{align*}
+    \true &:= \mathrm{true}\\
+    \hole &:= \mathrm{hole}\\
+    (A \implies B) &:= ((\mathrm{implies}\ A) B),\ \operatorname{right-associative}\\
+    (A \unfoldsto B) &:= ((\mathrm{unfoldsto}\ A) B)\\
+    (\abstraction{A}{B}) &:= ((\mathrm{abstraction}\ A) B)\\
+    (\variable{A}) &:= (\mathrm{variable}\ A)\\
+  \end{align*}
 
-  \subsection{Bootstrapping Axioms}
+  \newcommand{\nameabstraction}[2]{#1 \Rightarrow #2}
+
+  Finally, we define the \emph{named form} of abstractions, $(\nameabstraction{A}{B}),\ \operatorname{right-associative}$.
+  This is defined as $(\abstraction{L}{B'})$, where both $B'$ and $L$ (the \emph{variable locations}) are copies of $B$ with the following replacements:
+  \begin{itemize}
+    \item In $L$, replace any subtree that has no usages of $A$ with the atom $\hole$.
+    \item In $L$, replace all usages of $A$ with the atom $\true$.
+    \item In $B'$, replace all usages of $A$ with the atom $\hole$.
+  \end{itemize}
+
+  \newcommand{\here}{\true}
+
+  \subsection{Axiom Definitions}
   \setlength{\jot}{1.4em}
   \begin{gather*}
+    \tag{true}
+    \inferrule{}{\true}\\
     \tag{modus ponens}
     \inferrule{A\\\\ (A \implies B)}{B}\\
     \tag{weakening}
     \inferrule{B}{A \implies B}\\
-    \inferrule{C \implies (A \implies B)}{(C \implies A)\implies(C \implies B)}\\
-    \tag{"later" weakening}
-    \inferrule{A}{\later A}\\
-    \tag{top-level progress}
-    \inferrule{\later A}{A}\\
-    \inferrule{A \implies B}{\later A \implies \later B}\\
+    \tag{help, I can't find the name of this rule}
+    \inferrule{A \implies B}{(C \implies A)\implies(C \implies B)}\\
     \tag{replace here}
-    \inferrule{}{((\treemapping{\here}{B}) v) \unfoldsto v}\\
+    \inferrule{}{((\abstraction{\here}{B}) C) \unfoldsto C}\\
     \tag{replace not here}
-    \inferrule{}{((\treemapping{\hole}{B}) v) \unfoldsto B}\\
+    \inferrule{}{((\abstraction{\hole}{B}) C) \unfoldsto B}\\
     \tag{replace in both}
     \inferrule{
-      ((\treemapping{a}{B}) c) \unfoldsto d\\\\
-      ((\treemapping{e}{F}) g) \unfoldsto h
+      ((\abstraction{A}{B}) C) \unfoldsto D\\\\
+      ((\abstraction{E}{F}) G) \unfoldsto H
     }{
-      ((\treemapping{(ae)}{(BF)}) (cg)) \unfoldsto (dh)
+      ((\abstraction{(AE)}{(BF)}) (CG)) \unfoldsto (DH)
     }\\
     \tag{specialization}
-    \inferrule{\treemapping{x}{B} \\\\ ((\treemapping{x}{B}) v) \unfoldsto C}{\later C}\\
+    \inferrule{\abstraction{x}{B} \\\\ ((\abstraction{x}{B}) v) \unfoldsto C}{\true \implies C}\\
     \tag{generalization}
-    \inferrule{((\treemapping{x}{B})\ \usageId{B}) \unfoldsto C\\\\C}{\treemapping{x}{B}}\\
+    \inferrule{((\abstraction{x}{B})\ \variable{B}) \unfoldsto C\\\\C}{\abstraction{x}{B}}\\
   \end{gather*}
 
-%  \[ \frac{\hastypemeta{a}{A}}{\hastypemeta{\mathrm{Axiomatic}}{(\hastype{a}{A})}} \]
+  \subsection{Internal Axioms}
 
-
-%  hereafter $\frac{P\dots}{C}$ means that if there are formulas $p :: P\dots$, then $\hastypemeta{\mathrm{Axiomatic}}{C}$
-
-%  $::$ can be read as "has type globally", and $:$ as "is assumed to have type"
-%
-%  \begin{gather*}
-%      \frac{
-%    \hastypemeta{a}{A}
-%  }{
-%    \hastypemeta{a}{(\unfoldsin{l}A)}
-%  }\\
-%      \frac{
-%    \hastypemeta{a}{(\unfoldsin{l}\unfoldsin{m}A)}
-%  }{
-%    \hastypemeta{a}{(\unfoldsin{(l m)}A)}
-%  }\\
-%  \end{gather*}
-%
-%  i.e. $\hastypemeta{\mathrm{Axiomatic}}{C}$:
-%
-%  \[\subst{\hole}{\bindvariable}{v} = v\]
-%  \[\subst{a}{\hole}{v} = a\]
-%  \[\subst{(f a)}{(bc)}{v} = (\subst{f}{b}{v}\ \subst{a}{c}{v})\]
-%
-%  \[ \frac{
-%    \hastypemeta{f}{(\unfoldsin{l_f} (\treemappingtype{A}{x}{B}))}
-%    \presep
-%    \hastypemeta{a}{(\unfoldsin{l_a} A)}
-%    \presep
-%    \hastypemeta{s}{(\subst{B}{x}{a} = B')}
-%  }{
-%    \hastypemeta{(f a)}{(\unfoldsin{(l_f l_a)+1} B')}
-%  } \]
-
-  \subsection{Embedded Axioms}
+  We now define \emph{internal} versions of the above axioms.
   
-  We must embed all axioms with premises, but the ones with zero premises are taken care of by Axiom 0. Translation to embedded form: There are variables of types V. The premises and conclusions are all stated as types P, C. The true axiom is $\hastypemeta{\mathrm{Axiomatic}}{(\namemappingtype{v}{V\dots}{\namemappingtype{\hole}{P\dots}{C}})}$. We don't have to embed the embedded axioms because they have no premises, so they are covered.
+  From the internal perspective of the calculus, the above axioms provide truth for any \emph{specific} values of the variables $A, B\dots$, but cannot prove abstractions over those variables.
+  So, for each axiom, we also create an internal form, by representing the variables using abstractions, and the premises using implication. For example, (modus ponens) is represented as:
 
-%  \[ \frac{
-%    \hastype{a}{(\unfoldsin{(l \hole)}A)}
-%  }{
-%    \hastype{a}{(\unfoldsin{l}A)}
-%  } \]
+  \begin{equation*}
+    \tag{modus ponens, internal}
+    \inferrule{}{\nameabstraction{A}{\nameabstraction{B}{A \implies (A \implies B) \implies B}}}\\
+  \end{equation*}
+  
+  One might worry that we would need an internal form of the internal form, and so on indefinitely, but fortunately we do not, because the internal form has no variables or premises.
+  
+  One axiom (true) does not need an internal form, because it has no variables or premises in the first place. One axiom (generalization) does not need an \emph{external} form, because once the other external axioms are defined, they can derive the external form of generalization from the internal form.
 
-  \[ \frac{
-\varnothing
-  }{
-    \hastype{a}{(\assuming{a}{A}{A})}
-  } \]
+%  \section{Examples}\label{structure}
 
-  \[ \frac{
-    \hastype{\subst{b}{x}{\usageKnown{A}{bB}}}{\subst{B}{y}{\usageKnown{A}{bB}}}
-  }{
-    \hastypemeta{
-      (\treemappinguntyped{x} b)
-    }{
-      (\treemappingtype{A}{y}{B})
-    }
-  } \]
-
-
-
-  \section{Examples}\label{structure}
-  \[
-    \mathrm{False} := \namemappingtype{P}{\mathrm{Formula}}{P}
-  \]
-  \[
-    \mathrm{idT} := \namemappinguntyped{T}{\namemappingtype{\hole}{T}{T}}
-  \]
-  \[
-    \mathrm{id} := \namemappinguntyped{x}{x}
-  \]
-  \[
-    \mathrm{id\_idT} : (\namemappingtype{T}{\mathrm{Formula}}{(\unfoldsin{l}{(\hastype{\mathrm{id}}{(\mathrm{idT}\ T)})})}) := (\namemappinguntyped{T}{\mathrm{Axiomatic \_ \_}})
-  \]
 
   %\printbibliography
 \end{document}

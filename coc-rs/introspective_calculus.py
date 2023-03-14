@@ -47,13 +47,15 @@ def render_axiom (axiom):
             return proposition
         return f"{proposition}"
 
-    props = [f"true({render_proposition(p)})" for p in axiom]
+    props = [f"istrue({render_proposition(p)})" for p in axiom]
     premises = ", ".join (props[:-1])
     conclusion = props[-1]
     if len(props) > 1:
         meta_axiom = f"{conclusion} :- {premises}."
     else:
         meta_axiom = conclusion+"."
+        if not variables:
+            return meta_axiom
 
     embedded_form = axiom [- 1]
     for premise in reversed (axiom [:-1]):
@@ -83,7 +85,7 @@ def render_axiom (axiom):
             return f"{o}"
         return f"{proposition}"
 
-    embedded_axiom = f"true({render_embedded(embedded_form)})."
+    embedded_axiom = f"istrue({render_embedded(embedded_form)})."
 
     return meta_axiom, embedded_axiom
 
@@ -98,7 +100,8 @@ def render_axiom (axiom):
 #     premises = ", ".join (axiom[:-1])
 #     return f"{axiom[-1]} :- {premises}"
 
-for axiom in axioms:
-    m,e = render_axiom(axiom)
-    print(m)
-    print(e)
+all_rendered_axioms = [r for a in axioms for r in render_axiom(a)]
+for a in all_rendered_axioms:
+    print(a)
+
+print("?- istrue(o).")
