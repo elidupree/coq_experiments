@@ -3,12 +3,16 @@
 \usepackage{tikz}
 \usepackage{amsfonts}
 \usepackage{amssymb}
+%\usepackage[nointegrals]{wasysym}
 \usepackage{mathtools}
+\usepackage{mathpartir}
 \usepackage{nameref}
 \usepackage{xcolor}
 
 \usepackage[english]{babel}
 \usepackage[autostyle]{csquotes}
+\usepackage{amsmath}
+\usepackage{wasysym}
 \MakeOuterQuote{"}
 
 %\usepackage[backend=biber,style=numeric]{biblatex}
@@ -22,6 +26,7 @@
 \DeclareMathSymbol{\mrq}{\mathord}{operators}{`'}
 
 \newcommand{\usage}{\mathcal{V}}
+\newcommand{\usageId}[1]{{\usage_{\mlq\hspace{-0.06em}#1\hspace{-0.06em}\mrq}}}
 \newcommand{\usageKnown}[2]{{\usage_{\mlq\hspace{-0.06em}#2\hspace{-0.06em}\mrq}^{:#1}}}
 \newcommand{\presep}{\hspace{1.8em}}
 \newcommand{\subst}[3]{#1^{[{#2}{/}{#3}]}}
@@ -82,42 +87,79 @@
   \[ \hastype{A}{B} := (\mathrm{HasType}\ A\ B) \]
   \[ \subst{A}{B}{C} := (\mathrm{Substitution}\ A\ B\ C) \]
 
-  \subsection{Bootstrapping Axioms}
 
-  \[ \frac{\hastypemeta{a}{A}}{\hastypemeta{\mathrm{Axiomatic}}{(\hastype{a}{A})}} \]
+  \renewcommand{\implies}{\rightarrow}
+  \newcommand{\treemapping}[2]{\treemappinguntyped{#1}{#2}}
+  \[ \treemapping{x}{B} := (\mathrm{Mapping}\ x\ B) \]
+  \newcommand{\unfoldsto}{\looparrowright}
+  \newcommand{\here}{\bindvariable}
+  \newcommand{\later}{\blacktriangleright}
+
+  \subsection{Bootstrapping Axioms}
+  \setlength{\jot}{1.4em}
+  \begin{gather*}
+    \tag{modus ponens}
+    \inferrule{A\\\\ (A \implies B)}{B}\\
+    \tag{weakening}
+    \inferrule{B}{A \implies B}\\
+    \inferrule{C \implies (A \implies B)}{(C \implies A)\implies(C \implies B)}\\
+    \tag{"later" weakening}
+    \inferrule{A}{\later A}\\
+    \tag{top-level progress}
+    \inferrule{\later A}{A}\\
+    \inferrule{A \implies B}{\later A \implies \later B}\\
+    \tag{replace here}
+    \inferrule{}{((\treemapping{\here}{B}) v) \unfoldsto v}\\
+    \tag{replace not here}
+    \inferrule{}{((\treemapping{\hole}{B}) v) \unfoldsto B}\\
+    \tag{replace in both}
+    \inferrule{
+      ((\treemapping{a}{B}) c) \unfoldsto d\\\\
+      ((\treemapping{e}{F}) g) \unfoldsto h
+    }{
+      ((\treemapping{(ae)}{(BF)}) (cg)) \unfoldsto (dh)
+    }\\
+    \tag{specialization}
+    \inferrule{\treemapping{x}{B} \\\\ ((\treemapping{x}{B}) v) \unfoldsto C}{\later C}\\
+    \tag{generalization}
+    \inferrule{((\treemapping{x}{B})\ \usageId{B}) \unfoldsto C\\\\C}{\treemapping{x}{B}}\\
+  \end{gather*}
+
+%  \[ \frac{\hastypemeta{a}{A}}{\hastypemeta{\mathrm{Axiomatic}}{(\hastype{a}{A})}} \]
 
 
 %  hereafter $\frac{P\dots}{C}$ means that if there are formulas $p :: P\dots$, then $\hastypemeta{\mathrm{Axiomatic}}{C}$
 
-  $::$ can be read as "has type globally", and $:$ as "is assumed to have type"
-
-  \[ \frac{
-    \hastypemeta{a}{A}
-  }{
-    \hastypemeta{a}{(\unfoldsin{l}A)}
-  } \]
-
-  \[ \frac{
-    \hastypemeta{a}{(\unfoldsin{l}\unfoldsin{m}A)}
-  }{
-    \hastypemeta{a}{(\unfoldsin{(l m)}A)}
-  } \]
-
-  i.e. $\hastypemeta{\mathrm{Axiomatic}}{C}$:
-
-  \[\subst{\hole}{\bindvariable}{v} = v\]
-  \[\subst{a}{\hole}{v} = a\]
-  \[\subst{(f a)}{(bc)}{v} = (\subst{f}{b}{v}\ \subst{a}{c}{v})\]
-
-  \[ \frac{
-    \hastypemeta{f}{(\unfoldsin{l_f} (\treemappingtype{A}{x}{B}))}
-    \presep
-    \hastypemeta{a}{(\unfoldsin{l_a} A)}
-    \presep
-    \hastypemeta{s}{(\subst{B}{x}{a} = B')}
-  }{
-    \hastypemeta{(f a)}{(\unfoldsin{(l_f l_a)+1} B')}
-  } \]
+%  $::$ can be read as "has type globally", and $:$ as "is assumed to have type"
+%
+%  \begin{gather*}
+%      \frac{
+%    \hastypemeta{a}{A}
+%  }{
+%    \hastypemeta{a}{(\unfoldsin{l}A)}
+%  }\\
+%      \frac{
+%    \hastypemeta{a}{(\unfoldsin{l}\unfoldsin{m}A)}
+%  }{
+%    \hastypemeta{a}{(\unfoldsin{(l m)}A)}
+%  }\\
+%  \end{gather*}
+%
+%  i.e. $\hastypemeta{\mathrm{Axiomatic}}{C}$:
+%
+%  \[\subst{\hole}{\bindvariable}{v} = v\]
+%  \[\subst{a}{\hole}{v} = a\]
+%  \[\subst{(f a)}{(bc)}{v} = (\subst{f}{b}{v}\ \subst{a}{c}{v})\]
+%
+%  \[ \frac{
+%    \hastypemeta{f}{(\unfoldsin{l_f} (\treemappingtype{A}{x}{B}))}
+%    \presep
+%    \hastypemeta{a}{(\unfoldsin{l_a} A)}
+%    \presep
+%    \hastypemeta{s}{(\subst{B}{x}{a} = B')}
+%  }{
+%    \hastypemeta{(f a)}{(\unfoldsin{(l_f l_a)+1} B')}
+%  } \]
 
   \subsection{Embedded Axioms}
   
