@@ -1,3 +1,6 @@
+import subprocess
+import sys
+
 o = "o" # hole, "○"
 h = "here" # "★"
 i = "implies" # "→"
@@ -7,6 +10,7 @@ v = "var" # "𝒱"
 #l = "lambda"
 
 axioms = [
+    ["t"],
     ["A", ((i, "A"), "B"), "B"],
     ["B", ((i,"A"), "B")],
     [
@@ -36,7 +40,7 @@ axioms = [
     ],
 ]
 
-def render_axiom (axiom):
+def render_inference_rule (axiom):
     variables = set()
     def render_proposition(proposition):
         if type(proposition) is tuple:
@@ -55,7 +59,7 @@ def render_axiom (axiom):
     else:
         meta_axiom = conclusion+"."
         if not variables:
-            return meta_axiom
+            return meta_axiom,
 
     embedded_form = axiom [- 1]
     for premise in reversed (axiom [:-1]):
@@ -100,8 +104,24 @@ def render_axiom (axiom):
 #     premises = ", ".join (axiom[:-1])
 #     return f"{axiom[-1]} :- {premises}"
 
-all_rendered_axioms = [r for a in axioms for r in render_axiom(a)]
-for a in all_rendered_axioms:
-    print(a)
+all_rendered_axioms = [r for a in axioms for r in render_inference_rule(a)]
 
-print("?- istrue(o).")
+with open(sys.argv[2], "w") as file:
+    for a in all_rendered_axioms:
+        file.write(a)
+        file.write("\n")
+subprocess.run([sys.argv[1], sys.argv[2], "-g", "istrue(t)."])
+
+# child = subprocess.Popen([sys.argv[1], sys.argv[2], -g ], stdin=subprocess.PIPE)
+#
+# def send(a, announce=True):
+#     if announce:
+#         print(f"Sending {a}")
+#     child.stdin.write(a.encode())
+#     child.stdin.write(b"\n")
+#     child.stdin.flush()
+#
+# send("istrue(A).")
+# child.stdin.close()
+# child.wait()
+print("done")

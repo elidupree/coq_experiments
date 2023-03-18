@@ -42,10 +42,13 @@
   \end{itemize}
   
   Type theories typically prevent this by limiting how you can jiggle the infinities.
-  The present work's innovation is to prevent you from making infinite assumptions at all, by adding an unremovable placeholder for every time you apply an abstraction. Thus, the finite-ness of the placeholder stack proves the finite-ness of the proof.
+  The present work's innovation is to prevent infinities directly, by adding an unremovable placeholder for every time you create or apply an abstraction, so that the finite-ness of the placeholder stack proves the finite-ness of the proof.
   This allows us to remove the other limitations.
-  
-  In particular, the source of the name "Introspective Calculus" is that every axiom is represented, and can be reasoned about, within the calculus itself.
+  In particular, the source of the name "Introspective Calculus" is that every rule of IC can be abstracted over within IC.
+
+  The placeholders take the form of well-founded sets, which avoid the Burali-Forti paradox by being subject to the same finite-ness requirements themselves.
+
+
   
   Section \ref{fundamentals} (\textit{\nameref{fundamentals}}) gives a formal definition of IC.  
 
@@ -53,53 +56,89 @@
 
   \subsection{Syntax}
   \begin{align*}
-     Atom &:= \mathrm{true} \mid \mathrm{hole} \mid \mathrm{implies} \mid \mathrm{unfoldsto} \mid \mathrm{abstraction} \mid \mathrm{variable}\\
-     F &:= Atom \mid (F F)
+     Atom :=&\ \mathrm{here} \mid \mathrm{hole} \mid \mathrm{implies} \mid \mathrm{unfoldsto} \mid \mathrm{abstraction} \mid \mathrm{variable} \mid \mathrm{clock} \mid\\
+      &\ \ \ \ \mathrm{plus} \mid \mathrm{minus} \mid \mathrm{well\_founded\_zero} \mid \mathrm{well\_founded\_successor}\\
+     F :=&\ Atom \mid (F F)
   \end{align*}
 
   \subsection{Notations}
   
 %  \[ A\ B\ C \dots Y\ Z := ((\dots ((A B) C) \dots Y) Z) \]
   
-  \newcommand{\true}{\top}
+  \newcommand{\here}{\bigstar}
   \newcommand{\hole}{\circ}
+  \newcommand{\wfz}{0}
+  \newcommand{\wfsucc}{\operatorname{\mathrm{S}}}
   
   \renewcommand{\implies}{\rightarrow}
+  \newcommand{\wellfounded}{\operatorname{\mathrm{well\_founded}}}
   \newcommand{\unfoldsto}{\looparrowright}
   \newcommand{\abstraction}[2]{\Rightarrow\hspace{-0.4em}[#1]\,#2}
   \newcommand{\variable}[1]{{\mathcal{V}_{\mlq\hspace{-0.06em}#1\hspace{-0.06em}\mrq}}}
+  \newcommand{\clocksub}[1]{\text{\clock}_{\!#1}}
+  \newcommand{\nameabstraction}[1]{#1 \Rightarrow}
+
   \begin{align*}
-    \true &:= \mathrm{true}\\
+    \here &:= \mathrm{here}\\
     \hole &:= \mathrm{hole}\\
+    + &:= \mathrm{plus}\\
+    - &:= \mathrm{minus}\\
+    \wfz &:= \mathrm{well\_founded\_zero}\\
+    \wfsucc &:= \mathrm{well\_founded\_successor}\\
     (A \implies B) &:= ((\mathrm{implies}\ A) B),\ \operatorname{right-associative}\\
     (A \unfoldsto B) &:= ((\mathrm{unfoldsto}\ A) B)\\
     (\abstraction{A}{B}) &:= ((\mathrm{abstraction}\ A) B)\\
     (\variable{A}) &:= (\mathrm{variable}\ A)\\
+    \clocksub{A} &:= (\mathrm{clock}\ A)\\
   \end{align*}
 
-  \newcommand{\nameabstraction}[2]{#1 \Rightarrow #2}
-
-  Finally, we define the \emph{named form} of abstractions, $(\nameabstraction{A}{B}),\ \operatorname{right-associative}$.
+  Finally, we define the \emph{named form} of abstractions, $(\nameabstraction{A}B),\ \operatorname{right-associative}$.
   This is defined as $(\abstraction{L}{B'})$, where both $B'$ and $L$ (the \emph{variable locations}) are copies of $B$ with the following replacements:
   \begin{itemize}
     \item In $L$, replace any subtree that has no usages of $A$ with the atom $\hole$.
-    \item In $L$, replace all usages of $A$ with the atom $\true$.
+    \item In $L$, replace all usages of $A$ with the atom $\here$.
     \item In $B'$, replace all usages of $A$ with the atom $\hole$.
   \end{itemize}
-
-  \newcommand{\here}{\true}
 
   \subsection{Axiom Definitions}
   \setlength{\jot}{1.4em}
   \begin{gather*}
-    \tag{true}
-    \inferrule{}{\true}\\
-    \tag{modus ponens}
+    \tag{modus ponens}\label{mp}
     \inferrule{A\\\\ (A \implies B)}{B}\\
+  \end{gather*}
+  All remaining axioms are defined as implications ($Premise \implies Premise \dots \implies Conclusion$), which allows them to be reasoned about internally. (The external form can be derived using \eqref{mp}.) However, we still write them as $\frac{Premise\dots}{Conclusion}$ for readability.
+  \\\\
+  Implication:
+  \begin{gather*}
     \tag{weakening}
     \inferrule{B}{A \implies B}\\
-    \tag{help, I can't find the name of this rule}
-    \inferrule{A \implies B}{(C \implies A)\implies(C \implies B)}\\
+    \tag{implication within hypothetical}
+    \inferrule{C \implies (A \implies B)}{(C \implies A)\implies(C \implies B)}\\
+    \tag{implication within clocks}
+    \inferrule{\clocksub{n} (A \implies B)}{(\clocksub{n} A)\implies(\clocksub{n} B)}\\
+  \end{gather*}
+  Well-foundedness:
+  \begin{gather*}
+    \tag{successors contain predecessors}
+    \inferrule{}{(\wfsucc n) n}\\
+    \tag{zero case}
+    \inferrule{}{\wellfounded \wfz}\\
+    \tag{successor case}
+    \inferrule{\wellfounded n}{\wellfounded (\wfsucc n)}\\
+    \tag{infinite case}
+    \inferrule{\nameabstraction{x}(n x) \implies (\wellfounded x)}{\wellfounded n}\\
+  \end{gather*}
+  Clocks:
+  \begin{gather*}
+    \tag{later, now will be earlier}
+    \inferrule{A\\\\\wellfounded n}{\clocksub{+n} \clocksub{-n} A}\\
+    \tag{later later is more later}
+    \inferrule{\clocksub{+o} (\wellfounded n)\\\\no\\\\np\\\\\clocksub{+o}\clocksub{+p}A}{\clocksub{+n} A}\\
+    \tag{more earlier is earlier earlier}
+    \inferrule{\clocksub{+o} (\wellfounded n)\\\\no\\\\np\\\\\clocksub{-n} A}{\clocksub{-o}\clocksub{-p}A}\\
+  \end{gather*}
+  Substitution:
+  \begin{gather*}
     \tag{replace here}
     \inferrule{}{((\abstraction{\here}{B}) C) \unfoldsto C}\\
     \tag{replace not here}
@@ -111,30 +150,44 @@
     }{
       ((\abstraction{(AE)}{(BF)}) (CG)) \unfoldsto (DH)
     }\\
-    \tag{specialization}
-    \inferrule{\abstraction{x}{B} \\\\ ((\abstraction{x}{B}) v) \unfoldsto C}{\true \implies C}\\
+  \end{gather*}
+  Abstraction:
+  \begin{gather*}
+    \tag{evaluation of predicates}
+    \inferrule{((\abstraction{x}{B})v) \unfoldsto C\\\\C}{(\abstraction{x}{B})v}\\
     \tag{generalization}
-    \inferrule{((\abstraction{x}{B})\ \variable{B}) \unfoldsto C\\\\C}{\abstraction{x}{B}}\\
+    \inferrule{(\abstraction{x}{\clocksub{-\wfz}B})\ \variable{B}}{\abstraction{x}{B}}\\
+    \tag{specialization}
+    \inferrule{((\abstraction{x}{B}) v) \unfoldsto C\\\\\abstraction{x}{B}}{\clocksub{+\wfz} C}\\
+%    \tag{induction}
+%    \inferrule{P\ Atom\dots\\\\\nameabstraction{A} \nameabstraction{B} P A \implies P B \implies P (A B)}{P C}\\
   \end{gather*}
 
-  \subsection{Internal Axioms}
+  \section{Examples}\label{structure}
 
-  We now define \emph{internal} versions of the above axioms.
-  
-  From the internal perspective of the calculus, the above axioms provide truth for any \emph{specific} values of the variables $A, B\dots$, but cannot prove abstractions over those variables.
-  So, for each axiom, we also create an internal form, by representing the variables using abstractions, and the premises using implication. For example, (modus ponens) is represented as:
+  We can define the conventional logical connectives in terms of the above rules:
 
-  \begin{equation*}
-    \tag{modus ponens, internal}
-    \inferrule{}{\nameabstraction{A}{\nameabstraction{B}{A \implies (A \implies B) \implies B}}}\\
-  \end{equation*}
-  
-  One might worry that we would need an internal form of the internal form, and so on indefinitely, but fortunately we do not, because the internal form has no variables or premises.
-  
-  One axiom (true) does not need an internal form, because it has no variables or premises in the first place. One axiom (generalization) does not need an \emph{external} form, because once the other external axioms are defined, they can derive the external form of generalization from the internal form.
+  \setlength{\jot}{0.4em}
+  \begin{align*}
+    \tag{false/absurdity}
+    \bot &:= (\nameabstraction{P}{P})\\
+    \tag{negation}
+    \neg P &:= ({P \implies \bot})\\
+    \mathrm{not} &:= (\nameabstraction{P} \neg P)\\
+    \tag{conjunction}
+    P \land Q &:= (\nameabstraction{R} (P \implies Q \implies R) \implies R)\\
+    \mathrm{and} &:= (\nameabstraction{P}\nameabstraction{Q} P \land Q)\\
+    \tag{disjunction}
+    P \lor Q &:= (\nameabstraction{R} (P \implies R) \implies (Q \implies R) \implies R)\\
+    \mathrm{or} &:= (\nameabstraction{P}\nameabstraction{Q} P \lor Q)\\
+    \tag{existential quantification}
+    \exists x, P(x) &:= (\nameabstraction{R} (\nameabstraction{x} P(x) \implies R) \implies R)\\
+  \end{align*}
 
-%  \section{Examples}\label{structure}
-
+%  And we can prove some tautologies:
+%  \begin{align*}
+%  (P \land Q)
+%  \end{align*}
 
   %\printbibliography
 \end{document}
