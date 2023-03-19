@@ -130,7 +130,7 @@
   \end{gather*}
   Clocks:
   \begin{gather*}
-    \tag{later, now will be earlier}
+    \tag{later, now will be earlier}\label{lne}
     \inferrule{A\\\\\wellfounded n}{\clocksub{+n} \clocksub{-n} A}\\
     \tag{later later is more later}
     \inferrule{\clocksub{+o} (\wellfounded n)\\\\no\\\\np\\\\\clocksub{+o}\clocksub{+p}A}{\clocksub{+n} A}\\
@@ -188,6 +188,47 @@
 %  \begin{align*}
 %  (P \land Q)
 %  \end{align*}
+
+  \section{Consistency}\label{consistency}
+  
+  We regard a proposition $P$ as "proven" if it is \emph{eventually true} within IC, i.e.
+  
+  \newcommand{\eventually}{\operatorname{\mathrm{Eventually}}}
+  
+  \[ \eventually P := \exists n, \clocksub{+n} P \]
+  
+  This is a meta-theoretical definition; if we use our internal definition of $\exists$, which contains 2 nested abstractions, then you can never prove $(\eventually P)$, only $\clocksub{+2}(\eventually P)$.
+  
+  That said, since every axiom of IC can be applied within clocks, we could view the inside of $\clocksub{+n}$ as being another instance of the calculus – call it IC$_{+n}$ – which adds the axiom "if $\clocksub{+n} P$ is true in IC, then $P$ is true in IC$_{+n}$". If we move to IC$_{+2}$, we \emph{can} be comfortable with an internal definition of $\eventually$. Thus, IC can function as its own metatheory, just with a clock offset.
+  
+  By the axiom \eqref{lne}, anything that's eventually true is also eternally true, in the sense that you can "wait" for an IC$_{+n}$ where P is as old as you want:
+  
+  \[ \nameabstraction{n} \wellfounded n \implies \eventually P \implies \eventually \clocksub{-n} P \]
+  
+  One might ask: What if you can't prove $(\eventually P)$, but only $\eventually (\eventually P)$? One might hope that $\eventually (\eventually P)$ implies $(\eventually P)$, but it does not – it only implies $\clocksub{+constant}(\eventually P)$. But could we also regard that as "proving $P$"? Unfortunately, if we did, we would then want to extend it to $\eventually (\eventually (\eventually P))$, and so forth. For the sake of having a single definition, the answer must be \emph{no}. But the purpose of including the entire well-founded hierarchy is that you don't \emph{need} to.
+  
+  Intuitively, the only way to prove $(\eventually P)$ is to exhibit a \emph{specific} $n$ where you can prove $\clocksub{+n} P$. Assuming this is true, you can simply take that value of $n$ Unfortunately, you can't prove this within IC, because the internal logic of IC doesn't know that there aren't extra axioms that could make $\eventually P$ true for other reasons. However, what you \emph{can} do is to define a predicate
+  
+  \newcommand{\provable}{\operatorname{\mathrm{Provable}}}
+  
+  \[\provable P := \dots\]
+  
+  which is true for anything that can be proved from the actual axioms of IC. (You define this as an induction predicate, with the axioms of IC as cases; we omit the definition because it is long.)
+  
+  A digression on the properties of $\provable$: Meta-theoretically, we don't think you can prove anything that's not $\eventually \provable$. But this is impossible to prove inside IC, for the same reasons as above. In fact, the proposition $(P \implies \eventually (\provable P))$ is \emph{false} within IC, because it is self-contradictory. (If true, it would be a statement that was true but not provable from the axioms!)
+  
+  We also cannot prove $(\provable P) \implies P$, even though we believe that all provable statements are true; but fortunately, $(\provable P) \implies (\eventually P)$ is a trivial corollary.
+  
+  (All of the following is conjecture, but I expect it to be true, at least once I have cleaned up any definitional mistakes:)
+  
+  With the provability predicate, we can prove:
+  
+  \[ \nameabstraction{P} \eventually (\provable (\eventually P)) \implies \eventually  P \]
+  
+  This theorem has an immediate corollary that is very significant:
+  
+  \[ \nameabstraction{P} \eventually (\provable (\eventually \bot)) \implies \eventually \bot \]
+  
 
   %\printbibliography
 \end{document}
