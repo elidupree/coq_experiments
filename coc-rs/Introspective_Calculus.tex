@@ -71,12 +71,14 @@
   \newcommand{\wfsucc}{\operatorname{\mathrm{S}}}
   
   \renewcommand{\implies}{\rightarrow}
+  \newcommand{\proves}{\vdash}
   \newcommand{\wellfounded}{\operatorname{\mathrm{well\_founded}}}
   \newcommand{\unfoldsto}{\looparrowright}
   \newcommand{\abstraction}[2]{\Rightarrow\hspace{-0.4em}[#1]\,#2}
   \newcommand{\variable}[1]{{\mathcal{V}_{\mlq\hspace{-0.06em}#1\hspace{-0.06em}\mrq}}}
   \newcommand{\clocksub}[1]{\text{\clock}_{\!#1}}
   \newcommand{\nameabstraction}[1]{#1 \Rightarrow}
+  \newcommand{\axiom}[2]{#1 := #2}
 
   \begin{align*}
     \here &:= \mathrm{here}\\
@@ -104,7 +106,7 @@
   \setlength{\jot}{1.4em}
   \begin{gather*}
     \tag{modus ponens}\label{mp}
-    \inferrule{A\\\\ (A \implies B)}{B}\\
+    \inferrule{(A \implies B)\\\\A}{B}\\
   \end{gather*}
   All remaining axioms are defined as implications ($Premise \implies Premise \dots \implies Conclusion$), which allows them to be reasoned about internally. (The external form can be derived using \eqref{mp}.) However, we still write them as $\frac{Premise\dots}{Conclusion}$ for readability.
   \\\\
@@ -113,29 +115,16 @@
     \tag{weakening}
     \inferrule{B}{A \implies B}\\
     \tag{implication within hypothetical}
-    \inferrule{C \implies (A \implies B)}{(C \implies A)\implies(C \implies B)}\\
-    \tag{implication within clocks}
-    \inferrule{\clocksub{n} (A \implies B)}{(\clocksub{n} A)\implies(\clocksub{n} B)}\\
+    \inferrule{C \implies (A \implies B)\\\\C \implies A}{C \implies B}\\
   \end{gather*}
-  Well-foundedness:
+  Proofs:
   \begin{gather*}
-    \tag{successors contain predecessors}
-    \inferrule{}{(\wfsucc n) n}\\
-    \tag{zero case}
-    \inferrule{}{\wellfounded \wfz}\\
-    \tag{successor case}
-    \inferrule{\wellfounded n}{\wellfounded (\wfsucc n)}\\
-    \tag{infinite case}
-    \inferrule{\nameabstraction{x}(n x) \implies (\wellfounded x)}{\wellfounded n}\\
-  \end{gather*}
-  Clocks:
-  \begin{gather*}
-    \tag{later, now will be earlier}\label{lne}
-    \inferrule{A\\\\\wellfounded n}{\clocksub{+n} \clocksub{-n} A}\\
-    \tag{later later is more later}
-    \inferrule{\clocksub{+o} (\wellfounded n)\\\\no\\\\np\\\\\clocksub{+o}\clocksub{+p}A}{\clocksub{+n} A}\\
-    \tag{more earlier is earlier earlier}
-    \inferrule{\clocksub{+o} (\wellfounded n)\\\\no\\\\np\\\\\clocksub{-n} A}{\clocksub{-o}\clocksub{-p}A}\\
+    \tag{axioms prove things}\label{axp}
+    \inferrule{\axiom{A}{B}}{A \proves B}\\
+    \tag{implication within proofs}
+    \inferrule{P \proves (A \implies B)\\\\Q \proves A}{(PQ)\proves B}\\
+    \tag{induction on proofs}
+    \inferrule{A \proves B\\\\\nameabstraction{P}\nameabstraction{Q} (\axiom{P}{Q}) \implies RPQ\\\\\nameabstraction{P}\nameabstraction{Q}\nameabstraction{A}\nameabstraction{B} R P (A\implies B) \implies R QA\implies R(PQ)B}{R(PQ)B}\\
   \end{gather*}
   Substitution:
   \begin{gather*}
@@ -156,12 +145,49 @@
     \tag{evaluation of predicates}
     \inferrule{((\abstraction{x}{B})v) \unfoldsto C\\\\C}{(\abstraction{x}{B})v}\\
     \tag{generalization}
-    \inferrule{(\abstraction{x}{\clocksub{-\wfz}B})\ \variable{B}}{\abstraction{x}{B}}\\
+    \inferrule{(\abstraction{x}{(A \proves B)})\ \variable{B}}{\abstraction{x}{B}}\\
     \tag{specialization}
-    \inferrule{((\abstraction{x}{B}) v) \unfoldsto C\\\\\abstraction{x}{B}}{\clocksub{+\wfz} C}\\
+    \inferrule{((\abstraction{x}{B}) v) \unfoldsto C\\\\A \proves (\abstraction{x}{B})}{C}\\
 %    \tag{induction}
 %    \inferrule{P\ Atom\dots\\\\\nameabstraction{A} \nameabstraction{B} P A \implies P B \implies P (A B)}{P C}\\
   \end{gather*}
+  Axiom rules:
+  \begin{gather*}
+    \tag{successor axioms}\label{axs}
+    \inferrule{\axiom{A}{B}}{\axiom{(\wfsucc A)}{(\axiom{A}{B})}}\\
+    \tag{axiom definitions are unique}\label{axu}
+    \inferrule{\axiom{A}{B}\\\\\axiom{A}{C}\\\\PB}{PC}\\
+    \tag{induction on axioms}\label{axe}
+    \inferrule{\axiom{A}{B}\\\\P\text{``modus ponens"}\\\\\dots\\\\P\text{``induction on axioms"}\\\\(\nameabstraction{a} Pa \implies P(\wfsucc a))}{PA}\\
+  \end{gather*}
+
+  \subsection{Internal Axioms}
+
+  We now define \emph{internal} versions of the above axioms.
+
+  From the internal perspective of the calculus, the above axioms provide truth for any \emph{specific} values of the variables $A, B\dots$, but cannot prove abstractions over those variables.
+  So, for each axiom, we also create an internal form, by representing the variables using abstractions, and the premises using implication.
+  For example, (modus ponens) is represented as:
+
+  \begin{equation*}
+    \tag{modus ponens, internal}\label{mpi}
+    \axiom{\operatorname{\mathrm{``modus\ ponens"}}}{
+      (\nameabstraction{A} \nameabstraction{B} (A \implies B) \implies A \implies B)
+    }\\
+  \end{equation*}
+
+  Of course, \eqref{mpi} is now an axiom that does not have an explicit internal form!
+  Fortunately, we do not need an infinite regression of \emph{explicit} definitions. Since \eqref{mpi} has no metavariables or premises, \eqref{axs} can take care of it, giving us:
+
+  \begin{equation*}
+    \axiom{(\wfsucc\operatorname{\mathrm{``modus\ ponens"}})}{(
+      \axiom{\operatorname{\mathrm{``modus\ ponens"}}}{
+        (\nameabstraction{A} \nameabstraction{B} (A \implies B) \implies A \implies B)
+      }
+    )}\\
+  \end{equation*}
+
+  and so forth.
 
   \section{Examples}\label{structure}
 
