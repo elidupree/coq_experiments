@@ -64,14 +64,15 @@
   \subsection{Notations}
   
 %  \[ A\ B\ C \dots Y\ Z := ((\dots ((A B) C) \dots Y) Z) \]
-  
+
+  \newcommand{\ic}[1]{#1}
   \newcommand{\here}{\bigstar}
   \newcommand{\hole}{\circ}
   \newcommand{\wfz}{0}
   \newcommand{\wfsucc}{\operatorname{\mathrm{S}}}
   
   \renewcommand{\implies}{\rightarrow}
-  \newcommand{\proves}{\vdash}
+  \newcommand{\proven}[1]{\vdash #1}
   \newcommand{\wellfounded}{\operatorname{\mathrm{well\_founded}}}
   \newcommand{\unfoldsto}{\looparrowright}
   \newcommand{\abstraction}[2]{\Rightarrow\hspace{-0.4em}[#1]\,#2}
@@ -79,6 +80,7 @@
   \newcommand{\clocksub}[1]{\text{\clock}_{\!#1}}
   \newcommand{\nameabstraction}[1]{#1 \Rightarrow}
   \newcommand{\axiom}[2]{#1 := #2}
+  \newcommand{\axiomatic}[1]{\infty #1}
 
   \begin{align*}
     \here &:= \mathrm{here}\\
@@ -108,8 +110,8 @@
     \tag{modus ponens}\label{mp}
     \inferrule{(A \implies B)\\\\A}{B}\\
   \end{gather*}
-  All remaining axioms are defined as implications ($Premise \implies Premise \dots \implies Conclusion$), which allows them to be reasoned about internally. (The external form can be derived using \eqref{mp}.) However, we still write them as $\frac{Premise\dots}{Conclusion}$ for readability.
-  \\\\
+%  All remaining axioms are defined as implications ($Premise \implies Premise \dots \implies Conclusion$), which allows them to be reasoned about internally. (The external form can be derived using \eqref{mp}.) However, we still write them as $\frac{Premise\dots}{Conclusion}$ for readability.
+%  \\\\
   Implication:
   \begin{gather*}
     \tag{weakening}
@@ -117,37 +119,46 @@
     \tag{implication within hypothetical}
     \inferrule{C \implies (A \implies B)\\\\C \implies A}{C \implies B}\\
   \end{gather*}
+  Definitional equality:
+  \begin{gather*}
+    \tag{symmetry}
+    \inferrule{A \equiv B}{B \equiv A}\\
+    \tag{implication}
+    \inferrule{A \equiv B}{A \implies B}\\
+  \end{gather*}
   Proofs:
   \begin{gather*}
+    \tag{proofs prove things}\label{axp}
+    \inferrule{\proven{A}}{A}\\
     \tag{axioms prove things}\label{axp}
-    \inferrule{\axiom{A}{B}}{A \proves B}\\
-    \tag{implication within proofs}
-    \inferrule{P \proves (A \implies B)\\\\Q \proves A}{(PQ)\proves B}\\
+    \inferrule{\axiomatic{A}}{A}\\
+%    \tag{implication within proofs}
+%    \inferrule{P \proves (A \implies B)\\\\Q \proves A}{(PQ)\proves B}\\
     \tag{induction on proofs}
-    \inferrule{A \proves B\\\\\nameabstraction{P}\nameabstraction{Q} (\axiom{P}{Q}) \implies RPQ\\\\\nameabstraction{P}\nameabstraction{Q}\nameabstraction{A}\nameabstraction{B} R P (A\implies B) \implies R QA\implies R(PQ)B}{R(PQ)B}\\
+    \inferrule{\proven{P}\\\\\nameabstraction{A} \axiomatic{A} \implies RA\\\\\nameabstraction{A}\nameabstraction{B} R(A\implies B) \implies RA\implies RB}{RP}\\
   \end{gather*}
   Substitution:
   \begin{gather*}
     \tag{replace here}
-    \inferrule{}{((\abstraction{\here}{B}) C) \unfoldsto C}\\
+    \inferrule{}{((\abstraction{\here}{B}) C) \equiv C}\\
     \tag{replace not here}
-    \inferrule{}{((\abstraction{\hole}{B}) C) \unfoldsto B}\\
+    \inferrule{}{((\abstraction{\hole}{B}) C) \equiv B}\\
     \tag{replace in both}
     \inferrule{
-      ((\abstraction{A}{B}) C) \unfoldsto D\\\\
-      ((\abstraction{E}{F}) G) \unfoldsto H
+      ((\abstraction{A}{B}) C) \equiv D\\\\
+      ((\abstraction{E}{F}) G) \equiv H
     }{
-      ((\abstraction{(AE)}{(BF)}) (CG)) \unfoldsto (DH)
+      ((\abstraction{(AE)}{(BF)}) (CG)) \equiv (DH)
     }\\
   \end{gather*}
   Abstraction:
   \begin{gather*}
-    \tag{evaluation of predicates}
-    \inferrule{((\abstraction{x}{B})v) \unfoldsto C\\\\C}{(\abstraction{x}{B})v}\\
+%    \tag{evaluation of predicates}
+%    \inferrule{((\abstraction{x}{B})v) \unfoldsto C\\\\C}{(\abstraction{x}{B})v}\\
     \tag{generalization}
-    \inferrule{(\abstraction{x}{(A \proves B)})\ \variable{B}}{\abstraction{x}{B}}\\
+    \inferrule{A(\variable{A})}{A}\\
     \tag{specialization}
-    \inferrule{((\abstraction{x}{B}) v) \unfoldsto C\\\\A \proves (\abstraction{x}{B})}{C}\\
+    \inferrule{A}{AB}\\
 %    \tag{induction}
 %    \inferrule{P\ Atom\dots\\\\\nameabstraction{A} \nameabstraction{B} P A \implies P B \implies P (A B)}{P C}\\
   \end{gather*}
@@ -158,7 +169,10 @@
     \tag{axiom definitions are unique}\label{axu}
     \inferrule{\axiom{A}{B}\\\\\axiom{A}{C}\\\\PB}{PC}\\
     \tag{induction on axioms}\label{axe}
-    \inferrule{\axiom{A}{B}\\\\P\text{``modus ponens"}\\\\\dots\\\\P\text{``induction on axioms"}\\\\(\nameabstraction{a} Pa \implies P(\wfsucc a))}{PA}\\
+    \inferrule{\axiom{A}{B}\\\\R\text{``modus ponens"}\\\\\dots\\\\R\text{``induction on axioms"}\\\\\nameabstraction{a} Ra \implies R(\wfsucc a)}{RA}\\
+%    \inferrule{\axiomatic{A}}{\axiomatic{\axiomatic{A}}}\\
+%    \tag{induction on axioms}\label{axe}
+%    \inferrule{\axiom{A}{B}\\\\P\text{``modus ponens"}\\\\\dots\\\\P\text{``induction on axioms"}\\\\(\nameabstraction{a} Pa \implies P(\wfsucc a))}{PA}\\
   \end{gather*}
 
   \subsection{Internal Axioms}
@@ -171,21 +185,21 @@
 
   \begin{equation*}
     \tag{modus ponens, internal}\label{mpi}
-    \axiom{\operatorname{\mathrm{``modus\ ponens"}}}{
-      (\nameabstraction{A} \nameabstraction{B} (A \implies B) \implies A \implies B)
+    \axiomatic{
+      (\nameabstraction{A} \nameabstraction{B} \proven(A \implies B) \implies \proven A \implies \proven B)
     }\\
   \end{equation*}
 
   Of course, \eqref{mpi} is now an axiom that does not have an explicit internal form!
-  Fortunately, we do not need an infinite regression of \emph{explicit} definitions. Since \eqref{mpi} has no metavariables or premises, \eqref{axs} can take care of it, giving us:
+%  Fortunately, we do not need an infinite regression of \emph{explicit} definitions. Since \eqref{mpi} has no metavariables or premises, \eqref{axs} can take care of it, giving us:
 
-  \begin{equation*}
-    \axiom{(\wfsucc\operatorname{\mathrm{``modus\ ponens"}})}{(
-      \axiom{\operatorname{\mathrm{``modus\ ponens"}}}{
-        (\nameabstraction{A} \nameabstraction{B} (A \implies B) \implies A \implies B)
-      }
-    )}\\
-  \end{equation*}
+%  \begin{equation*}
+%    \axiom{(\wfsucc\operatorname{\mathrm{``modus\ ponens"}})}{(
+%      \axiom{\operatorname{\mathrm{``modus\ ponens"}}}{
+%        (\nameabstraction{A} \nameabstraction{B} (A \implies B) \implies A \implies B)
+%      }
+%    )}\\
+%  \end{equation*}
 
   and so forth.
 
@@ -214,6 +228,37 @@
 %  \begin{align*}
 %  (P \land Q)
 %  \end{align*}
+
+  \subsection{Well-founded sets}
+
+  Some discussion of well-founded sets, and how they avoid the Burali-Forti paradox.
+  
+  By convention, a \emph{set} is a predicate on formulas, where if $PF$ is true, then $F \in P$. One might expect this to cause paradoxes; this section will illustrate how it does not.
+  
+  We define \emph{well-founded sets} with a surprisingly simple rule: A well-founded set is a set for which all \emph{raisable predicates} are true. And a \emph{raisable predicate} $R$ is one where, if the $R$ is true for all members of a set, then $R$ is also true for the set itself:
+
+  \ic{
+  Raisable := R => (Q => (x => (Q x) -> (R x)) -> (R Q)).
+  WellFounded := S => R => (Raisable R) -> (R S).
+  }
+  
+  The first well-founded set is the empty set, which we can prove is well-founded:
+  
+%  \ic{
+%  EmptySet := n => (x => x).
+%
+%  (WellFounded EmptySet) = (R => (Q => (m => (Q m) -> (R m)) -> (R Q)) -> R(n => (x => x))).
+%
+%  (Some axiom) proves ((R m) -> (R m))
+%  (Generalization) proves (m => (R m) -> (R m))
+%  (Specialization) proves (Q => (m => (Q m) -> (R m)) -> (R Q))
+%                       -> (Q => (m => (Q m) -> (R m)) -> (R Q))EmptySet
+%  = (m => (EmptySet m) -> (R m)) -> (R EmptySet)
+%  = (m => (x => x) -> (R m)) -> (R EmptySet)
+%  (Predicate unfolding) proves (Proven_a (Q => (m => (Q m) -> (R m)) -> (R Q))EmptySet) -> (m => (EmptySet m) -> (R m)) -> (R EmptySet)
+%
+%
+%  }
 
   \section{Consistency}\label{consistency}
   
