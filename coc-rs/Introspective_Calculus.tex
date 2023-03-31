@@ -70,15 +70,16 @@
   \newcommand{\hole}{\circ}
   \newcommand{\wfz}{0}
   \newcommand{\wfsucc}{\operatorname{\mathrm{S}}}
-  
-  \renewcommand{\implies}{\rightarrow}
+
+  \renewcommand{\implies}[1]{\rightarrow_{\hspace{-0.04em}#1}}
   \newcommand{\proven}[1]{\vdash #1}
   \newcommand{\wellfounded}{\operatorname{\mathrm{well\_founded}}}
   \newcommand{\unfoldsto}{\looparrowright}
-  \newcommand{\abstraction}[2]{\Rightarrow\hspace{-0.4em}[#1]\,#2}
+  \newcommand{\abst}[2]{[#1/#2]}
+  \newcommand{\context}[2]{\mlq#1/#2\mrq}
   \newcommand{\variable}[1]{{\mathcal{V}_{\mlq\hspace{-0.06em}#1\hspace{-0.06em}\mrq}}}
   \newcommand{\clocksub}[1]{\text{\clock}_{\!#1}}
-  \newcommand{\nameabstraction}[1]{#1 \Rightarrow}
+  \newcommand{\nameabst}[1]{#1 \Rightarrow}
   \newcommand{\axiom}[2]{#1 := #2}
   \newcommand{\axiomatic}[1]{\infty #1}
 
@@ -89,15 +90,15 @@
     - &:= \mathrm{minus}\\
     \wfz &:= \mathrm{well\_founded\_zero}\\
     \wfsucc &:= \mathrm{well\_founded\_successor}\\
-    (A \implies B) &:= ((\mathrm{implies}\ A) B),\ \operatorname{right-associative}\\
+    (A \implies{n} B) &:= (((\mathrm{implies}\ A) n) B),\ \operatorname{right-associative}\\
     (A \unfoldsto B) &:= ((\mathrm{unfoldsto}\ A) B)\\
-    (\abstraction{A}{B}) &:= ((\mathrm{abstraction}\ A) B)\\
+    (\abst{A}{B}) &:= ((\mathrm{abstraction}\ A) B)\\
     (\variable{A}) &:= (\mathrm{variable}\ A)\\
     \clocksub{A} &:= (\mathrm{clock}\ A)\\
   \end{align*}
 
-  Finally, we define the \emph{named form} of abstractions, $(\nameabstraction{A}B),\ \operatorname{right-associative}$.
-  This is defined as $(\abstraction{L}{B'})$, where both $B'$ and $L$ (the \emph{variable locations}) are copies of $B$ with the following replacements:
+  Finally, we define the \emph{named form} of abstractions, $(\nameabst{A}B),\ \operatorname{right-associative}$.
+  This is defined as $(\abst{L}{B'})$, where both $B'$ and $L$ (the \emph{variable locations}) are copies of $B$ with the following replacements:
   \begin{itemize}
     \item In $L$, replace any subtree that has no usages of $A$ with the atom $\hole$.
     \item In $L$, replace all usages of $A$ with the atom $\here$.
@@ -108,23 +109,63 @@
   \setlength{\jot}{1.4em}
   \begin{gather*}
     \tag{modus ponens}\label{mp}
-    \inferrule{(A \implies B)\\\\A}{B}\\
+    \inferrule{(A \implies{n} B)\\\\A}{B}\\
   \end{gather*}
 %  All remaining axioms are defined as implications ($Premise \implies Premise \dots \implies Conclusion$), which allows them to be reasoned about internally. (The external form can be derived using \eqref{mp}.) However, we still write them as $\frac{Premise\dots}{Conclusion}$ for readability.
 %  \\\\
   Implication:
   \begin{gather*}
     \tag{weakening}
-    \inferrule{B}{A \implies B}\\
+    \inferrule{B}{A \implies{\wfz} B}\\
+    \tag{level weakening}
+    \inferrule{A \implies{n} B}{A \implies{(\wfsucc n)} B}\\
     \tag{implication within hypothetical}
-    \inferrule{C \implies (A \implies B)\\\\C \implies A}{C \implies B}\\
+    \inferrule{C \implies{(\wfsucc n)} (A \implies{n} B)\\\\C \implies{(\wfsucc n)} A}{C \implies{(\wfsucc n)} B}\\
   \end{gather*}
-  Definitional equality:
+  Fold-equivalence:
   \begin{gather*}
-    \tag{symmetry}
-    \inferrule{A \equiv B}{B \equiv A}\\
+%    \tag{symmetry}
+%    \inferrule{A \equiv B}{B \equiv A}\\
     \tag{implication}
-    \inferrule{A \equiv B}{A \implies B}\\
+    \inferrule{}{(A \equiv B) \implies{\wfz} (A \implies{\wfz} B)}\\
+    \tag{indistinguishability}
+    \inferrule{}{(P \equiv Q) \implies{\wfz} (PA \equiv QA)}\\
+  \end{gather*}
+  Substitution:
+  \begin{gather*}
+    \tag{substitute here}
+    \inferrule{}{\abst{B}{\here} C \equiv C}\\
+    \tag{substitute not here}
+    \inferrule{}{\abst{B}{\varnothing} C \equiv B}\\
+    \tag{substitute in both}
+    \inferrule{}{
+      \abst{AB}{CD} E \equiv (\abst{A}{C} E)(\abst{B}{D} E)
+    }\\
+%    \tag{reorder bindings}
+%    \abst{\abst{A}{B}}{\abst{C}{\hole}} \implies{\wfz} \abst{\abst{A}{C}}{\abst{B}{\hole}}\\
+    \tag{empty contexts}
+    A \equiv \context{A}{\hole}\\
+    \tag{uhhh contexts}
+    (A \equiv_u A') \implies{\wfz} (B \equiv_u B') \implies{\wfz} (\context{A}{B} \equiv_u \context{A'}{B'})\\
+    \tag{decompose contexts}
+    \context{AB}{CD} \equiv \context{A}{C} \context{B}{D}\\
+%    (A \equiv B) \implies{\wfz} \context{A}{C} \context{B}{D}\\
+%    \abst{\abst{A}{B}C}{\abst{\hole}{\hole}F} \equiv \abst{\abst{\abst{A}{B}}{C}}{}\\
+    \tag{compatibility, both}
+    (A \equiv_u A') \implies{\wfz} (B \equiv_v B') \implies{\wfz} (AB \equiv_{uv} A'B')\\
+    \tag{compatibility, left}
+    (A \equiv B) \implies{\wfz} (AC \equiv BC)\\
+    \tag{compatibility, right}
+    (A \equiv B) \implies{\wfz} (CA \equiv CB)\\
+%    \inferrule{A+B \equiv C+D}{
+%      h
+%    }\\
+    \tag{truth of foralls}
+    \context{A}{B} \implies{\wfz} \abst{A}{B}\\
+    \tag{specialization}
+    \abst{A}{B} \implies{\wfz} \abst{A}{B}C\\
+%    \tag{induction}
+%    \inferrule{P\ Atom\dots\\\\\nameabstraction{A} \nameabstraction{B} P A \implies P B \implies P (A B)}{P C}\\
   \end{gather*}
   Proofs:
   \begin{gather*}
@@ -135,32 +176,9 @@
 %    \tag{implication within proofs}
 %    \inferrule{P \proves (A \implies B)\\\\Q \proves A}{(PQ)\proves B}\\
     \tag{induction on proofs}
-    \inferrule{\proven{P}\\\\\nameabstraction{A} \axiomatic{A} \implies RA\\\\\nameabstraction{A}\nameabstraction{B} R(A\implies B) \implies RA\implies RB}{RP}\\
-  \end{gather*}
-  Substitution:
-  \begin{gather*}
-    \tag{replace here}
-    \inferrule{}{((\abstraction{\here}{B}) C) \equiv C}\\
-    \tag{replace not here}
-    \inferrule{}{((\abstraction{\hole}{B}) C) \equiv B}\\
-    \tag{replace in both}
-    \inferrule{
-      ((\abstraction{A}{B}) C) \equiv D\\\\
-      ((\abstraction{E}{F}) G) \equiv H
-    }{
-      ((\abstraction{(AE)}{(BF)}) (CG)) \equiv (DH)
-    }\\
-  \end{gather*}
-  Abstraction:
-  \begin{gather*}
-%    \tag{evaluation of predicates}
-%    \inferrule{((\abstraction{x}{B})v) \unfoldsto C\\\\C}{(\abstraction{x}{B})v}\\
-    \tag{generalization}
-    \inferrule{A(\variable{A})}{A}\\
-    \tag{specialization}
-    \inferrule{A}{AB}\\
-%    \tag{induction}
-%    \inferrule{P\ Atom\dots\\\\\nameabstraction{A} \nameabstraction{B} P A \implies P B \implies P (A B)}{P C}\\
+    \inferrule{\proven{P}\\\\
+      \nameabst{A} \axiomatic{A} \implies{n} RA\\\\
+      \nameabst{A}\nameabst{B}\nameabst{m} R(A\implies{m} B) \implies{n} RA\implies{n} RB}{RP}\\
   \end{gather*}
   Axiom rules:
   \begin{gather*}
@@ -169,7 +187,11 @@
     \tag{axiom definitions are unique}\label{axu}
     \inferrule{\axiom{A}{B}\\\\\axiom{A}{C}\\\\PB}{PC}\\
     \tag{induction on axioms}\label{axe}
-    \inferrule{\axiom{A}{B}\\\\R\text{``modus ponens"}\\\\\dots\\\\R\text{``induction on axioms"}\\\\\nameabstraction{a} Ra \implies R(\wfsucc a)}{RA}\\
+    \inferrule{\axiom{A}{B}\\\\
+      R\text{``modus ponens"}\\\\
+      \dots\\\\
+      R\text{``induction on axioms"}\\\\
+      \nameabst{a} Ra \implies{n} R(\wfsucc a)}{RA}\\
 %    \inferrule{\axiomatic{A}}{\axiomatic{\axiomatic{A}}}\\
 %    \tag{induction on axioms}\label{axe}
 %    \inferrule{\axiom{A}{B}\\\\P\text{``modus ponens"}\\\\\dots\\\\P\text{``induction on axioms"}\\\\(\nameabstraction{a} Pa \implies P(\wfsucc a))}{PA}\\
@@ -186,7 +208,7 @@
   \begin{equation*}
     \tag{modus ponens, internal}\label{mpi}
     \axiomatic{
-      (\nameabstraction{A} \nameabstraction{B} \proven(A \implies B) \implies \proven A \implies \proven B)
+      (\nameabst{A} \nameabst{B} \nameabst{n} \proven(A \implies{n} B) \implies{\wfz} \proven A \implies{\wfz} \proven B)
     }\\
   \end{equation*}
 
@@ -210,18 +232,18 @@
   \setlength{\jot}{0.4em}
   \begin{align*}
     \tag{false/absurdity}
-    \bot &:= (\nameabstraction{P}{P})\\
+    \bot &:= (\nameabst{P}{P})\\
     \tag{negation}
-    \neg P &:= ({P \implies \bot})\\
-    \mathrm{not} &:= (\nameabstraction{P} \neg P)\\
-    \tag{conjunction}
-    P \land Q &:= (\nameabstraction{R} (P \implies Q \implies R) \implies R)\\
-    \mathrm{and} &:= (\nameabstraction{P}\nameabstraction{Q} P \land Q)\\
-    \tag{disjunction}
-    P \lor Q &:= (\nameabstraction{R} (P \implies R) \implies (Q \implies R) \implies R)\\
-    \mathrm{or} &:= (\nameabstraction{P}\nameabstraction{Q} P \lor Q)\\
-    \tag{existential quantification}
-    \exists x, P(x) &:= (\nameabstraction{R} (\nameabstraction{x} P(x) \implies R) \implies R)\\
+    \neg_{n} P &:= ({P \implies{n} \bot})\\
+    \mathrm{not} &:= (\nameabst{P} \neg P)\\
+%    \tag{conjunction}
+%    P \land Q &:= (\nameabst{R} (P \implies Q \implies R) \implies R)\\
+%    \mathrm{and} &:= (\nameabst{P}\nameabst{Q} P \land Q)\\
+%    \tag{disjunction}
+%    P \lor Q &:= (\nameabst{R} (P \implies R) \implies (Q \implies R) \implies R)\\
+%    \mathrm{or} &:= (\nameabst{P}\nameabst{Q} P \lor Q)\\
+%    \tag{existential quantification}
+%    \exists x, P(x) &:= (\nameabst{R} (\nameabst{x} P(x) \implies R) \implies R)\\
   \end{align*}
 
 %  And we can prove some tautologies:
@@ -274,7 +296,7 @@
   
   By the axiom \eqref{lne}, anything that's eventually true is also eternally true, in the sense that you can "wait" for an IC$_{+n}$ where P is as old as you want:
   
-  \[ \nameabstraction{n} \wellfounded n \implies \eventually P \implies \eventually \clocksub{-n} P \]
+%  \[ \nameabst{n} \wellfounded n \implies \eventually P \implies \eventually \clocksub{-n} P \]
   
   One might ask: What if you can't prove $(\eventually P)$, but only $\eventually (\eventually P)$? One might hope that $\eventually (\eventually P)$ implies $(\eventually P)$, but it does not – it only implies $\clocksub{+constant}(\eventually P)$. But could we also regard that as "proving $P$"? Unfortunately, if we did, we would then want to extend it to $\eventually (\eventually (\eventually P))$, and so forth. For the sake of having a single definition, the answer must be \emph{no}. But the purpose of including the entire well-founded hierarchy is that you don't \emph{need} to.
   
@@ -288,17 +310,17 @@
   
   A digression on the properties of $\provable$: Meta-theoretically, we don't think you can prove anything that's not $\eventually \provable$. But this is impossible to prove inside IC, for the same reasons as above. In fact, the proposition $(P \implies \eventually (\provable P))$ is \emph{false} within IC, because it is self-contradictory. (If true, it would be a statement that was true but not provable from the axioms!)
   
-  We also cannot prove $(\provable P) \implies P$, even though we believe that all provable statements are true; but fortunately, $(\provable P) \implies (\eventually P)$ is a trivial corollary.
+%  We also cannot prove $(\provable P) \implies P$, even though we believe that all provable statements are true; but fortunately, $(\provable P) \implies (\eventually P)$ is a trivial corollary.
   
   (All of the following is conjecture, but I expect it to be true, at least once I have cleaned up any definitional mistakes:)
   
   With the provability predicate, we can prove:
   
-  \[ \nameabstraction{P} \eventually (\provable (\eventually P)) \implies \eventually  P \]
+%  \[ \nameabst{P} \eventually (\provable (\eventually P)) \implies \eventually  P \]
   
   This theorem has an immediate corollary that is very significant:
   
-  \[ \nameabstraction{P} \eventually (\provable (\eventually \bot)) \implies \eventually \bot \]
+%  \[ \nameabst{P} \eventually (\provable (\eventually \bot)) \implies \eventually \bot \]
   
 
   %\printbibliography
