@@ -69,19 +69,23 @@
   \newcommand{\here}{\bigstar}
   \newcommand{\hole}{\circ}
   \newcommand{\wfz}{0}
-  \newcommand{\wfsucc}{\operatorname{\mathrm{S}}}
+  \newcommand{\wfsucc}{\mathcal{S}}
 
   \renewcommand{\implies}[1]{\rightarrow_{\hspace{-0.04em}#1}}
   \newcommand{\proven}[1]{\vdash #1}
   \newcommand{\wellfounded}{\operatorname{\mathrm{well\_founded}}}
   \newcommand{\unfoldsto}{\looparrowright}
-  \newcommand{\abst}[2]{[#1/#2]}
+  \newcommand{\abst}[1]{#1\!\Leftarrow}
   \newcommand{\context}[2]{\mlq#1/#2\mrq}
   \newcommand{\variable}[1]{{\mathcal{V}_{\mlq\hspace{-0.06em}#1\hspace{-0.06em}\mrq}}}
   \newcommand{\clocksub}[1]{\text{\clock}_{\!#1}}
   \newcommand{\nameabst}[1]{#1 \Rightarrow}
-  \newcommand{\axiom}[2]{#1 := #2}
+  \newcommand{\axiom}[2]{\mathrm{Axiom}\ #1\ \mathrm{says}\ #2}
   \newcommand{\axiomatic}[1]{\infty #1}
+%  \newcommand{\usage}{\mathcal{V}}
+  \newcommand{\usage}{\hole}
+  \newcommand{\pop}[1]{#1\triangleleft}
+  \newcommand{\subst}[3]{#1^{[{#2}{/}{#3}]}}
 
   \begin{align*}
     \here &:= \mathrm{here}\\
@@ -111,87 +115,67 @@
     \tag{modus ponens}\label{mp}
     \inferrule{(A \implies{n} B)\\\\A}{B}\\
   \end{gather*}
-%  All remaining axioms are defined as implications ($Premise \implies Premise \dots \implies Conclusion$), which allows them to be reasoned about internally. (The external form can be derived using \eqref{mp}.) However, we still write them as $\frac{Premise\dots}{Conclusion}$ for readability.
+%  All remaining axioms are defined as implications ($Premise \implies{\wfz} Premise \dots \implies{\wfz} Conclusion$), which allows them to be reasoned about internally. (The external form can be derived using \eqref{mp}.) However, we still write them as $\frac{Premise\dots}{Conclusion}$ for readability.
 %  \\\\
   Implication:
-  \begin{gather*}
+  \begin{align*}
     \tag{weakening}
     \inferrule{B}{A \implies{\wfz} B}\\
     \tag{level weakening}
-    \inferrule{A \implies{n} B}{A \implies{(\wfsucc n)} B}\\
-    \tag{implication within hypothetical}
-    \inferrule{C \implies{(\wfsucc n)} (A \implies{n} B)\\\\C \implies{(\wfsucc n)} A}{C \implies{(\wfsucc n)} B}\\
-  \end{gather*}
-  Fold-equivalence:
-  \begin{gather*}
+    \inferrule{A \implies{n} B}{A \implies{\wfsucc n} B}\\
+    \tag{implication within hypotheticals}
+    \inferrule{C \implies{\wfsucc n} (A \implies{n} B)\\\\C \implies{\wfsucc n} A}{C \implies{\wfsucc n} B}\\
+  \end{align*}
+  \setlength{\jot}{0.4em}
+  Definitional equality:
+  \begin{align*}
 %    \tag{symmetry}
 %    \inferrule{A \equiv B}{B \equiv A}\\
     \tag{implication}
-    \inferrule{}{(A \equiv B) \implies{\wfz} (A \implies{\wfz} B)}\\
+    (A \equiv B) &\implies{\wfz} (A \implies{\wfz} B)\\
     \tag{indistinguishability}
-    \inferrule{}{(P \equiv Q) \implies{\wfz} (PA \equiv QA)}\\
-  \end{gather*}
+    (A \equiv B) &\equiv (\nameabst{P} PA \equiv PB)\\
+  \end{align*}
   Substitution:
-  \begin{gather*}
-    \tag{substitute here}
-    \inferrule{}{\abst{B}{\here} C \equiv C}\\
-    \tag{substitute not here}
-    \inferrule{}{\abst{B}{\varnothing} C \equiv B}\\
-    \tag{substitute in both}
-    \inferrule{}{
-      \abst{AB}{CD} E \equiv (\abst{A}{C} E)(\abst{B}{D} E)
-    }\\
-%    \tag{reorder bindings}
-%    \abst{\abst{A}{B}}{\abst{C}{\hole}} \implies{\wfz} \abst{\abst{A}{C}}{\abst{B}{\hole}}\\
-    \tag{empty contexts}
-    A \equiv \context{A}{\hole}\\
-    \tag{uhhh contexts}
-    (A \equiv_u A') \implies{\wfz} (B \equiv_u B') \implies{\wfz} (\context{A}{B} \equiv_u \context{A'}{B'})\\
-    \tag{decompose contexts}
-    \context{AB}{CD} \equiv \context{A}{C} \context{B}{D}\\
-%    (A \equiv B) \implies{\wfz} \context{A}{C} \context{B}{D}\\
-%    \abst{\abst{A}{B}C}{\abst{\hole}{\hole}F} \equiv \abst{\abst{\abst{A}{B}}{C}}{}\\
-    \tag{compatibility, both}
-    (A \equiv_u A') \implies{\wfz} (B \equiv_v B') \implies{\wfz} (AB \equiv_{uv} A'B')\\
-    \tag{compatibility, left}
-    (A \equiv B) \implies{\wfz} (AC \equiv BC)\\
-    \tag{compatibility, right}
-    (A \equiv B) \implies{\wfz} (CA \equiv CB)\\
-%    \inferrule{A+B \equiv C+D}{
-%      h
-%    }\\
+  \begin{align*}
+    \subst{\usage}{\wfz}{C} &\equiv C & \subst{(\pop{A})}{\wfz}{C} &\equiv A\\
+    \subst{\usage}{\wfsucc{v}}{C} &\equiv \usage & \subst{(\pop{A})}{\wfsucc{v}}{C} &\equiv \subst{A}{v}{C}\\
+    \subst{(Atom\,A)}{v}{C} &\equiv (Atom\,A)\\
+    \subst{(AB)}{v}{C} &\equiv \subst{A}{v}{C}\subst{B}{v}{C}\\
+    \subst{(\abst{A})}{v}{C} &\equiv (\abst{\subst{A}{\wfsucc{v}}{\pop{C}}})\\
+  \end{align*}
+  Abstraction:
+  \begin{align*}
+    \tag{unfolding}
+    (\abst{A})B &\equiv \subst{A}{\wfz}{B}\\
     \tag{truth of foralls}
-    \context{A}{B} \implies{\wfz} \abst{A}{B}\\
+    A &\implies{\wfz} (\abst{A})\\
     \tag{specialization}
-    \abst{A}{B} \implies{\wfz} \abst{A}{B}C\\
+    (\abst{A}) &\implies{\wfz} (\abst{A})B\\
 %    \tag{induction}
 %    \inferrule{P\ Atom\dots\\\\\nameabstraction{A} \nameabstraction{B} P A \implies P B \implies P (A B)}{P C}\\
-  \end{gather*}
-  Proofs:
-  \begin{gather*}
-    \tag{proofs prove things}\label{axp}
-    \inferrule{\proven{A}}{A}\\
-    \tag{axioms prove things}\label{axp}
-    \inferrule{\axiomatic{A}}{A}\\
-%    \tag{implication within proofs}
-%    \inferrule{P \proves (A \implies B)\\\\Q \proves A}{(PQ)\proves B}\\
-    \tag{induction on proofs}
-    \inferrule{\proven{P}\\\\
-      \nameabst{A} \axiomatic{A} \implies{n} RA\\\\
-      \nameabst{A}\nameabst{B}\nameabst{m} R(A\implies{m} B) \implies{n} RA\implies{n} RB}{RP}\\
-  \end{gather*}
+  \end{align*}
   Axiom rules:
+  \setlength{\jot}{1.4em}
   \begin{gather*}
     \tag{successor axioms}\label{axs}
     \inferrule{\axiom{A}{B}}{\axiom{(\wfsucc A)}{(\axiom{A}{B})}}\\
-    \tag{axiom definitions are unique}\label{axu}
-    \inferrule{\axiom{A}{B}\\\\\axiom{A}{C}\\\\PB}{PC}\\
-    \tag{induction on axioms}\label{axe}
-    \inferrule{\axiom{A}{B}\\\\
+    \tag{axioms say nothing else}\label{axu}
+    \inferrule{\axiom{A}{B}\\\\\axiom{A}{C}}{B \equiv C}\\
+    \tag{there are no other axioms}\label{axe}
+    \inferrule{
       R\text{``modus ponens"}\\\\
       \dots\\\\
       R\text{``induction on axioms"}\\\\
-      \nameabst{a} Ra \implies{n} R(\wfsucc a)}{RA}\\
+      \nameabst{a} Ra \implies{n} R(\wfsucc a)\\\\
+      \axiom{A}{B}
+    }{RA}\\
+    \tag{only axioms prove things}
+    \inferrule{
+      \nameabst{A}\nameabst{B}(\axiom{A}{B})\implies{n}RB\\\\
+      \nameabst{A}\nameabst{B}RA\implies{n}R(AB)\\\\
+      P
+    }{RP}\\
 %    \inferrule{\axiomatic{A}}{\axiomatic{\axiomatic{A}}}\\
 %    \tag{induction on axioms}\label{axe}
 %    \inferrule{\axiom{A}{B}\\\\P\text{``modus ponens"}\\\\\dots\\\\P\text{``induction on axioms"}\\\\(\nameabstraction{a} Pa \implies P(\wfsucc a))}{PA}\\
@@ -202,26 +186,35 @@
   We now define \emph{internal} versions of the above axioms.
 
   From the internal perspective of the calculus, the above axioms provide truth for any \emph{specific} values of the variables $A, B\dots$, but cannot prove abstractions over those variables.
-  So, for each axiom, we also create an internal form, by representing the variables using abstractions, and the premises using implication.
+  So, for each axiom, we also create an internal form, by representing the metavariables using abstractions, and the premises using implication (at level $\wfz$).
   For example, (modus ponens) is represented as:
 
   \begin{equation*}
-    \tag{modus ponens, internal}\label{mpi}
-    \axiomatic{
-      (\nameabst{A} \nameabst{B} \nameabst{n} \proven(A \implies{n} B) \implies{\wfz} \proven A \implies{\wfz} \proven B)
+    \tag{modus ponens, generalized}\label{mpg}
+    \nameabst{A} \nameabst{B} \nameabst{n} (A \implies{n} B) \implies{\wfz} A \implies{\wfz} B
+  \end{equation*}
+
+  Now we make one more coup: The \emph{fact that this is an axiom} is also represented internally, by a second internal form:
+
+  \begin{equation*}
+    \tag{modus ponens, internalized}\label{mpi}
+    \axiom{
+      \mathrm{``modus\ ponens"}\\
+    }{
+      (\nameabst{A} \nameabst{B} \nameabst{n} (A \implies{n} B) \implies{\wfz} A \implies{\wfz} B)
     }\\
   \end{equation*}
 
-  Of course, \eqref{mpi} is now an axiom that does not have an explicit internal form!
-%  Fortunately, we do not need an infinite regression of \emph{explicit} definitions. Since \eqref{mpi} has no metavariables or premises, \eqref{axs} can take care of it, giving us:
+  Of course, \eqref{mpi} is now another axiom that does not have an explicit internal form!
+  Fortunately, we do not need an infinite regression of \emph{explicit} definitions. Since \eqref{mpi} has no metavariables or premises, \eqref{axs} can take care of it, giving us:
 
-%  \begin{equation*}
-%    \axiom{(\wfsucc\operatorname{\mathrm{``modus\ ponens"}})}{(
-%      \axiom{\operatorname{\mathrm{``modus\ ponens"}}}{
-%        (\nameabstraction{A} \nameabstraction{B} (A \implies B) \implies A \implies B)
-%      }
-%    )}\\
-%  \end{equation*}
+  \begin{equation*}
+    \axiom{(\wfsucc\mathrm{``modus\ ponens"})}{(
+      \axiom{\mathrm{``modus\ ponens"}}{
+        (\nameabst{A} \nameabst{B} \nameabst{n} (A \implies{n} B) \implies{\wfz} A \implies{\wfz} B)
+      }
+    )}\\
+  \end{equation*}
 
   and so forth.
 
@@ -237,7 +230,7 @@
     \neg_{n} P &:= ({P \implies{n} \bot})\\
     \mathrm{not} &:= (\nameabst{P} \neg P)\\
 %    \tag{conjunction}
-%    P \land Q &:= (\nameabst{R} (P \implies Q \implies R) \implies R)\\
+%    P \land Q &:= (\nameabst{R} (P \implies{\wfz} Q \implies{\wfz} R) \implies{\wfz} R)\\
 %    \mathrm{and} &:= (\nameabst{P}\nameabst{Q} P \land Q)\\
 %    \tag{disjunction}
 %    P \lor Q &:= (\nameabst{R} (P \implies R) \implies (Q \implies R) \implies R)\\
@@ -250,20 +243,20 @@
 %  \begin{align*}
 %  (P \land Q)
 %  \end{align*}
-
+\iffalse
   \subsection{Well-founded sets}
 
   Some discussion of well-founded sets, and how they avoid the Burali-Forti paradox.
-  
+
   By convention, a \emph{set} is a predicate on formulas, where if $PF$ is true, then $F \in P$. One might expect this to cause paradoxes; this section will illustrate how it does not.
-  
+
   We define \emph{well-founded sets} with a surprisingly simple rule: A well-founded set is a set for which all \emph{raisable predicates} are true. And a \emph{raisable predicate} $R$ is one where, if the $R$ is true for all members of a set, then $R$ is also true for the set itself:
 
   \ic{
   Raisable := R => (Q => (x => (Q x) -> (R x)) -> (R Q)).
   WellFounded := S => R => (Raisable R) -> (R S).
   }
-  
+
   The first well-founded set is the empty set, which we can prove is well-founded:
   
 %  \ic{
@@ -321,7 +314,7 @@
   This theorem has an immediate corollary that is very significant:
   
 %  \[ \nameabst{P} \eventually (\provable (\eventually \bot)) \implies \eventually \bot \]
-  
+\fi
 
   %\printbibliography
 \end{document}
