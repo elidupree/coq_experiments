@@ -33,20 +33,31 @@
   This document is a bare-bones explanation of my current definitions of this calculus.
   I plan to later develop it into a full, polished explanation, once I'm more confident in its soundness.
   
-  In type theory, the source of paradoxes (like Russell's paradox and Girard's paradox) is this:
+  In type theory, the source of paradoxes (like Russell's paradox and Girard's paradox) is this: First you construct a self-referential claim, then you prove that claim using (rules analogous to) the following axiom of propositional logic, which is unsound for self-referential claims:
+  \begin{equation*}
+    \tag{implication under hypotheticals, traditional}
+    (C \rightarrow (A \rightarrow B)) \rightarrow ((C \rightarrow A) \rightarrow (C \rightarrow B))
+    \vspace{0.8em}
+  \end{equation*}
   
-  \begin{itemize}
-    \item A function $F$ takes a parameter $x$ whose type is a function type, and thereby defines \emph{infinite premises} (because $x$ must be correct for every possible value of $x$'s own parameter).
-    \item The type derivation for $F$ then uses these infinite premises to derive \emph{infinite conclusions} (the fact that $F$ itself is correct for every possible value of $x$).
-    \item By jiggling the infinities, the paradox makes these two infinities line up with each other with a slight offset, so it can pull an instance of False out of the loose end.
-  \end{itemize}
+  Type theories typically avoid this problem by preventing the construction of self-referential claims. However, general-purpose computation is intrinsically capable of constructing self-referential claims. Thus, any such rules must forbid many programs that would otherwise be valid.
   
-  Type theories typically prevent this by limiting how you can jiggle the infinities.
-  The present work's innovation is to prevent infinities directly, by adding an unremovable placeholder for every time you create or apply an abstraction, so that the finite-ness of the placeholder stack proves the finite-ness of the proof.
-  This allows us to remove the other limitations.
+  \renewcommand{\implies}[1]{\rightarrow_{\hspace{-0.04em}#1}}
+  The present work's innovation is to \emph{allow} self-referential claims, but instead weaken the above axiom. We equip the "implies" relation with a level, where $A \implies{n} B$ means "You can reason from $A$ to $B$ by a proof with \emph{no more than} $n$ levels of hypotheticals." Now the axiom becomes:
+  
+  \newcommand{\lzero}{0}
+  \newcommand{\lsucc}[1]{\mathcal{S} #1}
+  \begin{equation*}
+    \tag{implication under hypotheticals, resilient}
+    (C \implies{\lsucc n} (A \implies{n} B)) \implies{\lzero} ((C \implies{\lsucc n} A) \implies{\lzero} (C \implies{\lsucc n} B))
+    \vspace{0.8em}
+  \end{equation*}
+  
+  Since the result is one level higher than $A \implies{n} B$, it cannot be used later to prove the same $A \implies{n} B$ claim that it's based on. This prevents a self-referential claim from being elevated to form a self-referential \emph{proof}.
+  
+  This protection allows us to remove the other limitations of type theories.
   In particular, the source of the name "Introspective Calculus" is that every rule of IC can be abstracted over within IC.
 
-  The placeholders take the form of well-founded sets, which avoid the Burali-Forti paradox by being subject to the same finite-ness requirements themselves.
 
 
   
@@ -56,9 +67,8 @@
 
   \subsection{Syntax}
   \begin{align*}
-     Atom :=&\ \mathrm{here} \mid \mathrm{hole} \mid \mathrm{implies} \mid \mathrm{unfoldsto} \mid \mathrm{abstraction} \mid \mathrm{variable} \mid \mathrm{clock} \mid\\
-      &\ \ \ \ \mathrm{plus} \mid \mathrm{minus} \mid \mathrm{well\_founded\_zero} \mid \mathrm{well\_founded\_successor}\\
-     F :=&\ Atom \mid (F F)
+     Atom :=&\ \mathrm{level\_zero} \mid \mathrm{level\_successor} \mid \mathrm{implies} \mid \mathrm{equals} \mid \mathrm{substitute\_in} \mid \mathrm{axiom\_says}\\
+     F :=&\ \mathrm{atom}\ Atom \mid \mathrm{usage} \mid \mathrm{abstraction}\ F \mid \mathrm{pop}\ F \mid (F F)
   \end{align*}
 
   \subsection{Notations}
@@ -66,15 +76,6 @@
 %  \[ A\ B\ C \dots Y\ Z := ((\dots ((A B) C) \dots Y) Z) \]
 
   \newcommand{\ic}[1]{#1}
-  \newcommand{\here}{\bigstar}
-  \newcommand{\hole}{\circ}
-  \newcommand{\wfz}{0}
-  \newcommand{\wfsucc}{\mathcal{S}}
-
-  \renewcommand{\implies}[1]{\rightarrow_{\hspace{-0.04em}#1}}
-  \newcommand{\proven}[1]{\vdash #1}
-  \newcommand{\wellfounded}{\operatorname{\mathrm{well\_founded}}}
-  \newcommand{\unfoldsto}{\looparrowright}
   \newcommand{\abst}[1]{#1\!\Leftarrow}
   \newcommand{\context}[2]{\mlq#1/#2\mrq}
   \newcommand{\variable}[1]{{\mathcal{V}_{\mlq\hspace{-0.06em}#1\hspace{-0.06em}\mrq}}}
@@ -83,30 +84,28 @@
   \newcommand{\axiom}[2]{\mathrm{Axiom}\ #1\ \mathrm{says}\ #2}
   \newcommand{\axiomatic}[1]{\infty #1}
 %  \newcommand{\usage}{\mathcal{V}}
-  \newcommand{\usage}{\hole}
+  \newcommand{\usage}{\circ}
   \newcommand{\pop}[1]{#1\triangleleft}
   \newcommand{\subst}[3]{#1^{[{#2}{/}{#3}]}}
 
   \begin{align*}
-    \here &:= \mathrm{here}\\
-    \hole &:= \mathrm{hole}\\
-    + &:= \mathrm{plus}\\
-    - &:= \mathrm{minus}\\
-    \wfz &:= \mathrm{well\_founded\_zero}\\
-    \wfsucc &:= \mathrm{well\_founded\_successor}\\
-    (A \implies{n} B) &:= (((\mathrm{implies}\ A) n) B),\ \operatorname{right-associative}\\
-    (A \unfoldsto B) &:= ((\mathrm{unfoldsto}\ A) B)\\
-    (\abst{A}{B}) &:= ((\mathrm{abstraction}\ A) B)\\
-    (\variable{A}) &:= (\mathrm{variable}\ A)\\
-    \clocksub{A} &:= (\mathrm{clock}\ A)\\
+    \lzero &:= \mathrm{atom}\ \mathrm{level\_zero}\\
+    \lsucc{n} &:= ((\mathrm{atom}\ \mathrm{level\_successor}) n)\\
+    (A \implies{n} B) &:= ((((\mathrm{atom}\ \mathrm{implies}) A) n) B),\ \operatorname{right-associative}\\
+    (A \equiv B) &:= (((\mathrm{atom}\ \mathrm{equals}) A) B)\\
+    \subst{A}{B}{C} &:= ((((\mathrm{atom}\ \mathrm{substitute\_in}) A) B) C)\\
+    \axiom{A}{B} &:= (((\mathrm{atom}\ \mathrm{axiom\_says}) A) B)\\
+    \usage &:= \mathrm{usage}\\
+    \abst{A} &:= \mathrm{abstraction}\ A\\
+    \pop{A} &:= \mathrm{pop}\ A\\
   \end{align*}
 
-  Finally, we define the \emph{named form} of abstractions, $(\nameabst{A}B),\ \operatorname{right-associative}$.
-  This is defined as $(\abst{L}{B'})$, where both $B'$ and $L$ (the \emph{variable locations}) are copies of $B$ with the following replacements:
+  Finally, we define the \emph{named form} of abstractions, $(\nameabst{A}B),\ \operatorname{right-associative}$, where $A$ is a variable-name, and $B$ may contain instances of that name. (Perhaps we should say \emph{metavariable-name} rather than \emph{variable-name}, as these names only exist for this notation, and are not part of the formal language of IC).
+  
+  This is defined as $(\abst{B'})$, where $B'$ is $B$ with the following changes:
   \begin{itemize}
-    \item In $L$, replace any subtree that has no usages of $A$ with the atom $\hole$.
-    \item In $L$, replace all usages of $A$ with the atom $\here$.
-    \item In $B'$, replace all usages of $A$ with the atom $\hole$.
+    \item Replace all instances of $A$ with the formula $\usage$.
+    \item Insert the minimum collection of pops such that, according to the substitution axioms below, $\subst{B'}{\lzero}{C}$ will place $C$ at the locations of those instances of $A$.
   \end{itemize}
 
   \subsection{Axiom Definitions}
@@ -120,11 +119,11 @@
   Implication:
   \begin{align*}
     \tag{weakening}
-    \inferrule{B}{A \implies{\wfz} B}\\
+    \inferrule{B}{A \implies{\lzero} B}\\
     \tag{level weakening}
-    \inferrule{A \implies{n} B}{A \implies{\wfsucc n} B}\\
+    \inferrule{A \implies{n} B}{A \implies{\lsucc n} B}\\
     \tag{implication within hypotheticals}
-    \inferrule{C \implies{\wfsucc n} (A \implies{n} B)\\\\C \implies{\wfsucc n} A}{C \implies{\wfsucc n} B}\\
+    \inferrule{C \implies{\lsucc n} (A \implies{n} B)\\\\C \implies{\lsucc n} A}{C \implies{\lsucc n} B}\\
   \end{align*}
   \setlength{\jot}{0.4em}
   Definitional equality:
@@ -132,26 +131,26 @@
 %    \tag{symmetry}
 %    \inferrule{A \equiv B}{B \equiv A}\\
     \tag{implication}
-    (A \equiv B) &\implies{\wfz} (A \implies{\wfz} B)\\
+    (A \equiv B) &\implies{\lzero} (A \implies{\lzero} B)\\
     \tag{indistinguishability}
     (A \equiv B) &\equiv (\nameabst{P} PA \equiv PB)\\
   \end{align*}
   Substitution:
   \begin{align*}
-    \subst{\usage}{\wfz}{C} &\equiv C & \subst{(\pop{A})}{\wfz}{C} &\equiv A\\
-    \subst{\usage}{\wfsucc{v}}{C} &\equiv \usage & \subst{(\pop{A})}{\wfsucc{v}}{C} &\equiv \subst{A}{v}{C}\\
+    \subst{\usage}{\lzero}{C} &\equiv C & \subst{\usage}{\lsucc{v}}{C} &\equiv \usage\\
+    \subst{(\pop{A})}{\lzero}{C} &\equiv (\pop{A}) & \subst{(\pop{A})}{\lsucc{v}}{C} &\equiv (\pop{\subst{A}{v}{C}})\\
     \subst{(Atom\,A)}{v}{C} &\equiv (Atom\,A)\\
     \subst{(AB)}{v}{C} &\equiv \subst{A}{v}{C}\subst{B}{v}{C}\\
-    \subst{(\abst{A})}{v}{C} &\equiv (\abst{\subst{A}{\wfsucc{v}}{\pop{C}}})\\
+    \subst{(\abst{A})}{v}{C} &\equiv (\abst{\subst{A}{\lsucc{v}}{C}})\\
   \end{align*}
   Abstraction:
   \begin{align*}
     \tag{unfolding}
-    (\abst{A})B &\equiv \subst{A}{\wfz}{B}\\
-    \tag{truth of foralls}
-    A &\implies{\wfz} (\abst{A})\\
-    \tag{specialization}
-    (\abst{A}) &\implies{\wfz} (\abst{A})B\\
+    (\abst{A})B \equiv \subst{A}{\lzero}{B}\\
+%    \tag{truth of foralls}
+%    A &\implies{\wfz} (\abst{A})\\
+    \tag{specialization}\label{specialization}
+    (\abst{A}) \implies{\lzero} (\abst{A})B\\
 %    \tag{induction}
 %    \inferrule{P\ Atom\dots\\\\\nameabstraction{A} \nameabstraction{B} P A \implies P B \implies P (A B)}{P C}\\
   \end{align*}
@@ -159,21 +158,23 @@
   \setlength{\jot}{1.4em}
   \begin{gather*}
     \tag{successor axioms}\label{axs}
-    \inferrule{\axiom{A}{B}}{\axiom{(\wfsucc A)}{(\axiom{A}{B})}}\\
+    \inferrule{\axiom{A}{B}}{\axiom{(\lsucc A)}{(\axiom{A}{B})}}\\
     \tag{axioms say nothing else}\label{axu}
     \inferrule{\axiom{A}{B}\\\\\axiom{A}{C}}{B \equiv C}\\
     \tag{there are no other axioms}\label{axe}
     \inferrule{
-      R\text{``modus ponens"}\\\\
+      R\mathrm{``modus\ ponens"}\\\\
       \dots\\\\
-      R\text{``induction on axioms"}\\\\
-      \nameabst{a} Ra \implies{n} R(\wfsucc a)\\\\
+      R\mathrm{``there\ are\ no\ other\ axioms"}\\\\
+      R\mathrm{``only\ axioms\ prove\ things"}\\\\
+      \nameabst{a} Ra \implies{n} R(\lsucc a)\\\\
       \axiom{A}{B}
     }{RA}\\
     \tag{only axioms prove things}
     \inferrule{
       \nameabst{A}\nameabst{B}(\axiom{A}{B})\implies{n}RB\\\\
-      \nameabst{A}\nameabst{B}RA\implies{n}R(AB)\\\\
+      \nameabst{A}\nameabst{B}R(\abst{A})\implies{n}R((\abst{A})B)\\\\
+      \nameabst{A}\nameabst{B}R(A\implies{\lzero}B)\implies{n}RA\implies{n}RB\\\\
       P
     }{RP}\\
 %    \inferrule{\axiomatic{A}}{\axiomatic{\axiomatic{A}}}\\
@@ -186,22 +187,24 @@
   We now define \emph{internal} versions of the above axioms.
 
   From the internal perspective of the calculus, the above axioms provide truth for any \emph{specific} values of the variables $A, B\dots$, but cannot prove abstractions over those variables.
-  So, for each axiom, we also create an internal form, by representing the metavariables using abstractions, and the premises using implication (at level $\wfz$).
+  So, for each axiom, we also create an internal form, by representing the metavariables using abstractions, and the premises using implication (at level $\lzero$).
   For example, (modus ponens) is represented as:
 
   \begin{equation*}
     \tag{modus ponens, generalized}\label{mpg}
-    \nameabst{A} \nameabst{B} \nameabst{n} (A \implies{n} B) \implies{\wfz} A \implies{\wfz} B
+    \nameabst{A} \nameabst{B} \nameabst{n} (A \implies{n} B) \implies{\lzero} A \implies{\lzero} B
   \end{equation*}
+  
+  (Observe that any usage of an external axiom can also be achieved by combining its generalized form with \eqref{specialization}, the substitution rules, and \eqref{mp}.)
 
-  Now we make one more coup: The \emph{fact that this is an axiom} is also represented internally, by a second internal form:
+  Now we make one more coup: We also represent the \emph{fact that this is an axiom} internally, by adding the symbol "modus ponens" as a possible atom, and adding the following axiom:
 
   \begin{equation*}
     \tag{modus ponens, internalized}\label{mpi}
     \axiom{
       \mathrm{``modus\ ponens"}\\
     }{
-      (\nameabst{A} \nameabst{B} \nameabst{n} (A \implies{n} B) \implies{\wfz} A \implies{\wfz} B)
+      (\nameabst{A} \nameabst{B} \nameabst{n} (A \implies{n} B) \implies{\lzero} A \implies{\lzero} B)
     }\\
   \end{equation*}
 
@@ -209,9 +212,9 @@
   Fortunately, we do not need an infinite regression of \emph{explicit} definitions. Since \eqref{mpi} has no metavariables or premises, \eqref{axs} can take care of it, giving us:
 
   \begin{equation*}
-    \axiom{(\wfsucc\mathrm{``modus\ ponens"})}{(
+    \axiom{(\lsucc\mathrm{``modus\ ponens"})}{(
       \axiom{\mathrm{``modus\ ponens"}}{
-        (\nameabst{A} \nameabst{B} \nameabst{n} (A \implies{n} B) \implies{\wfz} A \implies{\wfz} B)
+        (\nameabst{A} \nameabst{B} \nameabst{n} (A \implies{n} B) \implies{\lzero} A \implies{\lzero} B)
       }
     )}\\
   \end{equation*}
