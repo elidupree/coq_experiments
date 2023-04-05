@@ -67,8 +67,8 @@
 
   \subsection{Syntax}
   \begin{align*}
-     Atom :=&\ \mathrm{level\_zero} \mid \mathrm{level\_successor} \mid \mathrm{implies} \mid \mathrm{equals} \mid \mathrm{substitute\_in} \mid \mathrm{axiom\_says}\\
-     F :=&\ \mathrm{atom}\ Atom \mid \mathrm{usage} \mid \mathrm{abstraction}\ F \mid \mathrm{pop}\ F \mid (F F)
+     Atom :=&\ \mathrm{level\_zero} \mid \mathrm{level\_successor} \mid \mathrm{implies} \mid \mathrm{equals} \mid \mathrm{usage} \mid \mathrm{substitute\_in} \mid \mathrm{proof\_induction}\\
+     F :=&\ Atom \mid \mathrm{abstraction}\ F \mid \mathrm{pop}\ F \mid (F F)
   \end{align*}
 
   \subsection{Notations}
@@ -89,12 +89,11 @@
   \newcommand{\subst}[3]{#1^{[{#2}{/}{#3}]}}
 
   \begin{align*}
-    \lzero &:= \mathrm{atom}\ \mathrm{level\_zero}\\
-    \lsucc{n} &:= ((\mathrm{atom}\ \mathrm{level\_successor}) n)\\
-    (A \implies{n} B) &:= ((((\mathrm{atom}\ \mathrm{implies}) A) n) B),\ \operatorname{right-associative}\\
-    (A \equiv B) &:= (((\mathrm{atom}\ \mathrm{equals}) A) B)\\
-    \subst{A}{B}{C} &:= ((((\mathrm{atom}\ \mathrm{substitute\_in}) A) B) C)\\
-    \axiom{A}{B} &:= (((\mathrm{atom}\ \mathrm{axiom\_says}) A) B)\\
+    \lzero &:= \mathrm{level\_zero}\\
+    \lsucc{n} &:= (\mathrm{level\_successor}\ n)\\
+    (A \implies{n} B) &:= (((\mathrm{implies}\ n) A) B),\ \operatorname{right-associative}\\
+    (A \equiv B) &:= ((\mathrm{equals}\ A) B)\\
+    \subst{A}{B}{C} &:= (((\mathrm{substitute\_in}\ A) B) C)\\
     \usage &:= \mathrm{usage}\\
     \abst{A} &:= \mathrm{abstraction}\ A\\
     \pop{A} &:= \mathrm{pop}\ A\\
@@ -105,7 +104,7 @@
   This is defined as $(\abst{B'})$, where $B'$ is $B$ with the following changes:
   \begin{itemize}
     \item Replace all instances of $A$ with the formula $\usage$.
-    \item Insert the minimum collection of pops such that, according to the substitution axioms below, $\subst{B'}{\lzero}{C}$ will place $C$ at the locations of those instances of $A$.
+    \item Insert the minimum collection of pops such that, according to the substitution axioms below, branches of $\subst{B'}{\lzero}{C}$ will reach every usage of $A$, and every branch that doesn't will end in one of these pops.
   \end{itemize}
 
   \subsection{Axiom Definitions}
@@ -128,18 +127,19 @@
   \setlength{\jot}{0.4em}
   Definitional equality:
   \begin{align*}
+    \tag{reflexivity}\label{eq_refl}
+    A &\equiv A\\
 %    \tag{symmetry}
 %    \inferrule{A \equiv B}{B \equiv A}\\
     \tag{implication}
-    (A \equiv B) &\implies{\lzero} (A \implies{\lzero} B)\\
-    \tag{indistinguishability}
-    (A \equiv B) &\equiv (\nameabst{P} PA \equiv PB)\\
+    (A &\equiv B) \implies{\lzero} (A \implies{\lzero} B)\\
+    \tag{indistinguishability}\label{eq_indis}
+    (A &\equiv B) \equiv (\nameabst{P} PA \equiv PB)\\
   \end{align*}
   Substitution:
   \begin{align*}
-    \subst{\usage}{\lzero}{C} &\equiv C & \subst{\usage}{\lsucc{v}}{C} &\equiv \usage\\
-    \subst{(\pop{A})}{\lzero}{C} &\equiv (\pop{A}) & \subst{(\pop{A})}{\lsucc{v}}{C} &\equiv (\pop{\subst{A}{v}{C}})\\
-    \subst{(Atom\,A)}{v}{C} &\equiv (Atom\,A)\\
+    \subst{\usage}{\lzero}{C} &\equiv C\\
+    \subst{(\pop{A})}{\lzero}{C} &\equiv A & \subst{(\pop{A})}{\lsucc{v}}{C} &\equiv (\pop{\subst{A}{v}{C}})\\
     \subst{(AB)}{v}{C} &\equiv \subst{A}{v}{C}\subst{B}{v}{C}\\
     \subst{(\abst{A})}{v}{C} &\equiv (\abst{\subst{A}{\lsucc{v}}{C}})\\
   \end{align*}
@@ -151,75 +151,45 @@
 %    A &\implies{\wfz} (\abst{A})\\
     \tag{specialization}\label{specialization}
     (\abst{A}) \implies{\lzero} (\abst{A})B\\
-%    \tag{induction}
-%    \inferrule{P\ Atom\dots\\\\\nameabstraction{A} \nameabstraction{B} P A \implies P B \implies P (A B)}{P C}\\
   \end{align*}
-  Axiom rules:
-  \setlength{\jot}{1.4em}
-  \begin{gather*}
-    \tag{successor axioms}\label{axs}
-    \inferrule{\axiom{A}{B}}{\axiom{(\lsucc A)}{(\axiom{A}{B})}}\\
-    \tag{axioms say nothing else}\label{axu}
-    \inferrule{\axiom{A}{B}\\\\\axiom{A}{C}}{B \equiv C}\\
-    \tag{there are no other axioms}\label{axe}
-    \inferrule{
-      R\mathrm{``modus\ ponens"}\\\\
-      \dots\\\\
-      R\mathrm{``there\ are\ no\ other\ axioms"}\\\\
-      R\mathrm{``only\ axioms\ prove\ things"}\\\\
-      \nameabst{a} Ra \implies{n} R(\lsucc a)\\\\
-      \axiom{A}{B}
-    }{RA}\\
-    \tag{only axioms prove things}
-    \inferrule{
-      \nameabst{A}\nameabst{B}(\axiom{A}{B})\implies{n}RB\\\\
-      \nameabst{A}\nameabst{B}R(\abst{A})\implies{n}R((\abst{A})B)\\\\
-      \nameabst{A}\nameabst{B}R(A\implies{\lzero}B)\implies{n}RA\implies{n}RB\\\\
-      P
-    }{RP}\\
-%    \inferrule{\axiomatic{A}}{\axiomatic{\axiomatic{A}}}\\
-%    \tag{induction on axioms}\label{axe}
-%    \inferrule{\axiom{A}{B}\\\\P\text{``modus ponens"}\\\\\dots\\\\P\text{``induction on axioms"}\\\\(\nameabstraction{a} Pa \implies P(\wfsucc a))}{PA}\\
-  \end{gather*}
 
   \subsection{Internal Axioms}
 
-  We now define \emph{internal} versions of the above axioms.
+  We now define \emph{internal} representations of the above axioms.
 
   From the internal perspective of the calculus, the above axioms provide truth for any \emph{specific} values of the variables $A, B\dots$, but cannot prove abstractions over those variables.
   So, for each axiom, we also create an internal form, by representing the metavariables using abstractions, and the premises using implication (at level $\lzero$).
   For example, (modus ponens) is represented as:
 
   \begin{equation*}
-    \tag{modus ponens, generalized}\label{mpg}
-    \nameabst{A} \nameabst{B} \nameabst{n} (A \implies{n} B) \implies{\lzero} A \implies{\lzero} B
+    \mathrm{``modus\ ponens"} := \nameabst{A} \nameabst{B} \nameabst{n} (A \implies{n} B) \implies{\lzero} A \implies{\lzero} B
   \end{equation*}
   
-  (Observe that any usage of an external axiom can also be achieved by combining its generalized form with \eqref{specialization}, the substitution rules, and \eqref{mp}.)
+  The above is merely a notation, saying that the right-hand side \emph{is} the statement of "modus ponens". Rather than postulate each of these generalized axioms individually, we make the following comprehensive rule:
+  
+  \setlength{\jot}{0em}
+  \begin{align*}
+    \tag{proof induction is true}\label{indt}
+    \mathrm{proof\_induction}\\
+    \tag{definition of proof induction}\label{indd}
+    \mathrm{proof\_induction} \equiv \nameabst{P} (P \equiv\,&\nameabst{R}\\
+      &\nameabst{n}\\
+      &R\mathrm{``modus\ ponens"} \implies{\lzero}\\
+      &\dots \implies{\lzero}\\
+      &R\mathrm{``specialization"} \implies{\lzero}\\
+      &R\ \mathrm{proof\_induction} \implies{\lzero}\\
+      &(\nameabst{A}\nameabst{B}R(\abst{A})\implies{n}R((\abst{A})B)) \implies{\lzero}\\
+      &(\nameabst{A}\nameabst{B}R(A\implies{\lzero}B)\implies{n}RA\implies{n}RB) \implies{\lsucc{n}}\\
+      &RP)\\
+  \end{align*}
 
-  Now we make one more coup: We also represent the \emph{fact that this is an axiom} internally, by adding the symbol "modus ponens" as a possible atom, and adding the following axiom:
-
-  \begin{equation*}
-    \tag{modus ponens, internalized}\label{mpi}
-    \axiom{
-      \mathrm{``modus\ ponens"}\\
-    }{
-      (\nameabst{A} \nameabst{B} \nameabst{n} (A \implies{n} B) \implies{\lzero} A \implies{\lzero} B)
-    }\\
-  \end{equation*}
-
-  Of course, \eqref{mpi} is now another axiom that does not have an explicit internal form!
-  Fortunately, we do not need an infinite regression of \emph{explicit} definitions. Since \eqref{mpi} has no metavariables or premises, \eqref{axs} can take care of it, giving us:
-
-  \begin{equation*}
-    \axiom{(\lsucc\mathrm{``modus\ ponens"})}{(
-      \axiom{\mathrm{``modus\ ponens"}}{
-        (\nameabst{A} \nameabst{B} \nameabst{n} (A \implies{n} B) \implies{\lzero} A \implies{\lzero} B)
-      }
-    )}\\
-  \end{equation*}
-
-  and so forth.
+  (We would like the definition of proof induction to be a notation like the other axioms, but that would make it a self-containing formula. IC can actually permit self containing formulas, but we understand that the reader may be skeptical of a self containing axiom! Thus, we choose to represent it as an atom with a definitional-equality.)
+  
+  Observe that this rule immediately proves any of the individual generalized axioms. For example, "modus ponens" is proved by specializing this rule with $P := \mathrm{``modus\ ponens"}$, because the premise $R\mathrm{``modus\ ponens"}$ proves the conclusion $RP$.
+  
+  But the more interesting feature of this rule is the other direction of implication: If $P$, then $P$ is reachable by induction from the listed axioms. This essentially says that our list of axioms is \emph{exhaustive} – there are no other axioms – and the rule makes that fact visible to internal logic.
+  
+With such a powerful rule, one should immediately worry if it proves a contradiction. After all, the generalized axioms are not strictly the same objects as the external axioms, and the axiom \eqref{indd} is not in the list at all. However, any statement you can prove using an external axiom is a specialization of the generalized form, and thus reachable by induction from the generalized axioms. And because definitionally-equal formulas are indistinguishable to the internal logic, \eqref{indd} is just a specialization of \eqref{eq_refl}.
 
   \section{Examples}\label{structure}
 

@@ -1,0 +1,75 @@
+use crate::introspective_calculus::{Formula, Atom, Implies, Substitution, AxiomDefinition};
+
+grammar;
+
+extern {
+    type Error = String;
+}
+
+pub OrdinaryAxiomDefinition: AxiomDefinition = {
+  <name:Name> ":=" <conclusion:Formula> => AxiomDefinition{<>, premises:Vec::new()}
+}
+
+FormulaIndivisible: Formula = {
+  "0" => Formula::Level0,
+  "$" => Formula::Atom(Atom::Usage),
+  Name => Formula::Metavariable(<>),
+  "(" <Formula> ")",
+
+  "level_zero" => Formula::Atom(Atom::Level0),
+  "level_successor" => Formula::Atom(Atom::LevelSuccessor),
+  "implies" => Formula::Atom(Atom::Implies),
+  "equals" => Formula::Atom(Atom::Equals),
+  "substitute_in" => Formula::Atom(Atom::SubstituteIn),
+  "proof_induction" => Formula::Atom(Atom::ProofInduction),
+}
+
+FormulaDivisibleRightOnly: Formula = {
+}
+
+FormulaDivisibleLeftOnly: Formula = {
+  <FormulaIndivisibleRight> "+1" => Formula::LevelSuccessor(Box::new(<>)),
+  <FormulaIndivisibleRight> "<=" => Formula::Abstraction(Box::new(<>)),
+  <FormulaIndivisibleRight> "<" => Formula::Pop(Box::new(<>)),
+  <original:FormulaIndivisibleRight> "[" <index:Formula> "/" <replacement:Formula> "]"
+    => Formula::Substitution(Box::new(Substitution{<>})),
+}
+
+FormulaIndivisibleLeft: Formula = {
+  FormulaDivisibleRightOnly,
+  FormulaIndivisible,
+}
+
+FormulaIndivisibleRight: Formula = {
+  FormulaDivisibleLeftOnly,
+  FormulaIndivisible,
+}
+
+pub Formula: Formula = {
+  <ApplyChain1> "=" <Formula> => Formula::Equals(Box::new([<>])),
+  ApplyChain2,
+  ArrowChain2,
+  FormulaDivisibleRightOnly,
+  FormulaDivisibleLeftOnly,
+  FormulaIndivisible,
+}
+
+ApplyChain1: Formula = {
+  ApplyChain2,
+  FormulaIndivisibleRight,
+}
+ApplyChain2: Formula = {
+  ApplyChain1 FormulaIndivisibleLeft => Formula::Apply(Box::new([<>])),
+}
+
+ArrowChain1: Formula = {
+  ArrowChain2,
+  ApplyChain2,
+  FormulaIndivisibleLeft,
+}
+ArrowChain2: Formula = {
+  <n:Name> "=>" <r:ArrowChain1> => Formula::NameAbstraction(n, Box::new(r)),
+  <antecedent:ApplyChain1> "->" <level:FormulaIndivisibleLeft> <consequent:ArrowChain1> => Formula::Implies(Box::new(Implies{<>})),
+}
+
+Name: String = r#"[a-zA-Z_][a-zA-Z0-9_]*|"[a-zA-Z ]*""# => <>.to_string();
