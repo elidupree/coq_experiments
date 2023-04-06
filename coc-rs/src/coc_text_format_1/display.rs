@@ -1,100 +1,7 @@
 use crate::coc_text_format_1::{Abstraction, AbstractionKind, Command, Document, Formula};
+use crate::display::{DisplayAttemptKind, DisplayItem, DisplayItemSequence};
 use std::fmt::{Display, Formatter, Write};
 use std::{fmt, iter};
-
-pub(super) trait DisplayItem {
-    fn try_one_liner(&self, writer: &mut dyn fmt::Write) -> fmt::Result;
-    fn display_with_splits(&self, prior_indentation: usize, writer: &mut String) -> fmt::Result;
-    fn display_with_splits_if_needed(
-        &self,
-        item_length_limit: usize,
-        current_indentation: usize,
-        writer: &mut String,
-    ) -> fmt::Result {
-        let old_length = writer.len();
-        let one_liner_result = self.try_one_liner(&mut LimitedLengthString {
-            target: writer,
-            characters_remaining: item_length_limit,
-        });
-        if one_liner_result.is_err() {
-            writer.truncate(old_length);
-            self.display_with_splits(current_indentation, writer)?;
-        }
-        Ok(())
-    }
-    fn display_to_string(&self) -> String {
-        let mut result = String::new();
-        self.display_with_splits_if_needed(80, 2, &mut result)
-            .unwrap();
-        result
-    }
-}
-
-struct LimitedLengthString<'a> {
-    target: &'a mut String,
-    characters_remaining: usize,
-}
-
-impl Write for LimitedLengthString<'_> {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        self.characters_remaining = self
-            .characters_remaining
-            .checked_sub(s.chars().count())
-            .ok_or(fmt::Error)?;
-        self.target.write_str(s)
-    }
-}
-
-struct DisplayItemSequence {
-    always_parens: bool,
-    items: Vec<Box<dyn DisplayItem>>,
-}
-impl DisplayItem for DisplayItemSequence {
-    fn try_one_liner(&self, writer: &mut dyn Write) -> fmt::Result {
-        if self.always_parens {
-            write!(writer, "(")?;
-        }
-        for (index, item) in self.items.iter().enumerate() {
-            item.try_one_liner(writer)?;
-            if index + 1 != self.items.len() {
-                write!(writer, " ")?;
-            }
-        }
-        if self.always_parens {
-            write!(writer, ")")?;
-        }
-        Ok(())
-    }
-    fn display_with_splits(&self, prior_indentation: usize, writer: &mut String) -> fmt::Result {
-        write!(writer, "(")?;
-        let indent = " ".repeat(prior_indentation);
-        let item_length_limit = 30.max(77 - prior_indentation);
-        for item in &self.items {
-            write!(writer, "\n{}  ", indent)?;
-            item.display_with_splits_if_needed(item_length_limit, prior_indentation + 2, writer)?;
-        }
-        write!(writer, "\n{})", indent)?;
-        Ok(())
-    }
-}
-impl DisplayItem for &str {
-    fn try_one_liner(&self, writer: &mut dyn Write) -> fmt::Result {
-        writer.write_str(self)
-    }
-
-    fn display_with_splits(&self, _prior_indentation: usize, writer: &mut String) -> fmt::Result {
-        writer.write_str(self)
-    }
-}
-impl DisplayItem for String {
-    fn try_one_liner(&self, writer: &mut dyn Write) -> fmt::Result {
-        writer.write_str(self)
-    }
-
-    fn display_with_splits(&self, _prior_indentation: usize, writer: &mut String) -> fmt::Result {
-        writer.write_str(self)
-    }
-}
 
 struct AbstractionParameterItem {
     kind: AbstractionKind,
@@ -108,40 +15,23 @@ struct CommandItem {
 }
 
 impl DisplayItem for AbstractionParameterItem {
-    fn try_one_liner(&self, writer: &mut dyn Write) -> fmt::Result {
+    fn try_display(&self, writer: &mut dyn Write, attempt_kind: DisplayAttemptKind) -> fmt::Result {
         let AbstractionParameterItem {
             kind,
             parameter_name,
             parameter_type,
         } = self;
         write!(writer, "{kind}{parameter_name}:")?;
-        parameter_type.try_one_liner(writer)?;
-        write!(writer, ",")?;
-        Ok(())
-    }
-
-    fn display_with_splits(&self, prior_indentation: usize, writer: &mut String) -> fmt::Result {
-        let AbstractionParameterItem {
-            kind,
-            parameter_name,
-            parameter_type,
-        } = self;
-        write!(writer, "{kind}{parameter_name}:")?;
-        parameter_type.display_with_splits(prior_indentation, writer)?;
+        parameter_type.try_display(writer, attempt_kind)?;
         write!(writer, ",")?;
         Ok(())
     }
 }
 
 impl DisplayItem for CommandItem {
-    fn try_one_liner(&self, writer: &mut dyn Write) -> fmt::Result {
+    fn try_display(&self, writer: &mut dyn Write, kind: DisplayAttemptKind) -> fmt::Result {
         write!(writer, "{}", self.prefix)?;
-        self.formula.try_one_liner(writer)
-    }
-
-    fn display_with_splits(&self, prior_indentation: usize, writer: &mut String) -> fmt::Result {
-        write!(writer, "{}", self.prefix)?;
-        self.formula.display_with_splits(prior_indentation, writer)
+        self.formula.try_display(writer, kind)
     }
 }
 impl Command {
@@ -290,7 +180,7 @@ impl Display for Document {
             if last.is_some() && matches!(command, Command::ClaimType(_, _)) {
                 writeln!(f)?;
             }
-            writeln!(f, "> {}.", command.to_display_item().display_to_string())?;
+            writeln!(f, "> {}.", command.to_display_item().display())?;
             last = Some(command);
         }
         Ok(())

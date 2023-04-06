@@ -42,7 +42,7 @@
   
   Type theories typically avoid this problem by preventing the construction of self-referential claims. However, general-purpose computation is intrinsically capable of constructing self-referential claims. Thus, any such rules must forbid many programs that would otherwise be valid.
   
-  \renewcommand{\implies}[1]{\rightarrow_{\hspace{-0.04em}#1}}
+  \renewcommand{\implies}[1]{\xrightarrow{#1}}
   The present work's innovation is to \emph{allow} self-referential claims, but instead weaken the above axiom. We equip the "implies" relation with a level, where $A \implies{n} B$ means "You can reason from $A$ to $B$ by a proof with \emph{no more than} $n$ levels of hypotheticals." Now the axiom becomes:
   
   \newcommand{\lzero}{0}
@@ -72,7 +72,14 @@
   \end{align*}
 
   \subsection{Notations}
-  
+
+  % give examples first????
+  % pronunciations of the symbols
+  % AB is application
+  % abstractions can be viewed as forall, lambda, function, predicates
+  % substution better notation?
+  % implication not subscript?
+  % clean up explanation of metavariable levels WRT named abstractions
 %  \[ A\ B\ C \dots Y\ Z := ((\dots ((A B) C) \dots Y) Z) \]
 
   \newcommand{\ic}[1]{#1}

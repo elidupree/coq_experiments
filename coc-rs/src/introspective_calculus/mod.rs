@@ -71,7 +71,7 @@ pub fn load_ordinary_axioms(path: impl AsRef<Path>) -> Vec<AxiomDefinition> {
     let parser = OrdinaryAxiomDefinitionParser::new();
     BufReader::new(File::open(path).unwrap())
         .lines()
-        .map(|l| parser.parse(&dbg!(l.unwrap())).unwrap())
+        .map(|l| parser.parse(&l.unwrap()).unwrap())
         .collect()
 }
 
