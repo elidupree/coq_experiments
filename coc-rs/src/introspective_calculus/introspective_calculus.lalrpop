@@ -1,4 +1,4 @@
-use crate::introspective_calculus::{Formula, Atom, Implies, Substitution, AxiomDefinition};
+use crate::introspective_calculus::{Formula, Atom, Implies, Abstraction, AxiomDefinition};
 
 grammar;
 
@@ -20,7 +20,6 @@ FormulaIndivisible: Formula = {
   "level_successor" => Formula::Atom(Atom::LevelSuccessor),
   "implies" => Formula::Atom(Atom::Implies),
   "equals" => Formula::Atom(Atom::Equals),
-  "substitute_in" => Formula::Atom(Atom::SubstituteIn),
   "proof_induction" => Formula::Atom(Atom::ProofInduction),
 }
 
@@ -29,10 +28,8 @@ FormulaDivisibleRightOnly: Formula = {
 
 FormulaDivisibleLeftOnly: Formula = {
   <FormulaIndivisibleRight> "+1" => Formula::LevelSuccessor(Box::new(<>)),
-  <FormulaIndivisibleRight> "<=" => Formula::Abstraction(Box::new(<>)),
+  <body:FormulaIndivisibleRight> "[" <index:Formula> "]" => Formula::Abstraction(Box::new(Abstraction{<>})),
   <FormulaIndivisibleRight> "<" => Formula::Pop(Box::new(<>)),
-  <original:FormulaIndivisibleRight> "[" <index:Formula> "/" <replacement:Formula> "]"
-    => Formula::Substitution(Box::new(Substitution{<>})),
 }
 
 FormulaIndivisibleLeft: Formula = {

@@ -3,6 +3,8 @@
 // mod metavariable_conversions;
 // pub mod unfolding;
 
+pub mod prolog;
+
 #[allow(clippy::all)]
 mod lalrpop_wrapper {
     use lalrpop_util::lalrpop_mod;
@@ -16,6 +18,7 @@ pub use self::lalrpop_wrapper::introspective_calculus::{
 // use crate::metavariable::Environment;
 // use live_prop_test::{live_prop_test, lpt_assert_eq};
 // use regex::{Captures, Regex};
+use live_prop_test::live_prop_test;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -34,15 +37,14 @@ pub struct Implies {
     pub consequent: Formula,
 }
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub struct Substitution {
-    pub original: Formula,
+pub struct Abstraction {
+    pub body: Formula,
     pub index: Formula,
-    pub replacement: Formula,
 }
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Formula {
     Atom(Atom),
-    Abstraction(Box<Formula>),
+    Abstraction(Box<Abstraction>),
     Pop(Box<Formula>),
     Apply(Box<[Formula; 2]>),
 
@@ -50,7 +52,6 @@ pub enum Formula {
     LevelSuccessor(Box<Formula>),
     Implies(Box<Implies>),
     Equals(Box<[Formula; 2]>),
-    Substitution(Box<Substitution>),
 
     Metavariable(String),
     NameAbstraction(String, Box<Formula>),
@@ -63,15 +64,133 @@ pub enum Atom {
     Implies,
     Equals,
     Usage,
-    SubstituteIn,
     ProofInduction,
+}
+
+#[live_prop_test]
+impl Formula {
+    // should be idempotent:
+    #[live_prop_test(postcondition = "result.to_raw_with_metavariables() == result")]
+    pub fn to_raw_with_metavariables(&self) -> Formula {
+        match self {
+            Formula::Level0 => Formula::Atom(Atom::Level0),
+            Formula::LevelSuccessor(f) => Formula::Apply(Box::new([
+                Formula::Atom(Atom::LevelSuccessor),
+                f.to_raw_with_metavariables(),
+            ])),
+            Formula::Equals(f) => Formula::Apply(Box::new([
+                Formula::Apply(Box::new([
+                    Formula::Atom(Atom::Equals),
+                    f[0].to_raw_with_metavariables(),
+                ])),
+                f[1].to_raw_with_metavariables(),
+            ])),
+            Formula::Implies(i) => Formula::Apply(Box::new([
+                Formula::Apply(Box::new([
+                    Formula::Apply(Box::new([
+                        Formula::Atom(Atom::Implies),
+                        i.level.to_raw_with_metavariables(),
+                    ])),
+                    i.antecedent.to_raw_with_metavariables(),
+                ])),
+                i.consequent.to_raw_with_metavariables(),
+            ])),
+            Formula::NameAbstraction(name, body) => Formula::Abstraction(Box::new(Abstraction {
+                body: body
+                    .to_raw_with_metavariables()
+                    .with_metavariable_internalized(name, 0),
+                index: Formula::Level0.to_raw_with_metavariables(),
+            })),
+            _ => self.map_children(Formula::to_raw_with_metavariables),
+        }
+    }
+
+    pub fn is_raw_with_metavariables(&self) -> bool {
+        self.to_raw_with_metavariables() == *self
+    }
+
+    pub fn map_children(&self, mut map: impl FnMut(&Formula) -> Formula) -> Formula {
+        match self {
+            Formula::Level0 | Formula::Atom(_) | Formula::Metavariable(_) => self.clone(),
+            Formula::Pop(f) => Formula::Pop(Box::new(map(f))),
+            Formula::LevelSuccessor(f) => Formula::LevelSuccessor(Box::new(map(f))),
+            Formula::Equals(f) => Formula::Equals(Box::new(f.each_ref().map(map))),
+            Formula::Apply(f) => Formula::Apply(Box::new(f.each_ref().map(map))),
+            Formula::Abstraction(a) => Formula::Abstraction(Box::new(Abstraction {
+                body: map(&a.body),
+                index: map(&a.index),
+            })),
+            Formula::Implies(i) => Formula::Implies(Box::new(Implies {
+                level: map(&i.level),
+                antecedent: map(&i.antecedent),
+                consequent: map(&i.consequent),
+            })),
+            Formula::NameAbstraction(name, body) => {
+                Formula::NameAbstraction(name.clone(), Box::new(map(body)))
+            }
+        }
+    }
+
+    pub fn contains_free_metavariable(&self, name: &str) -> bool {
+        match self {
+            Formula::Metavariable(n) => n == name,
+            Formula::Atom(_) | Formula::Level0 => false,
+            Formula::Pop(f) | Formula::LevelSuccessor(f) => f.contains_free_metavariable(name),
+            Formula::Equals(f) | Formula::Apply(f) => {
+                f.iter().any(|f| f.contains_free_metavariable(name))
+            }
+            Formula::Abstraction(a) => {
+                a.index.contains_free_metavariable(name) || a.body.contains_free_metavariable(name)
+            }
+            Formula::Implies(i) => {
+                i.level.contains_free_metavariable(name)
+                    || i.antecedent.contains_free_metavariable(name)
+                    || i.consequent.contains_free_metavariable(name)
+            }
+            Formula::NameAbstraction(n, body) => n != name && body.contains_free_metavariable(name),
+        }
+    }
+
+    // assumes already in raw form:
+    #[live_prop_test(precondition = "self.is_raw_with_metavariables()")]
+    pub fn with_metavariable_internalized(&self, name: &str, level: usize) -> Formula {
+        if level == 0 && !self.contains_free_metavariable(name) {
+            return Formula::Pop(Box::new(self.clone()));
+        }
+        match self {
+            Formula::Metavariable(n) => {
+                assert_eq!(n, name, "should already be popped");
+                assert_eq!(level, 0);
+                Formula::Atom(Atom::Usage)
+            }
+            Formula::Atom(_) => panic!("should already be popped"),
+            Formula::Pop(f) => {
+                assert!(level > 0, "shouldn't be pre-popped");
+                Formula::Pop(Box::new(f.with_metavariable_internalized(name, level - 1)))
+            }
+            Formula::Apply(_) => {
+                self.map_children(|f| f.with_metavariable_internalized(name, level))
+            }
+            Formula::Abstraction(a) => Formula::Abstraction(Box::new(Abstraction {
+                body: a.body.with_metavariable_internalized(name, level + 1),
+                index: a.index.with_metavariable_internalized(name, level),
+            })),
+            _ => panic!("should already be raw"),
+        }
+    }
 }
 
 pub fn load_ordinary_axioms(path: impl AsRef<Path>) -> Vec<AxiomDefinition> {
     let parser = OrdinaryAxiomDefinitionParser::new();
     BufReader::new(File::open(path).unwrap())
         .lines()
-        .map(|l| parser.parse(&l.unwrap()).unwrap())
+        .map(|l| {
+            let l = l.unwrap();
+            match parser.parse(&l) {
+                Ok(a) => a,
+                Err(e) => panic!("Got error `{e}` while parsing axiom `{l}`"),
+            }
+        })
         .collect()
 }
 
@@ -199,6 +318,33 @@ mod tests {
     use super::*;
     #[test]
     fn check_ordinary_axioms() {
-        load_ordinary_axioms("data/ic_ordinary_axioms.ic");
+        let axioms = load_ordinary_axioms("data/ic_ordinary_axioms.ic");
+        // panic!(
+        //     "{:?}",
+        //     axioms
+        //         .iter()
+        //         .map(|a| a
+        //             .conclusion
+        //             .to_raw_with_metavariables()
+        //             .as_prolog()
+        //             .to_string())
+        //         .collect::<Vec<_>>()
+        // );
     }
+    // #[test]
+    // fn prolog_thing() {
+    //     use swipl::prelude::*;
+    //     fn foo() -> PrologResult<()> {
+    //         let activation = initialize_swipl().unwrap();
+    //         let context: Context<_> = activation.into();
+    //
+    //         let term = term! {context: hello(world)}?;
+    //
+    //         context.call_once(pred!(writeq / 1), [&term])?;
+    //         context.call_once(pred!(nl / 0), [])?;
+    //
+    //         Ok(())
+    //     }
+    //     foo().unwrap();
+    // }
 }

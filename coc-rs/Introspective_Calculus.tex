@@ -83,35 +83,30 @@
 %  \[ A\ B\ C \dots Y\ Z := ((\dots ((A B) C) \dots Y) Z) \]
 
   \newcommand{\ic}[1]{#1}
-  \newcommand{\abst}[1]{#1\!\Leftarrow}
-  \newcommand{\context}[2]{\mlq#1/#2\mrq}
-  \newcommand{\variable}[1]{{\mathcal{V}_{\mlq\hspace{-0.06em}#1\hspace{-0.06em}\mrq}}}
-  \newcommand{\clocksub}[1]{\text{\clock}_{\!#1}}
+  \newcommand{\abst}[2]{{#1} \langle \overline{\underline{ #2}}]}
   \newcommand{\nameabst}[1]{#1 \Rightarrow}
-  \newcommand{\axiom}[2]{\mathrm{Axiom}\ #1\ \mathrm{says}\ #2}
-  \newcommand{\axiomatic}[1]{\infty #1}
 %  \newcommand{\usage}{\mathcal{V}}
   \newcommand{\usage}{\circ}
   \newcommand{\pop}[1]{#1\triangleleft}
-  \newcommand{\subst}[3]{#1^{[{#2}{/}{#3}]}}
+  \newcommand{\equals}{\equiv}
 
   \begin{align*}
     \lzero &:= \mathrm{level\_zero}\\
     \lsucc{n} &:= (\mathrm{level\_successor}\ n)\\
     (A \implies{n} B) &:= (((\mathrm{implies}\ n) A) B),\ \operatorname{right-associative}\\
-    (A \equiv B) &:= ((\mathrm{equals}\ A) B)\\
-    \subst{A}{B}{C} &:= (((\mathrm{substitute\_in}\ A) B) C)\\
+    (A \equals B) &:= ((\mathrm{equals}\ A) B)\\
+    \abst{A}{B}{C} &:= (((\mathrm{substitute\_in}\ A) B) C)\\
     \usage &:= \mathrm{usage}\\
-    \abst{A} &:= \mathrm{abstraction}\ A\\
+    \abst{A}{B} &:= \mathrm{abstraction}\ A\ B\\
     \pop{A} &:= \mathrm{pop}\ A\\
   \end{align*}
 
   Finally, we define the \emph{named form} of abstractions, $(\nameabst{A}B),\ \operatorname{right-associative}$, where $A$ is a variable-name, and $B$ may contain instances of that name. (Perhaps we should say \emph{metavariable-name} rather than \emph{variable-name}, as these names only exist for this notation, and are not part of the formal language of IC).
   
-  This is defined as $(\abst{B'})$, where $B'$ is $B$ with the following changes:
+  This is defined as $(\abst{B'}{0})$, where $B'$ is $B$ with the following changes:
   \begin{itemize}
     \item Replace all instances of $A$ with the formula $\usage$.
-    \item Insert the minimum collection of pops such that, according to the substitution axioms below, branches of $\subst{B'}{\lzero}{C}$ will reach every usage of $A$, and every branch that doesn't will end in one of these pops.
+    \item Insert the minimum collection of pops such that, according to the substitution axioms below, branches of $\abst{B'}{\lzero}{C}$ will reach every usage of $A$, and every branch that doesn't will end in one of these pops.
   \end{itemize}
 
   \subsection{Axiom Definitions}
@@ -135,29 +130,29 @@
   Definitional equality:
   \begin{align*}
     \tag{reflexivity}\label{eq_refl}
-    A &\equiv A\\
+    A &\equals A\\
 %    \tag{symmetry}
-%    \inferrule{A \equiv B}{B \equiv A}\\
+%    \inferrule{A \equals B}{B \equals A}\\
     \tag{implication}
-    (A &\equiv B) \implies{\lzero} (A \implies{\lzero} B)\\
+    (A &\equals B) \implies{\lzero} (A \implies{\lzero} B)\\
     \tag{indistinguishability}\label{eq_indis}
-    (A &\equiv B) \equiv (\nameabst{P} PA \equiv PB)\\
+    (A &\equals B) \equals (\nameabst{P} PA \equals PB)\\
   \end{align*}
   Substitution:
+%  \setlength{\jot}{0.1em}
   \begin{align*}
-    \subst{\usage}{\lzero}{C} &\equiv C\\
-    \subst{(\pop{A})}{\lzero}{C} &\equiv A & \subst{(\pop{A})}{\lsucc{v}}{C} &\equiv (\pop{\subst{A}{v}{C}})\\
-    \subst{(AB)}{v}{C} &\equiv \subst{A}{v}{C}\subst{B}{v}{C}\\
-    \subst{(\abst{A})}{v}{C} &\equiv (\abst{\subst{A}{\lsucc{v}}{C}})\\
+    (\abst{\usage}{\lzero}{C}) &\equals C\\
+    (\abst{\pop{A}}{\lzero}{C}) &\equals A\\
+    (\abst{\pop{A}}{\lsucc{n}}{C}) &\equals \pop{(\abst{A}{n}C)}\\
+    (\abst{\abst{A}{0}}{n}{C}) &\equals \abst{(\abst{A}{\lsucc{n}}{C})}{0}\\
+    (\abst{(AB)}{n}{C}) &\equals (\abst{A}{n}{C})(\abst{B}{n}{C})\\
   \end{align*}
   Abstraction:
   \begin{align*}
-    \tag{unfolding}
-    (\abst{A})B \equiv \subst{A}{\lzero}{B}\\
 %    \tag{truth of foralls}
 %    A &\implies{\wfz} (\abst{A})\\
     \tag{specialization}\label{specialization}
-    (\abst{A}) \implies{\lzero} (\abst{A})B\\
+    (\abst{A}{0}) \implies{\lzero} \abst{A}{0}B\\
   \end{align*}
 
   \subsection{Internal Axioms}
@@ -179,7 +174,7 @@
     \tag{proof induction is true}\label{indt}
     \mathrm{proof\_induction}\\
     \tag{definition of proof induction}\label{indd}
-    \mathrm{proof\_induction} \equiv \nameabst{P} (P \equiv\,&\nameabst{R}\\
+    \mathrm{proof\_induction} \equals \nameabst{P} (P \equals\,&\nameabst{R}\\
       &\nameabst{n}\\
       &R\mathrm{``modus\ ponens"} \implies{\lzero}\\
       &\dots \implies{\lzero}\\
