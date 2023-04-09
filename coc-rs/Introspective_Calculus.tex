@@ -67,8 +67,8 @@
 
   \subsection{Syntax}
   \begin{align*}
-     Atom :=&\ \mathrm{level\_zero} \mid \mathrm{level\_successor} \mid \mathrm{implies} \mid \mathrm{equals} \mid \mathrm{usage} \mid \mathrm{substitute\_in} \mid \mathrm{proof\_induction}\\
-     F :=&\ Atom \mid \mathrm{abstraction}\ F \mid \mathrm{pop}\ F \mid (F F)
+     Atom :=&\ \mathrm{level\_zero} \mid \mathrm{level\_successor} \mid \mathrm{implies} \mid \mathrm{equals} \mid \mathrm{const} \mid \mathrm{fuse} \mid \mathrm{induction\_on\_proofs}\\
+     F :=&\ Atom \mid (F F)
   \end{align*}
 
   \subsection{Notations}
@@ -83,11 +83,11 @@
 %  \[ A\ B\ C \dots Y\ Z := ((\dots ((A B) C) \dots Y) Z) \]
 
   \newcommand{\ic}[1]{#1}
-  \newcommand{\abst}[2]{{#1} \langle \overline{\underline{ #2}}]}
+%  \newcommand{\abst}[2]{{#1} \langle \overline{\underline{ #2}}]}
   \newcommand{\nameabst}[1]{#1 \Rightarrow}
-%  \newcommand{\usage}{\mathcal{V}}
-  \newcommand{\usage}{\circ}
-  \newcommand{\pop}[1]{#1\triangleleft}
+  \newcommand{\id}{\operatorname{\mathrm{id}}}
+  \newcommand{\const}{\operatorname{\mathrm{const}}}
+  \newcommand{\fuse}{\operatorname{\mathrm{fuse}}}
   \newcommand{\equals}{\equiv}
 
   \begin{align*}
@@ -95,19 +95,12 @@
     \lsucc{n} &:= (\mathrm{level\_successor}\ n)\\
     (A \implies{n} B) &:= (((\mathrm{implies}\ n) A) B),\ \operatorname{right-associative}\\
     (A \equals B) &:= ((\mathrm{equals}\ A) B)\\
-    \abst{A}{B}{C} &:= (((\mathrm{substitute\_in}\ A) B) C)\\
-    \usage &:= \mathrm{usage}\\
-    \abst{A}{B} &:= \mathrm{abstraction}\ A\ B\\
-    \pop{A} &:= \mathrm{pop}\ A\\
+    \id &:= \fuse \const \const\\
   \end{align*}
 
   Finally, we define the \emph{named form} of abstractions, $(\nameabst{A}B),\ \operatorname{right-associative}$, where $A$ is a variable-name, and $B$ may contain instances of that name. (Perhaps we should say \emph{metavariable-name} rather than \emph{variable-name}, as these names only exist for this notation, and are not part of the formal language of IC).
   
-  This is defined as $(\abst{B'}{0})$, where $B'$ is $B$ with the following changes:
-  \begin{itemize}
-    \item Replace all instances of $A$ with the formula $\usage$.
-    \item Insert the minimum collection of pops such that, according to the substitution axioms below, branches of $\abst{B'}{\lzero}{C}$ will reach every usage of $A$, and every branch that doesn't will end in one of these pops.
-  \end{itemize}
+  This is defined as in the SKI combinator calculus.
 
   \subsection{Axiom Definitions}
   \setlength{\jot}{1.4em}
@@ -135,24 +128,22 @@
 %    \inferrule{A \equals B}{B \equals A}\\
     \tag{implication}
     (A &\equals B) \implies{\lzero} (A \implies{\lzero} B)\\
-    \tag{indistinguishability}\label{eq_indis}
-    (A &\equals B) \equals (\nameabst{P} PA \equals PB)\\
   \end{align*}
-  Substitution:
+  Elementary function definitions:
 %  \setlength{\jot}{0.1em}
   \begin{align*}
-    (\abst{\usage}{\lzero}{C}) &\equals C\\
-    (\abst{\pop{A}}{\lzero}{C}) &\equals A\\
-    (\abst{\pop{A}}{\lsucc{n}}{C}) &\equals \pop{(\abst{A}{n}C)}\\
-    (\abst{\abst{A}{0}}{n}{C}) &\equals \abst{(\abst{A}{\lsucc{n}}{C})}{0}\\
-    (\abst{(AB)}{n}{C}) &\equals (\abst{A}{n}{C})(\abst{B}{n}{C})\\
+    \const A\,B &\equals A\\
+    \fuse A\,B\,C &\equals (AC)(BC)\\
+    (A \equals B) C &\equals (CA \equals CB)\\
   \end{align*}
   Abstraction:
   \begin{align*}
 %    \tag{truth of foralls}
 %    A &\implies{\wfz} (\abst{A})\\
     \tag{specialization}\label{specialization}
-    (\abst{A}{0}) \implies{\lzero} \abst{A}{0}B\\
+    A \implies{\lzero} AB\\
+%    \tag{extensionality}\label{extensionality}
+%    (\nameabst{C} (AC \equals BC)) \implies{\lzero} (A \equals B)\\
   \end{align*}
 
   \subsection{Internal Axioms}
@@ -172,17 +163,17 @@
   \setlength{\jot}{0em}
   \begin{align*}
     \tag{proof induction is true}\label{indt}
-    \mathrm{proof\_induction}\\
+    \mathrm{induction\_on\_proofs}\\
     \tag{definition of proof induction}\label{indd}
-    \mathrm{proof\_induction} \equals \nameabst{P} (P \equals\,&\nameabst{R}\\
+    \mathrm{induction\_on\_proofs} \equals \nameabst{P} (P \equals (&\nameabst{R}\\
       &\nameabst{n}\\
       &R\mathrm{``modus\ ponens"} \implies{\lzero}\\
       &\dots \implies{\lzero}\\
       &R\mathrm{``specialization"} \implies{\lzero}\\
-      &R\ \mathrm{proof\_induction} \implies{\lzero}\\
-      &(\nameabst{A}\nameabst{B}R(\abst{A})\implies{n}R((\abst{A})B)) \implies{\lzero}\\
+      &R\ \mathrm{induction\_on\_proofs} \implies{\lzero}\\
+      &(\nameabst{A}\nameabst{B}RA\implies{n}R(AB)) \implies{\lzero}\\
       &(\nameabst{A}\nameabst{B}R(A\implies{\lzero}B)\implies{n}RA\implies{n}RB) \implies{\lsucc{n}}\\
-      &RP)\\
+      &RP))\\
   \end{align*}
 
   (We would like the definition of proof induction to be a notation like the other axioms, but that would make it a self-containing formula. IC can actually permit self containing formulas, but we understand that the reader may be skeptical of a self containing axiom! Thus, we choose to represent it as an atom with a definitional-equality.)

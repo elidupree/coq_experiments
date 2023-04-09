@@ -3,11 +3,8 @@
 "implication within hypotheticals" := (C ->(n+1) A ->n B) ->0 (C ->(n+1) A) ->0 (C ->(n+1) B)
 "equality is reflexive" := A = A
 "equality implies implication" := (A = B) ->0 A ->0 B
-"equality is indistinguishability" := (A = B) = (P => (P A = P B))
-"substitute at usages" := ($[0]C) = C
-"get popped" := (A<[0]C) = A
-"substitute under pop" := (A<[n+1]C) = (A[n]C)<
-"substitute in both sides" := ((AB)[n]C) = A[n]C(B[n]C)
-"substitute under abstraction" := (A[0][n]C) = (A[n+1]C)[0]
-"specialization" := A[0] ->0 (A[0])B
-"proof induction is true" := proof_induction
+"definition of const" := const A B = A
+"definition of fuse" := fuse A B C = (AC)(BC)
+"equality is indistinguishability" := (A = B)C = (C A = C B)
+"specialization" := A ->0 AB
+"proof induction is true" := induction_on_proofs

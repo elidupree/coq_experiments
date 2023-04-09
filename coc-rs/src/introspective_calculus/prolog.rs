@@ -25,13 +25,11 @@ impl Display for FormulaAsProlog<'_> {
                     Atom::LevelSuccessor => "s",
                     Atom::Implies => "imp",
                     Atom::Equals => "eq",
-                    Atom::Usage => "v",
-                    Atom::ProofInduction => "proof_induction",
+                    Atom::InductionOnProofs => "induction_on_proofs",
+                    Atom::Const => "c",
+                    Atom::Fuse => "f",
                 };
                 write!(f, "{}", text)
-            }
-            Formula::Pop(g) => {
-                write!(f, "p({})", FormulaAsProlog(g))
             }
             Formula::Apply(g) => {
                 write!(
@@ -39,14 +37,6 @@ impl Display for FormulaAsProlog<'_> {
                     "a({},{})",
                     FormulaAsProlog(&g[0]),
                     FormulaAsProlog(&g[1])
-                )
-            }
-            Formula::Abstraction(a) => {
-                write!(
-                    f,
-                    "l({},{})",
-                    FormulaAsProlog(&a.index),
-                    FormulaAsProlog(&a.body)
                 )
             }
             _ => panic!("formula {:?} should already be raw", self.0),

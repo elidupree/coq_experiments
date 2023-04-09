@@ -37,21 +37,15 @@ pub struct Implies {
     pub consequent: Formula,
 }
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub struct Abstraction {
-    pub body: Formula,
-    pub index: Formula,
-}
-#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Formula {
     Atom(Atom),
-    Abstraction(Box<Abstraction>),
-    Pop(Box<Formula>),
     Apply(Box<[Formula; 2]>),
 
     Level0,
     LevelSuccessor(Box<Formula>),
     Implies(Box<Implies>),
     Equals(Box<[Formula; 2]>),
+    Id,
 
     Metavariable(String),
     NameAbstraction(String, Box<Formula>),
@@ -63,8 +57,9 @@ pub enum Atom {
     LevelSuccessor,
     Implies,
     Equals,
-    Usage,
-    ProofInduction,
+    Const,
+    Fuse,
+    InductionOnProofs,
 }
 
 #[live_prop_test]
@@ -74,6 +69,13 @@ impl Formula {
     pub fn to_raw_with_metavariables(&self) -> Formula {
         match self {
             Formula::Level0 => Formula::Atom(Atom::Level0),
+            Formula::Id => Formula::Apply(Box::new([
+                Formula::Apply(Box::new([
+                    Formula::Atom(Atom::Fuse),
+                    Formula::Atom(Atom::Const),
+                ])),
+                Formula::Atom(Atom::Const),
+            ])),
             Formula::LevelSuccessor(f) => Formula::Apply(Box::new([
                 Formula::Atom(Atom::LevelSuccessor),
                 f.to_raw_with_metavariables(),
@@ -95,12 +97,9 @@ impl Formula {
                 ])),
                 i.consequent.to_raw_with_metavariables(),
             ])),
-            Formula::NameAbstraction(name, body) => Formula::Abstraction(Box::new(Abstraction {
-                body: body
-                    .to_raw_with_metavariables()
-                    .with_metavariable_internalized(name, 0),
-                index: Formula::Level0.to_raw_with_metavariables(),
-            })),
+            Formula::NameAbstraction(name, body) => body
+                .to_raw_with_metavariables()
+                .with_metavariable_abstracted(name),
             _ => self.map_children(Formula::to_raw_with_metavariables),
         }
     }
@@ -111,15 +110,12 @@ impl Formula {
 
     pub fn map_children(&self, mut map: impl FnMut(&Formula) -> Formula) -> Formula {
         match self {
-            Formula::Level0 | Formula::Atom(_) | Formula::Metavariable(_) => self.clone(),
-            Formula::Pop(f) => Formula::Pop(Box::new(map(f))),
+            Formula::Level0 | Formula::Id | Formula::Atom(_) | Formula::Metavariable(_) => {
+                self.clone()
+            }
             Formula::LevelSuccessor(f) => Formula::LevelSuccessor(Box::new(map(f))),
             Formula::Equals(f) => Formula::Equals(Box::new(f.each_ref().map(map))),
             Formula::Apply(f) => Formula::Apply(Box::new(f.each_ref().map(map))),
-            Formula::Abstraction(a) => Formula::Abstraction(Box::new(Abstraction {
-                body: map(&a.body),
-                index: map(&a.index),
-            })),
             Formula::Implies(i) => Formula::Implies(Box::new(Implies {
                 level: map(&i.level),
                 antecedent: map(&i.antecedent),
@@ -134,13 +130,10 @@ impl Formula {
     pub fn contains_free_metavariable(&self, name: &str) -> bool {
         match self {
             Formula::Metavariable(n) => n == name,
-            Formula::Atom(_) | Formula::Level0 => false,
-            Formula::Pop(f) | Formula::LevelSuccessor(f) => f.contains_free_metavariable(name),
+            Formula::Atom(_) | Formula::Level0 | Formula::Id => false,
+            Formula::LevelSuccessor(f) => f.contains_free_metavariable(name),
             Formula::Equals(f) | Formula::Apply(f) => {
                 f.iter().any(|f| f.contains_free_metavariable(name))
-            }
-            Formula::Abstraction(a) => {
-                a.index.contains_free_metavariable(name) || a.body.contains_free_metavariable(name)
             }
             Formula::Implies(i) => {
                 i.level.contains_free_metavariable(name)
@@ -153,29 +146,37 @@ impl Formula {
 
     // assumes already in raw form:
     #[live_prop_test(precondition = "self.is_raw_with_metavariables()")]
-    pub fn with_metavariable_internalized(&self, name: &str, level: usize) -> Formula {
-        if level == 0 && !self.contains_free_metavariable(name) {
-            return Formula::Pop(Box::new(self.clone()));
+    pub fn with_metavariable_abstracted(&self, name: &str) -> Formula {
+        if !self.contains_free_metavariable(name) {
+            return Formula::Apply(Box::new([Formula::Atom(Atom::Const), self.clone()]));
         }
         match self {
+            Formula::Atom(_) => panic!("should've early-exited above"),
             Formula::Metavariable(n) => {
-                assert_eq!(n, name, "should already be popped");
-                assert_eq!(level, 0);
-                Formula::Atom(Atom::Usage)
+                assert_eq!(n, name, "should've early-exited above");
+                Formula::Id.to_raw_with_metavariables()
             }
-            Formula::Atom(_) => panic!("should already be popped"),
-            Formula::Pop(f) => {
-                assert!(level > 0, "shouldn't be pre-popped");
-                Formula::Pop(Box::new(f.with_metavariable_internalized(name, level - 1)))
-            }
-            Formula::Apply(_) => {
-                self.map_children(|f| f.with_metavariable_internalized(name, level))
-            }
-            Formula::Abstraction(a) => Formula::Abstraction(Box::new(Abstraction {
-                body: a.body.with_metavariable_internalized(name, level + 1),
-                index: a.index.with_metavariable_internalized(name, level),
-            })),
+            Formula::Apply(a) => Formula::Apply(Box::new([
+                Formula::Apply(Box::new([
+                    Formula::Atom(Atom::Fuse),
+                    a[0].with_metavariable_abstracted(name),
+                ])),
+                a[1].with_metavariable_abstracted(name),
+            ])),
             _ => panic!("should already be raw"),
+        }
+    }
+
+    pub fn with_metavariable_replaced(&self, name: &str, replacement: &Formula) -> Formula {
+        match self {
+            Formula::Metavariable(n) => {
+                if n == name {
+                    replacement.clone()
+                } else {
+                    self.clone()
+                }
+            }
+            _ => self.map_children(|f| f.with_metavariable_replaced(name, replacement)),
         }
     }
 }
@@ -192,6 +193,33 @@ pub fn load_ordinary_axioms(path: impl AsRef<Path>) -> Vec<AxiomDefinition> {
             }
         })
         .collect()
+}
+
+pub fn definition_of_proof_induction(ordinary_axioms: &[AxiomDefinition]) -> Formula {
+    let parser = FormulaParser::new();
+    let first_part = parser
+        .parse("induction_on_proofs = (P => (P = (R => n => rest)))")
+        .unwrap();
+    let last_part = parser.parse("(R induction_on_proofs) ->0 (A => B => R A ->n R (A B)) ->0 (A => B => R (A ->0 B) ->n R A ->n R B) ->(S n) R P").unwrap();
+    let mut rest = last_part;
+    for axiom in ordinary_axioms {
+        rest = parser
+            .parse("R axiom ->0 rest")
+            .unwrap()
+            .with_metavariable_replaced("axiom", &axiom.conclusion)
+            .with_metavariable_replaced("rest", &rest);
+    }
+    first_part.with_metavariable_replaced("rest", &rest)
+}
+
+pub fn all_axioms(path: impl AsRef<Path>) -> Vec<AxiomDefinition> {
+    let mut axioms = load_ordinary_axioms(path);
+    axioms.push(AxiomDefinition {
+        name: "definition of proof induction".to_string(),
+        premises: vec![],
+        conclusion: definition_of_proof_induction(&axioms),
+    });
+    axioms
 }
 
 // #[derive(Clone, Eq, PartialEq, Debug)]
@@ -317,19 +345,19 @@ pub fn load_ordinary_axioms(path: impl AsRef<Path>) -> Vec<AxiomDefinition> {
 mod tests {
     use super::*;
     #[test]
-    fn check_ordinary_axioms() {
-        let axioms = load_ordinary_axioms("data/ic_ordinary_axioms.ic");
-        // panic!(
-        //     "{:?}",
-        //     axioms
-        //         .iter()
-        //         .map(|a| a
-        //             .conclusion
-        //             .to_raw_with_metavariables()
-        //             .as_prolog()
-        //             .to_string())
-        //         .collect::<Vec<_>>()
-        // );
+    fn check_axioms() {
+        let axioms = all_axioms("data/ic_ordinary_axioms.ic");
+        panic!(
+            "{:?}",
+            axioms
+                .iter()
+                .map(|a| a
+                    .conclusion
+                    .to_raw_with_metavariables()
+                    .as_prolog()
+                    .to_string())
+                .collect::<Vec<_>>()
+        );
     }
     // #[test]
     // fn prolog_thing() {

@@ -1,4 +1,4 @@
-use crate::introspective_calculus::{Formula, Atom, Implies, Abstraction, AxiomDefinition};
+use crate::introspective_calculus::{Formula, Atom, Implies, AxiomDefinition};
 
 grammar;
 
@@ -12,7 +12,6 @@ pub OrdinaryAxiomDefinition: AxiomDefinition = {
 
 FormulaIndivisible: Formula = {
   "0" => Formula::Level0,
-  "$" => Formula::Atom(Atom::Usage),
   Name => Formula::Metavariable(<>),
   "(" <Formula> ")",
 
@@ -20,7 +19,9 @@ FormulaIndivisible: Formula = {
   "level_successor" => Formula::Atom(Atom::LevelSuccessor),
   "implies" => Formula::Atom(Atom::Implies),
   "equals" => Formula::Atom(Atom::Equals),
-  "proof_induction" => Formula::Atom(Atom::ProofInduction),
+  "const" => Formula::Atom(Atom::Const),
+  "fuse" => Formula::Atom(Atom::Fuse),
+  "induction_on_proofs" => Formula::Atom(Atom::InductionOnProofs),
 }
 
 FormulaDivisibleRightOnly: Formula = {
@@ -28,8 +29,6 @@ FormulaDivisibleRightOnly: Formula = {
 
 FormulaDivisibleLeftOnly: Formula = {
   <FormulaIndivisibleRight> "+1" => Formula::LevelSuccessor(Box::new(<>)),
-  <body:FormulaIndivisibleRight> "[" <index:Formula> "]" => Formula::Abstraction(Box::new(Abstraction{<>})),
-  <FormulaIndivisibleRight> "<" => Formula::Pop(Box::new(<>)),
 }
 
 FormulaIndivisibleLeft: Formula = {
