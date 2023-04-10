@@ -35,7 +35,7 @@
   
   In type theory, the source of paradoxes (like Russell's paradox and Girard's paradox) is this: First you construct a self-referential claim, then you prove that claim using (rules analogous to) the following axiom of propositional logic, which is unsound for self-referential claims:
   \begin{equation*}
-    \tag{implication under hypotheticals, traditional}
+    \tag{implication within hypotheticals, traditional}
     (C \rightarrow (A \rightarrow B)) \rightarrow ((C \rightarrow A) \rightarrow (C \rightarrow B))
     \vspace{0.8em}
   \end{equation*}
@@ -48,7 +48,7 @@
   \newcommand{\lzero}{0}
   \newcommand{\lsucc}[1]{\mathcal{S} #1}
   \begin{equation*}
-    \tag{implication under hypotheticals, resilient}
+    \tag{implication within hypotheticals, resilient}
     (C \implies{\lsucc n} (A \implies{n} B)) \implies{\lzero} ((C \implies{\lsucc n} A) \implies{\lzero} (C \implies{\lsucc n} B))
     \vspace{0.8em}
   \end{equation*}
@@ -103,47 +103,50 @@
   This is defined as in the SKI combinator calculus.
 
   \subsection{Axiom Definitions}
-  \setlength{\jot}{1.4em}
+%  \setlength{\jot}{1.4em}
   \begin{gather*}
     \tag{modus ponens}\label{mp}
     \inferrule{(A \implies{n} B)\\\\A}{B}\\
   \end{gather*}
 %  All remaining axioms are defined as implications ($Premise \implies{\wfz} Premise \dots \implies{\wfz} Conclusion$), which allows them to be reasoned about internally. (The external form can be derived using \eqref{mp}.) However, we still write them as $\frac{Premise\dots}{Conclusion}$ for readability.
 %  \\\\
-  Implication:
+%  \setlength{\jot}{0.4em}
+  ????:
   \begin{align*}
-    \tag{weakening}
-    \inferrule{B}{A \implies{\lzero} B}\\
-    \tag{level weakening}
-    \inferrule{A \implies{n} B}{A \implies{\lsucc n} B}\\
-    \tag{implication within hypotheticals}
-    \inferrule{C \implies{\lsucc n} (A \implies{n} B)\\\\C \implies{\lsucc n} A}{C \implies{\lsucc n} B}\\
+    \tag{specialization}\label{specialization}
+    A &\implies{\lzero} AB\\
+    \tag{equality implies implication}
+    (A \equals B) &\implies{\lzero} (A \implies{\lzero} B)\\
+%    \tag{truth of foralls}
+%    A &\implies{\wfz} (\abst{A})\\
+%    \tag{extensionality}\label{extensionality}
+%    (\nameabst{C} (AC \equals BC)) \implies{\lzero} (A \equals B)\\
   \end{align*}
-  \setlength{\jot}{0.4em}
-  Definitional equality:
-  \begin{align*}
-    \tag{reflexivity}\label{eq_refl}
-    A &\equals A\\
-%    \tag{symmetry}
-%    \inferrule{A \equals B}{B \equals A}\\
-    \tag{implication}
-    (A &\equals B) \implies{\lzero} (A \implies{\lzero} B)\\
-  \end{align*}
+%  Definitional equality:
+%  \begin{align*}
+%%    \tag{symmetry}
+%%    \inferrule{A \equals B}{B \equals A}\\
+%  \end{align*}
   Elementary function definitions:
 %  \setlength{\jot}{0.1em}
   \begin{align*}
     \const A\,B &\equals A\\
     \fuse A\,B\,C &\equals (AC)(BC)\\
-    (A \equals B) C &\equals (CA \equals CB)\\
   \end{align*}
-  Abstraction:
+  Implication:
   \begin{align*}
-%    \tag{truth of foralls}
-%    A &\implies{\wfz} (\abst{A})\\
-    \tag{specialization}\label{specialization}
-    A \implies{\lzero} AB\\
-%    \tag{extensionality}\label{extensionality}
-%    (\nameabst{C} (AC \equals BC)) \implies{\lzero} (A \equals B)\\
+    \tag{weakening}
+    B \implies{\lzero} (A \implies{\lzero} B)\\
+    \tag{level weakening}
+    (A \implies{n} B) \implies{\lzero} (A \implies{\lsucc n} B)\\
+    \tag{implication within hypotheticals}
+    (C \implies{\lsucc n} (A \implies{n} B)) \implies{\lzero} ((C \implies{\lsucc n} A) \implies{\lzero} (C \implies{\lsucc n} B))\\
+  \end{align*}
+  More stuff:
+  \begin{align*}
+    \tag{reflexivity}\label{eq_refl}
+    A &\equals A\\
+    (A \equals B) C &\equals (CA \equals CB)\\
   \end{align*}
 
   \subsection{Internal Axioms}
