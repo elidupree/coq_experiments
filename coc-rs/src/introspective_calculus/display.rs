@@ -31,12 +31,17 @@ impl Display for FormulaAsShorthand<'_> {
                 write!(f, "{}", text)
             }
             Formula::Apply(g) => {
-                write!(
-                    f,
-                    "({} {})",
-                    FormulaAsShorthand(&g[0]),
-                    FormulaAsShorthand(&g[1])
-                )
+                let mut stack = vec![g];
+                write!(f, "(")?;
+                while let Formula::Apply(next) = &stack.last().unwrap()[0] {
+                    stack.push(next);
+                }
+                write!(f, "{}", FormulaAsShorthand(&stack.last().unwrap()[0]))?;
+                for h in stack.iter().rev() {
+                    write!(f, " {}", FormulaAsShorthand(&h[1]))?;
+                }
+                write!(f, ")")?;
+                Ok(())
             }
             _ => panic!("formula {:?} should already be raw", self.0),
         }

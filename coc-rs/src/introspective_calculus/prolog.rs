@@ -1,6 +1,9 @@
+use crate::display::DisplayItem;
+use crate::introspective_calculus;
 use crate::introspective_calculus::{Atom, Formula};
 use live_prop_test::live_prop_test;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Write};
+use std::path::Path;
 
 pub struct FormulaAsProlog<'a>(&'a Formula);
 
@@ -22,9 +25,9 @@ impl Display for FormulaAsProlog<'_> {
             Formula::Atom(a) => {
                 let text = match a {
                     Atom::Level0 => "z",
-                    Atom::LevelSuccessor => "s",
+                    Atom::LevelSuccessor => "su",
                     Atom::Implies => "imp",
-                    Atom::Equals => "eq",
+                    Atom::Equals => "equ",
                     Atom::InductionOnProofs => "induction_on_proofs",
                     Atom::Const => "c",
                     Atom::Fuse => "f",
@@ -42,4 +45,17 @@ impl Display for FormulaAsProlog<'_> {
             _ => panic!("formula {:?} should already be raw", self.0),
         }
     }
+}
+
+pub fn knowledge_base(axioms_path: impl AsRef<Path>) -> String {
+    let mut result = "istrue(B) :- istrue(A), istrue(a(a(a(imp,N),A),B)).\n".to_string();
+    for axiom in introspective_calculus::all_axioms(axioms_path) {
+        writeln!(
+            result,
+            "istrue({}).",
+            axiom.conclusion.to_raw_with_metavariables().as_prolog()
+        )
+        .unwrap();
+    }
+    result
 }

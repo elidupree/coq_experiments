@@ -241,6 +241,14 @@ impl Formula {
         }
         result
     }
+
+    pub fn naive_size(&self) -> usize {
+        1 + self
+            .children()
+            .into_iter()
+            .map(Formula::naive_size)
+            .sum::<usize>()
+    }
 }
 
 pub fn load_ordinary_axioms(path: impl AsRef<Path>) -> Vec<AxiomDefinition> {
@@ -256,38 +264,65 @@ pub fn load_ordinary_axioms(path: impl AsRef<Path>) -> Vec<AxiomDefinition> {
         .collect()
 }
 
-pub fn definition_of_proof_induction(ordinary_axioms: &[AxiomDefinition]) -> Formula {
+pub fn generalized_axioms(ordinary_axioms: &[AxiomDefinition]) -> Vec<AxiomDefinition> {
+    ordinary_axioms
+        .iter()
+        .map(|axiom| {
+            let c = axiom.conclusion.to_raw_with_metavariables();
+            let free_variables = c.free_metavariables();
+            let versions = free_variables
+                .iter()
+                .copied()
+                .permutations(free_variables.len())
+                .map(|permutation| {
+                    c.with_metavariables_abstracted(
+                        permutation.iter().copied().map(std::ops::Deref::deref),
+                    )
+                });
+            AxiomDefinition {
+                name: format!("{}, generalized", axiom.name),
+                premises: vec![],
+                conclusion: versions.min_by_key(Formula::naive_size).unwrap(),
+            }
+
+            // eprintln!("{}", c.as_shorthand());
+            // for permutation in free_variables
+            //     .iter()
+            //     .copied()
+            //     .permutations(free_variables.len())
+            // {
+            //     let abstracted = c.with_metavariables_abstracted(
+            //         permutation.iter().copied().map(std::ops::Deref::deref),
+            //     );
+            // eprintln!(
+            //     "{:?}, {}, {}",
+            //     permutation,
+            //     abstracted.naive_size(),
+            //     abstracted.as_shorthand()
+            // );
+            // let mut reconstruction = abstracted;
+            // for &variable in permutation.iter().rev() {
+            //     reconstruction = Formula::Apply(Box::new([
+            //         reconstruction,
+            //         Formula::Metavariable(variable.clone()),
+            //     ]));
+            // }
+            // reconstruction.unfold_until(999);
+            // eprintln!("{}", reconstruction.as_shorthand());
+            // }
+            // eprintln!();
+        })
+        .collect()
+}
+
+pub fn definition_of_proof_induction(generalized_axioms: &[AxiomDefinition]) -> Formula {
     let parser = FormulaParser::new();
     let first_part = parser
-        .parse("induction_on_proofs = (P => (P = (R => n => rest)))")
+        .parse("induction_on_proofs = (P => (P ->0 (R => n => rest)))")
         .unwrap();
-    let last_part = parser.parse("(R induction_on_proofs) ->0 (A => B => R A ->n R (A B)) ->0 (A => B => R (A ->0 B) ->n R A ->n R B) ->(S n) R P").unwrap();
+    let last_part = parser.parse("(R induction_on_proofs) ->0 (A => B => R A ->n R (A B)) ->0 (A => B => R (A ->0 B) ->n R A ->n R B) ->(n+1) R P").unwrap();
     let mut rest = last_part;
-    for axiom in ordinary_axioms {
-        let c = axiom.conclusion.to_raw_with_metavariables();
-        let free_variables = c.free_metavariables();
-        eprintln!("{}", c.as_shorthand());
-        for permutation in free_variables
-            .iter()
-            .copied()
-            .permutations(free_variables.len())
-        {
-            let abstracted = c.with_metavariables_abstracted(
-                permutation.iter().copied().map(std::ops::Deref::deref),
-            );
-            let s = abstracted.as_shorthand().to_string();
-            eprintln!("{:?}, {}, {}", permutation, s.len(), s);
-            let mut reconstruction = abstracted;
-            for &variable in permutation.iter().rev() {
-                reconstruction = Formula::Apply(Box::new([
-                    reconstruction,
-                    Formula::Metavariable(variable.clone()),
-                ]));
-            }
-            reconstruction.unfold_until(999);
-            eprintln!("{}", reconstruction.as_shorthand());
-        }
-        eprintln!();
+    for axiom in generalized_axioms {
         rest = parser
             .parse("R axiom ->0 rest")
             .unwrap()
@@ -298,11 +333,15 @@ pub fn definition_of_proof_induction(ordinary_axioms: &[AxiomDefinition]) -> For
 }
 
 pub fn all_axioms(path: impl AsRef<Path>) -> Vec<AxiomDefinition> {
-    let mut axioms = load_ordinary_axioms(path);
+    let ordinary_axioms = load_ordinary_axioms(path);
+    let generalized_axioms = generalized_axioms(&ordinary_axioms);
+    let proof_induction = definition_of_proof_induction(&generalized_axioms);
+    let mut axioms = ordinary_axioms;
+    axioms.extend(generalized_axioms);
     axioms.push(AxiomDefinition {
         name: "definition of proof induction".to_string(),
         premises: vec![],
-        conclusion: definition_of_proof_induction(&axioms),
+        conclusion: proof_induction,
     });
     axioms
 }
@@ -432,17 +471,13 @@ mod tests {
     #[test]
     fn check_axioms() {
         let axioms = all_axioms("data/ic_ordinary_axioms.ic");
-        panic!(
-            "{:?}",
-            axioms
-                .iter()
-                .map(|a| a
-                    .conclusion
-                    .to_raw_with_metavariables()
-                    .as_prolog()
-                    .to_string())
-                .collect::<Vec<_>>()
-        );
+        // for a in axioms {
+        //     eprintln!(
+        //         "{}",
+        //         a.conclusion.to_raw_with_metavariables().as_shorthand()
+        //     )
+        // }
+        // panic!();
     }
     // #[test]
     // fn prolog_thing() {
