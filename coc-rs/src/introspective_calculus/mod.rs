@@ -1,4 +1,4 @@
-// mod display;
+pub mod display;
 // mod from_constructors;
 // mod metavariable_conversions;
 pub mod prolog;
@@ -37,7 +37,7 @@ pub struct Implies {
     pub antecedent: Formula,
     pub consequent: Formula,
 }
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Default)]
 pub enum Formula {
     Atom(Atom),
     Apply(Box<[Formula; 2]>),
@@ -46,6 +46,7 @@ pub enum Formula {
     LevelSuccessor(Box<Formula>),
     Implies(Box<Implies>),
     Equals(Box<[Formula; 2]>),
+    #[default]
     Id,
 
     Metavariable(String),
@@ -118,6 +119,19 @@ impl Formula {
             Formula::Equals(f) | Formula::Apply(f) => f.iter().collect(),
             Formula::Implies(i) => ArrayVec::from([&i.level, &i.antecedent, &i.consequent]),
             Formula::NameAbstraction(_name, body) => [&**body].into_iter().collect(),
+        }
+    }
+    pub fn children_mut(&mut self) -> ArrayVec<&mut Formula, 3> {
+        match self {
+            Formula::Level0 | Formula::Id | Formula::Atom(_) | Formula::Metavariable(_) => {
+                ArrayVec::new()
+            }
+            Formula::LevelSuccessor(f) => [&mut **f].into_iter().collect(),
+            Formula::Equals(f) | Formula::Apply(f) => f.iter_mut().collect(),
+            Formula::Implies(i) => {
+                ArrayVec::from([&mut i.level, &mut i.antecedent, &mut i.consequent])
+            }
+            Formula::NameAbstraction(_name, body) => [&mut **body].into_iter().collect(),
         }
     }
 
@@ -252,18 +266,26 @@ pub fn definition_of_proof_induction(ordinary_axioms: &[AxiomDefinition]) -> For
     for axiom in ordinary_axioms {
         let c = axiom.conclusion.to_raw_with_metavariables();
         let free_variables = c.free_metavariables();
+        eprintln!("{}", c.as_shorthand());
         for permutation in free_variables
             .iter()
             .copied()
             .permutations(free_variables.len())
         {
-            let prolog = c
-                .with_metavariables_abstracted(
-                    permutation.iter().copied().map(std::ops::Deref::deref),
-                )
-                .as_prolog()
-                .to_string();
-            eprintln!("{:?}, {}, {}", permutation, prolog.len(), prolog);
+            let abstracted = c.with_metavariables_abstracted(
+                permutation.iter().copied().map(std::ops::Deref::deref),
+            );
+            let s = abstracted.as_shorthand().to_string();
+            eprintln!("{:?}, {}, {}", permutation, s.len(), s);
+            let mut reconstruction = abstracted;
+            for &variable in permutation.iter().rev() {
+                reconstruction = Formula::Apply(Box::new([
+                    reconstruction,
+                    Formula::Metavariable(variable.clone()),
+                ]));
+            }
+            reconstruction.unfold_until(999);
+            eprintln!("{}", reconstruction.as_shorthand());
         }
         eprintln!();
         rest = parser
