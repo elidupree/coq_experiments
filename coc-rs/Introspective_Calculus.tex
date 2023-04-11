@@ -132,6 +132,14 @@
   \begin{align*}
     \const A\,B &\equals A\\
     \fuse A\,B\,C &\equals (AC)(BC)\\
+    (A \equals B) C &\equals (CA \equals CB)\\
+  \end{align*}
+  Universal reasoning:
+  \begin{align*}
+    A &\implies{\lzero} \const A\\
+    A &\implies{\lzero} \fuse A\\
+    \tag{implication within universals}
+    (\nameabst{C} (AC \implies{n} BC)) &\implies{\lzero} (A \implies{n} B)
   \end{align*}
   Implication:
   \begin{align*}
@@ -146,7 +154,6 @@
   \begin{align*}
     \tag{reflexivity}\label{eq_refl}
     A &\equals A\\
-    (A \equals B) C &\equals (CA \equals CB)\\
   \end{align*}
 
   \subsection{Internal Axioms}

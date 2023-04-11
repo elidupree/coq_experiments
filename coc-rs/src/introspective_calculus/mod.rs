@@ -1,9 +1,8 @@
 // mod display;
 // mod from_constructors;
 // mod metavariable_conversions;
-// pub mod unfolding;
-
 pub mod prolog;
+pub mod unfolding;
 
 #[allow(clippy::all)]
 mod lalrpop_wrapper {
@@ -18,6 +17,8 @@ pub use self::lalrpop_wrapper::introspective_calculus::{
 // use crate::metavariable::Environment;
 // use live_prop_test::{live_prop_test, lpt_assert_eq};
 // use regex::{Captures, Regex};
+use arrayvec::ArrayVec;
+use itertools::Itertools;
 use live_prop_test::live_prop_test;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -108,6 +109,18 @@ impl Formula {
         self.to_raw_with_metavariables() == *self
     }
 
+    pub fn children(&self) -> ArrayVec<&Formula, 3> {
+        match self {
+            Formula::Level0 | Formula::Id | Formula::Atom(_) | Formula::Metavariable(_) => {
+                ArrayVec::new()
+            }
+            Formula::LevelSuccessor(f) => [&**f].into_iter().collect(),
+            Formula::Equals(f) | Formula::Apply(f) => f.iter().collect(),
+            Formula::Implies(i) => ArrayVec::from([&i.level, &i.antecedent, &i.consequent]),
+            Formula::NameAbstraction(_name, body) => [&**body].into_iter().collect(),
+        }
+    }
+
     pub fn map_children(&self, mut map: impl FnMut(&Formula) -> Formula) -> Formula {
         match self {
             Formula::Level0 | Formula::Id | Formula::Atom(_) | Formula::Metavariable(_) => {
@@ -130,17 +143,33 @@ impl Formula {
     pub fn contains_free_metavariable(&self, name: &str) -> bool {
         match self {
             Formula::Metavariable(n) => n == name,
-            Formula::Atom(_) | Formula::Level0 | Formula::Id => false,
-            Formula::LevelSuccessor(f) => f.contains_free_metavariable(name),
-            Formula::Equals(f) | Formula::Apply(f) => {
-                f.iter().any(|f| f.contains_free_metavariable(name))
-            }
-            Formula::Implies(i) => {
-                i.level.contains_free_metavariable(name)
-                    || i.antecedent.contains_free_metavariable(name)
-                    || i.consequent.contains_free_metavariable(name)
-            }
             Formula::NameAbstraction(n, body) => n != name && body.contains_free_metavariable(name),
+            _ => self
+                .children()
+                .into_iter()
+                .any(|f| f.contains_free_metavariable(name)),
+        }
+    }
+
+    pub fn free_metavariables(&self) -> Vec<&String> {
+        match self {
+            Formula::Metavariable(n) => vec![n],
+            Formula::NameAbstraction(n, body) => {
+                let mut result = body.free_metavariables();
+                result.retain(|&v| v != n);
+                result
+            }
+            _ => {
+                let mut result = Vec::new();
+                for child in self.children() {
+                    for variable in child.free_metavariables() {
+                        if !result.contains(&variable) {
+                            result.push(variable);
+                        }
+                    }
+                }
+                result
+            }
         }
     }
 
@@ -156,13 +185,21 @@ impl Formula {
                 assert_eq!(n, name, "should've early-exited above");
                 Formula::Id.to_raw_with_metavariables()
             }
-            Formula::Apply(a) => Formula::Apply(Box::new([
-                Formula::Apply(Box::new([
-                    Formula::Atom(Atom::Fuse),
-                    a[0].with_metavariable_abstracted(name),
-                ])),
-                a[1].with_metavariable_abstracted(name),
-            ])),
+            Formula::Apply(a) => {
+                if matches!(&a[1], Formula::Metavariable(n) if n == name)
+                    && !a[0].contains_free_metavariable(name)
+                {
+                    a[0].clone()
+                } else {
+                    Formula::Apply(Box::new([
+                        Formula::Apply(Box::new([
+                            Formula::Atom(Atom::Fuse),
+                            a[0].with_metavariable_abstracted(name),
+                        ])),
+                        a[1].with_metavariable_abstracted(name),
+                    ]))
+                }
+            }
             _ => panic!("should already be raw"),
         }
     }
@@ -179,18 +216,28 @@ impl Formula {
             _ => self.map_children(|f| f.with_metavariable_replaced(name, replacement)),
         }
     }
+
+    pub fn with_metavariables_abstracted<'a>(
+        &self,
+        variables: impl IntoIterator<Item = &'a str>,
+    ) -> Formula {
+        let mut result = self.clone();
+        for variable in variables {
+            result = result.with_metavariable_abstracted(variable);
+        }
+        result
+    }
 }
 
 pub fn load_ordinary_axioms(path: impl AsRef<Path>) -> Vec<AxiomDefinition> {
     let parser = OrdinaryAxiomDefinitionParser::new();
     BufReader::new(File::open(path).unwrap())
         .lines()
-        .map(|l| {
-            let l = l.unwrap();
-            match parser.parse(&l) {
-                Ok(a) => a,
-                Err(e) => panic!("Got error `{e}` while parsing axiom `{l}`"),
-            }
+        .map(Result::unwrap)
+        .filter(|l| !l.chars().all(char::is_whitespace))
+        .map(|l| match parser.parse(&l) {
+            Ok(a) => a,
+            Err(e) => panic!("Got error `{e}` while parsing axiom `{l}`"),
         })
         .collect()
 }
@@ -203,6 +250,22 @@ pub fn definition_of_proof_induction(ordinary_axioms: &[AxiomDefinition]) -> For
     let last_part = parser.parse("(R induction_on_proofs) ->0 (A => B => R A ->n R (A B)) ->0 (A => B => R (A ->0 B) ->n R A ->n R B) ->(S n) R P").unwrap();
     let mut rest = last_part;
     for axiom in ordinary_axioms {
+        let c = axiom.conclusion.to_raw_with_metavariables();
+        let free_variables = c.free_metavariables();
+        for permutation in free_variables
+            .iter()
+            .copied()
+            .permutations(free_variables.len())
+        {
+            let prolog = c
+                .with_metavariables_abstracted(
+                    permutation.iter().copied().map(std::ops::Deref::deref),
+                )
+                .as_prolog()
+                .to_string();
+            eprintln!("{:?}, {}, {}", permutation, prolog.len(), prolog);
+        }
+        eprintln!();
         rest = parser
             .parse("R axiom ->0 rest")
             .unwrap()

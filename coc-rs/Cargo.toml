@@ -25,6 +25,7 @@ regex = "1.7.1"
 #autograd = "2.0.0-rc3"
 colored = "2.0.0"
 #swipl = "0.3.13"
+itertools = "0.10.5"
 
 [build-dependencies]
 lalrpop = "0.19.8"
