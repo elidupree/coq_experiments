@@ -1,0 +1,69 @@
+
+
+Inductive Natural := {
+  0,
+  succ(Natural),
+}.
+
+Inductive List A := {
+  nil,
+  cons(A, List A),
+}.
+
+Inductive Atom := {
+  level_0,
+  level_successor,
+  implies,
+  equals,
+  const,
+  fuse,
+  induction_on_proofs,
+}.
+
+Inductive Formula := {
+  atom(Atom),
+  apply(Formula, Formula),
+}.
+
+Definition Atom.interpret := match Atom {
+  level_0 := level_0,
+  level_successor := level_successor,
+  implies := implies,
+  equals := equals,
+  const := const,
+  fuse := fuse,
+  induction_on_proofs := induction_on_proofs,
+}.
+
+Definition Formula.interpret := match Formula {
+  atom := Atom.interpret,
+  apply := id, // i.e. F => G => (F G),
+}.
+
+Definition const_n := match Natural {
+  0 := id,
+  succ := const_pred => const const_pred,
+}.
+
+Definition fuse_n := match Natural {
+  0 := id,
+  succ := fuse_pred => fuse (const fuse_pred),
+}.
+
+Definition fuse_n_chain := n => match List {
+  nil := id,
+  cons := fuse_n n, // i.e. head => rest => fuse_n n head rest,
+}.
+
+Inductive ProofSearchState n G := {
+  done : ProofSearchState 0 G,
+  implication(Formula, Formula, ProofSearchState n G) : ProofSearchState n G,
+}.
+
+Definition ProofSearchState.interpret := match ProofSearchState {
+  done := G,
+  implication := level => antecedent => Rest => fuse_n_chain n [
+    (const_n n implies), Formula.interpret level, Formula.interpret antecedent
+  ] Rest,
+}.
+
