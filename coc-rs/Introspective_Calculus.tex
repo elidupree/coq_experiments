@@ -61,8 +61,149 @@
 
 
   
-  Section \ref{fundamentals} (\textit{\nameref{fundamentals}}) gives a formal definition of IC.  
-
+  Section \ref{fundamentals} (\textit{\nameref{fundamentals}}) gives a formal definition of IC. 
+   
+  \section{Uh}
+  
+  , which I call the \textbf{introspection principle}:
+  
+  
+  \begin{center}
+    For any concept we use in the metatheory, there should be formulas that represent it within the theory.
+  \end{center}
+  
+  \subsection{Inference rules}
+  
+  IC is a \emph{proof system}; some formulas are \emph{true statements}, and we must describe \emph{inference rules} that can be used to derive one true statement from others, like the familiar \emph{modus ponens}:
+  
+  \begin{equation*}
+    \inferrule{A \to B\\\\A}{B}
+  \end{equation*}
+  
+  The introspection principle asks that we define formulas to represent inference rules.
+  In some sense, this is the \emph{only} thing we need to do – by the time we're done representing inference rules, the theory will be powerful enough to represent everything else.
+  However, the concept of inference rules is fairly complicated, being made out of several sub-concepts:
+  \begin{itemize}
+    \item \textbf{Unordered sets} of premises, which are other formulas.
+    \item \textbf{Metavariables} (the A and B above), which express that you can inject arbitrary formulas into particular locations within the inference rule, and say that the rule exists for all such values.
+    \item Finally, the fact that you can combine multiple inference rules to draw further conclusions.
+  \end{itemize}
+  
+  [TODO: because of definition order stuff, we must sometimes define notations before fully defining their meaning. Here, our notation for \emph{modus ponens} is:
+  
+  \begin{equation*}
+    \forall A, \forall B, ((A \to B) \cup A) \to B
+  \end{equation*}
+  
+  To say that a statement $P$ is true, is to say that IC can derive the following inference rule, which can be read as "you can infer that $P$ is true, without any premises":
+  \begin{equation*}
+    \varnothing \to P
+  \end{equation*}
+  
+  However, for convenience, we don't want to write "$\varnothing \to$" every time we say that a statement is true. We will usually be talking about "true formulas" rather than "inference rules of IC". But if we want to be consistent, we need a \emph{different} way to refer to inference rules. Fortunately, the introspection principle asks us to have a formula that represents \emph{the true statement that IC can derive a particular rule $R$}. That formula turns out to be this:
+  
+  \newcommand{\icset}{\operatorname{\mathrm{IC}}}
+  \begin{equation*}
+    \icset \to R
+  \end{equation*}
+  
+  \subsection{Metavariables}
+  
+  \newcommand{\id}{\operatorname{\mathrm{id}}}
+  \newcommand{\const}{\operatorname{\mathrm{const}}}
+  \newcommand{\fuse}{\operatorname{\mathrm{fuse}}}
+  
+  The introspection principle asks us to be able to discuss \emph{functions}, not just notations for functions. The meaning of \emph{functions} is how they map inputs to outputs – their \emph{extensional} behavior.
+  \begin{align*}
+    \tag{extensionality}
+    %(A \equiv B) \equiv \forall R, (\forall A,\forall B,) \to (A \equiv B)
+    \forall R, (\varnothing \to R A B) \cup (\forall C,\forall D,(\forall X,R (C X) (D X)) \to R C D) \to (A \equiv B)\\
+  \end{align*}
+  
+  \begin{align*}
+    A pred1 &\to \bigwedge A \to AB\\
+    A prop \wedge B prop &\to A \wedge B \to B \wedge A\\
+    \tag{and}
+    A prop \wedge B prop &\to (A \wedge B) \to A\\
+    \tag{associativity}
+    A prop \wedge B prop \wedge C prop &\to (A \wedge B) \wedge C \leftrightarrow A \wedge (B \wedge C)\\
+    \tag{map and}
+    A prop \wedge B prop \wedge C prop &\to ((A \to B) \wedge (A \to C)) \to (A \to (B \wedge C))\\
+    \tag{map And}
+    A pred1 &\to (\forall X, A \to B X) \to (A \to \bigwedge B)\\
+    \tag{cut}
+    ((A \to B) \cup ((B \wedge C) \to D)) &\to ((A \wedge C) \to (D))\\
+    A &\to \bigwedge \const A\\
+    \bigwedge A &\to \bigwedge \fuse A\,B\\
+    \const A\,B &\leftrightarrow A
+  \end{align*}
+  \begin{align*}
+    \bigwedge A &\to AB\\
+    AB &\to \bigvee A\\
+    A \wedge B &\to B \wedge A\\
+    A \vee B &\to B \vee A\\
+    \tag{and}
+    (A \wedge B) &\to A\\
+    \tag{or}
+    A &\to (A \vee B)\\
+    \tag{associativity}
+    (A \wedge B) \wedge C &\leftrightarrow A \wedge (B \wedge C)\\
+    \tag{associativity}
+    (A \vee B) \vee C &\leftrightarrow A \vee (B \vee C)\\
+    \tag{map and}
+    ((A \to B) \wedge (A \to C)) &\to (A \to (B \wedge C))\\
+    \tag{map And}
+    (\forall X, A \to B X) &\to (A \to \bigwedge B)\\
+    \tag{map or}
+    ((A \vee B) \to C) &\to ((A \to C) \vee (B \to C))\\
+    \tag{map Or}
+    (\bigvee A \to B) &\to (\exists X, A X \to B)\\
+    \tag{cut}
+    ((A \to B \vee J) \cup ((B \wedge C) \to D)) &\to ((A \wedge C) \to (D \vee J))\\
+    \bigvee \const A &\to A\\
+    \bigvee \fuse A\, B &\to \bigvee A\\
+    A &\to \bigwedge \const A\\
+    \bigwedge A &\to \bigwedge \fuse A\,B\\
+    \const A\,B &\leftrightarrow A
+  \end{align*}
+  \begin{align*}
+    \const A\,B &\equiv A\\
+    \fuse A\,B\,C &\equiv (AC)(BC)\\
+    \tag{identity}
+    A &\equiv A \cup \varnothing\\
+    \tag{symmetry}
+    A \cup B &\equiv B \cup A\\
+    \tag{associativity}
+    (A \cup B) \cup C &\equiv A \cup (B \cup C)\\
+    \tag{specialization}
+    \bigcup A &\to A B\\
+    \tag{specialization}
+    \bigcup \const A &\equiv A\\
+    \tag{specialization}
+    \bigcup A &\to \bigcup \fuse A B\\
+    \tag{specialization}
+    \bigcup A &\equiv \forall B, \bigcup \fuse A B\\
+    \tag{uhh}
+    (A \to B) &\equiv (A \to (A \cup B))\\
+    \tag{uhh}
+    (A \cup B) &\to A\\
+    \tag{uhh}
+    (A \equiv B) &\equiv ((A \to B) \cup (B \to A))\\
+    \tag{uhh}
+    (A \equiv B) &\to (A \to B)\\
+    \tag{indistinguishability}
+    (A \equiv B) &\to (CA \equiv CB)\\
+    \tag{extensionality}
+    (A \equiv B) &\to (AC \equiv BC)\\
+    \tag{unioning}
+    ((A \to B) \cup (A \to C)) &\to (A \to (B \cup C))\\
+    \tag{univ. unioning}
+    ((\forall X, A \to B X) &\to (A \to \bigcup B)\\
+    \tag{chaining}
+    ((A \to B) \cup ((B \cup C) \to D)) &\to ((A \cup C) \to D)\\
+  \end{align*}
+  
+  
   \section{Fundamentals}\label{fundamentals}
 
   \subsection{Syntax}
@@ -85,9 +226,7 @@
   \newcommand{\ic}[1]{#1}
 %  \newcommand{\abst}[2]{{#1} \langle \overline{\underline{ #2}}]}
   \newcommand{\nameabst}[1]{#1 \Rightarrow}
-  \newcommand{\id}{\operatorname{\mathrm{id}}}
-  \newcommand{\const}{\operatorname{\mathrm{const}}}
-  \newcommand{\fuse}{\operatorname{\mathrm{fuse}}}
+  
   \newcommand{\equals}{\equiv}
 
   \begin{align*}
