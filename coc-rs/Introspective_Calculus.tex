@@ -74,7 +74,13 @@
   
   \subsection{Inference rules}
   
-  IC is a \emph{proof system}; some formulas are \emph{true statements}, and we must describe \emph{inference rules} that can be used to derive one true statement from others, like the familiar \emph{modus ponens}:
+  IC is a \emph{proof system}; some formulas are \emph{true statements}, and we must describe \emph{inference rules} that can be used to derive one true statement from others. For example, this rule states that
+  
+  \begin{equation*}
+    \tag{cut}
+    ((A \to B) \wedge ((B \wedge C) \to D)) \to ((A \wedge C) \to D)\\
+  \end{equation*}
+  , like the familiar \emph{modus ponens}:
   
   \begin{equation*}
     \inferrule{A \to B\\\\A}{B}
@@ -85,41 +91,146 @@
   However, the concept of inference rules is fairly complicated, being made out of several sub-concepts:
   \begin{itemize}
     \item \textbf{Unordered sets} of premises, which are other formulas.
-    \item \textbf{Metavariables} (the A and B above), which express that you can inject arbitrary formulas into particular locations within the inference rule, and say that the rule exists for all such values.
+    \item \textbf{Variables} (the A and B above), which express that you can inject arbitrary formulas into particular locations within the inference rule, and say that the rule exists for all such values.
     \item Finally, the fact that you can combine multiple inference rules to draw further conclusions.
   \end{itemize}
   
-  [TODO: because of definition order stuff, we must sometimes define notations before fully defining their meaning. Here, our notation for \emph{modus ponens} is:
+  As our way of defining how inference rules work \emph{inside} IC, we need to describe inference rules \emph{of} IC. This will look like a self-referential definition, where everything has to be defined before anything works. So we begin with intuitive definitions, then formalize them as we go.
+    
+  \subsection{Basics}
+  
+  $\top$ (read as "true") is the trivially true proposition.
+  
+  $A \wedge B$ (read as "A and B") is logical conjunction, with the usual meaning.
+
+  \newcommand{\objto}{\hookrightarrow}
+  $\forall x, B$ (read as "for all x, B"), where $B$ is a formula that may contain usages of the name $x$, is universal quantification. When we state a rule with unbound variables, they are implicitly quantified this way. (For example, a rule stated as $A \wedge B \vdash A$ is implicitly $\forall A, \forall B, A \wedge B \vdash A$.)
+  
+  Both $A \vdash B$ (read as "A proves B") and $A \objto B$ (read as "A implies B") are representations of inference rules or logical implication, saying that if A is true, then B is true. However, this needs more explanation.
+  
+  The usual propositional logic – \emph{unlike} IC – postulates \emph{modus ponens}, an inference rule which states:
   
   \begin{equation*}
-    \forall A, \forall B, ((A \to B) \cup A) \to B
+    \tag{modus ponens}
+    A \wedge (A \objto B) \vdash B\\
   \end{equation*}
   
-  To say that a statement $P$ is true, is to say that IC can derive the following inference rule, which can be read as "you can infer that $P$ is true, without any premises":
+  thus saying that if $(A \objto B)$ and $A$ are both \emph{true}, then $B$ is \emph{true}. IC only says that if $(A \objto B)$ is an \emph{inference rule of a system}, and $A$ is true in that system, then $B$ is true in that system. IC's basic rule of implication is the following, which keeps metatheory levels separate by having the \emph{same} number of levels of "$\objto$" in each premise and conclusion:
+  
   \begin{equation*}
-    \varnothing \to P
+    \tag{chain rule}
+    (A \objto B) \wedge (B \wedge C \objto D) \vdash (A \wedge C \objto D)\\
   \end{equation*}
   
-  However, for convenience, we don't want to write "$\varnothing \to$" every time we say that a statement is true. We will usually be talking about "true formulas" rather than "inference rules of IC". But if we want to be consistent, we need a \emph{different} way to refer to inference rules. Fortunately, the introspection principle asks us to have a formula that represents \emph{the true statement that IC can derive a particular rule $R$}. That formula turns out to be this:
+  This can be read as modifying the rule $(B \wedge C \objto D)$, satisfying the need for $B$ by plugging the output of $(A \objto B)$ into it. It's a generalization of transitivity – by setting $C$ to $\top$, you get $(A \objto B) \wedge (B \objto D) \vdash (A \objto D)$. And if we set both $A$ and $C$ to $\top$, we get:
   
-  \newcommand{\icset}{\operatorname{\mathrm{IC}}}
   \begin{equation*}
-    \icset \to R
+    (\top \objto A) \wedge (A \objto B) \vdash (\top \objto B)\\
   \end{equation*}
   
-  \subsection{Metavariables}
+  which reveals the relation to \emph{modus ponens}: It's the same except with the trivial-looking "$\top \objto$" keeping everything at the same implication level.
+  
+  So, what's the relationship between $\vdash$ and $\objto$? They are the exact same concept, just at different metatheory levels. At first glance, $\vdash$ defines an inference rule of IC itself, while $\objto$ is an internal object that represents an inference rule. But it's more subtle than that: if $\vdash$-rules have $\objto$ on both sides, and $\objto$-rules are supposed to represent $\vdash$-rules, then $\objto$-rules must have some third relation (call it $\looparrowright$) on both sides. This continues infinitely, and the same rules must exist on every level.\footnote{Propositional logic avoids this by making all later relations the same as the second one, but accepting that they will have different rules than the first.}
+  
+  Ultimately, we want to write all the levels using the same symbol. We can't make that rigorous yet. For now, assume that each rule does exist on every level, and the symbols $\vdash$ and $\objto$ are \emph{variables} which can be filled in with any inference-level and its corresponding object-level.
+  
+  \subsection{Variables}
+  
+  I say \emph{variables}, but what we really need to define is \emph{functions}. Variables are just the convenient way of expressing them to the reader.\footnote{"But," you say, "doesn't be introspection principle ask that if you're discussing variables in the metatheory, you should define a representation of them within the theory?" Well, yes – but they don't need to be part of the \emph{core calculus}, which is the main job of \emph{this paper}. A full programming language, which I plan to build around this core calculus, would naturally be able to implement functions that convert text into token-trees and token-trees into formulas of IC, and others such inconveniences of interfacing between raw mathematical objects and the human reader.} A rule $A \wedge B \vdash A$ needs a function that takes two arguments, injects the first at the locations we labeled $A$, and injects the second at the locations we labeled $B$.
+  
+  We use adjacency as function application (the formula $AB$ is the function $A$ applied to the input $B$), and define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus, my "const" as the K combinator, and "fuse" as the S combinator. These have about the same meanings as the German words that K and S are initialisms for in Schönfinkel's original paper.}
   
   \newcommand{\id}{\operatorname{\mathrm{id}}}
   \newcommand{\const}{\operatorname{\mathrm{const}}}
   \newcommand{\fuse}{\operatorname{\mathrm{fuse}}}
+  \begin{align*}
+    \const A\,B &\equiv A\\
+    \fuse A\,B\,C &\equiv (AC)(BC)\\
+  \end{align*}
   
+  $\equiv$ (read as "equals") is definitional equality.
+  This is conflated with logical equivalence: $A \equiv B$ is just a notation for $(A \objto B) \wedge (B \objto A)$. Equal formulas can be substituted for each other at any position within a larger formula:
+  \begin{align*}
+    (A \equiv B) &\vdash (CA \equiv CB)\\
+    (A \equiv B) &\vdash (AC \equiv BC)\\
+  \end{align*}
+  
+  "But wait," you say, "those rules only allow substituting within \emph{function applications}. What about substituting within formulas like $A \objto B$?"
+  
+  In the raw grammar of IC, every compound formula is made of nested function applications. Infix operators like $A \objto B$ are just a notation for applying a function $(\objto)$ to inputs $A$ and $B$; we can write this explicitly as $((\objto) A B)$.
+  
+  
+  
+  % If $A \equiv B$, then they are logically equivalent and can be substituted in any sub-formula:
+  
+  % \begin{align*}
+  %   (A \equiv B) &\objto (A \objto B)\\
+  %   (A \equiv B) &\objto (CA \equiv CB)\\
+  %   (A \equiv B) &\objto (AC \equiv BC)\\
+  % \end{align*}
+  
+  \newcommand{\nameabst}[1]{#1 \Rightarrow}
+  
+  Of course, usually, we want to write functions using variables. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"), where $B$ is a formula that may contain usages of the name $x$. This expands to a bunch of combinators where $(\nameabst{x} B) C$ is equal to $B$ with the usages of $x$ replaced with $C$. (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
+  
+  To express $\forall$, we introduce a new connective, $\bigwedge$ (read "$\bigwedge A$" as "big-and of $A$"), which means the universal conjunction over all possible inputs to a function. $\forall x, B$ is just a notation for $\bigwedge (\nameabst{x} B)$. Specialization is expressed by the rule $\bigwedge A\,\vdash AB$.
+  
+  \subsection{All rules of deduction}
+
+  \begin{align*}
+    \tag{and}
+    (A \wedge B) &\vdash A\\
+    \tag{symmetry}
+    A \wedge B &\equiv B \wedge A\\
+    \tag{associativity}
+    (A \wedge B) \wedge C &\equiv A \wedge (B \wedge C)\\
+    \tag{embed and}
+    ((A \objto B) \wedge (A \objto C)) &\vdash (A \objto B \wedge C)\\
+    \tag{embed And}
+    (\forall X, A \objto B X) &\vdash (A \objto \bigwedge B)\\
+    \tag{chain rule}
+    (A \objto B) \wedge (B \wedge C \objto D) &\vdash (A \wedge C \objto D)\\
+    A &\vdash \bigwedge \const A\\
+    \bigwedge A &\vdash \bigwedge \fuse A\,B\\
+    \tag{specialization}
+    \bigwedge A &\vdash AB\\
+    \const A\,B &\equiv A\\
+    \fuse A\,B\,C &\equiv (AC)(BC)\\
+    (A \equiv B) &\vdash (CA \equiv CB)\\
+    (A \equiv B) &\vdash (AC \equiv BC)\\
+  \end{align*}
+  \newcommand{\deduction}{\operatorname{\mathrm{Deduction}}}
+  Now, assemble all of these rules into one giant conjunction, which takes the relations $\vdash$ and $\objto$ as parameters. We will call this $\deduction$; the full definition goes like
+  \begin{align*}
+    \deduction& :=\\
+    \nameabst{(\vdash)}&\ \nameabst{(\objto)}\\
+    &\forall A, \forall B, (A \wedge B) \vdash A\\
+    \wedge\ &\forall A, \forall B, A \wedge B \equiv B \wedge A\\
+    \wedge\ &\dots\\
+  \end{align*}
+  
+  And now we can define the \emph{single} symbol $(\to)$, which represents both inference rules of IC and internal representations of them.
+  \\
+  
+  \textbf{Definition.} IC has $(\deduction\ (\to)\ (\to))$ as an inference rule.
+  
+  \textbf{Definition.} IC has $(\deduction\ (\to)\ (\to))$ as a true statement, i.e. it has $(\top \to \deduction\ (\to)\ (\to))$ as an inference rule.
+  \\
+  
+  "But wait," you say, "if we can just plug in $(\to)$ as both inputs, why did we need to keep them separate?"
+  
+  Back to that in a minute. First, consider this:
+  
+  \subsection{Is \emph{modus ponens} true?}
+
+  \iffalse
   The introspection principle asks us to be able to discuss \emph{functions}, not just notations for functions. The meaning of \emph{functions} is how they map inputs to outputs – their \emph{extensional} behavior.
   \begin{align*}
     \tag{extensionality}
     %(A \equiv B) \equiv \forall R, (\forall A,\forall B,) \to (A \equiv B)
     \forall R, (\varnothing \to R A B) \cup (\forall C,\forall D,(\forall X,R (C X) (D X)) \to R C D) \to (A \equiv B)\\
   \end{align*}
-  
+
   \begin{align*}
     A pred1 &\to \bigwedge A \to AB\\
     A prop \wedge B prop &\to A \wedge B \to B \wedge A\\
@@ -202,6 +313,7 @@
     \tag{chaining}
     ((A \to B) \cup ((B \cup C) \to D)) &\to ((A \cup C) \to D)\\
   \end{align*}
+  \fi
   
   
   \section{Fundamentals}\label{fundamentals}
@@ -225,7 +337,7 @@
 
   \newcommand{\ic}[1]{#1}
 %  \newcommand{\abst}[2]{{#1} \langle \overline{\underline{ #2}}]}
-  \newcommand{\nameabst}[1]{#1 \Rightarrow}
+  
   
   \newcommand{\equals}{\equiv}
 
