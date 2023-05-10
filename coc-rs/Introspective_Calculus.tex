@@ -212,16 +212,95 @@
   And now we can define the \emph{single} symbol $(\to)$, which represents both inference rules of IC and internal representations of them.
   \\
   
-  \textbf{Definition.} IC has $(\deduction\ (\to)\ (\to))$ as an inference rule.
+  \textbf{Definition.} IC has $(\deduction\ (\to)\ (\to))$ as inference rules.
   
-  \textbf{Definition.} IC has $(\deduction\ (\to)\ (\to))$ as a true statement, i.e. it has $(\top \to \deduction\ (\to)\ (\to))$ as an inference rule.
+  \textbf{Definition.} IC has $(\deduction\ (\to)\ (\to))$ as a true statement, i.e. IC has $(\top \to \deduction\ (\to)\ (\to))$ as an inference rule.
   \\
   
   "But wait," you say, "if we can just plug in $(\to)$ as both inputs, why did we need to keep them separate?"
   
-  Back to that in a minute. First, consider this:
+  Back to that in a minute. First, let's explore what statements count as true within the system so far.
   
   \subsection{Is \emph{modus ponens} true?}
+  
+  One may view a formal system is describing a \emph{set of true statements}. It does this by stating inference rules, which are \emph{constraints} on the set of true statements. In particular, inference rules are "positive constraints" – "if these premises are true, this conclusion must be true" – and never say that a statement must \emph{not} be true. Rather than having negative constraints, we just say that we're only interested in the set of statements that are \emph{forced} to be true by the inference rules – also known as the \emph{minimal relation obeying the inference rules}, or \emph{postulating induction on the structure of proofs}. And we hope that our system is \emph{consistent}, meaning that it does not force \emph{all} statements to be true.
+  
+  IC has an additional desire: Each true statement should represent a correct constraint on the set of true statements. And ideally, all correct constraints would also be true statements. But unfortunately, some constraints are self-incompatible: They are only correct if they are not also true statements (or if all statements are true). So we have to be slightly stricter about what statements can be "true".
+  
+  Let's consider the statement "Each true statement should represent a correct constraint on the set of true statements." By the introspection principle, we should be able to represent this statement in IC. Indeed, we can already represent the statement – and it is \emph{modus ponens!}
+  
+  "But," you say, "how does \emph{modus ponens} mean that?"
+  
+  Suppose you have a true statement $A \to B$. If we view this as a derived inference of IC, it is $\top \to (A \to B)$. If we also know that \emph{modus ponens}, also known as $(A \wedge (A \to B) \to B)$, is an inference of IC, then we can apply the chain rule – satisfying \emph{modus ponens}'s need for the premise $(A \to B)$ – and get $(A \wedge \top \to B)$, which reduces to $A \to B$, now on the level of an inference rather than a true statement. Thus, \emph{modus ponens} can be used to turn any true statement into an inference. This reflects our intent for the language; we must assert that it is a correct constraint.
+  
+  But what happens if we make it a true statement?
+  
+  \subsubsection{Russell's Paradox}
+  
+  First, we'll need some preliminaries.
+  
+  We define $\bot$ (read as "false") to equal $(\bigwedge \id)$, the proposition that all propositions are true. Clearly, this cannot be true in a consistent system.
+  
+  We would like to construct a statement $P$ such that $P \equiv P \to \bot$. To do this, we use Russell's Paradox, the "set of all sets which do not contain themselves". By convention, we represent \emph{sets} as predicates, and say that a set $S$ "contains" any $x$ for which $S x$ is true. So the "set of all sets which do not contain themselves" is:
+  
+  \begin{align*}
+    R := \nameabst{x} x x \to \bot
+  \end{align*}
+  
+  Now, our $P$ is simply $RR$:
+  
+  \begin{align*}
+    P &:= RR\\
+      &\equiv (\nameabst{x} x x \to \bot)R\\
+      &\equiv RR \to \bot\\
+      &\equiv P \to \bot\\
+  \end{align*}
+  
+  Armed with this paradoxical statement, we can specialize \emph{modus ponens} with $A := P$ and $B := \bot$. The following statement is true, even if we do not assume \emph{modus ponens}:
+  
+  \begin{align*}
+    modus\ ponens &\to (P \wedge (P \to \bot) \to \bot)\\
+  \end{align*}
+  
+  But wait – $P \to \bot$ is just $P$, and $P \wedge P$ is just $P$, so this reduces:
+  
+  \begin{align*}
+    modus\ ponens &\to (P \wedge (P \to \bot) \to \bot)\\
+    modus\ ponens &\to (P \wedge P \to \bot)\\
+    modus\ ponens &\to (P \to \bot)\\
+    modus\ ponens &\to P\\
+  \end{align*}
+  
+  If \emph{modus ponens} is both an inference rule and a true statement, we can now specialize the inference rule with $A := modus\ ponens$ and $B := P$, and thus infer that $P$ is true; and with one more use of the inference rule, we can infer that $\bot$ is true, and the system is inconsistent.
+  
+  Thus, \emph{modus ponens} is precisely one of our "self-incompatible constraints" – a constraint that is correct, but must not be a true statement! I choose to interpret this as \emph{modus ponens} being an "improper" rule of deduction, because of how it mixes truths with inferences, unlike all the rules in $\deduction$. Much of our remaining rules will be devoted to getting as close as possible to having \emph{modus ponens} be true, by adding a series of limited, safer versions of it.
+  
+  
+    
+  %(A \wedge (A \to B) \vdash B)
+  
+  
+
+  
+  We'll have to refer to $(\deduction\ (\to)\ (\to))$ a lot. Let's define the shorthand $D_0 := (\deduction\ (\to)\ (\to))$.
+  
+  At this point, the \emph{truths} of IC are $D_0$ (by definition) and anything that can be deduced from it according to the inference rules, which are also $D_0$.
+  
+  We can also consider the statements $A$ where $(D_0 \to A)$ is true. This doesn't intrinsically include everything that's true in IC; if we added another rule ($\top \to Q$) to IC, it wouldn't give us ($\top \to (D_0 \to Q)$), because $Q$ cannot be deduced from just $D_0$, and ($\top \to Q$) does not add ($\top \to Q$) as a \emph{truth}, only $Q$. However, this category definitely contains $D_0$ and anything that can be deduced from it.
+  
+  Now, how about the statements $B$ where $(D_0 \to (D_0 \to B))$ is true?
+  
+  Clearly there's an infinite progression here. Viewing it from the outside, we believe that all of these categories contain the same statements. But we can't yet prove it within IC.
+  
+  The statement $\forall A, (D_0 \to A) \to A$
+  
+  \begin{align*}
+    A\\
+    D_0 \to A\\
+    D_0 \to (D_0 \to A)\\
+    D_0 \wedge (\top \to D_0) \to A\\
+    D_0 \wedge (\top \to D_0) \to (\top \to A)\\
+  \end{align*}
 
   \iffalse
   The introspection principle asks us to be able to discuss \emph{functions}, not just notations for functions. The meaning of \emph{functions} is how they map inputs to outputs – their \emph{extensional} behavior.
