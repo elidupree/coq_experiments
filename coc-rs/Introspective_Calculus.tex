@@ -279,7 +279,53 @@
     
   %(A \wedge (A \to B) \vdash B)
   
+  \subsection{Induction on proof structure}
   
+  Consider again the statement "Statements are only true if they're forced to be true by the inference rules." As with \emph{modus ponens}, we regard it to be true from the outside perspective. How shall we express this?
+  
+  We express it like this:
+  
+  \begin{align*}
+    \tag{induction on proofs}\label{inp}
+    \forall (\vdash), \forall A,\forall B,  (\deduction\ (\vdash)\ (\to)) \wedge (A \to B) \to (A \vdash B)\\
+    \forall (\vdash), (\deduction\ (\vdash)\ (\to)) \to (A \to B) \to (A \vdash B)\\
+    \forall (\models), (\deduction\ (\models)\ (\to)) \wedge (A \vdash B) \looparrowright (A \models B)\\
+    (A \vdash B) \looparrowright \forall (\models), (\deduction\ (\models)\ (\to)) \looparrowright (A \models B)\\
+  \end{align*}
+  
+  This deserves some explanation. Three different levels of inference are involved here (marked with numbers for the reader's benefit):
+  
+  \begin{align*}
+    \forall (\vdash), \forall A,\forall B,  (\deduction\ (\vdash)\ (\implies{2})) \wedge (A \implies{1} B) \implies{0} (A \vdash B)\\
+  \end{align*}
+  
+  We've already said that $(\deduction\ (\implies{1})\ (\implies{2}))$ is true. The idea now is to say that $\implies{1}$ is the \emph{minimal relation} obeying that constraint. We do this by saying that every other relation $\vdash$ obeying the same constraint is "at least as big" as $\implies{1}$, by saying that if $(A \implies{1} B)$, then $(A \vdash B)$ as well. ($(A \vdash B)$ may be true for \emph{more} things, but it can't be true for less.)
+  
+  This definition can also be used to write proofs by induction on the structure of proofs: If you describe an explicit $\vdash$, then the statements in $(\deduction\ (\vdash)\ (\implies{2}))$ are your induction cases.
+  
+  As with \emph{modus ponens}, we assert that this is a correct constraint on the true statements of IC. Again, this raises a question: Can \eqref{inp} itself be a true statement of IC?
+  
+  The answer, again, is no. Because $\implies{0}$ is equated with the other levels, this statement itself is a formula of the form $A \to B$, and it is not proved by $(\deduction\ (\to)\ (\to))$.
+  
+  
+  \subsection{Uhh}
+  
+  We've now seen several constraints that cannot be true statements.
+  
+  Consider the statement "\emph{modus ponens} is a correct constraint (even though it may not be a true statement)". By the introspection principle, we should have a way to represent this statement within IC, and perhaps even have it be true.
+  
+  \newcommand{\icset}{\operatorname{\mathcal{IC}}}
+  Let's have a symbol, $\icset$, which represents all inference rules of IC. (This will be self-containing, and that's okay.) Although we cannot soundly have $(\icset \to A) \to A$ as a truth, we are free to postulate that $\icset$ has the same \emph{set of true statements} as IC:
+  
+  \begin{align*}
+    (\icset \to (\top \to A)) \equiv A\\
+  \end{align*}
+  
+  We can now make statements about what inferences are allowed by $\icset$:
+  
+  \begin{align*}
+    \icset \to modus\ ponens\\
+  \end{align*}
 
   
   We'll have to refer to $(\deduction\ (\to)\ (\to))$ a lot. Let's define the shorthand $D_0 := (\deduction\ (\to)\ (\to))$.
