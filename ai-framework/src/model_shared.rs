@@ -6,18 +6,33 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
-use uuid::Uuid;
 
-#[derive(
-    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default, Debug,
-)]
-pub struct NodeId(pub Uuid);
+macro_rules! id_type {
+    ($name:ident) => {
+        #[derive(
+            Clone,
+            Copy,
+            PartialEq,
+            Eq,
+            PartialOrd,
+            Ord,
+            Hash,
+            Serialize,
+            Deserialize,
+            Default,
+            Debug,
+        )]
+        pub struct $name(pub ::uuid::Uuid);
 
-impl NodeId {
-    pub fn new_random() -> Self {
-        NodeId(Uuid::new_v4())
-    }
+        impl $name {
+            pub fn new_random() -> Self {
+                $name(::uuid::Uuid::new_v4())
+            }
+        }
+    };
 }
+
+id_type!(NodeId);
 
 pub type Array = ArcArray<f32, IxDyn>;
 
