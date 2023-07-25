@@ -2,10 +2,26 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use ordered_float::OrderedFloat;
-use crate::model_shared::NodeId;
+use crate::model_shared::NodeId as Id;
 
-type ComponentId = NodeId;
+struct Component {
+    question_family: QuestionFamilyId,
+    dependencies:Vec< ComponentId >
+    behavior:
+}
 
+struct ComponentEvaluationContext{
+
+
+}
+
+impl ComponentEvaluationContext {
+    fn get (&mut self)
+}
+
+trait ComponentBehavior{
+
+}
 
 enum Component {
 }
@@ -21,9 +37,12 @@ trait OptimizerBehavior {
 struct Ensemble {
     target_cost: f64,
     current_cost: f64,
-    inputs: Vec<InputId>,
-    output: Vec<OutputId>,
+    question_family: QuestionFamilyId,
     direct_members: Vec<ComponentId>,
+}
+
+struct QuestionFamily {
+    ensembles: HashMap<EnsembleId, Ensemble>,
 }
 
 struct Soup {
@@ -33,8 +52,8 @@ struct Soup {
     //caches:HashMap <CashId,Value >,
 }
 
-struct SoupOptimiziationStepContext {
-    soup: &mut Soup,
+struct SoupOptimiziationStepContext< 'a> {
+    soup: &'a mut Soup,
     optimizer_index:usize,
     cache_query_durations:f64,
 }
@@ -58,5 +77,7 @@ impl SoupOptimizationStepContext {
 
 struct AllEnsemblesGradientDescentOptimizer;
 impl OptimizerBehavior for AllEnsemblesGradientDescentOptimizer {
-
+    fn step(&self, context: &mut SoupOptimiziationStepContext) {
+        todo!()
+    }
 }
