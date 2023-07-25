@@ -2,7 +2,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use ordered_float::OrderedFloat;
-use crate::model_shared::NodeId as Id;
+
+id_type!(QuestionFamilyId);
+id_type!(EnsembleId);
+id_type!(ComponentId);
 
 struct Component {
     question_family: QuestionFamilyId,
