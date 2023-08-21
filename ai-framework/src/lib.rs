@@ -8,3 +8,4 @@ pub mod model_2;
 pub mod model_shared;
 pub mod optimizers_1;
 pub mod optimizers_2;
+pub mod soup;

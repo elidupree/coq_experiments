@@ -13,3 +13,4 @@ live-prop-test = { git = "https://github.com/elidupree/live-prop-test" }
 autograd = {git="https://github.com/elidupree/rust-autograd/"}
 rand = "0.8.5"
 ordered-float = "3.4.0"
+enum_delegate = "0.2.0"

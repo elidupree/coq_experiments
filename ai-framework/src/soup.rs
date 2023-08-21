@@ -1,7 +1,7 @@
 use crate::model_shared::{id_type, Array, InputOutputSampleBatch};
 use ordered_float::OrderedFloat;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
@@ -18,7 +18,7 @@ pub struct StrategyEvaluationContext<'a> {
     soup: &'a mut Soup,
 }
 
-impl StrategyEvaluationContext {
+impl<'a> StrategyEvaluationContext<'a> {
     /// Query an existing strategy, returning that strategy's outputs for the given input.
     ///
     /// Outputs may be cached, so the other strategy's evaluation function won't necessarily be run the second time. This function is also responsible for tracking time used, to attribute it to strategies and optimizers appropriately. However, those things are invisible to the strategy calling `query`.
@@ -28,7 +28,8 @@ impl StrategyEvaluationContext {
 }
 
 /// A strategy for answering questions that belong to a particular question family.
-pub trait Strategy: Serialize + DeserializeOwned {
+#[enum_delegate::register]
+pub trait Strategy {
     /// Evaluate this strategy's outputs for the given input.
     ///
     /// The implementor may assume that the inputs are the correct array-size for the question family it gives answers for. (We would like to enforce this on the type level, but Rust's type system isn't powerful enough.)
@@ -42,8 +43,32 @@ pub trait Strategy: Serialize + DeserializeOwned {
 /// An enum hard-coding all Strategy implementors.
 ///
 /// We use this instead of `dyn Strategy` because we need them to be serializable and downcastable.
-pub enum DynStrategy {}
-
+#[derive(Serialize, Deserialize)]
+#[enum_delegate::implement(Strategy)]
+pub enum DynStrategy {
+    SparseMatrix(SparseMatrix),
+}
+type Index = usize;
+#[derive(Serialize, Deserialize)]
+pub struct SparseMatrix {
+    entries: Vec<SparseMatrixEntry>,
+    bias: Array,
+}
+#[derive(Serialize, Deserialize)]
+pub struct SparseMatrixEntry {
+    in_index: Index,
+    out_index: Index,
+    weight: f32,
+}
+impl Strategy for SparseMatrix {
+    fn evaluate(&self, context: &mut StrategyEvaluationContext, input: Array) -> Array {
+        let mut result = self.bias.to_owned();
+        for entry in &self.entries {
+            result[entry.out_index] += input[entry.in_index] * entry.weight;
+        }
+        result.into_shared()
+    }
+}
 /// An optimizer along with a measure of how much CPU time it has used.
 struct TrackedOptimizer {
     expenditures: f64,
@@ -89,6 +114,9 @@ struct QuestionFamily {
     strategies: HashMap<StrategyId, DynStrategy>,
     training_samples: Option<InputOutputSampleBatch>,
 }
+fn evaluate_strategy(samples: InputOutputSampleBatch, strategy: impl Strategy) -> f64 {
+    todo!("eli is gonna do this")
+}
 
 pub enum CachedQuery {}
 
@@ -97,7 +125,7 @@ pub enum CachedQuery {}
 /// In addition to the answer, we keep a list of all of the optimizers that made this query.
 /// Because the query is cached, the CPU time is only paid once; naïvely, the most fair attribution is to distribute the cost equally among those optimizers. So each time a new optimizer makes the same query, we will retroactively adjust the amount attributed to each of the earlier optimizers.
 struct QueryResult {
-    value: Value,
+    value: Arc<dyn Any>,
     askers: HashSet<OptimizerId>,
 }
 
@@ -110,7 +138,7 @@ struct Soup {
 /// The interface an Optimizer uses to access and modify the soup.
 ///
 /// Optimizers are allowed to make arbitrary changes to strategies and ensembles, but they aren't allowed to touch the query cache or optimizers, and the cache needs to remember whichstay strategies were changed. So optimizers need to access the soup through an interface, instead of just taking an `&mut Soup`.
-struct SoupOptimizationStepContext<'a> {
+pub struct SoupOptimizationStepContext<'a> {
     soup: &'a mut Soup,
 
     /// The ID of the optimizer that's currently running, so that the context knows which optimizer to attribute costs to.
@@ -141,17 +169,17 @@ impl Soup {
         let start = Instant::now();
         let mut context = SoupOptimizationStepContext {
             soup: self,
-            optimizer: chosen_index,
+            optimizer: chosen_id,
             cache_query_durations: 0.0,
         };
         chosen_behavior.step(&mut context);
         let total_duration = start.elapsed().as_secs_f64();
         let unaccounted_expenditure = total_duration - context.cache_query_durations;
-        self.optimizers[&chosen_id].expenditures += unaccounted_expenditure;
+        self.optimizers.get_mut(&chosen_id).unwrap().expenditures += unaccounted_expenditure;
     }
 }
 
-impl SoupOptimizationStepContext {}
+impl<'a> SoupOptimizationStepContext<'a> {}
 
 struct AllEnsemblesGradientDescentOptimizer;
 impl Optimizer for AllEnsemblesGradientDescentOptimizer {
