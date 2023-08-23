@@ -48,7 +48,7 @@ pub trait Strategy {
 pub enum DynStrategy {
     SparseMatrix(SparseMatrix),
 }
-type Index = usize;
+type Index = Vec<ndarray::Ix>;
 #[derive(Serialize, Deserialize)]
 pub struct SparseMatrix {
     entries: Vec<SparseMatrixEntry>,
@@ -64,7 +64,7 @@ impl Strategy for SparseMatrix {
     fn evaluate(&self, context: &mut StrategyEvaluationContext, input: Array) -> Array {
         let mut result = self.bias.to_owned();
         for entry in &self.entries {
-            result[entry.out_index] += input[entry.in_index] * entry.weight;
+            result[&*entry.out_index] += input[&*entry.in_index] * entry.weight;
         }
         result.into_shared()
     }
