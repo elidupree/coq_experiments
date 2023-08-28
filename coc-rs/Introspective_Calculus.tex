@@ -30,21 +30,30 @@
   
   \section{Introduction}
   
-  This document is a bare-bones explanation of my current definitions of this calculus.
-  I plan to later develop it into a full, polished explanation, once I'm more confident in its soundness.
+  %This document is a bare-bones explanation of my current definitions of this calculus.
+  %I plan to later develop it into a full, polished explanation, once I'm more confident in its soundness.
   
   In type theory, the source of paradoxes (like Russell's paradox and Girard's paradox) is this: First you construct a self-referential claim, then you prove that claim using (rules analogous to) the following axiom of propositional logic, which is unsound for self-referential claims:
-  \begin{equation*}
-    \tag{implication within hypotheticals, traditional}
-    (C \rightarrow (A \rightarrow B)) \rightarrow ((C \rightarrow A) \rightarrow (C \rightarrow B))
+  \begin{equation}
+    \label{unsoundaxiom}
+    %\tag{implication within hypotheticals, traditional}
+    (C \to (A \to B)) \to ((C \to A) \to (C \to B))
     \vspace{0.8em}
-  \end{equation*}
+  \end{equation}
   
   Type theories typically avoid this problem by preventing the construction of self-referential claims. However, general-purpose computation is intrinsically capable of constructing self-referential claims. Thus, any such rules must forbid many programs that would otherwise be valid.
+
+  The present work's innovation is to \emph{allow} self-referential claims, but instead weaken the above axiom. We regard the axiom as \emph{improperly mixing metatheory levels}, for the following reason:
   
-  \renewcommand{\implies}[1]{\xrightarrow{#1}}
-  The present work's innovation is to \emph{allow} self-referential claims, but instead weaken the above axiom. We equip the "implies" relation with a level, where $A \implies{n} B$ means "You can reason from $A$ to $B$ by a proof with \emph{no more than} $n$ levels of hypotheticals." Now the axiom becomes:
+  \begin{itemize}
+    \item We say that $(A \to B)$ is true if there is a \emph{chain of valid inferences} that would let you reason from $A$ to $B$.
+    \item Thus, $(A \to (A \to B))$ means that if $A$ is true, you can infer that there \emph{exists} a chain of valid inferences from $A$ to $B$ (but if $A$ is not true, there might not be one). \eqref{unsoundaxiom} asserts that this implies $(A \to B)$, i.e. that such a chain already exists. Intuitively, this might seem true: If you first assume $A$, you can conclude that the $(A \to B)$ chain exists, and then apply it to get $B$.
+    \item But inferences are metatheoretic objects, and the above is metatheoretic reasoning. So $(A \to B)$ will be true in the metatheory, but this doesn't mean we can automatically internalize it as a provable statement within the theory. Indeed, there \emph{must} be statements that are true, but not provable within the theory; and if we allow self-referential claims, this must be one of them, or we suffer Russell's paradox.
+  \end{itemize}
+
   
+  
+    \renewcommand{\implies}[1]{\xrightarrow{#1}}
   \newcommand{\lzero}{0}
   \newcommand{\lsucc}[1]{\mathcal{S} #1}
   \begin{equation*}
@@ -88,7 +97,7 @@
   
   The introspection principle asks that we define formulas to represent inference rules.
   In some sense, this is the \emph{only} thing we need to do – by the time we're done representing inference rules, the theory will be powerful enough to represent everything else.
-  However, the concept of inference rules is fairly complicated, being made out of several sub-concepts:
+  However, when we try to define the concept of inference rules from a completely blank slate, we quickly see that it's built out of several sub-concepts:
   \begin{itemize}
     \item \textbf{Unordered sets} of premises, which are other formulas.
     \item \textbf{Variables} (the A and B above), which express that you can inject arbitrary formulas into particular locations within the inference rule, and say that the rule exists for all such values.
@@ -101,10 +110,10 @@
   
   $\top$ (read as "true") is the trivially true proposition.
   
-  $A \wedge B$ (read as "A and B") is logical conjunction, with the usual meaning.
+  $A \wedge B$ (read as "A and B") is logical conjunction, with the usual meaning: $A \wedge B$ is true \emph{iff} $A$ and $B$ are both true.
 
   \newcommand{\objto}{\hookrightarrow}
-  $\forall x, B$ (read as "for all x, B"), where $B$ is a formula that may contain usages of the name $x$, is universal quantification. When we state a rule with unbound variables, they are implicitly quantified this way. (For example, a rule stated as $A \wedge B \vdash A$ is implicitly $\forall A, \forall B, A \wedge B \vdash A$.)
+  $\forall x, B$ (read as "for all x, B") is universal quantification. Here, $B$ is a formula that may contain usages of the name $x$. When we state a rule with unbound variables, they are implicitly quantified this way. (For example, a rule stated as $A \wedge B \vdash A$ is implicitly $\forall A, \forall B, A \wedge B \vdash A$.)
   
   Both $A \vdash B$ (read as "A proves B") and $A \objto B$ (read as "A implies B") are representations of inference rules or logical implication, saying that if A is true, then B is true. However, this needs more explanation.
   
@@ -173,7 +182,7 @@
   
   Of course, usually, we want to write functions using variables. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"), where $B$ is a formula that may contain usages of the name $x$. This expands to a bunch of combinators where $(\nameabst{x} B) C$ is equal to $B$ with the usages of $x$ replaced with $C$. (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
   
-  To express $\forall$, we introduce a new connective, $\bigwedge$ (read "$\bigwedge A$" as "big-and of $A$"), which means the universal conjunction over all possible inputs to a function. $\forall x, B$ is just a notation for $\bigwedge (\nameabst{x} B)$. Specialization is expressed by the rule $\bigwedge A\,\vdash AB$.
+  To express $\forall$, we introduce a new connective, $\bigwedge$ (read "$\bigwedge A$" as "all of $A$"), which means the universal conjunction over all possible inputs to a function. $\forall x, B$ is just a notation for $\bigwedge (\nameabst{x} B)$. Specialization is expressed by the rule $\bigwedge A\,\vdash AB$.
   
   \subsection{All rules of deduction}
 
@@ -348,7 +357,7 @@
     D_0 \wedge (\top \to D_0) \to (\top \to A)\\
   \end{align*}
 
-  \iffalse
+
   The introspection principle asks us to be able to discuss \emph{functions}, not just notations for functions. The meaning of \emph{functions} is how they map inputs to outputs – their \emph{extensional} behavior.
   \begin{align*}
     \tag{extensionality}
@@ -395,7 +404,15 @@
     \tag{map Or}
     (\bigvee A \to B) &\to (\exists X, A X \to B)\\
     \tag{cut}
-    ((A \to B \vee J) \cup ((B \wedge C) \to D)) &\to ((A \wedge C) \to (D \vee J))\\
+    ((A \to B \vee J) \wedge ((B \wedge C) \to D)) &\to ((A \wedge C) \to (D \vee J))\\
+    \tag{cut}
+    \neg ((\neg A \vee B \vee J) \wedge (\neg (B \wedge C) \vee D)) &\vee (\neg (A \wedge C) \vee (D \vee J))\\
+    \tag{cut}
+    (\neg (\neg A \vee B \vee J) \vee \neg (\neg (B \wedge C) \vee D)) &\vee (\neg (A \wedge C) \vee (D \vee J))\\
+    \tag{cut}
+    ((A \wedge \neg B \wedge \neg J) \vee ((B \wedge C) \wedge \neg D)) &\vee ((\neg A \vee \neg C) \vee (D \vee J))\\
+    \tag{cut}
+    (A \wedge \neg B \wedge \neg J) \vee (B \wedge C \wedge \neg D) &\vee \neg A \vee \neg C \vee D \vee J\\
     \bigvee \const A &\to A\\
     \bigvee \fuse A\, B &\to \bigvee A\\
     A &\to \bigwedge \const A\\
@@ -438,7 +455,7 @@
     \tag{chaining}
     ((A \to B) \cup ((B \cup C) \to D)) &\to ((A \cup C) \to D)\\
   \end{align*}
-  \fi
+
   
   
   \section{Fundamentals}\label{fundamentals}
