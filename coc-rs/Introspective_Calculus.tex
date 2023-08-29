@@ -14,6 +14,7 @@
 \usepackage{amsmath}
 \usepackage{wasysym}
 \MakeOuterQuote{"}
+\DeclareMathAlphabet{\mathpzc}{OT1}{pzc}{m}{it}
 
 %\usepackage[backend=biber,style=numeric]{biblatex}
 %\addbibresource{Introspective_Calculus.bib}
@@ -41,9 +42,17 @@
     \vspace{0.8em}
   \end{equation}
   
-  Type theories typically avoid this problem by preventing the construction of self-referential claims. However, general-purpose computation is intrinsically capable of constructing self-referential claims. Thus, any such rules must forbid many programs that would otherwise be valid.
+  Type theories typically avoid this problem by preventing the construction of self-referential claims.
+  However, general-purpose computation is intrinsically capable of constructing self-referential claims.
+  Thus, any such rules must forbid many programs that would otherwise be valid.
 
-  The present work's innovation is to \emph{allow} self-referential claims, but instead weaken the above axiom. We regard the axiom as \emph{improperly mixing metatheory levels}, for the following reason:
+  The present work's innovation is to \emph{allow} self-referential claims, but instead weaken the above axiom.
+  We regard the axiom as \emph{improperly mixing metatheory levels}, for reasons we will explain in Section \ref{firststeps}.
+  By giving explicit, principled definitions of the relationships between metatheory levels, we can prevent a self-referential claim from being elevated into a self-referential \emph{proof}.
+  We call our system the Introspective Calculus (IC), because every rule of IC can be represented as an object within IC; it comes as close as possible to acting as its own metatheory.
+  
+  \iffalse
+  For the following reason:
   
   \begin{itemize}
     \item We say that $(A \to B)$ is true if there is a \emph{chain of valid inferences} that would let you reason from $A$ to $B$.
@@ -70,16 +79,64 @@
 
 
   
-  Section \ref{fundamentals} (\textit{\nameref{fundamentals}}) gives a formal definition of IC. 
+  Section \ref{fundamentals} (\textit{\nameref{fundamentals}}) gives a formal definition of IC.   \fi
    
-  \section{Uh}
+  \section{First steps}\label{firststeps}
   
-  , which I call the \textbf{introspection principle}:
+  [everything is guided by] [this principle], which I call the \textbf{introspection principle}:
   
   
   \begin{center}
     For any concept we use in the metatheory, there should be formulas that represent it within the theory.
   \end{center}
+ 
+  IC is a system of \emph{formulas}; some formulas represent \emph{propositions}, which may be true or false; 
+  
+  \subsection{[The paradox / What is truth?]}
+  
+  We want to be able to talk about whether propositions are true or not. The introspection principle says we should be able to write \emph{formulas} that talk about whether other formulas are true or not.
+  
+  If we can do this, then we can use Russell's paradox to construct a statement $P$, where:
+  
+  \begin{equation*}
+    P \equiv (P \mathrm{\ is\ not\ }\mathpzc{true})\\
+  \end{equation*}
+  
+  (This formula contains a copy of itself.
+  It may not be obvious that this should be allowed; but we assert that it is.
+  We will later show how self-containing formulas arise naturally from how we define computation.
+  For now, simply assume that they are just as legitimate as other formulas.)
+  
+  What shall we say of this formula?
+  When it says $\mathpzc{true}$, that word must mean something; if it means anything like what you'd expect, then $P$ can't possibly be $\mathpzc{true}$, because if it was, then it wouldn't be.
+  That last sentence forms a proof that $P$ is not $\mathpzc{true}$; therefore "$P \mathrm{\ is\ not\ }\mathpzc{true}$" is true, which is the same as saying that $P$ is true.
+  To avoid a contradiction, we must say that $P$ is "true, but not $\mathpzc{true}$" – that is, that "$\mathpzc{true}$" and "true" are not the same concept.
+  
+  ...but now the introspection principle says we should be able to write $(P \mathrm{\ is\ true,\ but\ not\ }\mathpzc{true})$ as a formula, and have it be true.
+  Which, in turn, allows us to write
+  
+  \begin{equation*}
+    Q \equiv (Q \mathrm{\ is\ neither\ }\mathpzc{true}\mathrm{\ nor\ true})\\
+  \end{equation*}
+  
+  which would require a third concept of truth to describe it.
+  In fact, presumably we would need to keep making new concepts of truth forever.
+  
+  That's exactly what we will do. We will end up with an ordinal hierarchy of concepts of truth, each weaker than all the earlier ones.
+  
+  "But wait," you say, "what if I then write:"
+  
+  \begin{equation*}
+    R \equiv (R \text{ is not true according to any level of the ordinal hierarchy})\\
+  \end{equation*}
+  
+  This is where we stop: It won't be possible to write this. This is unfortunately the one place where we can't honor the introspection principle to-the-letter. But [later] we will [hopefully] show a metatheorem which says we don't \emph{need} to – because, for any reason you might need to refer to the entire ordinal hierarchy, the same need can be satisfied by one of the levels of the ordinal hierarchy.
+  
+  \newcommand{\dependably}{\square}
+  
+  For the rest of this paper, we reserve the word "true" to refer to the broadest category: things that are true from an outside perspective. This concept can't be named in a formula. To start the hierarchy of nameable concepts, we introduce the operator $\dependably$ (pronounced "dependably"\footnote{and written with a square because it is like the "necessarily" operator from modal logic. It may even be the same thing; but we don't call it "necessarily" because that would be confusing. We are not dealing with uncertainty here, only different levels of metatheory.}). If we say $\dependably A$, we are saying that the formula $A$ has the strongest form of truth, and internal logic can fully rely on $A$ to be true. This can also be pronounced "$A$ is dependably true" or "$A$ is internally true". If we say just $A$, and not $\dependably A$, then we are only asserting the weakest form of truth ("$A$ is externally true" or "$A$ is true"), and we can only do logic with it using our external beliefs about how logic works, not using formal definitions within IC.
+  
+  $\dependably \dependably A$ isn't stronger than $\dependably A$; they are equal.
   
   \subsection{Inference rules}
   
@@ -484,9 +541,6 @@
   \newcommand{\equals}{\equiv}
 
   \begin{align*}
-    \lzero &:= \mathrm{level\_zero}\\
-    \lsucc{n} &:= (\mathrm{level\_successor}\ n)\\
-    (A \implies{n} B) &:= (((\mathrm{implies}\ n) A) B),\ \operatorname{right-associative}\\
     (A \equals B) &:= ((\mathrm{equals}\ A) B)\\
     \id &:= \fuse \const \const\\
   \end{align*}
@@ -495,89 +549,20 @@
   
   This is defined as in the SKI combinator calculus.
 
-  \subsection{Axiom Definitions}
-%  \setlength{\jot}{1.4em}
-  \begin{gather*}
-    \tag{modus ponens}\label{mp}
-    \inferrule{(A \implies{n} B)\\\\A}{B}\\
-  \end{gather*}
-%  All remaining axioms are defined as implications ($Premise \implies{\wfz} Premise \dots \implies{\wfz} Conclusion$), which allows them to be reasoned about internally. (The external form can be derived using \eqref{mp}.) However, we still write them as $\frac{Premise\dots}{Conclusion}$ for readability.
-%  \\\\
-%  \setlength{\jot}{0.4em}
-  ????:
-  \begin{align*}
-    \tag{specialization}\label{specialization}
-    A &\implies{\lzero} AB\\
-    \tag{equality implies implication}
-    (A \equals B) &\implies{\lzero} (A \implies{\lzero} B)\\
-%    \tag{truth of foralls}
-%    A &\implies{\wfz} (\abst{A})\\
-%    \tag{extensionality}\label{extensionality}
-%    (\nameabst{C} (AC \equals BC)) \implies{\lzero} (A \equals B)\\
-  \end{align*}
-%  Definitional equality:
-%  \begin{align*}
-%%    \tag{symmetry}
-%%    \inferrule{A \equals B}{B \equals A}\\
-%  \end{align*}
-  Elementary function definitions:
-%  \setlength{\jot}{0.1em}
-  \begin{align*}
-    \const A\,B &\equals A\\
-    \fuse A\,B\,C &\equals (AC)(BC)\\
-    (A \equals B) C &\equals (CA \equals CB)\\
-  \end{align*}
-  Universal reasoning:
-  \begin{align*}
-    A &\implies{\lzero} \const A\\
-    A &\implies{\lzero} \fuse A\\
-    \tag{implication within universals}
-    (\nameabst{C} (AC \implies{n} BC)) &\implies{\lzero} (A \implies{n} B)
-  \end{align*}
-  Implication:
-  \begin{align*}
-    \tag{weakening}
-    B \implies{\lzero} (A \implies{\lzero} B)\\
-    \tag{level weakening}
-    (A \implies{n} B) \implies{\lzero} (A \implies{\lsucc n} B)\\
-    \tag{implication within hypotheticals}
-    (C \implies{\lsucc n} (A \implies{n} B)) \implies{\lzero} ((C \implies{\lsucc n} A) \implies{\lzero} (C \implies{\lsucc n} B))\\
-  \end{align*}
-  More stuff:
-  \begin{align*}
-    \tag{reflexivity}\label{eq_refl}
-    A &\equals A\\
-  \end{align*}
-
   \subsection{Internal Axioms}
 
   We now define \emph{internal} representations of the above axioms.
 
   From the internal perspective of the calculus, the above axioms provide truth for any \emph{specific} values of the variables $A, B\dots$, but cannot prove abstractions over those variables.
-  So, for each axiom, we also create an internal form, by representing the metavariables using abstractions, and the premises using implication (at level $\lzero$).
+  So, for each axiom, we also create an internal form, by representing the metavariables using abstractions, and the premises using implication.
   For example, (modus ponens) is represented as:
 
   \begin{equation*}
-    \mathrm{``modus\ ponens"} := \nameabst{A} \nameabst{B} \nameabst{n} (A \implies{n} B) \implies{\lzero} A \implies{\lzero} B
+    \mathrm{``modus\ ponens"} := \nameabst{A} \nameabst{B} \nameabst{n} (A \implies{n} B) \to A \to B
   \end{equation*}
   
   The above is merely a notation, saying that the right-hand side \emph{is} the statement of "modus ponens". Rather than postulate each of these generalized axioms individually, we make the following comprehensive rule:
-  
-  \setlength{\jot}{0em}
-  \begin{align*}
-    \tag{proof induction is true}\label{indt}
-    \mathrm{induction\_on\_proofs}\\
-    \tag{definition of proof induction}\label{indd}
-    \mathrm{induction\_on\_proofs} \equals \nameabst{P} (P \equals (&\nameabst{R}\\
-      &\nameabst{n}\\
-      &R\mathrm{``modus\ ponens"} \implies{\lzero}\\
-      &\dots \implies{\lzero}\\
-      &R\mathrm{``specialization"} \implies{\lzero}\\
-      &R\ \mathrm{induction\_on\_proofs} \implies{\lzero}\\
-      &(\nameabst{A}\nameabst{B}RA\implies{n}R(AB)) \implies{\lzero}\\
-      &(\nameabst{A}\nameabst{B}R(A\implies{\lzero}B)\implies{n}RA\implies{n}RB) \implies{\lsucc{n}}\\
-      &RP))\\
-  \end{align*}
+
 
   (We would like the definition of proof induction to be a notation like the other axioms, but that would make it a self-containing formula. IC can actually permit self containing formulas, but we understand that the reader may be skeptical of a self containing axiom! Thus, we choose to represent it as an atom with a definitional-equality.)
   
