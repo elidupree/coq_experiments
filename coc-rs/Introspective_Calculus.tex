@@ -133,54 +133,77 @@
   
   This is where we stop: It won't be possible to write this. This is unfortunately the one place where we can't honor the introspection principle to-the-letter. But [later] we will [hopefully] show a metatheorem which says we don't \emph{need} to – because, for any reason you might need to refer to the entire ordinal hierarchy, the same need can be satisfied by one of the levels of the ordinal hierarchy.
 
-  \iffalse
-  
-  \newcommand{\dependably}{\square}
-  
-  For the rest of this paper, we reserve the word "true" to refer to the broadest category: things that are true from an outside perspective. This concept can't be named in a formula. To start the hierarchy of nameable concepts, we introduce the operator $\dependably$ (pronounced "dependably"\footnote{and written with a square because it is like the "necessarily" operator from modal logic. It may even be the same thing; but we don't call it "necessarily" because that would be confusing. We are not dealing with uncertainty here, only different levels of metatheory.}). If we say $\dependably A$, we are saying that the formula $A$ has the strongest form of truth, and internal logic can fully rely on $A$ to be true. This can also be pronounced "$A$ is dependably true" or "$A$ is internally true". If we say just $A$, and not $\dependably A$, then we are only asserting the weakest form of truth ("$A$ is externally true" or "$A$ is true"), and we can only do logic with it using our external beliefs about how logic works, not using formal definitions within IC.
+  For the rest of this paper, we reserve the word "true" to refer to the broadest category: things that are true from an outside perspective. This concept can't be named in a formula. To start the hierarchy of nameable concepts, we need to build some more definitions.
 
-  $\dependably \dependably A$ isn't stronger than $\dependably A$; they are equal.
-  \begin{align*}
-    \square A \to A\\
-    \square (\\
-    \square (A \to B) \to \square A \to \square B\\
-    \square B \to \square (A \to B)\\
-    A \equiv (A \to \bot) \to \bot\\
-    A \equiv \forall C, (A \to C) \to C\\
-    )\\
-  \end{align*}
-
-  \begin{align*}
-    \dependably \dependably A &\equiv \dependably A\\
-    \dependably (A \wedge B) &\equiv \dependably A \wedge \dependably B\\
-    \dependably A &\to A\\
-    A &\to \neg \dependably \neg A\\
-    \neg \neg A &\equiv A\\
-    A \vee B &\equiv \neg (\neg A \wedge \neg B)\\
-    A \to B &\equiv \neg A \vee B\\
-    A \to B &\equiv \neg (A \wedge \neg B)\\
-    (\dependably A &\to A) \equiv (\neg \dependably A \vee A)\\
-    (\dependably \neg A &\to \neg A) \equiv (\neg \dependably \neg A \vee \neg A) \equiv (\neg A \vee \neg \dependably \neg A) \equiv (A \to \neg \dependably \neg A)\\
-    \dependably (A \to B) &\equiv \dependably (\neg A \vee B) \stackrel{?}{\equiv} (\dependably \neg A \vee \dependably B) \equiv \neg \dependably \neg A \to \dependably B \equiv \diamond A \to \dependably B\\
-    \dependably (A \to B) &\equiv \dependably \neg (A \wedge \neg B) \stackrel{?}{\equiv} \neg (\neg \dependably \neg A \wedge \neg \dependably B) \equiv \\
-    \dependably \neg (A \to B) &\equiv \dependably (A \wedge \neg B) \equiv (\dependably A \wedge \dependably \neg B) \equiv (\dependably A \wedge \neg \diamond B) \equiv \neg(\diamond B \to \dependably A)\\
-  \end{align*}
-
-  \fi
-  
   \subsection{Truth predicates}
   
-  [since we have multiple concept of truth, we need to formalize them:]
+  [since we have multiple concepts of truth, we need to formalize them:]
   
-  A \textbf{truth predicate} is a function that takes propositions and classifies them as "true" or not. Formally, its inputs are propositions, and its outputs are also propositions. If you have a truth predicate $\square$ and a proposition $A$, then if the proposition $\square A$ is \emph{true}, we say that $\square$ believes $A$; if $\square A$ is \emph{not true}, we say that $\square$ does not believe $A$. (But it doesn't necessarily believe that $A$ is false.)
+  A \textbf{truth predicate} is a predicate on propositions – a function that takes propositions and classifies them as "true" or not. Formally, its inputs are propositions, and its outputs are also propositions. If you have a truth predicate $\mathbb{T}$ and a proposition $A$, then if the proposition $\mathbb{T} A$ is \emph{true}, we say that $\mathbb{T}$ believes $A$; if $\mathbb{T} A$ is \emph{not true}, we say that $\mathbb{T}$ does not believe $A$. (But it doesn't necessarily believe that $A$ is false.)
   
-  So, what's a proposition? A proposition should be a statement saying that some things "are true", but the same proposition may be true for some truth predicates and not others. So what the proposition "says" must depend on the truth predicate.
+  So, what's a proposition? Intuitively, a proposition like $A \wedge B$ is saying that two other propositions, $A$ and $B$, are both "true". Here's the catch: We can't judge the truth of $A \wedge B$ until we know which truth predicate it means when it says "true" – but we also want to say that we're discussing the \emph{same proposition} across multiple truth predicates.
+    
+  Thus, we define a \textbf{proposition} as a \emph{predicate on truth predicates} – a function that takes truth predicate and classifies whether the proposition is "true" \emph{within} that truth predicate. Formally, its inputs are truth predicates, and its outputs are propositions\footnote{At this point, the reader may wonder: "If a proposition is just a function that returns more propositions, when does it end?" This is a misconception. Just like in the lambda calculus, everything is a function forever, and that's okay.}. If you have a proposition $A$ and a truth predicate $\mathbb{T}$, then if the proposition $A \mathbb{T}$ is \emph{true}, we say that $A$ \emph{describes} $\mathbb{T}$; if $A \mathbb{T}$ is \emph{not true}, we say that $A$ \emph{does not describe} $\mathbb{T}$.
   
-  We define a \textbf{proposition} as a function that takes \emph{truth predicates} and classifies whether the proposition is "true" \emph{within} that truth predicate. Formally, its inputs are truth predicates, and its outputs are propositions. If you have a proposition $A$ and a truth predicate $\square$, then if the proposition $A \square$ is \emph{true}, we say that $A$ describes $\square$; if $A \square$ is \emph{not true}, we say that $A$ does not describe $\square$.
+  For example, if $\mathbb{T}$ believes only the propositions $A$, $B$, and $C$, then the proposition $(A \wedge B)$ \emph{describes} $\mathbb{T}$, but $\mathbb{T}$ does not \emph{believe} $(A \wedge B)$. We can write the same thing as a formula: $((A \wedge B)\mathbb{T} \wedge \neg \mathbb{T}(A \wedge B))$.
   
-  (At this point, the reader may wonder: "If a proposition is just a function that returns propositions, when does it end?" This is a misconception. Just like in the lambda calculus, everything is a function forever, and that's okay.)
+  Before we can start defining concrete propositions, we need to formalize how we define functions.
+  
+  \subsection{Formulas and functions}
+  
+  The raw grammar of IC is:
+  
+  \newcommand{\id}{\operatorname{\mathrm{id}}}
+  \newcommand{\const}{\operatorname{\mathrm{const}}}
+  \newcommand{\fuse}{\operatorname{\mathrm{fuse}}}
+  \newcommand{\atomimplies}{\operatorname{\mathrm{implies}}}
+  \newcommand{\all}{\bigwedge}
+  \begin{align*}
+    Atom &:= \const \mid \fuse \mid \atomimplies \mid \all\\
+    F &:= Atom \mid FF \\
+  \end{align*}
+  
+  We will often write formulas using fancier "notations", which are convenient shorthands which expand to raw formulas of IC ($F$ above).
+  
+  Adjacency means function application: The formula $AB$ is the function $A$ applied to the input $B$. We sometimes use parentheses to specify the order of operations; when we don't, it is left-associative ($ABC$ means $(AB)C$).
+  
+  We define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus. My "const" is the K combinator, and my "fuse" is the S combinator. These names have about the same meanings as the German words (K)onstanzfunktion and Ver(s)chmelzungsfunktion, which K and S are named for in Schönfinkel's original paper. Before I learned of SKI, I had to reinvent it for myself; but after learning of it, I renamed my "fuse" combinator to be more aligned with its naming scheme, because my original name, "apply", was no less confusing.}
   
   
+  \begin{align*}
+    \const A\,B &\equiv A\\
+    \fuse A\,B\,C &\equiv (AC)(BC)\\
+  \end{align*}
+  
+  $\equiv$ (read as "equals") is definitional equality. The notation $A \equiv B$ expands to the raw formula "$equals A\,B$". Equal formulas can be substituted for each other at any position within a larger formula:
+  \begin{align*}
+    (A \equiv B) &\to (CA \equiv CB)\\
+    (A \equiv B) &\to (AC \equiv BC)\\
+  \end{align*}  
+  
+  % If $A \equiv B$, then they are logically equivalent and can be substituted in any sub-formula:
+  
+  % \begin{align*}
+  %   (A \equiv B) &\objto (A \objto B)\\
+  %   (A \equiv B) &\objto (CA \equiv CB)\\
+  %   (A \equiv B) &\objto (AC \equiv BC)\\
+  % \end{align*}
+  
+  \newcommand{\nameabst}[1]{#1 \Rightarrow}
+  
+  Of course, usually, we want to write functions using variables. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"), where $B$ is a formula that may contain usages of the name $x$. This expands to a bunch of combinators where $(\nameabst{x} B) C$ is equal to "$B$ except the usages of $x$ are replaced with $C$". (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
+  
+  To express $\forall$, we introduce a new connective, $\bigwedge$ (read "$\bigwedge A$" as "all of $A$" or "big-and of $A$"), which means the universal conjunction over all possible inputs to a function. $\forall x, B$ is just a notation for $\bigwedge (\nameabst{x} B)$. Specialization is expressed by the rule $\bigwedge A\,\vdash AB$.
+    
+  \subsection{Uhh}
+  
+  \begin{align*}
+    \mathrm{ReasonableEquality}\,E := \nameabst{\mathbb{T}}\ &\forall A, \forall B, \forall C,\\
+      &\ (EAB \to (\mathbb{T}A \to \mathbb{T}B))\\
+      &\wedge (EAB \to E(CA)(CB))\\
+      &\wedge (EAB \to E(AC)(AB))\\
+    \mathrm{Equal}\,A\,B := \nameabst{\mathbb{T}}\ &\exists E, \mathrm{ReasonableEquality}\,E \wedge EAB
+  \end{align*}
   
   \subsection{Inference rules}
   
@@ -248,42 +271,6 @@
   
   I say \emph{variables}, but what we really need to define is \emph{functions}. Variables are just the convenient way of expressing them to the reader.\footnote{"But," you say, "doesn't be introspection principle ask that if you're discussing variables in the metatheory, you should define a representation of them within the theory?" Well, yes – but they don't need to be part of the \emph{core calculus}, which is the main job of \emph{this paper}. A full programming language, which I plan to build around this core calculus, would naturally be able to implement functions that convert text into token-trees and token-trees into formulas of IC, and others such inconveniences of interfacing between raw mathematical objects and the human reader.} A rule $A \wedge B \vdash A$ needs a function that takes two arguments, injects the first at the locations we labeled $A$, and injects the second at the locations we labeled $B$.
   
-  We use adjacency as function application (the formula $AB$ is the function $A$ applied to the input $B$), and define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus, my "const" as the K combinator, and "fuse" as the S combinator. These have about the same meanings as the German words that K and S are initialisms for in Schönfinkel's original paper.}
-  
-  \newcommand{\id}{\operatorname{\mathrm{id}}}
-  \newcommand{\const}{\operatorname{\mathrm{const}}}
-  \newcommand{\fuse}{\operatorname{\mathrm{fuse}}}
-  \begin{align*}
-    \const A\,B &\equiv A\\
-    \fuse A\,B\,C &\equiv (AC)(BC)\\
-  \end{align*}
-  
-  $\equiv$ (read as "equals") is definitional equality.
-  This is conflated with logical equivalence: $A \equiv B$ is just a notation for $(A \objto B) \wedge (B \objto A)$. Equal formulas can be substituted for each other at any position within a larger formula:
-  \begin{align*}
-    (A \equiv B) &\vdash (CA \equiv CB)\\
-    (A \equiv B) &\vdash (AC \equiv BC)\\
-  \end{align*}
-  
-  "But wait," you say, "those rules only allow substituting within \emph{function applications}. What about substituting within formulas like $A \objto B$?"
-  
-  In the raw grammar of IC, every compound formula is made of nested function applications. Infix operators like $A \objto B$ are just a notation for applying a function $(\objto)$ to inputs $A$ and $B$; we can write this explicitly as $((\objto) A B)$.
-  
-  
-  
-  % If $A \equiv B$, then they are logically equivalent and can be substituted in any sub-formula:
-  
-  % \begin{align*}
-  %   (A \equiv B) &\objto (A \objto B)\\
-  %   (A \equiv B) &\objto (CA \equiv CB)\\
-  %   (A \equiv B) &\objto (AC \equiv BC)\\
-  % \end{align*}
-  
-  \newcommand{\nameabst}[1]{#1 \Rightarrow}
-  
-  Of course, usually, we want to write functions using variables. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"), where $B$ is a formula that may contain usages of the name $x$. This expands to a bunch of combinators where $(\nameabst{x} B) C$ is equal to $B$ with the usages of $x$ replaced with $C$. (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
-  
-  To express $\forall$, we introduce a new connective, $\bigwedge$ (read "$\bigwedge A$" as "all of $A$"), which means the universal conjunction over all possible inputs to a function. $\forall x, B$ is just a notation for $\bigwedge (\nameabst{x} B)$. Specialization is expressed by the rule $\bigwedge A\,\vdash AB$.
   
   \subsection{All rules of deduction}
 
