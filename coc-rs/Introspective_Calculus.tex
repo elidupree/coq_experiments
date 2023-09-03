@@ -90,7 +90,8 @@
     For any concept we use in the metatheory, there should be formulas that represent it within the theory.
   \end{center}
  
-  IC is a system of \emph{formulas}; some formulas represent \emph{propositions}, which may be true or false; 
+  IC is a system of \emph{formulas}; some formulas represent \emph{propositions}, which may be true or false;
+
   
   \subsection{[The paradox / What is truth?]}
   
@@ -131,12 +132,55 @@
   \end{equation*}
   
   This is where we stop: It won't be possible to write this. This is unfortunately the one place where we can't honor the introspection principle to-the-letter. But [later] we will [hopefully] show a metatheorem which says we don't \emph{need} to – because, for any reason you might need to refer to the entire ordinal hierarchy, the same need can be satisfied by one of the levels of the ordinal hierarchy.
+
+  \iffalse
   
   \newcommand{\dependably}{\square}
   
   For the rest of this paper, we reserve the word "true" to refer to the broadest category: things that are true from an outside perspective. This concept can't be named in a formula. To start the hierarchy of nameable concepts, we introduce the operator $\dependably$ (pronounced "dependably"\footnote{and written with a square because it is like the "necessarily" operator from modal logic. It may even be the same thing; but we don't call it "necessarily" because that would be confusing. We are not dealing with uncertainty here, only different levels of metatheory.}). If we say $\dependably A$, we are saying that the formula $A$ has the strongest form of truth, and internal logic can fully rely on $A$ to be true. This can also be pronounced "$A$ is dependably true" or "$A$ is internally true". If we say just $A$, and not $\dependably A$, then we are only asserting the weakest form of truth ("$A$ is externally true" or "$A$ is true"), and we can only do logic with it using our external beliefs about how logic works, not using formal definitions within IC.
-  
+
   $\dependably \dependably A$ isn't stronger than $\dependably A$; they are equal.
+  \begin{align*}
+    \square A \to A\\
+    \square (\\
+    \square (A \to B) \to \square A \to \square B\\
+    \square B \to \square (A \to B)\\
+    A \equiv (A \to \bot) \to \bot\\
+    A \equiv \forall C, (A \to C) \to C\\
+    )\\
+  \end{align*}
+
+  \begin{align*}
+    \dependably \dependably A &\equiv \dependably A\\
+    \dependably (A \wedge B) &\equiv \dependably A \wedge \dependably B\\
+    \dependably A &\to A\\
+    A &\to \neg \dependably \neg A\\
+    \neg \neg A &\equiv A\\
+    A \vee B &\equiv \neg (\neg A \wedge \neg B)\\
+    A \to B &\equiv \neg A \vee B\\
+    A \to B &\equiv \neg (A \wedge \neg B)\\
+    (\dependably A &\to A) \equiv (\neg \dependably A \vee A)\\
+    (\dependably \neg A &\to \neg A) \equiv (\neg \dependably \neg A \vee \neg A) \equiv (\neg A \vee \neg \dependably \neg A) \equiv (A \to \neg \dependably \neg A)\\
+    \dependably (A \to B) &\equiv \dependably (\neg A \vee B) \stackrel{?}{\equiv} (\dependably \neg A \vee \dependably B) \equiv \neg \dependably \neg A \to \dependably B \equiv \diamond A \to \dependably B\\
+    \dependably (A \to B) &\equiv \dependably \neg (A \wedge \neg B) \stackrel{?}{\equiv} \neg (\neg \dependably \neg A \wedge \neg \dependably B) \equiv \\
+    \dependably \neg (A \to B) &\equiv \dependably (A \wedge \neg B) \equiv (\dependably A \wedge \dependably \neg B) \equiv (\dependably A \wedge \neg \diamond B) \equiv \neg(\diamond B \to \dependably A)\\
+  \end{align*}
+
+  \fi
+  
+  \subsection{Truth predicates}
+  
+  [since we have multiple concept of truth, we need to formalize them:]
+  
+  A \textbf{truth predicate} is a function that takes propositions and classifies them as "true" or not. Formally, its inputs are propositions, and its outputs are also propositions. If you have a truth predicate $\square$ and a proposition $A$, then if the proposition $\square A$ is \emph{true}, we say that $\square$ believes $A$; if $\square A$ is \emph{not true}, we say that $\square$ does not believe $A$. (But it doesn't necessarily believe that $A$ is false.)
+  
+  So, what's a proposition? A proposition should be a statement saying that some things "are true", but the same proposition may be true for some truth predicates and not others. So what the proposition "says" must depend on the truth predicate.
+  
+  We define a \textbf{proposition} as a function that takes \emph{truth predicates} and classifies whether the proposition is "true" \emph{within} that truth predicate. Formally, its inputs are truth predicates, and its outputs are propositions. If you have a proposition $A$ and a truth predicate $\square$, then if the proposition $A \square$ is \emph{true}, we say that $A$ describes $\square$; if $A \square$ is \emph{not true}, we say that $A$ does not describe $\square$.
+  
+  (At this point, the reader may wonder: "If a proposition is just a function that returns propositions, when does it end?" This is a misconception. Just like in the lambda calculus, everything is a function forever, and that's okay.)
+  
+  
   
   \subsection{Inference rules}
   
@@ -470,6 +514,8 @@
     ((A \wedge \neg B \wedge \neg J) \vee ((B \wedge C) \wedge \neg D)) &\vee ((\neg A \vee \neg C) \vee (D \vee J))\\
     \tag{cut}
     (A \wedge \neg B \wedge \neg J) \vee (B \wedge C \wedge \neg D) &\vee \neg A \vee \neg C \vee D \vee J\\
+    \tag{cut}
+    \neg((\neg(A \to B) \to J) \to \neg (\neg (B \to \neg C) \to D)) &\to (\neg (A \to \neg C) \to (\neg D \to J))\\
     \bigvee \const A &\to A\\
     \bigvee \fuse A\, B &\to \bigvee A\\
     A &\to \bigwedge \const A\\
