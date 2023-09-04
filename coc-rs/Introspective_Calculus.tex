@@ -153,13 +153,15 @@
   
   The raw grammar of IC is:
   
-  \newcommand{\id}{\operatorname{\mathrm{id}}}
-  \newcommand{\const}{\operatorname{\mathrm{const}}}
-  \newcommand{\fuse}{\operatorname{\mathrm{fuse}}}
-  \newcommand{\atomimplies}{\operatorname{\mathrm{implies}}}
+  \newcommand{\name}[1]{\operatorname{\mathrm{#1}}}
+  \newcommand{\id}{\name{id}}
+  \newcommand{\const}{\name{const}}
+  \newcommand{\fuse}{\name{fuse}}
+  \newcommand{\atomimplies}{\name{implies}}
+  \newcommand{\atomall}{\name{all}}
   \newcommand{\all}{\bigwedge}
   \begin{align*}
-    Atom &:= \const \mid \fuse \mid \atomimplies \mid \all\\
+    Atom &:= \const \mid \fuse \mid \atomimplies \mid \atomall\\
     F &:= Atom \mid FF \\
   \end{align*}
   
@@ -175,10 +177,11 @@
     \fuse A\,B\,C &\equiv (AC)(BC)\\
   \end{align*}
   
-  $\equiv$ (read as "equals") is definitional equality. The notation $A \equiv B$ expands to the raw formula "$equals A\,B$". Equal formulas can be substituted for each other at any position within a larger formula:
+  $\equiv$ (read as "equals") is definitional equality. The notation $A \equiv B$ ?????. Equal formulas can be substituted for each other at any position within a larger formula:
   \begin{align*}
     (A \equiv B) &\to (CA \equiv CB)\\
     (A \equiv B) &\to (AC \equiv BC)\\
+    (A \equiv B) &\to (A \to B)\\
   \end{align*}  
   
   % If $A \equiv B$, then they are logically equivalent and can be substituted in any sub-formula:
@@ -193,10 +196,19 @@
   
   Of course, usually, we want to write functions using variables. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"), where $B$ is a formula that may contain usages of the name $x$. This expands to a bunch of combinators where $(\nameabst{x} B) C$ is equal to "$B$ except the usages of $x$ are replaced with $C$". (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
   
-  To express $\forall$, we introduce a new connective, $\bigwedge$ (read "$\bigwedge A$" as "all of $A$" or "big-and of $A$"), which means the universal conjunction over all possible inputs to a function. $\forall x, B$ is just a notation for $\bigwedge (\nameabst{x} B)$. Specialization is expressed by the rule $\bigwedge A\,\vdash AB$.
+  To express $\forall$, we introduce a new connective, $\bigwedge$ (read "$\bigwedge A$" as "all of $A$" or "big-and of $A$"), which means the universal conjunction over all possible inputs to a function. $\forall x, B$ is just a notation for $\bigwedge (\nameabst{x} B)$.
     
   \subsection{Uhh}
-  
+  Elementary propositions external usage:
+  \begin{align*}
+    (A \to B), A &\vdash B\\
+    (\all A) &\to AB\\
+  \end{align*}
+  Elementary propositions internalization:
+  \begin{align*}
+    (A \to B)\mathbb{T} &\equiv (\mathbb{T}A \to \mathbb{T}B)\\
+    (\all A)\mathbb{T} &\equiv (\forall A, \mathbb{T}A)\\
+  \end{align*}
   \begin{align*}
     \mathrm{ReasonableEquality}\,E := \nameabst{\mathbb{T}}\ &\forall A, \forall B, \forall C,\\
       &\ (EAB \to (\mathbb{T}A \to \mathbb{T}B))\\
@@ -204,6 +216,30 @@
       &\wedge (EAB \to E(AC)(AB))\\
     \mathrm{Equal}\,A\,B := \nameabst{\mathbb{T}}\ &\exists E, \mathrm{ReasonableEquality}\,E \wedge EAB
   \end{align*}
+  
+  Axioms:
+  
+  \begin{align*}
+    \name{SelfDescribing} &:= \nameabst{\mathbb{T}} \mathbb{T}A \to A\mathbb{T}\\
+    \name{Deductive} &:= \nameabst{\mathbb{T}} (\forall \mathbb{U}, (\forall A, \mathbb{T}A \to A\mathbb{U}) \to B\mathbb{U}) \to \mathbb{T}B\\
+    \name{Theorems} &:= \nameabst{\name{Axioms}} \nameabst{A} (\forall \mathbb{T}, \name{Axioms} \mathbb{T} \to \mathbb{T}A) \\ 
+    \name{FullyInternally} &:= \nameabst{A} \nameabst{\mathbb{T}} \mathbb{T} (A \wedge \name{FullyInternally} A)\\
+    A \wedge B &:= \nameabst{\mathbb{T}} \forall C, (\mathbb{T}A \to \mathbb{T}B \to C) \to C\\
+    IC_0 &:= \name{FullyInternally}(\name{SelfDescribing} \wedge \name{Deductive})\\
+    IC_1 &:= \name{FullyInternally}(IC_0 \wedge \name{Theorems} IC_0)\\
+    IC_2 &:= \name{FullyInternally}(IC_1 \wedge \name{Theorems} IC_1)\\
+    \dots \\
+    IC_\omega &:= \name{FullyInternally}(\forall n, \name{Natural} n \to (IC_n \wedge \name{Theorems} IC_n))\\
+    \dots \\
+    \name{Ordinal} o \to IC_o &:= \name{FullyInternally}(\forall n, n \stackrel{ordinal}{<} o \to (IC_n \wedge \name{Theorems} IC_n))\\
+  \end{align*}
+  
+  Externalization:
+  \begin{align*}
+    \name{Ordinal} o &\to \name{Theorems} IC_o\\
+    \name{Equal} A\,B &\to A \equiv B\\
+  \end{align*}
+  
   
   \subsection{Inference rules}
   
