@@ -131,7 +131,7 @@
     R \equiv (R \text{ is not true according to any level of the ordinal hierarchy})\\
   \end{equation*}
   
-  This is where we stop: It won't be possible to write this. This is unfortunately the one place where we can't honor the introspection principle to-the-letter. But [later] we will [hopefully] show a metatheorem which says we don't \emph{need} to – because, for any reason you might need to refer to the entire ordinal hierarchy, the same need can be satisfied by one of the levels of the ordinal hierarchy.
+  This is where we stop: We won't make another truth level to say that $R$ is true. This is unfortunately the one place where we can't honor the introspection principle to-the-letter. But [later] we will [hopefully] show a metatheorem which says we don't \emph{need} to – because, for any reason you might need to refer to the entire ordinal hierarchy, the same need can be satisfied by one of the levels of the ordinal hierarchy.
 
   For the rest of this paper, we reserve the word "true" to refer to the broadest category: things that are true from an outside perspective. This concept can't be named in a formula. To start the hierarchy of nameable concepts, we need to build some more definitions.
 
@@ -141,62 +141,89 @@
   
   A \textbf{truth predicate} is a predicate on propositions – a function that takes propositions and classifies them as "true" or not. Formally, its inputs are propositions, and its outputs are also propositions. If you have a truth predicate $\mathbb{T}$ and a proposition $A$, then if the proposition $\mathbb{T} A$ is \emph{true}, we say that $\mathbb{T}$ believes $A$; if $\mathbb{T} A$ is \emph{not true}, we say that $\mathbb{T}$ does not believe $A$. (But it doesn't necessarily believe that $A$ is false.)
   
-  So, what's a proposition? Intuitively, a proposition like $A \wedge B$ is saying that two other propositions, $A$ and $B$, are both "true". Here's the catch: We can't judge the truth of $A \wedge B$ until we know which truth predicate it means when it says "true" – but we also want to say that we're discussing the \emph{same proposition} across multiple truth predicates.
+  To define the first truth predicate in our hierarchy, we will state some rules of inference, and say that the first truth predicate is the \emph{minimal predicate that obeys those rules} – that is, the set of statements that are forced to be true by those inference rules.
+  
+  So how do we formalize inference rules? An inference rule is not just a proposition, which makes a single claim that may be true or false – rather, it's a description of requirements for what must be "true", which some truth predicates obey, and some disobey.
     
-  Thus, we define a \textbf{proposition} as a \emph{predicate on truth predicates} – a function that takes truth predicate and classifies whether the proposition is "true" \emph{within} that truth predicate. Formally, its inputs are truth predicates, and its outputs are propositions\footnote{At this point, the reader may wonder: "If a proposition is just a function that returns more propositions, when does it end?" This is a misconception. Just like in the lambda calculus, everything is a function forever, and that's okay.}. If you have a proposition $A$ and a truth predicate $\mathbb{T}$, then if the proposition $A \mathbb{T}$ is \emph{true}, we say that $A$ \emph{describes} $\mathbb{T}$; if $A \mathbb{T}$ is \emph{not true}, we say that $A$ \emph{does not describe} $\mathbb{T}$.
+  Thus, we define an inference rule as a \emph{predicate on truth predicates} – a function that takes truth predicate and classifies whether the truth predicate obeys them or not. Formally, its inputs are truth predicates, and its outputs are propositions\footnote{At this point, the reader may wonder: "If a proposition is just a function that returns more propositions, when does it end?" This is a misconception. Just like in the lambda calculus, everything is a function forever, and that's okay.}. If you have a rule $R$ and a truth predicate $\mathbb{T}$, then if the proposition $R \mathbb{T}$ is \emph{true}, we say that $\mathbb{T}$ obeys $R$; if $R \mathbb{T}$ is \emph{not true}, we say that $\mathbb{T}$ does not obey $R$.
   
-  For example, if $\mathbb{T}$ believes only the propositions $A$, $B$, and $C$, then the proposition $(A \wedge B)$ \emph{describes} $\mathbb{T}$, but $\mathbb{T}$ does not \emph{believe} $(A \wedge B)$. We can write the same thing as a formula: $((A \wedge B)\mathbb{T} \wedge \neg \mathbb{T}(A \wedge B))$.
-  
-  Before we can start defining concrete propositions, we need to formalize how we define functions.
+  Before we can start defining concrete rules, we need to formalize how we define functions.
   
   \subsection{Formulas and functions}
   
   The raw grammar of IC is:
   
-  \newcommand{\name}[1]{\operatorname{\mathrm{#1}}}
+  \newcommand{\name}[1]{\operatorname{\texttt{#1}}}
   \newcommand{\id}{\name{id}}
   \newcommand{\const}{\name{const}}
   \newcommand{\fuse}{\name{fuse}}
   \newcommand{\atomimplies}{\name{implies}}
   \newcommand{\atomall}{\name{all}}
   \newcommand{\all}{\bigwedge}
+  \newcommand{\atomfoldsto}{\name{folds\_to}}
+  \newcommand{\foldsto}{\cong}
+  
   \begin{align*}
-    Atom &:= \const \mid \fuse \mid \atomimplies \mid \atomall\\
+    Atom &:= \const \mid \fuse \mid \atomimplies \mid \atomall \mid \atomfoldsto\\
     F &:= Atom \mid FF \\
   \end{align*}
   
-  We will often write formulas using fancier "notations", which are convenient shorthands which expand to raw formulas of IC ($F$ above).
-  
   Adjacency means function application: The formula $AB$ is the function $A$ applied to the input $B$. We sometimes use parentheses to specify the order of operations; when we don't, it is left-associative ($ABC$ means $(AB)C$).
   
-  We define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus. My "const" is the K combinator, and my "fuse" is the S combinator. These names have about the same meanings as the German words (K)onstanzfunktion and Ver(s)chmelzungsfunktion, which K and S are named for in Schönfinkel's original paper. Before I learned of SKI, I had to reinvent it for myself; but after learning of it, I renamed my "fuse" combinator to be more aligned with its naming scheme, because my original name, "apply", was no less confusing.}
+  For the human reader's benefit, we will often write formulas using fancier "notations", which are convenient shorthands which expand to raw formulas of IC ($F$ above). In particular, instead of writing $(\atomimplies A\,B)$, we will write $A \to B$; instead of $(\atomfoldsto A\,B)$, we wrote $A \foldsto B$; and instead of $(\atomall A)$, we write $\all A$. But as far as the internal logic is concerned, only the raw formulas exist.\footnote{"But," you say, "doesn't be introspection principle ask that if you're discussing notations in the metatheory, you should define a representation of them within the theory?" Well, yes – but they don't need to be part of the \emph{core calculus}, which is the main job of \emph{this paper}. A full programming language, which I plan to build around this core calculus, would naturally be able to implement functions that convert text into token-trees and token-trees into formulas of IC, and others such inconveniences of interfacing between raw mathematical objects and the human reader.} 
   
+  To implement functions, we define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus. My "const" is the K combinator, and my "fuse" is the S combinator. These names have about the same meanings as the German words (K)onstanzfunktion and Ver(s)chmelzungsfunktion, for which K and S are named in Schönfinkel's original paper. Before I learned of SKI, I had to reinvent it for myself; but after learning of it, I renamed my "fuse" combinator to be more aligned with its naming scheme, because my original name, "apply", was no less confusing.} $\const$ takes two arguments and returns the first (or, equivalently, takes one value and returns a function which ignores its argument and returns that value); $\fuse$ takes two functions and a value, passes that value to \emph{both} functions, then applies the first output of the second output. We can write inference rules to describe this behavior (with notation we shall explain in a moment):
   
   \begin{align*}
-    \const A\,B &\equiv A\\
-    \fuse A\,B\,C &\equiv (AC)(BC)\\
+    &\vdash \forall A,B, (\const A\,B \foldsto A)\\
+    &\vdash \forall A,B,C, (\fuse A\,B\,C \foldsto (AC)(BC))\\
   \end{align*}
   
-  $\equiv$ (read as "equals") is definitional equality. The notation $A \equiv B$ ?????. Equal formulas can be substituted for each other at any position within a larger formula:
+  $\vdash$ (read as "proves") is the usual notation for an inference rule; $P_1, P_2, \dots \vdash C$ means that if the premises $P_1, P_2 \dots$ are true, the conclusion $C$ must be true. (Above, there were no premises, so the conclusion must be true unconditionally.) For now, this is an external definition (referring to "truth" rather than "belief by some predicate"); we \emph{will} show how to internalize it as a raw formula, but not yet.
+  
+  $\forall$ (read as "for all") is universal quantification. $\forall A,B,\dots C$ means that $C$ will be true for any possible formula we could substitute in for the names $A,B,\dots$. Later in this section, we will show how to internalize this.
+  
+  $\foldsto$ (read as "folds to"\footnote{The literature calls this concept "beta-equivalence"; I personally call it "fold-equivalence", because I use the term "unfolding" rather than "beta-reduction" for the steps, since "beta" is meaningless to the uninitiated, and "reduction" misleading (unfolding can make formulas larger and more complicated). }) is fold-equivalence, the relationship between a function-application and its output. Equivalent formulas can be substituted for each other at any position within a larger formula, without changing their truth-value:
   \begin{align*}
-    (A \equiv B) &\to (CA \equiv CB)\\
-    (A \equiv B) &\to (AC \equiv BC)\\
-    (A \equiv B) &\to (A \to B)\\
-  \end{align*}  
+    &\vdash \forall A,B,C, ((A \foldsto B) \to (CA \foldsto CB))\\
+    &\vdash \forall A,B,C, ((A \foldsto B) \to (AC \foldsto BC))\\
+    &\forall A,B, ((A \foldsto B), A \vdash B)\\
+  \end{align*}
   
-  % If $A \equiv B$, then they are logically equivalent and can be substituted in any sub-formula:
+  $\to$ (read as "implies") is logical implication. Note that the first 2 of these 3 rules put the forall-implies in the conclusion of the rule, meaning that the universal statement must be true; but the third rule puts the forall \emph{around} the $\vdash$, meaning that the \emph{rule} exists for all possible values of $A$ and $B$, but that there isn't a universal statement that's required to be a \emph{true proposition}. In particular, even if $(A \foldsto B)$ is true, $A \to B$ is not required to be true – and indeed, unlike the usual propositional logic, our system does not require that $A \to A$ be true! (What does this mean? Well, $A \to A$ is traditionally equivalent to $(\neg A \vee A)$; and some paradoxical statements are neither true nor false. $A \to A$ can't be false, but if $A$ is neither true nor false, $A \to A$ is also neither true nor false.)
   
-  % \begin{align*}
-  %   (A \equiv B) &\objto (A \objto B)\\
-  %   (A \equiv B) &\objto (CA \equiv CB)\\
-  %   (A \equiv B) &\objto (AC \equiv BC)\\
-  % \end{align*}
+  $\to$ can be used according to the traditional rule, \emph{modus ponens}:
+  
+  \begin{align*}
+    &\forall A,B, ((A \to B), A \vdash B)\\
+  \end{align*}
   
   \newcommand{\nameabst}[1]{#1 \Rightarrow}
   
-  Of course, usually, we want to write functions using variables. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"), where $B$ is a formula that may contain usages of the name $x$. This expands to a bunch of combinators where $(\nameabst{x} B) C$ is equal to "$B$ except the usages of $x$ are replaced with $C$". (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
+  Of course, usually, we don't want to write functions as giant piles of $\const$ and $\fuse$ – we want to write them with named arguments. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"\footnote{Although many systems write this as "$\lambda$" (lambda), after the lambda calculus, we do not. One of my eventual goals is to introduce proof systems to a more general audience of programmers; the notation \texttt{=>} will be familiar to users of JavaScript, at least, and it hints at the meaning of transforming one value to another, while "$\lambda$" is meaningless.}), where $B$ is like a formula except that it may contain usages of the name $x$, as if they are subformulas. This expands to a bunch of combinators where $(\nameabst{x} B) C$ is equal to "$B$ except the usages of $x$ are replaced with $C$". (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
   
-  To express $\forall$, we introduce a new connective, $\bigwedge$ (read "$\bigwedge A$" as "all of $A$" or "big-and of $A$"), which means the universal conjunction over all possible inputs to a function. $\forall x, B$ is just a notation for $\bigwedge (\nameabst{x} B)$.
+  We can now give the internalization of $\forall$. The notation $\forall x, B$ expands to $\bigwedge (\nameabst{x} B)$. (And $\forall x,y,\dots B$ is just short for $\forall x,\forall y,\dots B$.) The symbol $\bigwedge$ (read "$\bigwedge A$" as "all of $A$" or "big-and of $A$") means the universal conjunction over all possible inputs to a function. To use it, you use this inference rule:
+  
+  \begin{align*}
+    &\forall A,B, ((\all A) \vdash AB)\\
+  \end{align*}
+  
+  It may seem self-defeating to write "$\forall$" in this definition, but it is not: The outer $\forall$ is the external meaning, understood by the reader, while the inner $\all$ represents a raw formula.
+    
+  \subsection{More rules}
+  
+  We need some rules for \emph{introducing} universal statements. Many systems do this by proving things about opaque variables, but we can't take that approach, because variables don't exist. Instead, we have rules about combinators. To start with, $\const A$ will always return $A$, so if $A$ is true, then $\const A$ is true for all inputs:
+  
+  \begin{align*}
+    &\vdash \forall A, (A \to \all \const A)\\
+  \end{align*}
+  
+  Besides this, the only way to get a new universal statement is by specializing an existing universal statement, like the ones provided by the inference rules. We already have a rule to specialize a universal statement with a concrete formula; but we don't yet have a way to create a new universal statement that specializes an existing one differently based on the new one's input. We create this rule now:
+  
+  \begin{align*}
+    &\vdash \forall A, B, ((\all A) \to \all \fuse\,(\const A)\,B)\\
+  \end{align*}
+  
     
   \subsection{Uhh}
   Elementary propositions external usage:
@@ -207,7 +234,7 @@
   Elementary propositions internalization:
   \begin{align*}
     (A \to B)\mathbb{T} &\equiv (\mathbb{T}A \to \mathbb{T}B)\\
-    (\all A)\mathbb{T} &\equiv (\forall A, \mathbb{T}A)\\
+    (\all A)\mathbb{T} &\equiv (\forall B, \mathbb{T}(AB))\\
   \end{align*}
   \begin{align*}
     \mathrm{ReasonableEquality}\,E := \nameabst{\mathbb{T}}\ &\forall A, \forall B, \forall C,\\
@@ -226,7 +253,7 @@
     \name{FullyInternally} &:= \nameabst{A} \nameabst{\mathbb{T}} \mathbb{T} (A \wedge \name{FullyInternally} A)\\
     A \wedge B &:= \nameabst{\mathbb{T}} \forall C, (\mathbb{T}A \to \mathbb{T}B \to C) \to C\\
     IC_0 &:= \name{FullyInternally}(\name{SelfDescribing} \wedge \name{Deductive})\\
-    IC_1 &:= \name{FullyInternally}(IC_0 \wedge \name{Theorems} IC_0)\\
+    IC_1 &:= \name{FullyInternally}(\nameabst{\mathbb{T}} (\forall A, \forall \mathbb{U}, (IC_0)\mathbb{U} \to \mathbb{U}{A}) \to \mathbb{T}A)\\
     IC_2 &:= \name{FullyInternally}(IC_1 \wedge \name{Theorems} IC_1)\\
     \dots \\
     IC_\omega &:= \name{FullyInternally}(\forall n, \name{Natural} n \to (IC_n \wedge \name{Theorems} IC_n))\\
@@ -305,7 +332,7 @@
   
   \subsection{Variables}
   
-  I say \emph{variables}, but what we really need to define is \emph{functions}. Variables are just the convenient way of expressing them to the reader.\footnote{"But," you say, "doesn't be introspection principle ask that if you're discussing variables in the metatheory, you should define a representation of them within the theory?" Well, yes – but they don't need to be part of the \emph{core calculus}, which is the main job of \emph{this paper}. A full programming language, which I plan to build around this core calculus, would naturally be able to implement functions that convert text into token-trees and token-trees into formulas of IC, and others such inconveniences of interfacing between raw mathematical objects and the human reader.} A rule $A \wedge B \vdash A$ needs a function that takes two arguments, injects the first at the locations we labeled $A$, and injects the second at the locations we labeled $B$.
+  I say \emph{variables}, but what we really need to define is \emph{functions}. Variables are just the convenient way of expressing them to the reader. A rule $A \wedge B \vdash A$ needs a function that takes two arguments, injects the first at the locations we labeled $A$, and injects the second at the locations we labeled $B$.
   
   
   \subsection{All rules of deduction}
