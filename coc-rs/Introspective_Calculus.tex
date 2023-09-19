@@ -120,20 +120,71 @@
     Q \equiv (Q \mathrm{\ is\ neither\ }\mathpzc{true}\mathrm{\ nor\ true})\\
   \end{equation*}
   
-  which would require a third concept of truth to describe it.
-  In fact, presumably we would need to keep making new concepts of truth forever.
-  
-  That's exactly what we will do. We will end up with an ordinal hierarchy of concepts of truth, each weaker than all the earlier ones.
-  
-  "But wait," you say, "what if I then write:"
+  Naïvely, we must continue by defining a third concept of truth to describe $Q$.
+  In fact, presumably we would need to keep making new concepts of truth forever, an end up with an ordinal hierarchy of concepts of truth, each weaker than all the earlier ones. But even then, you'd be able to write:
   
   \begin{equation*}
     R \equiv (R \text{ is not true according to any level of the ordinal hierarchy})\\
   \end{equation*}
   
-  This is where we stop: We won't make another truth level to say that $R$ is true. This is unfortunately the one place where we can't honor the introspection principle to-the-letter. But [later] we will [hopefully] show a metatheorem which says we don't \emph{need} to – because, for any reason you might need to refer to the entire ordinal hierarchy, the same need can be satisfied by one of the levels of the ordinal hierarchy.
+  At this point, it becomes futile to make another truth level to say that $R$ is true.
+  And if we look at $R$ and say "I guess it is true, just not in a way we can represent", then the introspection principle hasn't really been honored.
+  
+  Instead, we must abandon some of our assumptions.
+  
+  For the rest of this paper, we will avoid the word "true"; instead, we split it into two different concepts, a stronger form and a weaker form, which we will call "proven" and "suggested"\footnote{For those familiar with modal logic, these correspond to "necessarily" and "possibly".}. As we will see, "this statement is not proven" is suggested, but not proven; and "this statement is not suggested" is [also suggested but not proven, I think??]
+  
+  \subsection{Formulas and inference and}
+  
+  \newcommand{\name}[1]{\operatorname{\texttt{#1}}}
+  \newcommand{\id}{\name{id}}
+  \newcommand{\const}{\name{const}}
+  \newcommand{\fuse}{\name{fuse}}
+  \newcommand{\atomimplies}{\name{implies}}
+  \newcommand{\atomall}{\name{all}}
+  \newcommand{\all}{\bigwedge}
+  \newcommand{\atomfoldsto}{\name{folds\_to}}
+  \newcommand{\foldsto}{\cong}
+  \newcommand{\proven}{\square}
+  \newcommand{\atomproven}{\name{proven}}
+  
+  Whenever you're defining a formal system, you have to explain it using statements that aren't part of the system (because it's not defined yet).
+  Even though the introspection principle will ask us to make internal representations of those external statements, we still find it useful to be explicit about which things are external.
+  [The external part is the part which a computer implementation would have to explicitly implement in the host language]
+  
+  At the top level, we will define 2 things: A grammar of raw formulas, and a system of inference rules which allow us to conclude that some of these formulas are \textbf{suggested}. One might expect that inference would result in \emph{proofs}, but we instead represent the statement "$A$ is proven" by concluding that the formula $(\atomproven A)$ is suggested.
+  If we were to view top-level inferences as proofs, we'd have no way to represent "$A$ is suggested" without saying that "$A$ is suggested" was \emph{proven}, which is a stronger statement.
+  Suggested statements are not automatically proven to be suggested (even though we will see [things similar to that] in practice).
+  
+  The raw grammar of IC is:
+  
+  \begin{align*}
+    Atom &:= \const \mid \fuse \mid \atomimplies \mid \atomall \mid \atomfoldsto \mid \atomproven\\
+    F &:= Atom \mid FF \\
+  \end{align*}
+  
+  Adjacency means function application: The formula $AB$ is the function $A$ applied to the input $B$. We sometimes use parentheses to specify the order of operations; when we don't, it is left-associative ($ABC$ means $(AB)C$).
+  
+  For the human reader's benefit, we will often write formulas using fancier "notations", which are convenient shorthands which expand to raw formulas of IC ($F$ above).
+  In particular,
+  
+  \begin{itemize}
+    \item Instead of writing $(\atomimplies A\,B)$, we will write $A \to B$.
+    \item Instead of writing $(\atomfoldsto A\,B)$, we will write $A \foldsto B$.
+    \item Instead of writing $(\atomall A)$, we will write $\all A$, which is right-associative: $\all AB$ means $(\atomall (AB))$.
+    \item Instead of writing $(\atomproven A)$, we will write $\proven A$, which is right-associative: $\proven AB$ means $(\atomproven (AB))$.
+  \end{itemize}
+  
+  But as far as the internal logic is concerned, only the raw formulas exist.\footnote{"But," you say, "doesn't be introspection principle ask that if you're discussing notations in the metatheory, you should define a representation of them within the theory?" Well, yes – but they don't need to be part of the \emph{core calculus}, which is the main job of \emph{this paper}. A full programming language, which I plan to build around this core calculus, would naturally be able to implement functions that convert text into token-trees and token-trees into formulas of IC, and others such inconveniences of interfacing between raw mathematical objects and the human reader.}
+  
+  All inference rules (which are \emph{not} formulas, although we will later make formulas to represent them) will be written in the following form:
+  
+  \begin{align*}
+    \forall\, V_0, V_1, \dots, (P_0, P_1, \dots \vdash C)\\
+  \end{align*}
 
-  For the rest of this paper, we reserve the word "true" to refer to the broadest category: things that are true from an outside perspective. This concept can't be named in a formula. To start the hierarchy of nameable concepts, we need to build some more definitions.
+
+  \iffalse
 
   \subsection{Truth predicates}
   
@@ -149,29 +200,11 @@
   
   Before we can start defining concrete rules, we need to formalize how we define functions.
   
+  \fi
+  
   \subsection{Formulas and functions}
   
-  The raw grammar of IC is:
-  
-  \newcommand{\name}[1]{\operatorname{\texttt{#1}}}
-  \newcommand{\id}{\name{id}}
-  \newcommand{\const}{\name{const}}
-  \newcommand{\fuse}{\name{fuse}}
-  \newcommand{\atomimplies}{\name{implies}}
-  \newcommand{\atomall}{\name{all}}
-  \newcommand{\all}{\bigwedge}
-  \newcommand{\atomfoldsto}{\name{folds\_to}}
-  \newcommand{\foldsto}{\cong}
-  
-  \begin{align*}
-    Atom &:= \const \mid \fuse \mid \atomimplies \mid \atomall \mid \atomfoldsto\\
-    F &:= Atom \mid FF \\
-  \end{align*}
-  
-  Adjacency means function application: The formula $AB$ is the function $A$ applied to the input $B$. We sometimes use parentheses to specify the order of operations; when we don't, it is left-associative ($ABC$ means $(AB)C$).
-  
-  For the human reader's benefit, we will often write formulas using fancier "notations", which are convenient shorthands which expand to raw formulas of IC ($F$ above). In particular, instead of writing $(\atomimplies A\,B)$, we will write $A \to B$; instead of $(\atomfoldsto A\,B)$, we wrote $A \foldsto B$; and instead of $(\atomall A)$, we write $\all A$. But as far as the internal logic is concerned, only the raw formulas exist.\footnote{"But," you say, "doesn't be introspection principle ask that if you're discussing notations in the metatheory, you should define a representation of them within the theory?" Well, yes – but they don't need to be part of the \emph{core calculus}, which is the main job of \emph{this paper}. A full programming language, which I plan to build around this core calculus, would naturally be able to implement functions that convert text into token-trees and token-trees into formulas of IC, and others such inconveniences of interfacing between raw mathematical objects and the human reader.} 
-  
+    
   To implement functions, we define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus. My "const" is the K combinator, and my "fuse" is the S combinator. These names have about the same meanings as the German words (K)onstanzfunktion and Ver(s)chmelzungsfunktion, for which K and S are named in Schönfinkel's original paper. Before I learned of SKI, I had to reinvent it for myself; but after learning of it, I renamed my "fuse" combinator to be more aligned with its naming scheme, because my original name, "apply", was no less confusing.} $\const$ takes two arguments and returns the first (or, equivalently, takes one value and returns a function which ignores its argument and returns that value); $\fuse$ takes two functions and a value, passes that value to \emph{both} functions, then applies the first output of the second output. We can write inference rules to describe this behavior (with notation we shall explain in a moment):
   
   \begin{align*}
