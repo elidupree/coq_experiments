@@ -177,11 +177,19 @@
   
   But as far as the internal logic is concerned, only the raw formulas exist.\footnote{"But," you say, "doesn't be introspection principle ask that if you're discussing notations in the metatheory, you should define a representation of them within the theory?" Well, yes – but they don't need to be part of the \emph{core calculus}, which is the main job of \emph{this paper}. A full programming language, which I plan to build around this core calculus, would naturally be able to implement functions that convert text into token-trees and token-trees into formulas of IC, and others such inconveniences of interfacing between raw mathematical objects and the human reader.}
   
-  All inference rules (which are \emph{not} formulas, although we will later make formulas to represent them) will be written in the following form:
+  Having defined the raw grammar, we need only define our explicit list of inference rules. 
+  All inference rules (which are \emph{not} formulas, although we will later make formulas to represent them) will be written in the usual form:
   
   \begin{align*}
-    \forall\, V_0, V_1, \dots, (P_0, P_1, \dots \vdash C)\\
+    \tag{read as ``$C$ \textbf{is suggested}''}
+    \vdash C\\
+    \tag{read as ``$P_0$ and $P_1$ and \dots\ \textbf{suggest} $C$''}
+    P_0, P_1, \dots \vdash C\\
   \end{align*}
+  
+  where $P_0, P_1, \dots$ and $C$ are formulas, except that they may contain metavariables written with the capital Latin letters $A, B, C,$ which range over all raw formulas. For any of our explicit rules and any concrete values of the metavariables, if an external judge (such as a human mathematician, or a computer program) has convinced themselves that all of the premises $P_0, P_1, \dots$ are suggested, the rule can be used to convince them that the conclusion $C$ is also suggested.
+  
+  We must now define some inference rules that let us internalize the concept of inference rules.
 
 
   \iffalse
@@ -202,27 +210,53 @@
   
   \fi
   
-  \subsection{Formulas and functions}
+  \subsection{Functions}
+  
+  To internalize the concept of metavariables, we will implement arbitrary functions. To do this, we define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus. My "const" is the K combinator, and my "fuse" is the S combinator. These names have about the same meanings as the German words (K)onstanzfunktion and Ver(s)chmelzungsfunktion, for which K and S are named in Schönfinkel's original paper. Before I learned of SKI, I had to reinvent it for myself; but after learning of it, I renamed my "fuse" combinator to be more aligned with its naming scheme, because my original name, "apply", was no less confusing.} $\const$ takes two arguments and returns the first (or, equivalently, takes one value and returns a function which ignores its argument and returns that value); $\fuse$ takes two functions and a value, passes that value to \emph{both} functions, then applies the first output of the second output. We can write inference rules to describe this behavior:
+  
+  \begin{align*}
+    &\vdash \const A\,B \foldsto A\\
+    &\vdash \fuse A\,B\,C \foldsto (AC)(BC)\\
+  \end{align*}
+
+  $\foldsto$ (read as "folds to"\footnote{The literature calls this concept "beta-equivalence"; I personally call it "fold-equivalence", because I use the term "unfolding" rather than "beta-reduction" for the steps, since "beta" is meaningless to the uninitiated, and "reduction" misleading (unfolding can make formulas larger and more complicated). }) is fold-equivalence, the relationship between a function-application and its output. Equivalent formulas can be substituted for each other at any position within a larger formula:
+  \begin{align*}
+    A \foldsto B &\vdash CA \foldsto CB\\
+    A \foldsto B &\vdash AC \foldsto BC\\
+    A \foldsto B, A &\vdash B\\
+  \end{align*}
+
+  \newcommand{\nameabst}[1]{#1 \Rightarrow}
+  
+  Of course, usually, we don't want to write functions as giant piles of $\const$ and $\fuse$ – we want to write them with named arguments. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"\footnote{Although many systems write this as "$\lambda$" (lambda), after the lambda calculus, we do not. One of my eventual goals is to introduce proof systems to a more general audience of programmers; the notation \texttt{=>} will be familiar to users of JavaScript, at least, and it hints at the meaning of transforming one value to another, while "$\lambda$" is meaningless.}), where $B$ is a formula except that it may contain usages of the name $x$, as if they are subformulas. This expands to a bunch of combinators where $(\nameabst{x} B) C$ folds to "$B$ except the usages of $x$ are replaced with $C$". (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
+  
+  We can now give the internalization of metavariables. We define two things:
+  
+  First, the formula $\bigwedge F$ (read as "all of $F$") means that the output of the function $F$ is always suggested, for any possible input:
+  
+  \begin{align*}
+    \all A &\vdash AB\\
+  \end{align*}
+  
+  Second, we define the notation $\forall x, B$, which expands to $\bigwedge (\nameabst{x} B)$, thus expressing "$B$ is suggested, for any possible value of the metavariable $x$".
+  
+  Thus, we can now restate any zero-premise inference rules as raw formulas, rather than using metavariables. For example:
+  
+  \begin{align*}
+    &\vdash \forall a, \forall b, \const a\,b \foldsto a\\
+  \end{align*}
+  
+  (Although the above rule is not actually needed, because it is redundant with a stronger version we will define later.)
   
     
-  To implement functions, we define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus. My "const" is the K combinator, and my "fuse" is the S combinator. These names have about the same meanings as the German words (K)onstanzfunktion and Ver(s)chmelzungsfunktion, for which K and S are named in Schönfinkel's original paper. Before I learned of SKI, I had to reinvent it for myself; but after learning of it, I renamed my "fuse" combinator to be more aligned with its naming scheme, because my original name, "apply", was no less confusing.} $\const$ takes two arguments and returns the first (or, equivalently, takes one value and returns a function which ignores its argument and returns that value); $\fuse$ takes two functions and a value, passes that value to \emph{both} functions, then applies the first output of the second output. We can write inference rules to describe this behavior (with notation we shall explain in a moment):
-  
   \begin{align*}
-    &\vdash \forall A,B, (\const A\,B \foldsto A)\\
-    &\vdash \forall A,B,C, (\fuse A\,B\,C \foldsto (AC)(BC))\\
+    &\forall A,B, ((\all A) \vdash AB)\\
   \end{align*}
   
-  $\vdash$ (read as "proves") is the usual notation for an inference rule; $P_1, P_2, \dots \vdash C$ means that if the premises $P_1, P_2 \dots$ are true, the conclusion $C$ must be true. (Above, there were no premises, so the conclusion must be true unconditionally.) For now, this is an external definition (referring to "truth" rather than "belief by some predicate"); we \emph{will} show how to internalize it as a raw formula, but not yet.
+  It may seem self-defeating to write "$\forall$" in this definition, but it is not: The outer $\forall$ is the external meaning, understood by the reader, while the inner $\all$ represents a raw formula.
   
-  $\forall$ (read as "for all") is universal quantification. $\forall A,B,\dots C$ means that $C$ will be true for any possible formula we could substitute in for the names $A,B,\dots$. Later in this section, we will show how to internalize this.
   
-  $\foldsto$ (read as "folds to"\footnote{The literature calls this concept "beta-equivalence"; I personally call it "fold-equivalence", because I use the term "unfolding" rather than "beta-reduction" for the steps, since "beta" is meaningless to the uninitiated, and "reduction" misleading (unfolding can make formulas larger and more complicated). }) is fold-equivalence, the relationship between a function-application and its output. Equivalent formulas can be substituted for each other at any position within a larger formula, without changing their truth-value:
-  \begin{align*}
-    &\vdash \forall A,B,C, ((A \foldsto B) \to (CA \foldsto CB))\\
-    &\vdash \forall A,B,C, ((A \foldsto B) \to (AC \foldsto BC))\\
-    &\forall A,B, ((A \foldsto B), A \vdash B)\\
-  \end{align*}
-  
+    
   $\to$ (read as "implies") is logical implication. Note that the first 2 of these 3 rules put the forall-implies in the conclusion of the rule, meaning that the universal statement must be true; but the third rule puts the forall \emph{around} the $\vdash$, meaning that the \emph{rule} exists for all possible values of $A$ and $B$, but that there isn't a universal statement that's required to be a \emph{true proposition}. In particular, even if $(A \foldsto B)$ is true, $A \to B$ is not required to be true – and indeed, unlike the usual propositional logic, our system does not require that $A \to A$ be true! (What does this mean? Well, $A \to A$ is traditionally equivalent to $(\neg A \vee A)$; and some paradoxical statements are neither true nor false. $A \to A$ can't be false, but if $A$ is neither true nor false, $A \to A$ is also neither true nor false.)
   
   $\to$ can be used according to the traditional rule, \emph{modus ponens}:
@@ -231,17 +265,6 @@
     &\forall A,B, ((A \to B), A \vdash B)\\
   \end{align*}
   
-  \newcommand{\nameabst}[1]{#1 \Rightarrow}
-  
-  Of course, usually, we don't want to write functions as giant piles of $\const$ and $\fuse$ – we want to write them with named arguments. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"\footnote{Although many systems write this as "$\lambda$" (lambda), after the lambda calculus, we do not. One of my eventual goals is to introduce proof systems to a more general audience of programmers; the notation \texttt{=>} will be familiar to users of JavaScript, at least, and it hints at the meaning of transforming one value to another, while "$\lambda$" is meaningless.}), where $B$ is like a formula except that it may contain usages of the name $x$, as if they are subformulas. This expands to a bunch of combinators where $(\nameabst{x} B) C$ is equal to "$B$ except the usages of $x$ are replaced with $C$". (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
-  
-  We can now give the internalization of $\forall$. The notation $\forall x, B$ expands to $\bigwedge (\nameabst{x} B)$. (And $\forall x,y,\dots B$ is just short for $\forall x,\forall y,\dots B$.) The symbol $\bigwedge$ (read "$\bigwedge A$" as "all of $A$" or "big-and of $A$") means the universal conjunction over all possible inputs to a function. To use it, you use this inference rule:
-  
-  \begin{align*}
-    &\forall A,B, ((\all A) \vdash AB)\\
-  \end{align*}
-  
-  It may seem self-defeating to write "$\forall$" in this definition, but it is not: The outer $\forall$ is the external meaning, understood by the reader, while the inner $\all$ represents a raw formula.
     
   \subsection{More rules}
   
