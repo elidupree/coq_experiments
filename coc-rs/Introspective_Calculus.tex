@@ -140,40 +140,49 @@
   \newcommand{\id}{\name{id}}
   \newcommand{\const}{\name{const}}
   \newcommand{\fuse}{\name{fuse}}
-  \newcommand{\atomimplies}{\name{implies}}
+  \newcommand{\atomemptyset}{\name{empty\_set}}
+  \newcommand{\atomunion}{\name{union}}
+  \newcommand{\atomconcludes}{\name{concludes}}
   \newcommand{\atomall}{\name{all}}
-  \newcommand{\all}{\bigwedge}
-  \newcommand{\atomfoldsto}{\name{folds\_to}}
-  \newcommand{\foldsto}{\cong}
-  \newcommand{\proven}{\square}
-  \newcommand{\atomproven}{\name{proven}}
+  \newcommand{\atominfrule}{\name{rule}}
+  \renewcommand{\emptyset}{\varnothing}
+  \newcommand{\union}{\cup}
+  \newcommand{\all}{\bigcup}
+  \newcommand{\atomequals}{\name{equals}}
+  \newcommand{\equals}{\equiv}
+  \newcommand{\concludes}{\leadsto}
+  \newcommand{\infrule}{\vdash}
   
   Whenever you're defining a formal system, you have to explain it using statements that aren't part of the system (because it's not defined yet).
   Even though the introspection principle will ask us to make internal representations of those external statements, we still find it useful to be explicit about which things are external.
   [The external part is the part which a computer implementation would have to explicitly implement in the host language]
   
-  At the top level, we will define 2 things: A grammar of raw formulas, and a system of inference rules which allow us to conclude that some of these formulas are \textbf{suggested}. One might expect that inference would result in \emph{proofs}, but we instead represent the statement "$A$ is proven" by concluding that the formula $(\atomproven A)$ is suggested.
-  If we were to view top-level inferences as proofs, we'd have no way to represent "$A$ is suggested" without saying that "$A$ is suggested" was \emph{proven}, which is a stronger statement.
-  Suggested statements are not automatically proven to be suggested (even though we will see [things similar to that] in practice).
+  At the top level, we will define two things: A grammar of raw formulas, and a system of inference rules which allow us to conclude that some of these formulas are \textbf{true}.
   
   The raw grammar of IC is:
   
   \begin{align*}
-    Atom &:= \const \mid \fuse \mid \atomimplies \mid \atomall \mid \atomfoldsto \mid \atomproven\\
+    Atom &:= \const \mid \fuse \mid \atomemptyset \mid \atomunion \mid \atomall \mid \atomequals \mid \atominfrule \mid \atomconcludes\\
     F &:= Atom \mid FF \\
   \end{align*}
   
   Adjacency means function application: The formula $AB$ is the function $A$ applied to the input $B$. We sometimes use parentheses to specify the order of operations; when we don't, it is left-associative ($ABC$ means $(AB)C$).
   
-  For the human reader's benefit, we will often write formulas using fancier "notations", which are convenient shorthands which expand to raw formulas of IC ($F$ above).
-  In particular,
+  All propositions [etc.] will be represented by nested applications ($F$ above) of these elementary functions.
   
-  \begin{itemize}
-    \item Instead of writing $(\atomimplies A\,B)$, we will write $A \to B$.
-    \item Instead of writing $(\atomfoldsto A\,B)$, we will write $A \foldsto B$.
-    \item Instead of writing $(\atomall A)$, we will write $\all A$, which is right-associative: $\all AB$ means $(\atomall (AB))$.
-    \item Instead of writing $(\atomproven A)$, we will write $\proven A$, which is right-associative: $\proven AB$ means $(\atomproven (AB))$.
-  \end{itemize}
+  That said, we would \emph{like} to write propositions using mathematical notation instead.
+  (This paper would be hard to read otherwise.)
+  So, for the human reader's benefit, we will often write formulas using fancier "notations", which are convenient shorthands which expand to raw formulas of IC.
+  To start with, we'll define these notations, and what they expand to:
+  
+  \begin{align*}
+    \emptyset &:= \atomemptyset\\
+    A \union B &:= \atomunion A\, B\\
+    \all A &:= \atomall A & (\text{right-associative, binds weaker than function application})\\
+    A \equals B &:= \atomequals A\, B\\
+    A \infrule B &:= \atominfrule A\, B\\
+    A \concludes B &:= \atomconcludes A\, B\\
+  \end{align*}
   
   But as far as the internal logic is concerned, only the raw formulas exist.\footnote{"But," you say, "doesn't be introspection principle ask that if you're discussing notations in the metatheory, you should define a representation of them within the theory?" Well, yes – but they don't need to be part of the \emph{core calculus}, which is the main job of \emph{this paper}. A full programming language, which I plan to build around this core calculus, would naturally be able to implement functions that convert text into token-trees and token-trees into formulas of IC, and others such inconveniences of interfacing between raw mathematical objects and the human reader.}
   
@@ -210,54 +219,77 @@
   
   \fi
   
+  \subsection{Sets}
+  
+  We are going to define sets of inference rules, which act on sets of beliefs. [So we need to define sets] We believe the order doesn't matter:
+  
+  \begin{align*}
+    &\vdash (A \union \emptyset) \equals A\\
+    &\vdash (A \union A) \equals A\\
+    &\vdash (A \union B) \equals (B \union A)\\
+    &\vdash ((A \union B) \union C) \equals (A \union (B \union C))\\
+  \end{align*}
+  
+  $\equals$ (read as "equals") is definitional equality, the relation between things that we see fit to make indistinguishable. Equal formulas can be substituted for each other at any position within a larger formula:
+  % fold-equivalence\footnote{The literature calls this concept "beta-equivalence"; I personally call it "fold-equivalence", because I use the term "unfolding" rather than "beta-reduction" for the steps, since "beta" is meaningless to the uninitiated, and "reduction" misleading (unfolding can make formulas larger and more complicated). }, the relationship between a function-application and its output.
+  \begin{align*}
+    A \equals B &\vdash CA \equals CB\\
+    A \equals B &\vdash AC \equals BC\\
+    A \equals B, A &\vdash B\\
+  \end{align*}
+  
   \subsection{Functions}
   
   To internalize the concept of metavariables, we will implement arbitrary functions. To do this, we define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus. My "const" is the K combinator, and my "fuse" is the S combinator. These names have about the same meanings as the German words (K)onstanzfunktion and Ver(s)chmelzungsfunktion, for which K and S are named in Schönfinkel's original paper. Before I learned of SKI, I had to reinvent it for myself; but after learning of it, I renamed my "fuse" combinator to be more aligned with its naming scheme, because my original name, "apply", was no less confusing.} $\const$ takes two arguments and returns the first (or, equivalently, takes one value and returns a function which ignores its argument and returns that value); $\fuse$ takes two functions and a value, passes that value to \emph{both} functions, then applies the first output of the second output. We can write inference rules to describe this behavior:
   
   \begin{align*}
-    &\vdash \const A\,B \foldsto A\\
-    &\vdash \fuse A\,B\,C \foldsto (AC)(BC)\\
+    &\vdash \const A\,B \equals A\\
+    &\vdash \fuse A\,B\,C \equals (AC)(BC)\\
   \end{align*}
-
-  $\foldsto$ (read as "folds to"\footnote{The literature calls this concept "beta-equivalence"; I personally call it "fold-equivalence", because I use the term "unfolding" rather than "beta-reduction" for the steps, since "beta" is meaningless to the uninitiated, and "reduction" misleading (unfolding can make formulas larger and more complicated). }) is fold-equivalence, the relationship between a function-application and its output. Equivalent formulas can be substituted for each other at any position within a larger formula:
-  \begin{align*}
-    A \foldsto B &\vdash CA \foldsto CB\\
-    A \foldsto B &\vdash AC \foldsto BC\\
-    A \foldsto B, A &\vdash B\\
-  \end{align*}
+  
+  
 
   \newcommand{\nameabst}[1]{#1 \Rightarrow}
   
-  Of course, usually, we don't want to write functions as giant piles of $\const$ and $\fuse$ – we want to write them with named arguments. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"\footnote{Although many systems write this as "$\lambda$" (lambda), after the lambda calculus, we do not. One of my eventual goals is to introduce proof systems to a more general audience of programmers; the notation \texttt{=>} will be familiar to users of JavaScript, at least, and it hints at the meaning of transforming one value to another, while "$\lambda$" is meaningless.}), where $B$ is a formula except that it may contain usages of the name $x$, as if they are subformulas. This expands to a bunch of combinators where $(\nameabst{x} B) C$ folds to "$B$ except the usages of $x$ are replaced with $C$". (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
+  Of course, usually, we don't want to write functions as giant piles of $\const$ and $\fuse$ – we want to write them with named arguments. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"\footnote{Although many systems write this as "$\lambda$" (lambda), after the lambda calculus, we do not. One of my eventual goals is to introduce proof systems to a more general audience of programmers; the notation \texttt{=>} will be familiar to users of JavaScript, at least, and it hints at the meaning of transforming one value to another, while "$\lambda$" is meaningless.}), where $B$ is a formula except that it may contain usages of the name $x$, as if they are subformulas. This expands to a bunch of combinators where $(\nameabst{x} B) C \equals$ "$B$ except the usages of $x$ are replaced with $C$". (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
   
   We can now give the internalization of metavariables. We define two things:
   
-  First, the formula $\bigwedge F$ (read as "all of $F$") means that the output of the function $F$ is always suggested, for any possible input:
+  First, the formula $\all F$ (read as "all of $F$" or "big union of $F$") is a potentially-infinite set, containing all possible outputs of $F$:
   
   \begin{align*}
-    \all A &\vdash AB\\
+    &\vdash (\all A) \equals ((\all A) \union AB) \\
+    &\vdash A \equals \all (\const A) \\
+    &\vdash (\all A) \equals \all (\fuse (\const \atomall) A)\\
+    &\vdash \forall b, Ab \equals \forall c, \forall d, A(cd)\\
   \end{align*}
   
-  Second, we define the notation $\forall x, B$, which expands to $\bigwedge (\nameabst{x} B)$, thus expressing "$B$ is suggested, for any possible value of the metavariable $x$".
+  Second, we define the notation $\forall x, B$, which expands to $\all (\nameabst{x} B)$, thus expressing the union of $B$ over all possible values of the metavariable $x$.
   
-  Thus, we can now restate any zero-premise inference rules as raw formulas, rather than using metavariables. For example:
+  Thus, we can now restate our inference rules as raw formulas, rather than using metavariables. For example, we can now write the \emph{formula}:
   
   \begin{align*}
-    &\vdash \forall a, \forall b, \const a\,b \foldsto a\\
+    (\forall a, \forall b, \emptyset &\infrule \const a\,b \equals a)\\
   \end{align*}
   
-  (Although the above rule is not actually needed, because it is redundant with a stronger version we will define later.)
+  \subsection{Inference}
   
-    
+Our remaining task is to express the proposition "[the rules set $R$ reaches the conclusion $C$, $R \concludes C$]".
+
   \begin{align*}
-    &\forall A,B, ((\all A) \vdash AB)\\
+    &\vdash (\emptyset \concludes \emptyset) \\
+    (R \concludes C) &\vdash ((R \union S) \concludes C) \\
+    (R \concludes A), (R \concludes B) &\vdash (R \concludes (A \union B)) \\
+    \forall b, (R \concludes Ab) &\vdash (R \concludes \forall b, Ab) \\
+    (R \concludes A), ((R \union (\emptyset \infrule A)) \concludes B) &\vdash (R \concludes B) \\
   \end{align*}
   
+
   It may seem self-defeating to write "$\forall$" in this definition, but it is not: The outer $\forall$ is the external meaning, understood by the reader, while the inner $\all$ represents a raw formula.
   
   
     
-  $\to$ (read as "implies") is logical implication. Note that the first 2 of these 3 rules put the forall-implies in the conclusion of the rule, meaning that the universal statement must be true; but the third rule puts the forall \emph{around} the $\vdash$, meaning that the \emph{rule} exists for all possible values of $A$ and $B$, but that there isn't a universal statement that's required to be a \emph{true proposition}. In particular, even if $(A \foldsto B)$ is true, $A \to B$ is not required to be true – and indeed, unlike the usual propositional logic, our system does not require that $A \to A$ be true! (What does this mean? Well, $A \to A$ is traditionally equivalent to $(\neg A \vee A)$; and some paradoxical statements are neither true nor false. $A \to A$ can't be false, but if $A$ is neither true nor false, $A \to A$ is also neither true nor false.)
+  $\to$ (read as "implies") is logical implication. Note that the first 2 of these 3 rules put the forall-implies in the conclusion of the rule, meaning that the universal statement must be true; but the third rule puts the forall \emph{around} the $\vdash$, meaning that the \emph{rule} exists for all possible values of $A$ and $B$, but that there isn't a universal statement that's required to be a \emph{true proposition}. In particular, even if $(A \equals B)$ is true, $A \to B$ is not required to be true – and indeed, unlike the usual propositional logic, our system does not require that $A \to A$ be true! (What does this mean? Well, $A \to A$ is traditionally equivalent to $(\neg A \vee A)$; and some paradoxical statements are neither true nor false. $A \to A$ can't be false, but if $A$ is neither true nor false, $A \to A$ is also neither true nor false.)
   
   $\to$ can be used according to the traditional rule, \emph{modus ponens}:
   
@@ -690,7 +722,6 @@
 %  \newcommand{\abst}[2]{{#1} \langle \overline{\underline{ #2}}]}
   
   
-  \newcommand{\equals}{\equiv}
 
   \begin{align*}
     (A \equals B) &:= ((\mathrm{equals}\ A) B)\\
