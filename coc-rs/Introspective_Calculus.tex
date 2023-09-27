@@ -278,10 +278,20 @@ Our remaining task is to express the proposition "[the rules set $R$ reaches the
 
   \begin{align*}
     &\vdash (\emptyset \concludes \emptyset) \\
-    (R \concludes C) &\vdash ((R \union S) \concludes C) \\
+    (R \concludes A) &\vdash ((R \union S) \concludes A) \\
+    (R \concludes (A \union B)) &\vdash (R \concludes A) \\
     (R \concludes A), (R \concludes B) &\vdash (R \concludes (A \union B)) \\
-    \forall b, (R \concludes Ab) &\vdash (R \concludes \forall b, Ab) \\
-    (R \concludes A), ((R \union (\emptyset \infrule A)) \concludes B) &\vdash (R \concludes B) \\
+    (\forall b, (R \concludes Ab)) &\vdash (R \concludes \forall b, Ab) \\
+    % &\vdash ((\emptyset \infrule B) \concludes B) \\
+    (R \concludes A) &\vdash (R \union (A \infrule B) \concludes B) \\
+    % (R \concludes A), ((R \union (\emptyset \infrule A)) \concludes B) &\vdash (R \concludes B) \\
+  \end{align*}
+  
+  [we believe that the above rules allow you to prove all interesting mathematical statements, but
+  Also:
+  \begin{align*}
+    ((R \union (\emptyset \infrule A)) \concludes B), ((R \union (A \infrule B)) \concludes C) &\vdash (R \concludes C) \\
+    ((\mathbb{D} (\concludes)) \concludes (R \concludes A)) &\vdash ((\mathbb{D} C) \concludes (C R A)) \\
   \end{align*}
   
 
