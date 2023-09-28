@@ -134,7 +134,7 @@
   
   For the rest of this paper, we will avoid the word "true"; instead, we split it into two different concepts, a stronger form and a weaker form, which we will call "proven" and "suggested"\footnote{For those familiar with modal logic, these correspond to "necessarily" and "possibly".}. As we will see, "this statement is not proven" is suggested, but not proven; and "this statement is not suggested" is [also suggested but not proven, I think??]
   
-  \subsection{Formulas and inference and}
+  \subsection{Formulas and inference}
   
   \newcommand{\name}[1]{\operatorname{\texttt{#1}}}
   \newcommand{\id}{\name{id}}
@@ -155,20 +155,20 @@
   
   Whenever you're defining a formal system, you have to explain it using statements that aren't part of the system (because it's not defined yet).
   Even though the introspection principle will ask us to make internal representations of those external statements, we still find it useful to be explicit about which things are external.
-  [The external part is the part which a computer implementation would have to explicitly implement in the host language]
+  If we want to implement IC as a computer system, the external part is the part which we'd have to implement in the host language, rather than implementing with IC itself.
   
   At the top level, we will define two things: A grammar of raw formulas, and a system of inference rules which allow us to conclude that some of these formulas are \textbf{true}.
   
   The raw grammar of IC is:
   
   \begin{align*}
-    Atom &:= \const \mid \fuse \mid \atomemptyset \mid \atomunion \mid \atomall \mid \atomequals \mid \atominfrule \mid \atomconcludes\\
+    Atom &:= \atomequals \mid \atomemptyset \mid \atomunion \mid \atomall \mid \const \mid \fuse \mid \atominfrule \mid \atomconcludes\\
     F &:= Atom \mid FF \\
   \end{align*}
   
   Adjacency means function application: The formula $AB$ is the function $A$ applied to the input $B$. We sometimes use parentheses to specify the order of operations; when we don't, it is left-associative ($ABC$ means $(AB)C$).
   
-  All propositions [etc.] will be represented by nested applications ($F$ above) of these elementary functions.
+  All propositions will be represented by nested applications ($F$ above) of these elementary functions.
   
   That said, we would \emph{like} to write propositions using mathematical notation instead.
   (This paper would be hard to read otherwise.)
@@ -178,7 +178,7 @@
   \begin{align*}
     \emptyset &:= \atomemptyset\\
     A \union B &:= \atomunion A\, B\\
-    \all A &:= \atomall A & (\text{right-associative, binds weaker than function application})\\
+    \all A &:= \atomall A & (\text{binds weaker than function application})\\
     A \equals B &:= \atomequals A\, B\\
     A \infrule B &:= \atominfrule A\, B\\
     A \concludes B &:= \atomconcludes A\, B\\
@@ -187,16 +187,16 @@
   But as far as the internal logic is concerned, only the raw formulas exist.\footnote{"But," you say, "doesn't be introspection principle ask that if you're discussing notations in the metatheory, you should define a representation of them within the theory?" Well, yes – but they don't need to be part of the \emph{core calculus}, which is the main job of \emph{this paper}. A full programming language, which I plan to build around this core calculus, would naturally be able to implement functions that convert text into token-trees and token-trees into formulas of IC, and others such inconveniences of interfacing between raw mathematical objects and the human reader.}
   
   Having defined the raw grammar, we need only define our explicit list of inference rules. 
-  All inference rules (which are \emph{not} formulas, although we will later make formulas to represent them) will be written in the usual form:
+  All external inference rules (which are \emph{not} formulas, although we will later make formulas to represent them) will be written in the usual form:
   
   \begin{align*}
-    \tag{read as ``$C$ \textbf{is suggested}''}
+    %\tag{read as ``$C$ \textbf{is suggested}''}
     \vdash C\\
-    \tag{read as ``$P_0$ and $P_1$ and \dots\ \textbf{suggest} $C$''}
+    %\tag{read as ``$P_0$ and $P_1$ and \dots\ \textbf{suggest} $C$''}
     P_0, P_1, \dots \vdash C\\
   \end{align*}
   
-  where $P_0, P_1, \dots$ and $C$ are formulas, except that they may contain metavariables written with the capital Latin letters $A, B, C,$ which range over all raw formulas. For any of our explicit rules and any concrete values of the metavariables, if an external judge (such as a human mathematician, or a computer program) has convinced themselves that all of the premises $P_0, P_1, \dots$ are suggested, the rule can be used to convince them that the conclusion $C$ is also suggested.
+  where $P_0, P_1, \dots$ and $C$ are formulas, except that they may contain metavariables written with the capital Latin letters $A, B, \dots$ which range over all raw formulas. For any of our explicit rules and any concrete values of the metavariables, if an external judge (such as a human mathematician, or a computer program) has been convinced that all of the premises $P_0, P_1, \dots$ are suggested, the rule can be used to convince them that the conclusion $C$ is also suggested.
   
   We must now define some inference rules that let us internalize the concept of inference rules.
 
@@ -221,7 +221,7 @@
   
   \subsection{Sets}
   
-  We are going to define sets of inference rules, which act on sets of beliefs. [So we need to define sets] We believe the order doesn't matter:
+  We'll need to describe sets of inference rules, which act on sets of beliefs. That means we need to define \emph{sets}. To represent a set as a formula, we will express it as a union of singleton elements: The formula $(A \infrule B) \union (C \infrule D)$ represents the set that contains two inference rules, $(A \infrule B)$ and $(C \infrule D)$.\footnote{It may look improper to take a union of a \emph{rule} with another \emph{rule}, rather than wrapping them in singleton-set constructors; but in fact we never have a reason to refer to them individually rather than as members of a set, so we can just view the formula $(A \infrule B)$ as being a singleton set in all cases.} Our rules for set equivalence are guided by the idea of \emph{set extensionality}: "If two sets have the same elements, they are the same set."
   
   \begin{align*}
     &\vdash (A \union \emptyset) \equals A\\
@@ -230,7 +230,7 @@
     &\vdash ((A \union B) \union C) \equals (A \union (B \union C))\\
   \end{align*}
   
-  $\equals$ (read as "equals") is definitional equality, the relation between things that we see fit to make indistinguishable. Equal formulas can be substituted for each other at any position within a larger formula:
+  $\equals$ (read as "equals") is definitional equality, the relation between things that we see fit to make indistinguishable. Informally, if $A \equals B$, then $A$ and $B$ are two different formulas that refer to the same mathematical object. Equal formulas can be substituted for each other at any position within a larger formula:
   % fold-equivalence\footnote{The literature calls this concept "beta-equivalence"; I personally call it "fold-equivalence", because I use the term "unfolding" rather than "beta-reduction" for the steps, since "beta" is meaningless to the uninitiated, and "reduction" misleading (unfolding can make formulas larger and more complicated). }, the relationship between a function-application and its output.
   \begin{align*}
     A \equals B &\vdash CA \equals CB\\
@@ -247,11 +247,11 @@
     &\vdash \fuse A\,B\,C \equals (AC)(BC)\\
   \end{align*}
   
-  
+  (Readers may note that using $\equals$ to allow arbitrary compuation makes equality undecidable. This is fine and expected.)
 
   \newcommand{\nameabst}[1]{#1 \Rightarrow}
   
-  Of course, usually, we don't want to write functions as giant piles of $\const$ and $\fuse$ – we want to write them with named arguments. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"\footnote{Although many systems write this as "$\lambda$" (lambda), after the lambda calculus, we do not. One of my eventual goals is to introduce proof systems to a more general audience of programmers; the notation \texttt{=>} will be familiar to users of JavaScript, at least, and it hints at the meaning of transforming one value to another, while "$\lambda$" is meaningless.}), where $B$ is a formula except that it may contain usages of the name $x$, as if they are subformulas. This expands to a bunch of combinators where $(\nameabst{x} B) C \equals$ "$B$ except the usages of $x$ are replaced with $C$". (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
+  Of course, usually, we don't want to write functions as giant piles of $\const$ and $\fuse$ – we want to write them with named arguments. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"\footnote{Although many systems write this as "$\lambda$" (lambda), after the lambda calculus, we do not. One of my eventual goals is to introduce proof systems to a more general audience of programmers; the notation \texttt{=>} will be familiar to users of JavaScript, at least, and it hints at the meaning of transforming one value to another, while "$\lambda$" is meaningless. [TODO: citation for the meaninglessness of $\lambda$]}), where $B$ is a formula except that it may contain usages of the name $x$, as if they are subformulas. This expands to a bunch of combinators where $(\nameabst{x} B) C \equals$ "$B$ except the usages of $x$ are replaced with $C$". (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
   
   We can now give the internalization of metavariables. We define two things:
   
@@ -259,9 +259,6 @@
   
   \begin{align*}
     &\vdash (\all A) \equals ((\all A) \union AB) \\
-    &\vdash A \equals \all (\const A) \\
-    &\vdash (\all A) \equals \all (\fuse (\const \atomall) A)\\
-    &\vdash \forall b, Ab \equals \forall c, \forall d, A(cd)\\
   \end{align*}
   
   Second, we define the notation $\forall x, B$, which expands to $\all (\nameabst{x} B)$, thus expressing the union of $B$ over all possible values of the metavariable $x$.
@@ -272,22 +269,41 @@
     (\forall a, \forall b, \emptyset &\infrule \const a\,b \equals a)\\
   \end{align*}
   
-  \subsection{Inference}
+  We also define some equivalences of infinite sets. Here are two rules, each stated in two different ways (with combinators, and with named arguments):
+  \begin{align*}
+    &\vdash A \equals \all (\const A) & &\vdash A \equals (\forall b, A) \\
+    &\vdash (\all A) \equals \all (\fuse (\const \atomall) A) & &\vdash (\forall b, Ab) \equals (\forall b, \forall c, A(bc))\\
+  \end{align*}
   
-Our remaining task is to express the proposition "[the rules set $R$ reaches the conclusion $C$, $R \concludes C$]".
+  
+  
+  \subsection{Internal inference}
+  
+  Besides equality, IC has only one other kind of proposition, or "formula that can be true": the proposition that a particular set of inference rules allows you to draw a particular set of conclusions.
+  We write this as $R \concludes C$ (read as "$R$ concludes $C$"), where $R$ is a set of rules, and $C$ is a set of propositions.
 
   \begin{align*}
+    \tag{triviality}
     &\vdash (\emptyset \concludes \emptyset) \\
+    \tag{weakening}
     (R \concludes A) &\vdash ((R \union S) \concludes A) \\
+    \tag{drop}
     (R \concludes (A \union B)) &\vdash (R \concludes A) \\
+    \tag{union introduction}
     (R \concludes A), (R \concludes B) &\vdash (R \concludes (A \union B)) \\
+    \tag{infinite union introduction}
     (\forall b, (R \concludes Ab)) &\vdash (R \concludes \forall b, Ab) \\
     % &\vdash ((\emptyset \infrule B) \concludes B) \\
+    \tag{rules do what they say}
     (R \concludes A) &\vdash (R \union (A \infrule B) \concludes B) \\
     % (R \concludes A), ((R \union (\emptyset \infrule A)) \concludes B) &\vdash (R \concludes B) \\
   \end{align*}
   
-  [we believe that the above rules allow you to prove all interesting mathematical statements, but
+  With just the rules we've stated so far, you can technically express and prove all interesting mathematical statements. Maybe not in a satisfying way, though: The reason this works is that you can construct any \emph{other} formal system you want, and prove that the other formal system proves something. Intuitively, we would rather be able to prove things "natively in IC". For that, we're going to define some more rules. But not yet, because you are currently reading an incomplete version of this paper, and this is a good logical stopping point.
+  
+  \iffalse
+  
+  [we believe that the above rules allow you to prove all interesting mathematical statements, but maybe that's not very satisfying, because you do it by constructing other formal systems within this one. We would like to make some more rules so that you can do more stuff more intrinsically
   Also:
   \begin{align*}
     ((R \union (\emptyset \infrule A)) \concludes B), ((R \union (A \infrule B)) \concludes C) &\vdash (R \concludes C) \\
@@ -862,6 +878,8 @@ With such a powerful rule, one should immediately worry if it proves a contradic
   
 %  \[ \nameabst{P} \eventually (\provable (\eventually \bot)) \implies \eventually \bot \]
 \fi
+
+  \fi
 
   %\printbibliography
 \end{document}
