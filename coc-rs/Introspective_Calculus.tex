@@ -141,11 +141,14 @@
   \newcommand{\const}{\name{const}}
   \newcommand{\fuse}{\name{fuse}}
   \newcommand{\atomemptyset}{\name{empty\_set}}
+  \newcommand{\atomsingleton}{\name{singleton}}
+  \newcommand{\atomin}{\name{in}}
   \newcommand{\atomunion}{\name{union}}
   \newcommand{\atomconcludes}{\name{concludes}}
   \newcommand{\atomall}{\name{all}}
   \newcommand{\atominfrule}{\name{rule}}
   \renewcommand{\emptyset}{\varnothing}
+  \newcommand{\singleton}[1]{\{#1\}}
   \newcommand{\union}{\cup}
   \newcommand{\all}{\bigcup}
   \newcommand{\atomequals}{\name{equals}}
@@ -162,7 +165,7 @@
   The raw grammar of IC is:
   
   \begin{align*}
-    Atom &:= \atomequals \mid \atomemptyset \mid \atomunion \mid \atomall \mid \const \mid \fuse \mid \atominfrule \mid \atomconcludes\\
+    Atom &:= \atomemptyset \mid \atomsingleton \mid \atomunion \mid \atomall \mid \atomin \mid \const \mid \fuse \mid \atominfrule \mid \atomconcludes\\
     F &:= Atom \mid FF \\
   \end{align*}
   
@@ -177,9 +180,10 @@
   
   \begin{align*}
     \emptyset &:= \atomemptyset\\
+    \singleton{A} &:= \atomsingleton A\\
     A \union B &:= \atomunion A\, B\\
     \all A &:= \atomall A & (\text{binds weaker than function application})\\
-    A \equals B &:= \atomequals A\, B\\
+    A \in B &:= \atomin A\, B\\
     A \infrule B &:= \atominfrule A\, B\\
     A \concludes B &:= \atomconcludes A\, B\\
   \end{align*}
@@ -221,16 +225,18 @@
   
   \subsection{Sets}
   
-  We'll need to describe sets of inference rules, which act on sets of beliefs. That means we need to define \emph{sets}. To represent a set as a formula, we will express it as a union of singleton elements: The formula $(A \infrule B) \union (C \infrule D)$ represents the set that contains two inference rules, $(A \infrule B)$ and $(C \infrule D)$.\footnote{It may look improper to take a union of a \emph{rule} with another \emph{rule}, rather than wrapping them in singleton-set constructors; but in fact we never have a reason to refer to them individually rather than as members of a set, so we can just view the formula $(A \infrule B)$ as being a singleton set in all cases.} Our rules for set equivalence are guided by the idea of \emph{set extensionality}: "If two sets have the same elements, they are the same set."
-  
+  We'll need to describe sets of inference rules, which act on sets of beliefs. That means we need to define \emph{sets}. To represent a set as a formula, we will express it as a union of singleton elements: The formula $\singleton{A \infrule B} \union \singleton{C \infrule D}$ represents the set that contains two inference rules, $(A \infrule B)$ and $(C \infrule D)$.
+    
   \begin{align*}
-    &\vdash (A \union \emptyset) \equals A\\
-    &\vdash (A \union A) \equals A\\
-    &\vdash (A \union B) \equals (B \union A)\\
-    &\vdash ((A \union B) \union C) \equals (A \union (B \union C))\\
+    &\vdash X \in \singleton{X}\\
+    (X \in A) &\vdash X \in (A \union B)\\
+    (X \in B) &\vdash X \in (A \union B)\\
   \end{align*}
   
-  $\equals$ (read as "equals") is definitional equality, the relation between things that we see fit to make indistinguishable. Informally, if $A \equals B$, then $A$ and $B$ are two different formulas that refer to the same mathematical object. Equal formulas can be substituted for each other at any position within a larger formula:
+  $\in$ (read as "in") is the set membership relation.
+  
+  \iffalse
+  , the relation between things that we see fit to make indistinguishable. Informally, if $A \equals B$, then $A$ and $B$ are two different formulas that refer to the same mathematical object. Equal formulas can be substituted for each other at any position within a larger formula:
   % fold-equivalence\footnote{The literature calls this concept "beta-equivalence"; I personally call it "fold-equivalence", because I use the term "unfolding" rather than "beta-reduction" for the steps, since "beta" is meaningless to the uninitiated, and "reduction" misleading (unfolding can make formulas larger and more complicated). }, the relationship between a function-application and its output.
   \begin{align*}
     A \equals B &\vdash CA \equals CB\\
@@ -243,28 +249,29 @@
   \begin{align*}
     (S \subseteq T) := (T \equals (T \union S))\\
   \end{align*}
+  \fi
   
   \subsection{Functions}
   
-  To internalize the concept of metavariables, we will implement arbitrary functions. To do this, we define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus. My "const" is the K combinator, and my "fuse" is the S combinator. These names have about the same meanings as the German words (K)onstanzfunktion and Ver(s)chmelzungsfunktion, for which K and S are named in Schönfinkel's original paper. Before I learned of SKI, I had to reinvent it for myself; but after learning of it, I renamed my "fuse" combinator to be more aligned with its naming scheme, because my original name, "apply", was no less confusing.} $\const$ takes two arguments and returns the first (or, equivalently, takes one value and returns a function which ignores its argument and returns that value); $\fuse$ takes two functions and a value, passes that value to \emph{both} functions, then applies the first output of the second output. We can write inference rules to describe this behavior:
+  To internalize the concept of metavariables, we will implement arbitrary functions. To do this, we define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus. My "const" is the K combinator, and my "fuse" is the S combinator. These names have about the same meanings as the German words (K)onstanzfunktion and Ver(s)chmelzungsfunktion, for which K and S are named in Schönfinkel's original paper. Before I learned of SKI, I had to reinvent it for myself; but after learning of it, I renamed my "fuse" combinator to be more aligned with its naming scheme, because my original name, "apply", was no less confusing.} $\const$ takes two arguments and returns the first (or, equivalently, takes one value and returns a function which ignores its argument and returns that value); $\fuse$ takes two functions and a value, passes that value to \emph{both} functions, then applies the first output of the second output. We can write inference rules to describe how this behavior acts on set membership:
   
   \begin{align*}
-    &\vdash \const A\,B \equals A\\
-    &\vdash \fuse A\,B\,C \equals (AC)(BC)\\
+    (X \in A) &\vdash X \in (\const A\, B)\\
+    (X \in (AC)(BC)) &\vdash X \in (\fuse A\, B\, C)\\
   \end{align*}
   
-  (Readers may note that using $\equals$ to allow arbitrary compuation makes equality undecidable. This is fine and expected.)
+  (Readers may note that allowing arbitrary computation in sets makes set membership undecidable. This is fine and expected.)
 
   \newcommand{\nameabst}[1]{#1 \Rightarrow}
   
-  Of course, usually, we don't want to write functions as giant piles of $\const$ and $\fuse$ – we want to write them with named arguments. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"\footnote{Although many systems write this as "$\lambda$" (lambda), after the lambda calculus, we do not. One of my eventual goals is to introduce proof systems to a more general audience of programmers; the notation \texttt{=>} will be familiar to users of JavaScript, at least, and it hints at the meaning of transforming one value to another, while "$\lambda$" is meaningless. [TODO: citation for the meaninglessness of $\lambda$]}), where $B$ is a formula except that it may contain usages of the name $x$, as if they are subformulas. This expands to a bunch of combinators where $(\nameabst{x} B) C \equals$ "$B$ except the usages of $x$ are replaced with $C$". (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
+  Of course, usually, we don't want to write functions as giant piles of $\const$ and $\fuse$ – we want to write them with named arguments. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"\footnote{Although many systems write this as "$\lambda$" (lambda), after the lambda calculus, we do not. One of my eventual goals is to introduce proof systems to a more general audience of programmers; the notation \texttt{=>} will be familiar to users of JavaScript, at least, and it hints at the meaning of transforming one value to another, while "$\lambda$" is meaningless. [TODO: citation for the meaninglessness of $\lambda$]}), where $B$ is a formula except that it may contain usages of the name $x$, as if they are subformulas. This expands to a bunch of combinators where $(\nameabst{x} B) C$ returns "$B$ except the usages of $x$ are replaced with $C$". (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
   
   We can now give the internalization of metavariables. We define two things:
   
   First, the formula $\all F$ (read as "all of $F$" or "big union of $F$") is a potentially-infinite set, containing all possible outputs of $F$:
   
   \begin{align*}
-    &\vdash (\all A) \equals ((\all A) \union AB) \\
+    (X \in AB) &\vdash (X \in \all A) \\
   \end{align*}
   
   Second, we define the notation $\forall x, B$, which expands to $\all (\nameabst{x} B)$, thus expressing the union of $B$ over all possible values of the metavariable $x$.
@@ -272,14 +279,16 @@
   Thus, we can now restate our inference rules as raw formulas, rather than using metavariables. For example, we can now write the \emph{formula}:
   
   \begin{align*}
-    (\forall a, \forall b, \emptyset &\infrule \const a\,b \equals a)\\
+    (\forall a, \singleton{\emptyset \vdash a \in \singleton{a}})\\
   \end{align*}
   
+  \iffalse
   We also define some equivalences of infinite sets. Here are two rules, each stated in two different ways (with combinators, and with named arguments):
   \begin{align*}
     &\vdash A \equals \all (\const A) & &\vdash A \equals (\forall b, A) \\
     &\vdash (\all A) \equals \all (\fuse (\const \atomall) A) & &\vdash (\forall b, Ab) \equals (\forall b, \forall c, A(bc))\\
   \end{align*}
+  \fi
   
   
   
@@ -297,11 +306,11 @@
     %(R \concludes (A \union B)) &\vdash (R \concludes A) \\
     \tag{union introduction}
     (R \concludes A), (R \concludes B) &\vdash (R \concludes (A \union B)) \\
-    \tag{infinite union introduction}
-    (\forall b, (R \concludes Ab)) &\vdash (R \concludes \forall b, Ab) \\
+    %\tag{infinite union introduction}
+    %(\forall b, (R \concludes Ab)) &\vdash (R \concludes \forall b, Ab) \\
     % &\vdash ((\emptyset \infrule B) \concludes B) \\
     \tag{rules do what they say}
-    ((A \infrule B) \subseteq R), (R \concludes A) &\vdash (R \concludes B) \\
+    ((A \infrule B) \in R), (R \concludes A) &\vdash (R \concludes B) \\
     % (R \concludes A), ((R \union (\emptyset \infrule A)) \concludes B) &\vdash (R \concludes B) \\
   \end{align*}
   
