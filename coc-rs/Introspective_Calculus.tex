@@ -294,7 +294,7 @@
   
   \subsection{Internal inference}
   
-  Besides equality, IC has only one other kind of proposition, or "formula that can be true": the proposition that a particular set of inference rules allows you to draw a particular set of conclusions.
+  Besides set membership, IC has only one other kind of proposition, or "formula that can be true": the proposition that a particular set of inference rules allows you to draw a particular set of conclusions.
   We write this as $R \concludes C$ (read as "$R$ concludes $C$"), where $R$ is a set of rules, and $C$ is a set of propositions.
 
   \begin{align*}
@@ -315,6 +315,79 @@
   \end{align*}
   
   With just the rules we've stated so far, you can technically express and prove all interesting mathematical statements. Maybe not in a satisfying way, though: The reason this works is that you can construct any \emph{other} formal system you want, and prove that the other formal system proves something. Intuitively, we would rather be able to prove things "natively in IC". For that, we're going to define some more rules. But not yet, because you are currently reading an incomplete version of this paper, and this is a good logical stopping point.
+  
+  \section{Derivable/admissible rules}
+  
+  \newcommand{\deduction}{\mathbb{D}}
+  [the rest of this paper will be guided by the following belief: "the provable statements are exactly the ones that can be concluded by $\deduction$" / "the rules we've written so far are sufficient to conclude any true statement, and conclude only true statements." $\deduction$ ]
+  
+  [so what's missing? But this: these rules do not permit/implement all valid inferences. To motivate our next discussion, let's consider some examples of valid inferences that $\deduction$ can't make]
+  
+  [first, the very fact that all provable statements are provable to be concluded by $\deduction$, and vice versa:]
+  
+  \begin{align*}
+    \deduction \concludes A &\vdash A\\
+    A &\vdash \deduction \concludes A\\
+  \end{align*}
+  
+  [important to note that adding these rules doesn't add any \emph{conclusions} that weren't possible already]
+  
+  [of course, this leaves yet more unimplemented inferences: $\deduction_2 \equiv \deduction \union \singleton{\deduction \concludes A \vdash A} \union \singleton{A \vdash \deduction \concludes A}$ would also have the same conclusions as just $\deduction$, so we should also be able to say:]
+  
+  \begin{align*}
+    \deduction_2 \concludes A &\vdash A\\
+    A &\vdash \deduction_2 \concludes A\\
+  \end{align*}
+   
+  [this suggests an infinite hierarchy of inference rules – in fact, it will grow into an ordinal hierarchy – but we'll come back to that]
+  
+  [our second example, implication/hypothetical reasoning: we would like to say that if you can conclude something by taking an additional axiom, and that axiom was true unconditionally, then the conclusion is true]
+  
+  \renewcommand{\implies}[1]{\xrightarrow{#1}}
+  
+  \begin{align*}
+    A \implies{R} B := (R \union \singleton{\emptyset \infrule A}) \concludes B\\
+  \end{align*}
+  [the rule:]
+  \begin{align*}
+    \tag{hypothetical reasoning}\label{hyp}
+    A \implies{R} B, (R \concludes A) &\vdash R \concludes B\\
+  \end{align*}
+  [and in fact, if you can argue something hypothetically, it's just as good as a rule, since the "only thing a rule can do" is to take A to B:]
+  \begin{align*}
+    A \implies{R} B, ((R \union \singleton{A \infrule B}) \concludes C) &\vdash R \concludes C  \\
+  \end{align*}
+  
+  [rather than adding new rules ad hoc, we would like a more principled way to describe what kinds of rules are valid. But first:]
+  
+  \subsection{Interlude: How this solves the liar paradox}
+  
+  [the liar paradox must specify under which rules it's negating itself, $\name{liar}R \equiv (\name{liar}R \implies{R} \bot)$]
+  
+  [observe that $R = \deduction$ does not choke on this, because $\deduction \union \singleton{A \infrule B}$ only believes that $\deduction \concludes \bot$, but does not actually conclude $\bot$ itself , because it doesn't include the rule [eqref]. Nor does D2, because it doesn't include the rule [same rule but applying to D2]!]
+  
+   if you "close the loop" on the ordinal hierarchy ($(A \implies{G} B, A \infrule B) \in G$), the liar paradox starts to take effect, and we can conclude $G \concludes \bot$ by plugging in $\name{liar}G$ [show how]. This is perfectly safe and satisfying, as this means we are capable of proving $(\deduction \concludes (G \concludes \bot))$ – or, to phrase it another way, "a ruleset that believes `all my own beliefs are true', is unsound"!]
+   
+  [Therefore, IC's take on the liar paradox is: self-referential statements are fine, and any system that chokes on them is improperly, implicitly using self-referential \emph{rules of inference}!]
+  
+  \subsection{Induction}
+  
+  [back to making a more principled way to describe what kinds of rules are valid]
+  
+  [one big thing we haven't postulated is the fact that our rules are exhaustive: you can only conclude what is promoted by the rules, not anything else out of thin air. The way to define this formally is through the concept of induction. [Other interpretation: that all proofs are finite]. That $\concludes$ is the minimal relation that obeys its 3 rules, and $\in$ the minimal relation that obeys its 6 rules.]
+  
+  [State the induction rules explicitly]
+  
+  [it will be illustrative to go through an example of how to use induction to prove one of our rules, as there are many steps and they will illustrate a bunch of things about how to do deduction within IC]
+  
+  \begin{align*}
+    A \in {B}, PB &\vdash P{A}\\
+    (\emptyset \to (A \in (B \union C))), ((A \in B) \to D), ((A \in C) \to D) &\vdash (\emptyset \to D) \\
+    A \in B,
+    (\emptyset \to (A \in (B \union C))), 
+     &\vdash P{A}\\
+  \end{align*}
+  
   
   \iffalse
   
