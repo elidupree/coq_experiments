@@ -165,8 +165,8 @@
   The raw grammar of IC is:
   
   \begin{align*}
-    Atom &:= \atomemptyset \mid \atomsingleton \mid \atomunion \mid \atomall \mid \atomin \mid \const \mid \fuse \mid \atominfrule \mid \atomconcludes\\
-    F &:= Atom \mid FF \\
+    Atom &\to \atomemptyset \mid \atomsingleton \mid \atomunion \mid \atomall \mid \atomin \mid \const \mid \fuse \mid \atominfrule \mid \atomconcludes\\
+    F &\to Atom \mid FF \\
   \end{align*}
   
   Adjacency means function application: The formula $AB$ is the function $A$ applied to the input $B$. We sometimes use parentheses to specify the order of operations; when we don't, it is left-associative ($ABC$ means $(AB)C$).
@@ -193,14 +193,14 @@
   Having defined the raw grammar, we need only define our explicit list of inference rules. 
   All external inference rules (which are \emph{not} formulas, although we will later make formulas to represent them) will be written in the usual form:
   
+  \newcommand{\presep}{\hspace{1.8em}}
+  \newcommand{\globalrule}[2]{\frac{#1}{#2}}
+  
   \begin{align*}
-    %\tag{read as ``$C$ \textbf{is suggested}''}
-    \vdash C\\
-    %\tag{read as ``$P_0$ and $P_1$ and \dots\ \textbf{suggest} $C$''}
-    P_0, P_1, \dots \vdash C\\
+    \globalrule{Premises\dots}{Conclusion}\\
   \end{align*}
   
-  where $P_0, P_1, \dots$ and $C$ are formulas, except that they may contain metavariables written with the capital Latin letters $A, B, \dots$ which range over all raw formulas. For any of our explicit rules and any concrete values of the metavariables, if an external judge (such as a human mathematician, or a computer program) has been convinced that all of the premises $P_0, P_1, \dots$ are suggested, the rule can be used to convince them that the conclusion $C$ is also suggested.
+  where $Premises\dots$ and $Conclusion$ are formulas, except that they may contain metavariables written with the capital Latin letters $A, B, C, \dots$ which range over all raw formulas. For any of our explicit rules and any concrete values of the metavariables, if an external judge (such as a human mathematician, or a computer program) has been convinced of all the premises, the rule can be used to convince them of the conclusion.
   
   We must now define some inference rules that let us internalize the concept of inference rules.
 
@@ -225,15 +225,13 @@
   
   \subsection{Sets}
   
-  We'll need to describe sets of inference rules, which act on sets of beliefs. That means we need to define \emph{sets}. To represent a set as a formula, we will express it as a union of singleton elements: The formula $\singleton{A \infrule B} \union \singleton{C \infrule D}$ represents the set that contains two inference rules, $(A \infrule B)$ and $(C \infrule D)$.
+  We'll need to describe sets of inference rules, which relate sets of propositions. That means we need to define \emph{sets}. To represent a set as a formula, we will express it as a union of singleton elements: The formula $\singleton{A \infrule B} \union \singleton{C \infrule D}$ represents the set that contains two inference rules, $(A \infrule B)$ and $(C \infrule D)$. To use these sets, we'll need inference rules to define the set membership relation, $\in$ (read as "in"):
     
   \begin{align*}
-    &\vdash X \in \singleton{X}\\
-    (X \in A) &\vdash X \in (A \union B)\\
-    (X \in B) &\vdash X \in (A \union B)\\
+    \globalrule{}{X \in \singleton{X}} &&
+    \globalrule{X \in A}{X \in (A \union B)} &&
+    \globalrule{X \in B}{X \in (A \union B)}
   \end{align*}
-  
-  $\in$ (read as "in") is the set membership relation.
   
   \iffalse
   , the relation between things that we see fit to make indistinguishable. Informally, if $A \equals B$, then $A$ and $B$ are two different formulas that refer to the same mathematical object. Equal formulas can be substituted for each other at any position within a larger formula:
@@ -253,14 +251,14 @@
   
   \subsection{Functions}
   
-  To internalize the concept of metavariables, we will implement arbitrary functions. To do this, we define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus. My "const" is the K combinator, and my "fuse" is the S combinator. These names have about the same meanings as the German words (K)onstanzfunktion and Ver(s)chmelzungsfunktion, for which K and S are named in Schönfinkel's original paper. Before I learned of SKI, I had to reinvent it for myself; but after learning of it, I renamed my "fuse" combinator to be more aligned with its naming scheme, because my original name, "apply", was no less confusing.} $\const$ takes two arguments and returns the first (or, equivalently, takes one value and returns a function which ignores its argument and returns that value); $\fuse$ takes two functions and a value, passes that value to \emph{both} functions, then applies the first output of the second output. We can write inference rules to describe how this behavior acts on set membership:
+  To internalize the concept of metavariables, we will implement arbitrary functions. To do this, we define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus. My "const" is the K combinator, and my "fuse" is the S combinator. These names have about the same meanings as the German words (K)onstanzfunktion and Ver(s)chmelzungsfunktion, for which K and S are named in Schönfinkel's original paper. Before I learned of SKI, I had to reinvent it for myself; but after learning of it, I renamed my "fuse" combinator to be more aligned with its naming scheme, because my original name, "apply", was no less confusing.} $\const$ takes two arguments and returns the first (or, equivalently, takes one value and returns a function which ignores its argument and returns that value); $\fuse$ takes two functions and a value, passes that value to \emph{both} functions, then applies the first output to the second output. We can write inference rules to describe how this behavior acts on set membership:
   
   \begin{align*}
-    (X \in A) &\vdash X \in (\const A\, B)\\
-    (X \in (AC)(BC)) &\vdash X \in (\fuse A\, B\, C)\\
+    \globalrule{X \in A}{X \in (\const A\, B)} &&
+    \globalrule{X \in (AC)(BC)}{X \in (\fuse A\, B\, C)}
   \end{align*}
   
-  (Readers may note that allowing arbitrary computation in sets makes set membership undecidable. This is fine and expected.)
+  (Readers may note that, by allowing arbitrary computation here, we've made set membership undecidable. This is fine and expected.)
 
   \newcommand{\nameabst}[1]{#1 \Rightarrow}
   
@@ -268,18 +266,19 @@
   
   We can now give the internalization of metavariables. We define two things:
   
-  First, the formula $\all F$ (read as "all of $F$" or "big union of $F$") is a potentially-infinite set, containing all possible outputs of $F$:
+  First, the formula $\all F$ (read as "all of $F$" or "big union of $F$") is a potentially-infinite set, containing all possible \emph{outputs} of $F$:
   
   \begin{align*}
-    (X \in AB) &\vdash (X \in \all A) \\
+    \globalrule{X \in AB}{X \in \all A} \\
   \end{align*}
   
   Second, we define the notation $\forall x, B$, which expands to $\all (\nameabst{x} B)$, thus expressing the union of $B$ over all possible values of the metavariable $x$.
   
-  Thus, we can now restate our inference rules as raw formulas, rather than using metavariables. For example, we can now write the \emph{formula}:
+  Thus, we can now restate our inference rules as raw formulas, rather than using metavariables. For example, to represent this latest rule, we can now write the \emph{formula}:
   
   \begin{align*}
-    (\forall a, \singleton{\emptyset \vdash a \in \singleton{a}})\\
+    %(\forall x, \singleton{\emptyset \vdash \singleton{x \in \singleton{x}}})\\
+    (\forall x, \forall a, \forall b, \singleton{\singleton{x \in ab} \infrule \singleton{x \in \all a}})\\
   \end{align*}
   
   \iffalse
@@ -298,12 +297,22 @@
   We write this as $R \concludes C$ (read as "$R$ concludes $C$"), where $R$ is a set of rules, and $C$ is a set of propositions.
 
   \begin{align*}
+    \globalrule{}{R \concludes \emptyset} &&
+    \globalrule{R \concludes A \presep (A \infrule B) \in R}{R \concludes B} \\
+    \globalrule{R \concludes A \presep X \in A}{R \concludes \singleton{X}} &&
+    \globalrule{R \concludes A \presep R \concludes B}{R \concludes (A \union B)}
+  \end{align*}
+
+  \iffalse
+  \begin{align*}
     \tag{base case}
     &\vdash (R \concludes \emptyset) \\
     %\tag{weakening}
     %(R \concludes A) &\vdash ((R \union S) \concludes A) \\
     %\tag{drop}
     %(R \concludes (A \union B)) &\vdash (R \concludes A) \\
+    \tag{select}
+    (R \concludes A), (B \in A) &\vdash (R \concludes \singleton{B}) \\
     \tag{union introduction}
     (R \concludes A), (R \concludes B) &\vdash (R \concludes (A \union B)) \\
     %\tag{infinite union introduction}
@@ -313,6 +322,7 @@
     ((A \infrule B) \in R), (R \concludes A) &\vdash (R \concludes B) \\
     % (R \concludes A), ((R \union (\emptyset \infrule A)) \concludes B) &\vdash (R \concludes B) \\
   \end{align*}
+  \fi
   
   With just the rules we've stated so far, you can technically express and prove all interesting mathematical statements. Maybe not in a satisfying way, though: The reason this works is that you can construct any \emph{other} formal system you want, and prove that the other formal system proves something. Intuitively, we would rather be able to prove things "natively in IC". For that, we're going to define some more rules. But not yet, because you are currently reading an incomplete version of this paper, and this is a good logical stopping point.
   
@@ -326,8 +336,8 @@
   [first, the very fact that all provable statements are provable to be concluded by $\deduction$, and vice versa:]
   
   \begin{align*}
-    \deduction \concludes A &\vdash A\\
-    A &\vdash \deduction \concludes A\\
+    \globalrule{\deduction \concludes A}{A} && 
+    \globalrule{A}{\deduction \concludes A}
   \end{align*}
   
   [important to note that adding these rules doesn't add any \emph{conclusions} that weren't possible already]
@@ -335,8 +345,8 @@
   [of course, this leaves yet more unimplemented inferences: $\deduction_2 \equiv \deduction \union \singleton{\deduction \concludes A \vdash A} \union \singleton{A \vdash \deduction \concludes A}$ would also have the same conclusions as just $\deduction$, so we should also be able to say:]
   
   \begin{align*}
-    \deduction_2 \concludes A &\vdash A\\
-    A &\vdash \deduction_2 \concludes A\\
+    \globalrule{\deduction_2 \concludes A}{A} && 
+    \globalrule{A}{\deduction_2 \concludes A}
   \end{align*}
    
   [this suggests an infinite hierarchy of inference rules – in fact, it will grow into an ordinal hierarchy – but we'll come back to that]
@@ -351,11 +361,11 @@
   [the rule:]
   \begin{align*}
     \tag{hypothetical reasoning}\label{hyp}
-    A \implies{R} B, (R \concludes A) &\vdash R \concludes B\\
+    \globalrule{A \implies{R} B \presep (R \concludes A)}{R \concludes B}\\
   \end{align*}
   [and in fact, if you can argue something hypothetically, it's just as good as a rule, since the "only thing a rule can do" is to take A to B:]
   \begin{align*}
-    A \implies{R} B, ((R \union \singleton{A \infrule B}) \concludes C) &\vdash R \concludes C  \\
+    \globalrule{A \implies{R} B \presep (R \union \singleton{A \infrule B}) \concludes C}{R \concludes C}
   \end{align*}
   
   [rather than adding new rules ad hoc, we would like a more principled way to describe what kinds of rules are valid. But first:]
