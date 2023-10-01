@@ -278,7 +278,7 @@
   
   \begin{align*}
     %(\forall x, \singleton{\emptyset \vdash \singleton{x \in \singleton{x}}})\\
-    (\forall x, \forall a, \forall b, \singleton{\singleton{x \in ab} \infrule \singleton{x \in \all a}})\\
+    (\forall x, \forall a, \forall b, \singleton{\singleton{x \in ab} \infrule (x \in \all a)})\\
   \end{align*}
   
   \iffalse
@@ -298,8 +298,8 @@
 
   \begin{align*}
     \globalrule{}{R \concludes \emptyset} &&
-    \globalrule{R \concludes A \presep (A \infrule B) \in R}{R \concludes B} \\
-    \globalrule{R \concludes A \presep X \in A}{R \concludes \singleton{X}} &&
+    \globalrule{R \concludes A \presep (A \infrule B) \in R}{R \concludes \singleton{B}} &&
+    %\globalrule{R \concludes A \presep X \in A}{R \concludes \singleton{X}} &&
     \globalrule{R \concludes A \presep R \concludes B}{R \concludes (A \union B)}
   \end{align*}
 
@@ -336,8 +336,8 @@
   [first, the very fact that all provable statements are provable to be concluded by $\deduction$, and vice versa:]
   
   \begin{align*}
-    \globalrule{\deduction \concludes A}{A} && 
-    \globalrule{A}{\deduction \concludes A}
+    \globalrule{\deduction \concludes A \presep X \in A}{X} && 
+    \globalrule{X}{\deduction \concludes \singleton{X}}
   \end{align*}
   
   [important to note that adding these rules doesn't add any \emph{conclusions} that weren't possible already]
@@ -345,8 +345,8 @@
   [of course, this leaves yet more unimplemented inferences: $\deduction_2 \equiv \deduction \union \singleton{\deduction \concludes A \vdash A} \union \singleton{A \vdash \deduction \concludes A}$ would also have the same conclusions as just $\deduction$, so we should also be able to say:]
   
   \begin{align*}
-    \globalrule{\deduction_2 \concludes A}{A} && 
-    \globalrule{A}{\deduction_2 \concludes A}
+    \globalrule{\deduction_2 \concludes A \presep X \in A}{X} && 
+    \globalrule{X}{\deduction_2 \concludes \singleton{X}}
   \end{align*}
    
   [this suggests an infinite hierarchy of inference rules – in fact, it will grow into an ordinal hierarchy – but we'll come back to that]
@@ -356,7 +356,7 @@
   \renewcommand{\implies}[1]{\xrightarrow{#1}}
   
   \begin{align*}
-    A \implies{R} B := (R \union \singleton{\emptyset \infrule A}) \concludes B\\
+    A \implies{R} B := (R \union (\forall x, \singleton{(x \in A) \infrule x})) \concludes B\\
   \end{align*}
   [the rule:]
   \begin{align*}
