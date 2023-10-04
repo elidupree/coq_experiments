@@ -323,14 +323,14 @@ pub fn definition_of_proof_induction(generalized_axioms: &[AxiomDefinition]) -> 
 pub fn all_axioms(path: impl AsRef<Path>) -> Vec<AxiomDefinition> {
     let ordinary_axioms = load_ordinary_axioms(path);
     let generalized_axioms = generalized_axioms(&ordinary_axioms);
-    let proof_induction = definition_of_proof_induction(&generalized_axioms);
+    //let proof_induction = definition_of_proof_induction(&generalized_axioms);
     let mut axioms = ordinary_axioms;
     axioms.extend(generalized_axioms);
-    axioms.push(AxiomDefinition {
-        name: "definition of proof induction".to_string(),
-        premises: vec![],
-        conclusion: proof_induction,
-    });
+    // axioms.push(AxiomDefinition {
+    //     name: "definition of proof induction".to_string(),
+    //     premises: vec![],
+    //     conclusion: proof_induction,
+    // });
     axioms
 }
 

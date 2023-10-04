@@ -1,19 +1,11 @@
-"specialization" := A ->0 A B
+"reflexivity" := A -> A
+"union left" := (A + B) -> A
+"union right" := (A + B) -> B
+"union introduction" := (A -> B) -> (A -> (A + B))
 
-"equality is reflexive" := A = A
-"equality gives implication" := (A = B) ->0 A ->0 B
-"equality gives indistinguishability" := (A = B) ->0 (C A = C B)
-"equality gives extensionality" := (A = B) ->0 (A C = B C)
+"unfold const" := const A B -> A
+"unfold fuse" := fuse A B C -> (A C)(B C)
 
-"definition of const" := const A B = A
-"definition of fuse" := fuse A B C = (A C)(B C)
-
-"trivial universals" := A ->0 const A
-"apply within universals" := A ->0 fuse A
-"implication within universals" := (C => A C ->n B C) ->0 (A ->n B)
-
-"weakening" := B ->0 A ->0 B
-"level weakening" := (A ->n B) ->0 A ->(n+1) B
-"implication within hypotheticals" := (C ->(n+1) A ->n B) ->0 (C ->(n+1) A) ->0 (C ->(n+1) B)
-
-"proof induction is true" := induction_on_proofs
+"specialization" := all A -> (A B)
+"transitivity" := ((A -> B) + (B -> C)) -> (A -> C)
+"infinite union application" := (∀x, (A x -> (B x))) -> ((∀x, A x) -> (∀x, B x))
