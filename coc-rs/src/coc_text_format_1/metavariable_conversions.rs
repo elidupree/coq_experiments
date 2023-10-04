@@ -5,7 +5,6 @@ use arrayvec::ArrayVec;
 use serde::{Deserialize, Serialize};
 use siphasher::sip128::{Hasher128, SipHasher};
 use std::collections::HashMap;
-use std::default::default;
 use std::hash::Hash;
 
 pub struct MetavariablesInjectionContext<'a> {
@@ -37,7 +36,7 @@ impl StructuralIdMaker {
         StructuralIdMaker {
             typename: "AbstractionKind".to_string(),
             constructor: format!("{:?}", kind),
-            ..default()
+            ..Default::default()
         }
     }
     fn make_id(&self) -> StructuralId {
@@ -191,7 +190,7 @@ impl MetavariablesInjectionContext<'_> {
                     .type_parameters()
                     .map(|c| self.structures_by_id[&c.child().unwrap().id()])
                     .collect(),
-                ..default()
+                ..Default::default()
             };
             let structural_id = id_maker.make_id();
             self.ids_by_type_structure
@@ -250,7 +249,7 @@ impl MetavariablesInjectionContext<'_> {
         let mut id_maker = StructuralIdMaker {
             typename: "BindingTree".to_owned(),
             constructor: tree.constructor_name()?.to_owned(),
-            ..default()
+            ..Default::default()
         };
         if let Some(name) = name {
             id_maker.name = name.to_owned();
@@ -273,7 +272,7 @@ impl MetavariablesInjectionContext<'_> {
         let mut id_maker = StructuralIdMaker {
             typename: "Formula".to_owned(),
             constructor: formula.constructor_name()?.to_owned(),
-            ..default()
+            ..Default::default()
         };
         if let Some(name) = name {
             id_maker.name = name.to_owned();
@@ -453,7 +452,7 @@ impl MetavariablesInjectionContext<'_> {
                     let id_maker = StructuralIdMaker {
                         typename: "HasType".to_string(),
                         type_parameters: vec![vs, ts],
-                        ..default()
+                        ..Default::default()
                     };
                     preexisting = self
                         .ids_by_type_structure

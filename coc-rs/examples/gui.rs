@@ -11,7 +11,6 @@ use coc_rs::term_variable::{
 };
 use coc_rs::utils::{read_json_file, write_json_file};
 use quick_and_dirty_web_gui::{callback, callback_with};
-use std::default::default;
 use std::sync::{LazyLock, Mutex};
 use typed_html::elements::{FlowContent, PhrasingContent};
 use typed_html::types::Id;
@@ -89,10 +88,10 @@ impl Interface {
 
         let Some(value) = self.terms.get_value(id) else {
             return html! {
-                    <span class="hole">
-                        "_"
-                    </span>
-                };
+                <span class="hole">
+                    "_"
+                </span>
+            };
         };
 
         match *value {

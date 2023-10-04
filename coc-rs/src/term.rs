@@ -47,7 +47,6 @@ use serde::{Deserialize, Serialize};
 use siphasher::sip128::{Hasher128, SipHasher};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::default::default;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::hash::Hash;
@@ -162,7 +161,7 @@ impl<'a> TermRef<'a> {
 
 impl<'a> Display for TermRef<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.display(default()).fmt(f)
+        self.display(Default::default()).fmt(f)
     }
 }
 
@@ -228,7 +227,7 @@ impl Term {
 
 impl Display for Term {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.display(default()).fmt(f)
+        self.display(Default::default()).fmt(f)
     }
 }
 
@@ -429,7 +428,9 @@ pub struct TermAugmentationCache<T> {
 
 impl<T> Default for TermAugmentationCache<T> {
     fn default() -> Self {
-        TermAugmentationCache { values: default() }
+        TermAugmentationCache {
+            values: Default::default(),
+        }
     }
 }
 

@@ -20,13 +20,12 @@ impl Display for FormulaAsShorthand<'_> {
             }
             Formula::Atom(a) => {
                 let text = match a {
-                    Atom::Level0 => "z",
-                    Atom::LevelSuccessor => "s",
+                    Atom::EmptySet => "0",
                     Atom::Implies => "imp",
-                    Atom::Equals => "eq",
-                    Atom::InductionOnProofs => "induction_on_proofs",
+                    Atom::Union => "u",
                     Atom::Const => "c",
                     Atom::Fuse => "f",
+                    Atom::All => "all",
                 };
                 write!(f, "{}", text)
             }

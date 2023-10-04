@@ -13,6 +13,7 @@ mod lalrpop_wrapper {
 pub use self::lalrpop_wrapper::introspective_calculus::{
     FormulaParser, OrdinaryAxiomDefinitionParser,
 };
+use std::collections::HashMap;
 // use crate::introspective_calculus::metavariable_conversions::MetavariablesInjectionContext;
 // use crate::metavariable::Environment;
 // use live_prop_test::{live_prop_test, lpt_assert_eq};
@@ -23,6 +24,7 @@ use live_prop_test::live_prop_test;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
+use std::sync::Arc;
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct AxiomDefinition {
@@ -31,37 +33,41 @@ pub struct AxiomDefinition {
     pub conclusion: Formula,
 }
 
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub struct Implies {
-    pub level: Formula,
-    pub antecedent: Formula,
-    pub consequent: Formula,
-}
 #[derive(Clone, Eq, PartialEq, Debug, Default)]
 pub enum Formula {
     Atom(Atom),
-    Apply(Box<[Formula; 2]>),
+    Apply(Arc<[Formula; 2]>),
 
-    Level0,
-    LevelSuccessor(Box<Formula>),
-    Implies(Box<Implies>),
-    Equals(Box<[Formula; 2]>),
+    Implies(Arc<[Formula; 2]>),
+    Union(Arc<[Formula; 2]>),
     #[default]
     Id,
+    EmptySet,
 
     Metavariable(String),
-    NameAbstraction(String, Box<Formula>),
+    NameAbstraction(String, Arc<Formula>),
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Atom {
-    Level0,
-    LevelSuccessor,
     Implies,
-    Equals,
+    EmptySet,
+    Union,
+    All,
     Const,
     Fuse,
-    InductionOnProofs,
+}
+
+pub struct InductiveTypeConstructor {
+    pub constructors: Vec<InductiveTypeConstructor>,
+}
+pub struct InductiveTypeDefinition {
+    pub constructors: Vec<InductiveTypeConstructor>,
+}
+
+pub struct GlobalContext {
+    pub definitions: HashMap<String, Arc<Formula>>,
+    pub inductive_type_definitions: HashMap<String, InductiveTypeDefinition>,
 }
 
 #[live_prop_test]
@@ -70,34 +76,27 @@ impl Formula {
     #[live_prop_test(postcondition = "result.to_raw_with_metavariables() == result")]
     pub fn to_raw_with_metavariables(&self) -> Formula {
         match self {
-            Formula::Level0 => Formula::Atom(Atom::Level0),
-            Formula::Id => Formula::Apply(Box::new([
-                Formula::Apply(Box::new([
+            Formula::EmptySet => Formula::Atom(Atom::EmptySet),
+            Formula::Id => Formula::Apply(Arc::new([
+                Formula::Apply(Arc::new([
                     Formula::Atom(Atom::Fuse),
                     Formula::Atom(Atom::Const),
                 ])),
                 Formula::Atom(Atom::Const),
             ])),
-            Formula::LevelSuccessor(f) => Formula::Apply(Box::new([
-                Formula::Atom(Atom::LevelSuccessor),
-                f.to_raw_with_metavariables(),
-            ])),
-            Formula::Equals(f) => Formula::Apply(Box::new([
-                Formula::Apply(Box::new([
-                    Formula::Atom(Atom::Equals),
+            Formula::Implies(f) => Formula::Apply(Arc::new([
+                Formula::Apply(Arc::new([
+                    Formula::Atom(Atom::Implies),
                     f[0].to_raw_with_metavariables(),
                 ])),
                 f[1].to_raw_with_metavariables(),
             ])),
-            Formula::Implies(i) => Formula::Apply(Box::new([
-                Formula::Apply(Box::new([
-                    Formula::Apply(Box::new([
-                        Formula::Atom(Atom::Implies),
-                        i.level.to_raw_with_metavariables(),
-                    ])),
-                    i.antecedent.to_raw_with_metavariables(),
+            Formula::Union(f) => Formula::Apply(Arc::new([
+                Formula::Apply(Arc::new([
+                    Formula::Atom(Atom::Union),
+                    f[0].to_raw_with_metavariables(),
                 ])),
-                i.consequent.to_raw_with_metavariables(),
+                f[1].to_raw_with_metavariables(),
             ])),
             Formula::NameAbstraction(name, body) => body
                 .to_raw_with_metavariables()
@@ -112,44 +111,33 @@ impl Formula {
 
     pub fn children(&self) -> ArrayVec<&Formula, 3> {
         match self {
-            Formula::Level0 | Formula::Id | Formula::Atom(_) | Formula::Metavariable(_) => {
+            Formula::EmptySet | Formula::Id | Formula::Atom(_) | Formula::Metavariable(_) => {
                 ArrayVec::new()
             }
-            Formula::LevelSuccessor(f) => [&**f].into_iter().collect(),
-            Formula::Equals(f) | Formula::Apply(f) => f.iter().collect(),
-            Formula::Implies(i) => ArrayVec::from([&i.level, &i.antecedent, &i.consequent]),
+            Formula::Implies(f) | Formula::Union(f) | Formula::Apply(f) => f.iter().collect(),
             Formula::NameAbstraction(_name, body) => [&**body].into_iter().collect(),
         }
     }
-    pub fn children_mut(&mut self) -> ArrayVec<&mut Formula, 3> {
-        match self {
-            Formula::Level0 | Formula::Id | Formula::Atom(_) | Formula::Metavariable(_) => {
-                ArrayVec::new()
-            }
-            Formula::LevelSuccessor(f) => [&mut **f].into_iter().collect(),
-            Formula::Equals(f) | Formula::Apply(f) => f.iter_mut().collect(),
-            Formula::Implies(i) => {
-                ArrayVec::from([&mut i.level, &mut i.antecedent, &mut i.consequent])
-            }
-            Formula::NameAbstraction(_name, body) => [&mut **body].into_iter().collect(),
-        }
-    }
+    // pub fn children_mut(&mut self) -> ArrayVec<&mut Formula, 3> {
+    //     match self {
+    //         Formula::EmptySet | Formula::Id | Formula::Atom(_) | Formula::Metavariable(_) => {
+    //             ArrayVec::new()
+    //         }
+    //         Formula::Implies(f) | Formula::Union(f) | Formula::Apply(f) => f.iter_mut().collect(),
+    //         Formula::NameAbstraction(_name, body) => [&mut **body].into_iter().collect(),
+    //     }
+    // }
 
     pub fn map_children(&self, mut map: impl FnMut(&Formula) -> Formula) -> Formula {
         match self {
-            Formula::Level0 | Formula::Id | Formula::Atom(_) | Formula::Metavariable(_) => {
+            Formula::EmptySet | Formula::Id | Formula::Atom(_) | Formula::Metavariable(_) => {
                 self.clone()
             }
-            Formula::LevelSuccessor(f) => Formula::LevelSuccessor(Box::new(map(f))),
-            Formula::Equals(f) => Formula::Equals(Box::new(f.each_ref().map(map))),
-            Formula::Apply(f) => Formula::Apply(Box::new(f.each_ref().map(map))),
-            Formula::Implies(i) => Formula::Implies(Box::new(Implies {
-                level: map(&i.level),
-                antecedent: map(&i.antecedent),
-                consequent: map(&i.consequent),
-            })),
+            Formula::Implies(f) => Formula::Implies(Arc::new(f.each_ref().map(map))),
+            Formula::Union(f) => Formula::Union(Arc::new(f.each_ref().map(map))),
+            Formula::Apply(f) => Formula::Apply(Arc::new(f.each_ref().map(map))),
             Formula::NameAbstraction(name, body) => {
-                Formula::NameAbstraction(name.clone(), Box::new(map(body)))
+                Formula::NameAbstraction(name.clone(), Arc::new(map(body)))
             }
         }
     }
@@ -191,7 +179,7 @@ impl Formula {
     #[live_prop_test(precondition = "self.is_raw_with_metavariables()")]
     pub fn with_metavariable_abstracted(&self, name: &str) -> Formula {
         if !self.contains_free_metavariable(name) {
-            return Formula::Apply(Box::new([Formula::Atom(Atom::Const), self.clone()]));
+            return Formula::Apply(Arc::new([Formula::Atom(Atom::Const), self.clone()]));
         }
         match self {
             Formula::Atom(_) => panic!("should've early-exited above"),
@@ -205,8 +193,8 @@ impl Formula {
                 {
                     a[0].clone()
                 } else {
-                    Formula::Apply(Box::new([
-                        Formula::Apply(Box::new([
+                    Formula::Apply(Arc::new([
+                        Formula::Apply(Arc::new([
                             Formula::Atom(Atom::Fuse),
                             a[0].with_metavariable_abstracted(name),
                         ])),
@@ -302,7 +290,7 @@ pub fn generalized_axioms(ordinary_axioms: &[AxiomDefinition]) -> Vec<AxiomDefin
             // );
             // let mut reconstruction = abstracted;
             // for &variable in permutation.iter().rev() {
-            //     reconstruction = Formula::Apply(Box::new([
+            //     reconstruction = Formula::Apply(Arc::new([
             //         reconstruction,
             //         Formula::Metavariable(variable.clone()),
             //     ]));
@@ -447,15 +435,15 @@ pub fn all_axioms(path: impl AsRef<Path>) -> Vec<AxiomDefinition> {
 //         "Foo := λP:ℙ, ∀p:P, (p _)",
 //         Assign(
 //             "Foo".to_owned(),
-//             Formula::Abstraction(Box::new(Abstraction {
+//             Formula::Abstraction(Arc::new(Abstraction {
 //                 kind: Lambda,
 //                 parameter_name: "P".to_string(),
 //                 parameter_type: Prop,
-//                 body: Formula::Abstraction(Box::new(Abstraction {
+//                 body: Formula::Abstraction(Arc::new(Abstraction {
 //                     kind: ForAll,
 //                     parameter_name: "p".to_string(),
 //                     parameter_type: Usage("P".to_string()),
-//                     body: Apply(Box::new([Usage("p".to_string()), Hole])),
+//                     body: Apply(Arc::new([Usage("p".to_string()), Hole])),
 //                 })),
 //             })),
 //         ),

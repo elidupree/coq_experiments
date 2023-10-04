@@ -1,7 +1,6 @@
 use crate::term::RecursiveTermKind;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{HashMap, HashSet};
-use std::default::default;
 use std::iter;
 use uuid::Uuid;
 
@@ -170,8 +169,12 @@ impl Environment {
             return true;
         }
         // If they're different variables and both Nothing, they don't count as the same
-        let Some((a, Some(av))) = self.unrolled_variable(a) else { return false; };
-        let Some((b, Some(bv))) = self.unrolled_variable(a) else { return false; };
+        let Some((a, Some(av))) = self.unrolled_variable(a) else {
+            return false;
+        };
+        let Some((b, Some(bv))) = self.unrolled_variable(a) else {
+            return false;
+        };
         if a == b || av == bv {
             return true;
         }
@@ -343,7 +346,7 @@ impl Environment {
     pub fn with_sorts() -> Self {
         let mut result = Environment {
             terms: HashMap::new(),
-            id_of_t: default(),
+            id_of_t: Default::default(),
         };
         result.id_of_t = result.create_term_variable();
         let prop = result.create_term_variable();
@@ -454,7 +457,9 @@ impl Environment {
         self.free_variables(id).is_empty()
     }
     pub fn free_variables(&self, id: TermVariableId) -> HashSet<TermVariableId> {
-        let Some(value) = self.get_value(id) else { return HashSet::new(); };
+        let Some(value) = self.get_value(id) else {
+            return HashSet::new();
+        };
 
         match value {
             TermValue::VariableUsage(other_id) => [*other_id].into_iter().collect(),
@@ -512,7 +517,7 @@ impl<'de> Deserialize<'de> for Environment {
         let terms = HashMap::<TermVariableId, TermVariable>::deserialize(deserializer)?;
         let mut result = Environment {
             terms,
-            id_of_t: default(),
+            id_of_t: Default::default(),
         };
         for id in result.terms.keys().copied().collect::<Vec<_>>() {
             result.populate_back_references(id);

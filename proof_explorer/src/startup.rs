@@ -1,7 +1,6 @@
 use crate::global_state_types::{CommandRunner, MainThreadState, RocketState, SharedState};
 use crate::{sertop_glue, supervisor_thread, webserver_glue};
 use parking_lot::Mutex;
-use std::default::default;
 use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::process;
@@ -48,9 +47,9 @@ pub fn run(code_path: PathBuf, sertop_args: &[&OsStr]) {
                 receiver,
                 child_stdin,
                 shared: shared.clone(),
-                messages_from_outside_sertop_queue: default(),
+                messages_from_outside_sertop_queue: Default::default(),
             },
-            sertop_state: default(),
+            sertop_state: Default::default(),
             shared: shared.clone(),
             last_added_file_code: String::new(),
             end_of_first_added_from_file_that_failed_to_execute: None,

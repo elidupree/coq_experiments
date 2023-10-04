@@ -24,13 +24,12 @@ impl Display for FormulaAsProlog<'_> {
             }
             Formula::Atom(a) => {
                 let text = match a {
-                    Atom::Level0 => "z",
-                    Atom::LevelSuccessor => "su",
+                    Atom::EmptySet => "z",
                     Atom::Implies => "imp",
-                    Atom::Equals => "equ",
-                    Atom::InductionOnProofs => "induction_on_proofs",
+                    Atom::Union => "u",
                     Atom::Const => "c",
                     Atom::Fuse => "f",
+                    Atom::All => "all",
                 };
                 write!(f, "{}", text)
             }

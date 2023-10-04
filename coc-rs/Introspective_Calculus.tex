@@ -147,6 +147,7 @@
   \newcommand{\atomconcludes}{\name{concludes}}
   \newcommand{\atomall}{\name{all}}
   \newcommand{\atominfrule}{\name{rule}}
+  \newcommand{\atomimplies}{\name{implies}}
   \renewcommand{\emptyset}{\varnothing}
   \newcommand{\singleton}[1]{\{#1\}}
   \newcommand{\union}{\cup}
@@ -160,12 +161,12 @@
   Even though the introspection principle will ask us to make internal representations of those external statements, we still find it useful to be explicit about which things are external.
   If we want to implement IC as a computer system, the external part is the part which we'd have to implement in the host language, rather than implementing with IC itself.
   
-  At the top level, we will define two things: A grammar of raw formulas, and a system of inference rules which allow us to conclude that some of these formulas are \textbf{true}.
+  At the top level, we will define two things: A grammar of raw formulas, and a system of inference which allows us to conclude that some of these formulas are \textbf{true}.
   
   The raw grammar of IC is:
   
   \begin{align*}
-    Atom &\to \atomemptyset \mid \atomsingleton \mid \atomunion \mid \atomall \mid \atomin \mid \const \mid \fuse \mid \atominfrule \mid \atomconcludes\\
+    Atom &\to \atomemptyset \mid \atomunion \mid \atomall \mid \atomimplies \mid \const \mid \fuse\\
     F &\to Atom \mid FF \\
   \end{align*}
   
@@ -180,15 +181,25 @@
   
   \begin{align*}
     \emptyset &:= \atomemptyset\\
-    \singleton{A} &:= \atomsingleton A\\
+    %\singleton{A} &:= \atomsingleton A\\
     A \union B &:= \atomunion A\, B\\
     \all A &:= \atomall A & (\text{binds weaker than function application})\\
-    A \in B &:= \atomin A\, B\\
-    A \infrule B &:= \atominfrule A\, B\\
-    A \concludes B &:= \atomconcludes A\, B\\
+    %A \in B &:= \atomin A\, B\\
+    A \to B &:= \atomimplies A\, B\\
+    %A \concludes B &:= \atomconcludes A\, B\\
   \end{align*}
   
   But as far as the internal logic is concerned, only the raw formulas exist.\footnote{"But," you say, "doesn't be introspection principle ask that if you're discussing notations in the metatheory, you should define a representation of them within the theory?" Well, yes – but they don't need to be part of the \emph{core calculus}, which is the main job of \emph{this paper}. A full programming language, which I plan to build around this core calculus, would naturally be able to implement functions that convert text into token-trees and token-trees into formulas of IC, and others such inconveniences of interfacing between raw mathematical objects and the human reader.}
+  
+  [Now, as for inference, we depart a little from the usual convention]
+  
+  For $(A \to B)$ to be \emph{true in IC}, means that $A$ and $B$ are sets of inference rules, and $B$ is derivable from $A$, using only the basic properties of how inference rules work.
+  
+  For $(A \to B)$ to be \emph{an inference rule of IC}, means that $A$ and $B$ are sets of statements, and if the statements $A$ are true in IC, then $B$ must also be true in IC.
+  
+  As we shall see, all true statements of IC are also derivable inferences of IC, but the converse is not true: some inference rules of IC are not true statements, because they only work for IC in particular, rather than being universal truths about how inference works.
+  
+  
   
   Having defined the raw grammar, we need only define our explicit list of inference rules. 
   All external inference rules (which are \emph{not} formulas, although we will later make formulas to represent them) will be written in the usual form:
@@ -225,15 +236,25 @@
   
   \subsection{Sets}
   
-  We'll need to describe sets of inference rules, which relate sets of propositions. That means we need to define \emph{sets}. To represent a set as a formula, we will express it as a union of singleton elements: The formula $\singleton{A \infrule B} \union \singleton{C \infrule D}$ represents the set that contains two inference rules, $(A \infrule B)$ and $(C \infrule D)$. To use these sets, we'll need inference rules to define the set membership relation, $\in$ (read as "in"):
-    
+  In order to discuss \emph{sets} of inferences or statements, we need to define the behavior of sets. To represent a set as a formula, we will express it as a union of singleton elements: The formula $(A \to B) \union (C \to D)$ represents the set that contains two inference rules, $(A \to B)$ and $(C \to D)$.\footnote{It may look improper to take a union of a \emph{rule} with another \emph{rule}, rather than wrapping them in singleton-set constructors; but in fact we never have a reason to refer to them individually rather than as members of a set, so we can just view the formula $(A \to B)$ as being a singleton set in all cases.} To use these sets, we'll need inference rules to define the set membership relation, $\in$ (read as "in"):
+  \begin{align*}
+    \tag{reflexivity}
+    A &\to A\\
+    \tag{union-left}
+    (A \union B) &\to A\\
+    \tag{union-right}
+    (A \union B) &\to B\\
+    \tag{union introduction}
+    (A \to B) &\to (A \to (A \union B))\\
+  \end{align*}
+  \iffalse
   \begin{align*}
     \globalrule{}{X \in \singleton{X}} &&
     \globalrule{X \in A}{X \in (A \union B)} &&
     \globalrule{X \in B}{X \in (A \union B)}
   \end{align*}
 
-  \iffalse
+
   , the relation between things that we see fit to make indistinguishable. Informally, if $A \equals B$, then $A$ and $B$ are two different formulas that refer to the same mathematical object. Equal formulas can be substituted for each other at any position within a larger formula:
   % fold-equivalence\footnote{The literature calls this concept "beta-equivalence"; I personally call it "fold-equivalence", because I use the term "unfolding" rather than "beta-reduction" for the steps, since "beta" is meaningless to the uninitiated, and "reduction" misleading (unfolding can make formulas larger and more complicated). }, the relationship between a function-application and its output.
   \begin{align*}
@@ -252,11 +273,18 @@
   \subsection{Functions}
 
   To internalize the concept of metavariables, we will implement arbitrary functions. To do this, we define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus. My "const" is the K combinator, and my "fuse" is the S combinator. These names have about the same meanings as the German words (K)onstanzfunktion and Ver(s)chmelzungsfunktion, for which K and S are named in Schönfinkel's original paper. Before I learned of SKI, I had to reinvent it for myself; but after learning of it, I renamed my "fuse" combinator to be more aligned with its naming scheme, because my original name, "apply", was no less confusing.} $\const$ takes two arguments and returns the first (or, equivalently, takes one value and returns a function which ignores its argument and returns that value); $\fuse$ takes two functions and a value, passes that value to \emph{both} functions, then applies the first output to the second output. We can write inference rules to describe how this behavior acts on set membership:
-
+  \begin{align*}
+    \tag{unfold const}
+    (\const A\, B &\to A)\\
+    \tag{unfold fuse}
+    (\fuse A\, B\, C &\to (AC)(BC))\\
+  \end{align*}
+  \iffalse
   \begin{align*}
     \globalrule{X \in A}{X \in (\const A\, B)} &&
     \globalrule{X \in (AC)(BC)}{X \in (\fuse A\, B\, C)}
   \end{align*}
+  \fi
 
   (Readers may note that, by allowing arbitrary computation here, we've made set membership undecidable. This is fine and expected.)
 
@@ -269,7 +297,14 @@
   First, the formula $\all F$ (read as "all of $F$" or "big union of $F$") is a potentially-infinite set, containing all possible \emph{outputs} of $F$:
 
   \begin{align*}
-    \globalrule{X \in AB}{X \in \all A} \\
+    \tag{specialization}
+    \all A &\to AB\\
+    \tag{partial specialization}
+    \all A &\to \all (\fuse (\const A) B) && (\forall x, Ax) \to (\forall x, A(Bx))\\
+    \tag{partial specialization}
+    \all A &\to \all (\fuse (\const \atomall) A) && (\forall x, Ax) \to (\forall x, \forall y, Axy)\\
+    \tag{partial specialization}
+    \all A &\to \all (\fuse (\const \atomall) A) && (\forall x, Ax) \to (\forall x, \forall y, A(xy))\\
   \end{align*}
 
   Second, we define the notation $\forall x, B$, which expands to $\all (\nameabst{x} B)$, thus expressing the union of $B$ over all possible values of the metavariable $x$.
@@ -297,9 +332,13 @@
   We write this as $(A \infrule B) \in R$ (read as ""), where $R$ is a set of rules, and $A,B$ sets of propositions.]
 
   \begin{align*}
+    \tag{transitivity}
+    ((A \to B) \union (B \to C)) &\to (A \to C)\\
+    \tag{infinite union application}
+    (\forall x, (Ax \to Bx)) &\to ((\forall x, Ax) \to (\forall x, Bx))\\
     %\globalrule{}{(\emptyset \infrule \emptyset) \in R} &&
-    \globalrule{(A \infrule B) \in R \presep (B \infrule C) \in R}{(A \infrule C) \in R} &&
-    \globalrule{external.\forall x, ((Ax \infrule Bx) \in R)}{((\forall x, Ax) \infrule (\forall x, Bx)) \in R}
+%    \globalrule{(A \infrule B) \in R \presep (B \infrule C) \in R}{(A \infrule C) \in R} &&
+%    \globalrule{external.\forall x, ((Ax \infrule Bx) \in R)}{((\forall x, Ax) \infrule (\forall x, Bx)) \in R}
   \end{align*}
 
 %  \begin{align*}
@@ -312,17 +351,16 @@
 %    \globalrule{\forall x, (Ax \in R)}{(\forall x, Ax) \in R}
 %  \end{align*}
 
-  (along with 1 internal rule $(\emptyset \infrule \emptyset)$ that we didn't feel the need to specify in the metatheory)
 
-  And the convention is that $(\emptyset \infrule A) \in R$ means "$R$ believes/concludes $A$"
-
-  \begin{align*}
-    \globalrule{}{R \concludes \emptyset} &&
-    \globalrule{R \concludes A \presep (A \infrule B) \in R}{R \concludes \singleton{B}} &&
-    %\globalrule{R \concludes A \presep X \in A}{R \concludes \singleton{X}} &&
-    \globalrule{R \concludes A \presep R \concludes B}{R \concludes (A \union B)} &&
-    \globalrule{ext.\forall b, (R \concludes Ab)}{R \concludes \forall b, Ab}
-  \end{align*}
+  And the convention is that $R \to (\emptyset \to A) \in R$ means "$R$ believes/concludes $A$"
+%
+%  \begin{align*}
+%    \globalrule{}{R \concludes \emptyset} &&
+%    \globalrule{R \concludes A \presep (A \infrule B) \in R}{R \concludes \singleton{B}} &&
+%    %\globalrule{R \concludes A \presep X \in A}{R \concludes \singleton{X}} &&
+%    \globalrule{R \concludes A \presep R \concludes B}{R \concludes (A \union B)} &&
+%    \globalrule{ext.\forall b, (R \concludes Ab)}{R \concludes \forall b, Ab}
+%  \end{align*}
 
   \iffalse
   \begin{align*}
@@ -350,7 +388,25 @@
   
   \subsection{Example usage so far}
   
-  [start by proving the fairly simple statement $(\emptyset \infrule \emptyset) \in (\singleton{\emptyset \infrule \emptyset} \union a)$
+  [start by proving the fairly simple statement $\forall b, (((\emptyset \to \emptyset) \union b) \to (\emptyset \to \emptyset))$
+
+  Observe that union-left is the true statement $\forall a, \forall b, ((a \union b) \to a)$
+
+  Apply the rule specialization with $A := (\nameabst{a} \forall b, ((a \union b) \to a)), B := (\emptyset \to \emptyset)$ to get $(\nameabst{a} \forall b, ((a \union b) \to a))(\emptyset \to \emptyset)$
+
+  Apply the unfolding rules to get the goal.
+
+  [now, the slightly more difficult $\forall a, ((a \union (\emptyset \to \emptyset)) \to (\emptyset \to \emptyset))$
+
+  Observe that union-right is the true statement $\forall a, \forall b, ((a \union b) \to b)$
+
+  Now we need to leave the outer forall alone, and specialize the inner one.
+
+  We're going to apply "infinite union application" to convert the interior, by first proving $\forall a, ((\forall b, ((a \union b) \to b)) \to ((a \union (\emptyset \to \emptyset)) \to (\emptyset \to \emptyset)))$. (And then m.p. to execute that)
+
+  That inner formula is just an instance of specialization ($\forall a, \forall b, ((\forall x, ax) \to ab)$). Partially-specialize specialization with $(\nameabst{a} \nameabst{x} ((a \union x) \to x))$ to get $\forall a, \forall b, ((\forall x, ((a \union x) \to x)) \to ((a \union b) \to b))$
+
+
   
   Apply singleton to get $(\emptyset \infrule \emptyset) \in \singleton{\emptyset \infrule \emptyset}$
   
