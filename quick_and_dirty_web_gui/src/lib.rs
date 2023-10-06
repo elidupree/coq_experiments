@@ -97,6 +97,7 @@ impl Handler<MessageFromClient> for Manager {
 
 struct WebserverState {
     manager: Addr<Manager>,
+    index_file: String,
 }
 
 pub struct Session {
@@ -159,8 +160,10 @@ async fn qadwg_script() -> impl Responder {
 }
 
 #[get("/")]
-async fn index() -> impl Responder {
-    NamedFile::open_async("./static/index.html").await.unwrap()
+async fn index(webserver_state: web::Data<WebserverState>) -> impl Responder {
+    NamedFile::open_async(&webserver_state.index_file)
+        .await
+        .unwrap()
 }
 
 static MANAGER: LazyLock<Addr<Manager>> = LazyLock::new(|| {
@@ -173,9 +176,10 @@ static MANAGER: LazyLock<Addr<Manager>> = LazyLock::new(|| {
     .start()
 });
 
-pub async fn launch(port: u16) {
+pub async fn launch(index_file: &str, port: u16) {
     let state = web::Data::new(WebserverState {
         manager: MANAGER.clone(),
+        index_file: index_file.into(),
     });
 
     HttpServer::new(move || {

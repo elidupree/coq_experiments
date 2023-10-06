@@ -723,7 +723,9 @@ impl Interface {
     }
 
     fn new_child(&mut self) {
-        let Some((id, Some(which_child))) = self.focus.take() else { return };
+        let Some((id, Some(which_child))) = self.focus.take() else {
+            return;
+        };
 
         let metavariable = self.environment.get(id).unwrap();
 
@@ -736,7 +738,9 @@ impl Interface {
                 self.set_focus(new_id, None);
             }
             WhichChild::DataArgument(index) => {
-                let Some(constructor) = metavariable.constructor() else { return };
+                let Some(constructor) = metavariable.constructor() else {
+                    return;
+                };
                 let new_id = self.environment.create_metavariable(
                     constructor
                         .data_argument_indexed(index)
@@ -748,7 +752,9 @@ impl Interface {
                 self.set_focus(new_id, None);
             }
             WhichChild::Precondition(index) => {
-                let Some(constructor) = &metavariable.constructor() else { return };
+                let Some(constructor) = &metavariable.constructor() else {
+                    return;
+                };
                 let new_id = self.environment.create_metavariable(
                     constructor
                         .precondition(index)
@@ -884,5 +890,5 @@ async fn main() {
     //         with_interface(|_| {});
     //     }
     // });
-    quick_and_dirty_web_gui::launch(4986).await;
+    quick_and_dirty_web_gui::launch("./static/gui2.html", 4986).await;
 }

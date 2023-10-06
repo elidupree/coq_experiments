@@ -1,0 +1,23 @@
+"reflexivity" := A -> A
+"union left" := (A + B) -> A
+"union right" := (A + B) -> B
+"union introduction" := (A -> B) -> (A -> (A + B))
+
+"unfold const" := const A B -> A
+"unfold fuse" := fuse A B C -> (A C)(B C)
+
+"specialization" := all A -> (A B)
+"partial specialization a" := all A -> (∀x, A (B x))
+"partial specialization b" := all A -> (∀b, ∀x, A (b x))
+"partial specialization c" := all A -> (∀x, ∀b, A (b x))
+
+"transitivity" := ((A -> B) + (B -> C)) -> (A -> C)
+"infinite union application" := (∀x, (A x -> (B x))) -> ((∀x, A x) -> (∀x, B x))
+
+"flip forall a" := (∀a, ∀b, P a b) -> (∀a, ∀b, P b a)
+"flip forall b" := (∀a, ∀b, P b a) -> (∀a, ∀b, P a b)
+
+"hack" := ∀a, ∀b, (a -> b)
+"hackb" := ∀a, ∀b, (b -> a)
+"hackc" := a => b => ((all a) -> (all b))
+"hackd" := a => b => ((all b) -> (all a))

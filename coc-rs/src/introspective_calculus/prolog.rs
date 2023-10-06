@@ -1,9 +1,7 @@
-use crate::display::DisplayItem;
 use crate::introspective_calculus;
 use crate::introspective_calculus::{Atom, Formula};
 use live_prop_test::live_prop_test;
 use std::fmt::{Display, Formatter, Write};
-use std::path::Path;
 
 pub struct FormulaAsProlog<'a>(&'a Formula);
 
@@ -46,13 +44,13 @@ impl Display for FormulaAsProlog<'_> {
     }
 }
 
-pub fn knowledge_base(axioms_path: impl AsRef<Path>) -> String {
+pub fn knowledge_base() -> String {
     let mut result = "istrue(B) :- istrue(A), istrue(a(a(a(imp,N),A),B)).\n".to_string();
-    for axiom in introspective_calculus::all_axioms(axioms_path) {
+    for rule in introspective_calculus::all_official_rules() {
         writeln!(
             result,
             "istrue({}).",
-            axiom.conclusion.to_raw_with_metavariables().as_prolog()
+            rule.formula.to_raw_with_metavariables().as_prolog()
         )
         .unwrap();
     }

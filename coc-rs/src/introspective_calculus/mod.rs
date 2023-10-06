@@ -10,9 +10,7 @@ mod lalrpop_wrapper {
     lalrpop_mod!(pub(crate) introspective_calculus, "/introspective_calculus/introspective_calculus.rs");
 }
 
-pub use self::lalrpop_wrapper::introspective_calculus::{
-    FormulaParser, OrdinaryAxiomDefinitionParser,
-};
+pub use self::lalrpop_wrapper::introspective_calculus::{ExplicitRuleParser, FormulaParser};
 use std::collections::HashMap;
 // use crate::introspective_calculus::metavariable_conversions::MetavariablesInjectionContext;
 // use crate::metavariable::Environment;
@@ -21,19 +19,19 @@ use std::collections::HashMap;
 use arrayvec::ArrayVec;
 use itertools::Itertools;
 use live_prop_test::live_prop_test;
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::sync::Arc;
 
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub struct AxiomDefinition {
+pub struct ExplicitRule {
     pub name: String,
-    pub premises: Vec<Formula>,
-    pub conclusion: Formula,
+    pub formula: Formula,
 }
 
-#[derive(Clone, Eq, PartialEq, Debug, Default)]
+#[derive(Clone, Eq, PartialEq, Debug, Default, Serialize, Deserialize)]
 pub enum Formula {
     Atom(Atom),
     Apply(Arc<[Formula; 2]>),
@@ -48,9 +46,10 @@ pub enum Formula {
     NameAbstraction(String, Arc<Formula>),
 }
 
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Default, Serialize, Deserialize)]
 pub enum Atom {
     Implies,
+    #[default]
     EmptySet,
     Union,
     All,
@@ -239,8 +238,8 @@ impl Formula {
     }
 }
 
-pub fn load_ordinary_axioms(path: impl AsRef<Path>) -> Vec<AxiomDefinition> {
-    let parser = OrdinaryAxiomDefinitionParser::new();
+pub fn load_explicit_rules(path: impl AsRef<Path>) -> Vec<ExplicitRule> {
+    let parser = ExplicitRuleParser::new();
     BufReader::new(File::open(path).unwrap())
         .lines()
         .map(Result::unwrap)
@@ -252,25 +251,42 @@ pub fn load_ordinary_axioms(path: impl AsRef<Path>) -> Vec<AxiomDefinition> {
         .collect()
 }
 
-pub fn generalized_axioms(ordinary_axioms: &[AxiomDefinition]) -> Vec<AxiomDefinition> {
-    ordinary_axioms
+pub fn internalized_rules(original_rules: &[ExplicitRule]) -> Vec<ExplicitRule> {
+    original_rules
         .iter()
-        .map(|axiom| {
-            let c = axiom.conclusion.to_raw_with_metavariables();
+        .map(|rule| {
+            let c = rule.formula.to_raw_with_metavariables();
             let free_variables = c.free_metavariables();
             let versions = free_variables
                 .iter()
                 .copied()
                 .permutations(free_variables.len())
                 .map(|permutation| {
-                    c.with_metavariables_abstracted(
-                        permutation.iter().copied().map(std::ops::Deref::deref),
-                    )
+                    let result = c.with_metavariables_abstracted(
+                        permutation
+                            .iter()
+                            .rev()
+                            .copied()
+                            .map(std::ops::Deref::deref),
+                    );
+
+                    let mut unfolding = result.clone();
+                    for name in permutation {
+                        unfolding = Formula::Apply(Arc::new([
+                            unfolding,
+                            Formula::Metavariable(name.clone()),
+                        ]));
+                    }
+                    unfolding.unfold_until(1000);
+                    let mut unfolding2 = c.clone();
+                    unfolding2.unfold_until(1000);
+                    assert_eq!(unfolding, unfolding2, "Failed on rule {}", rule.name);
+
+                    result
                 });
-            AxiomDefinition {
-                name: format!("{}, generalized", axiom.name),
-                premises: vec![],
-                conclusion: versions.min_by_key(Formula::naive_size).unwrap(),
+            ExplicitRule {
+                name: format!("{}", rule.name),
+                formula: versions.min_by_key(Formula::naive_size).unwrap(),
             }
 
             // eprintln!("{}", c.as_shorthand());
@@ -302,41 +318,41 @@ pub fn generalized_axioms(ordinary_axioms: &[AxiomDefinition]) -> Vec<AxiomDefin
         })
         .collect()
 }
+//
+// pub fn definition_of_proof_induction(generalized_axioms: &[ExplicitRule]) -> Formula {
+//     let parser = FormulaParser::new();
+//     let first_part = parser
+//         .parse("induction_on_proofs = (P => (P ->0 (R => n => rest)))")
+//         .unwrap();
+//     let last_part = parser.parse("(R induction_on_proofs) ->0 (A => B => R A ->n R (A B)) ->0 (A => B => R (A ->0 B) ->n R A ->n R B) ->(n+1) R P").unwrap();
+//     let mut rest = last_part;
+//     for axiom in generalized_axioms {
+//         rest = parser
+//             .parse("R axiom ->0 rest")
+//             .unwrap()
+//             .with_metavariable_replaced("axiom", &axiom.conclusion)
+//             .with_metavariable_replaced("rest", &rest);
+//     }
+//     first_part.with_metavariable_replaced("rest", &rest)
+// }
 
-pub fn definition_of_proof_induction(generalized_axioms: &[AxiomDefinition]) -> Formula {
-    let parser = FormulaParser::new();
-    let first_part = parser
-        .parse("induction_on_proofs = (P => (P ->0 (R => n => rest)))")
-        .unwrap();
-    let last_part = parser.parse("(R induction_on_proofs) ->0 (A => B => R A ->n R (A B)) ->0 (A => B => R (A ->0 B) ->n R A ->n R B) ->(n+1) R P").unwrap();
-    let mut rest = last_part;
-    for axiom in generalized_axioms {
-        rest = parser
-            .parse("R axiom ->0 rest")
-            .unwrap()
-            .with_metavariable_replaced("axiom", &axiom.conclusion)
-            .with_metavariable_replaced("rest", &rest);
-    }
-    first_part.with_metavariable_replaced("rest", &rest)
-}
-
-pub fn all_axioms(path: impl AsRef<Path>) -> Vec<AxiomDefinition> {
-    let ordinary_axioms = load_ordinary_axioms(path);
-    let generalized_axioms = generalized_axioms(&ordinary_axioms);
+pub fn all_official_rules() -> Vec<ExplicitRule> {
+    let explicit_rules = load_explicit_rules("data/ic_rules_of_deduction.ic");
+    let internalized_rules = internalized_rules(&explicit_rules);
     //let proof_induction = definition_of_proof_induction(&generalized_axioms);
-    let mut axioms = ordinary_axioms;
-    axioms.extend(generalized_axioms);
-    // axioms.push(AxiomDefinition {
+    // let mut axioms = ordinary_axioms;
+    // axioms.extend(generalized_axioms);
+    // axioms.push(ExplicitRule {
     //     name: "definition of proof induction".to_string(),
     //     premises: vec![],
     //     conclusion: proof_induction,
     // });
-    axioms
+    internalized_rules
 }
 
 // #[derive(Clone, Eq, PartialEq, Debug)]
 // pub enum Command {
-//     AxiomDefinition(AxiomDefinition),
+//     ExplicitRule(ExplicitRule),
 //     AssignGlobal(String, Formula),
 //     AssertTrue(Formula),
 // }
@@ -458,7 +474,7 @@ mod tests {
     use super::*;
     #[test]
     fn check_axioms() {
-        let axioms = all_axioms("data/ic_ordinary_axioms.ic");
+        let rules = all_official_rules();
         // for a in axioms {
         //     eprintln!(
         //         "{}",
