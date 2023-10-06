@@ -46,7 +46,7 @@ pub enum Formula {
     NameAbstraction(String, Arc<Formula>),
 }
 
-#[derive(Clone, Eq, PartialEq, Debug, Default, Serialize, Deserialize)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, Serialize, Deserialize)]
 pub enum Atom {
     Implies,
     #[default]
@@ -218,13 +218,16 @@ impl Formula {
         }
     }
 
-    pub fn with_metavariables_abstracted<'a>(
+    pub fn with_metavariables_universalized<'a>(
         &self,
         variables: impl IntoIterator<Item = &'a str>,
     ) -> Formula {
         let mut result = self.clone();
         for variable in variables {
-            result = result.with_metavariable_abstracted(variable);
+            result = Formula::Apply(Arc::new([
+                Formula::Atom(Atom::All),
+                result.with_metavariable_abstracted(variable),
+            ]));
         }
         result
     }
@@ -235,6 +238,21 @@ impl Formula {
             .into_iter()
             .map(Formula::naive_size)
             .sum::<usize>()
+    }
+
+    pub fn left_atom(&self) -> Atom {
+        match self {
+            Formula::Atom(a) => *a,
+            Formula::Apply(c) => c[0].left_atom(),
+            Formula::Implies(_) => Atom::Implies,
+            Formula::Union(_) => Atom::Union,
+            Formula::Id => Atom::Fuse,
+            Formula::EmptySet => Atom::EmptySet,
+            Formula::Metavariable(_) => {
+                panic!("can't call left_atom on a metavariable!")
+            }
+            Formula::NameAbstraction(_, _) => Atom::Fuse, // TODO: technically wrong
+        }
     }
 }
 
@@ -262,7 +280,7 @@ pub fn internalized_rules(original_rules: &[ExplicitRule]) -> Vec<ExplicitRule> 
                 .copied()
                 .permutations(free_variables.len())
                 .map(|permutation| {
-                    let result = c.with_metavariables_abstracted(
+                    let result = c.with_metavariables_universalized(
                         permutation
                             .iter()
                             .rev()
@@ -270,17 +288,17 @@ pub fn internalized_rules(original_rules: &[ExplicitRule]) -> Vec<ExplicitRule> 
                             .map(std::ops::Deref::deref),
                     );
 
-                    let mut unfolding = result.clone();
-                    for name in permutation {
-                        unfolding = Formula::Apply(Arc::new([
-                            unfolding,
-                            Formula::Metavariable(name.clone()),
-                        ]));
-                    }
-                    unfolding.unfold_until(1000);
-                    let mut unfolding2 = c.clone();
-                    unfolding2.unfold_until(1000);
-                    assert_eq!(unfolding, unfolding2, "Failed on rule {}", rule.name);
+                    // let mut unfolding = result.clone();
+                    // for name in permutation {
+                    //     unfolding = Formula::Apply(Arc::new([
+                    //         unfolding,
+                    //         Formula::Metavariable(name.clone()),
+                    //     ]));
+                    // }
+                    // unfolding.unfold_until(1000);
+                    // let mut unfolding2 = c.clone();
+                    // unfolding2.unfold_until(1000);
+                    // assert_eq!(unfolding, unfolding2, "Failed on rule {}", rule.name);
 
                     result
                 });

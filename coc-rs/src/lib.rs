@@ -1,5 +1,7 @@
 #![feature(array_methods, lazy_cell)]
 
+extern crate core;
+
 //pub mod incomplete_term;
 pub mod constructors;
 //pub mod inductive_type;

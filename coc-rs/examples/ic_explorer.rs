@@ -1,10 +1,11 @@
 #![feature(lazy_cell)]
 
 use clap::{arg, Parser};
-use coc_rs::introspective_calculus::Formula;
+use coc_rs::introspective_calculus::{all_official_rules, Atom, Formula};
 use coc_rs::utils::{read_json_file, write_json_file};
+use html_node::{html, text, Node};
 use quick_and_dirty_web_gui::{callback, callback_with};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 
 struct Interface {
     file_path: String,
@@ -13,28 +14,52 @@ struct Interface {
 }
 
 impl Interface {
-    fn whole_page(&self) -> String {
-        // let nodes = self.nodes();
-        // let new_buttons = COC.types.keys().cloned().map(|typename| {
-        //     let text = text!(&typename);
-        //     html! {
-        //         <div class="new_metavariable">
-        //             <button onclick={callback(move || new_global(typename.clone()))}>
-        //                 {text}
-        //             </button>
-        //         </div> : String
-        //     }
-        // });
-        // html! {
-        //     <div class="page">
-        //         <div class="new_metavariables">
-        //             {new_buttons}
-        //         </div>
-        //         {nodes}
-        //         <div style="clear: both"></div>
-        //     </div>
-        // }
-        "".into()
+    fn inference(&self, index: usize, inference: &Formula) -> Node {
+        let mut buttons = vec![
+            html! {<button onclick={
+                interface_callback(move |i| {i.inferences.remove(index);})
+            }>X</button>},
+            html! {<button onclick={
+                interface_callback(move |i| {i.inferences.push(i.inferences[index].clone());})
+            }>Copy</button>},
+        ];
+        match inference.left_atom() {
+            Atom::Implies => {}
+            Atom::EmptySet => {}
+            Atom::Union => {
+                buttons.push(html! {<button>Specialize left</button>});
+                buttons.push(html! {<button>Specialize right</button>});
+            }
+            Atom::All => {
+                buttons.push(html! {<button onclick={
+                    interface_callback(move |i| {
+                        let Formula::Apply(a) = &i.inferences[index] else { return };
+                        i.inferences[index] = Formula::Apply(Arc::new([a[1].clone(), Formula::Atom(Atom::EmptySet)]));
+                    })
+                }>Specialize</button>});
+            }
+            Atom::Const | Atom::Fuse => {
+                buttons.push(html! {<button onclick={
+                    interface_callback(move |i| {i.inferences[index].unfold_left();})
+                }>Unfold</button>});
+            }
+        }
+        html! {
+            <div class="inference">{text!("{}", inference.as_shorthand())} {buttons}</div>
+        }
+    }
+    fn whole_page(&self) -> Node {
+        let inferences = self
+            .inferences
+            .iter()
+            .enumerate()
+            .map(|(index, inference)| self.inference(index, inference));
+        html! {
+            <div class="inferences">
+                {inferences}
+                <div style="clear: both"></div>
+            </div>
+        }
     }
 
     fn update_gui(&self) {
@@ -44,8 +69,12 @@ impl Interface {
 
 static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
     let args = Args::parse();
-    let inferences =
-        read_json_file::<_, Vec<Formula>>(&args.file_path).unwrap_or_else(|_| Vec::default());
+    let inferences = read_json_file::<_, Vec<Formula>>(&args.file_path).unwrap_or_else(|_| {
+        all_official_rules()
+            .into_iter()
+            .map(|r| r.formula)
+            .collect()
+    });
     Mutex::new(Interface {
         file_path: args.file_path,
         inferences,
@@ -59,6 +88,10 @@ fn with_interface(f: impl FnOnce(&mut Interface)) {
     //interface.optimize_positions();
     interface.update_gui();
     write_json_file(&interface.file_path, &interface.inferences).unwrap();
+}
+
+fn interface_callback(mut f: impl FnMut(&mut Interface) + Send + 'static) -> String {
+    callback(move || with_interface(|i| f(i)))
 }
 
 // fn unfocus() {
