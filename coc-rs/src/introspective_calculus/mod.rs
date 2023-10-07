@@ -57,6 +57,55 @@ pub enum Atom {
     Fuse,
 }
 
+/// It would be nice if we could just use the same "parsing" machinery for parts of the rust code,
+/// but that's wasteful and injecting rust variables is hokey. On the flipside, constructing formulas
+/// manually is way too verbose. So here's a macro to be a middle ground.
+#[macro_export]
+macro_rules! ic {
+    (($($stuff:tt)+)) => {
+        ic!($($stuff)+)
+    };
+    ($l:tt $r:tt) => {
+        Formula::Apply(Arc::new([ic!($l), ic!($r)]))
+    };
+    ($l:tt $r:expr) => {
+        Formula::Apply(Arc::new([ic!($l), $r]))
+    };
+    ($l:tt + $r:tt) => {
+        Formula::Union(Arc::new([ic!($l), ic!($r)]))
+    };
+    ($l:tt -> $r:tt) => {
+        Formula::Implies(Arc::new([ic!($l), ic!($r)]))
+    };
+    (id) => {
+        Formula::Id
+    };
+    (0) => {
+        Formula::EmptySet
+    };
+    (implies) => {
+        Formula::Atom(Atom::Implies)
+    };
+    (empty_set) => {
+        Formula::Atom(Atom::EmptySet)
+    };
+    (union) => {
+        Formula::Atom(Atom::Union)
+    };
+    (all) => {
+        Formula::Atom(Atom::All)
+    };
+    (const) => {
+        Formula::Atom(Atom::Const)
+    };
+    (fuse) => {
+        Formula::Atom(Atom::Fuse)
+    };
+    ($e:expr) => {
+        $e
+    };
+}
+
 pub struct InductiveTypeConstructor {
     pub constructors: Vec<InductiveTypeConstructor>,
 }
@@ -76,27 +125,17 @@ impl Formula {
     pub fn to_raw_with_metavariables(&self) -> Formula {
         match self {
             Formula::EmptySet => Formula::Atom(Atom::EmptySet),
-            Formula::Id => Formula::Apply(Arc::new([
-                Formula::Apply(Arc::new([
-                    Formula::Atom(Atom::Fuse),
-                    Formula::Atom(Atom::Const),
-                ])),
-                Formula::Atom(Atom::Const),
-            ])),
-            Formula::Implies(f) => Formula::Apply(Arc::new([
-                Formula::Apply(Arc::new([
-                    Formula::Atom(Atom::Implies),
-                    f[0].to_raw_with_metavariables(),
-                ])),
-                f[1].to_raw_with_metavariables(),
-            ])),
-            Formula::Union(f) => Formula::Apply(Arc::new([
-                Formula::Apply(Arc::new([
-                    Formula::Atom(Atom::Union),
-                    f[0].to_raw_with_metavariables(),
-                ])),
-                f[1].to_raw_with_metavariables(),
-            ])),
+            Formula::Id => ic!((fuse const) const),
+            Formula::Implies(f) => {
+                let a = f[0].to_raw_with_metavariables();
+                let b = f[1].to_raw_with_metavariables();
+                ic!((implies a)b)
+            }
+            Formula::Union(f) => {
+                let a = f[0].to_raw_with_metavariables();
+                let b = f[1].to_raw_with_metavariables();
+                ic!((union a)b)
+            }
             Formula::NameAbstraction(name, body) => body
                 .to_raw_with_metavariables()
                 .with_metavariable_abstracted(name),
@@ -178,7 +217,7 @@ impl Formula {
     #[live_prop_test(precondition = "self.is_raw_with_metavariables()")]
     pub fn with_metavariable_abstracted(&self, name: &str) -> Formula {
         if !self.contains_free_metavariable(name) {
-            return Formula::Apply(Arc::new([Formula::Atom(Atom::Const), self.clone()]));
+            return ic!(const self.clone());
         }
         match self {
             Formula::Atom(_) => panic!("should've early-exited above"),
@@ -186,19 +225,15 @@ impl Formula {
                 assert_eq!(n, name, "should've early-exited above");
                 Formula::Id.to_raw_with_metavariables()
             }
-            Formula::Apply(a) => {
-                if matches!(&a[1], Formula::Metavariable(n) if n == name)
-                    && !a[0].contains_free_metavariable(name)
+            Formula::Apply(c) => {
+                if matches!(&c[1], Formula::Metavariable(n) if n == name)
+                    && !c[0].contains_free_metavariable(name)
                 {
-                    a[0].clone()
+                    c[0].clone()
                 } else {
-                    Formula::Apply(Arc::new([
-                        Formula::Apply(Arc::new([
-                            Formula::Atom(Atom::Fuse),
-                            a[0].with_metavariable_abstracted(name),
-                        ])),
-                        a[1].with_metavariable_abstracted(name),
-                    ]))
+                    let a = c[0].with_metavariable_abstracted(name);
+                    let b = c[1].with_metavariable_abstracted(name);
+                    ic!((fuse a) b)
                 }
             }
             _ => panic!("should already be raw"),
@@ -224,10 +259,8 @@ impl Formula {
     ) -> Formula {
         let mut result = self.clone();
         for variable in variables {
-            result = Formula::Apply(Arc::new([
-                Formula::Atom(Atom::All),
-                result.with_metavariable_abstracted(variable),
-            ]));
+            result = result.with_metavariable_abstracted(variable);
+            result = ic!(all result);
         }
         result
     }

@@ -1,6 +1,7 @@
 #![feature(lazy_cell)]
 
 use clap::{arg, Parser};
+use coc_rs::ic;
 use coc_rs::introspective_calculus::{all_official_rules, Atom, Formula};
 use coc_rs::utils::{read_json_file, write_json_file};
 use html_node::{html, text, Node};
@@ -34,7 +35,8 @@ impl Interface {
                 buttons.push(html! {<button onclick={
                     interface_callback(move |i| {
                         let Formula::Apply(a) = &i.inferences[index] else { return };
-                        i.inferences[index] = Formula::Apply(Arc::new([a[1].clone(), Formula::Atom(Atom::EmptySet)]));
+                        let rule = a[1].clone();
+                        i.inferences[index] = ic!(rule empty_set);
                     })
                 }>Specialize</button>});
             }
@@ -43,7 +45,7 @@ impl Interface {
                     interface_callback(move |i| {i.inferences[index].unfold_left();})
                 }>Unfold</button>});
             }
-        }
+        };
         html! {
             <div class="inference">{text!("{}", inference.as_shorthand())} {buttons}</div>
         }
