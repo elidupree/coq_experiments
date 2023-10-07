@@ -106,6 +106,69 @@ macro_rules! ic {
     };
 }
 
+#[macro_export]
+macro_rules! match_ic {
+    (@unpack_pattern_in [$formula:expr] id => $body:expr) => {
+        if let ic!(id) = $formula {
+            $body;
+        }
+    };
+    (@unpack_pattern_in [$formula:expr] 0 => $body:expr) => {
+        if let ic!(0) = $formula {
+            $body;
+        }
+    };
+    (@unpack_pattern_in [$formula:expr] empty_set => $body:expr) => {
+        if let ic!(empty_set) = $formula {
+            $body;
+        }
+    };
+    (@unpack_pattern_in [$formula:expr] union => $body:expr) => {
+        if let ic!(union) = $formula {
+            $body;
+        }
+    };
+    (@unpack_pattern_in [$formula:expr] all => $body:expr) => {
+        if let ic!(all) = $formula {
+            $body;
+        }
+    };
+    (@unpack_pattern_in [$formula:expr] const => $body:expr) => {
+        if let ic!(const) = $formula {
+            $body;
+        }
+    };
+    (@unpack_pattern_in [$formula:expr] fuse => $body:expr) => {
+        if let ic!(fuse) = $formula {
+            $body;
+        }
+    };
+    (@unpack_pattern_in [$formula:expr] $var:ident => $body:expr) => {{
+        let $var = $formula;
+        $body;
+    }};
+    (@unpack_pattern_in [$formula:expr] ($l:tt $r:tt) => $body:expr) => {
+        if let Formula::Apply(children) = $formula {
+            match_ic!(@unpack_pattern_in [&children[0]] $l => match_ic!(@unpack_pattern_in [&children[1]] $r => $body))
+        }
+    };
+    (@arm $result:ident [$formula:expr] _ => $arm:expr) => {{
+        if $result.is_none() {
+            $result = Some($arm)
+        }
+        $result.unwrap()
+    }};
+    (@arm $result:ident [$formula:expr] $pattern:tt => $arm:expr) => {
+        match_ic!(@unpack_pattern_in [$formula] $pattern => {
+            $result = Some($arm);
+        })
+    };
+    ($formula:expr, {$($pattern:tt => $arm:expr),*$(,)*}) => {{
+        let mut result = None;
+        $(match_ic!(@arm result [$formula] $pattern => $arm));*
+    }};
+}
+
 pub struct InductiveTypeConstructor {
     pub constructors: Vec<InductiveTypeConstructor>,
 }
