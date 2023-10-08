@@ -1,16 +1,18 @@
 #![feature(lazy_cell)]
 
 use clap::{arg, Parser};
-use coc_rs::ic;
-use coc_rs::introspective_calculus::{all_official_rules, AbstractionKind, Atom, Formula};
+use coc_rs::introspective_calculus::{
+    all_official_rules, AbstractionKind, Atom, ExplicitRule, Formula,
+};
 use coc_rs::utils::{read_json_file, write_json_file};
+use coc_rs::{ic, match_ic};
 use html_node::{html, text, Node};
 use quick_and_dirty_web_gui::{callback, callback_with};
 use std::sync::{Arc, LazyLock, Mutex};
 
 struct Interface {
     file_path: String,
-    inferences: Vec<Formula>,
+    inferences: Vec<ExplicitRule>,
     focus: Option<usize>,
 }
 
@@ -84,7 +86,9 @@ impl Interface {
             </span>
         }
     }
-    fn inference_html(&self, index: usize, inference: &Formula) -> Node {
+    fn inference_html(&self, index: usize) -> Node {
+        let rule = &self.inferences[index];
+        let formula = &rule.formula;
         let mut buttons = vec![
             html! {<button onclick={
                 interface_callback(move |i| {i.inferences.remove(index);})
@@ -93,7 +97,15 @@ impl Interface {
                 interface_callback(move |i| {i.inferences.push(i.inferences[index].clone());})
             }>Copy</button>},
         ];
-        match inference.left_atom() {
+        // match_ic!(formula, {
+        //     ((implies empty_set) a) => {
+        //         let a = a.clone();
+        //         buttons.push(html! {<button onclick={
+        //             interface_callback(move |i| {i.inferences[index].formula = a.clone();})
+        //         }>To inference</button>});
+        //     }
+        // });
+        match formula.left_atom() {
             Atom::Implies => {}
             Atom::EmptySet => {}
             Atom::Union => {
@@ -103,20 +115,28 @@ impl Interface {
             Atom::All => {
                 buttons.push(html! {<button onclick={
                     interface_callback(move |i| {
-                        let Formula::Apply(a) = &i.inferences[index] else { return };
+                        let Formula::Apply(a) = &i.inferences[index].formula else { return };
                         let rule = a[1].clone();
-                        i.inferences[index] = ic!(rule empty_set);
+                        i.inferences[index].formula = ic!(rule empty_set);
                     })
                 }>Specialize</button>});
             }
             Atom::Const | Atom::Fuse => {
                 buttons.push(html! {<button onclick={
-                    interface_callback(move |i| {i.inferences[index].unfold_left();})
+                    interface_callback(move |i| {i.inferences[index].formula.unfold_left();})
                 }>Unfold</button>});
             }
         };
         html! {
-            <div class="inference">{self.formula_html(inference.prettify('a'), ParenthesisNeeds::Nothing)} {buttons}</div>
+            <div class="inference-name">
+                {text!("{}: ", rule.name)}
+            </div>
+            <div class="inference-body">
+                {self.formula_html(formula.prettify('a'), ParenthesisNeeds::Nothing)}
+            </div>
+            <div class="inference-buttons">
+                {buttons}
+            </div>
         }
     }
     fn whole_page(&self) -> Node {
@@ -124,7 +144,7 @@ impl Interface {
             .inferences
             .iter()
             .enumerate()
-            .map(|(index, inference)| self.inference_html(index, inference));
+            .map(|(index, _inference)| self.inference_html(index));
         html! {
             <div class="inferences">
                 {inferences}
@@ -142,12 +162,8 @@ impl Interface {
 
 static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
     let args = Args::parse();
-    let inferences = read_json_file::<_, Vec<Formula>>(&args.file_path).unwrap_or_else(|_| {
-        all_official_rules()
-            .into_iter()
-            .map(|r| r.formula)
-            .collect()
-    });
+    let inferences = read_json_file::<_, Vec<ExplicitRule>>(&args.file_path)
+        .unwrap_or_else(|_| all_official_rules());
     Mutex::new(Interface {
         file_path: args.file_path,
         inferences,

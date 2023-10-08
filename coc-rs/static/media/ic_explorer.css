@@ -2,6 +2,27 @@ body {
   font-size: 120%;
   margin: 0;
 }
+
+.inferences {
+  display: grid;
+  grid-template-columns: max-content max-content max-content;
+}
+.inference-name {
+  grid-column: 1 / span 1;
+  justify-self: right;
+}
+.inference-body {
+  padding: 0 0.4em;
+  grid-column: 2 / span 1;
+}
+.inference-buttons {
+  grid-column: 3 / span 1;
+}
+
+.inference-name:nth-child(odd) {background-color:#eee; }
+.inference-body:nth-child(even) {background-color:#eee; }
+.inference-buttons:nth-child(odd) {background-color:#eee; }
+
 .subformula:hover:not(:has(.subformula:hover)) {
   background-color: #ccc
 }

@@ -1,0 +1,2 @@
+"trivial inference" := 0
+"modus ponens" := ((A -> B) + A) -> B

@@ -512,18 +512,15 @@ pub fn internalized_rules(original_rules: &[ExplicitRule]) -> Vec<ExplicitRule> 
 // }
 
 pub fn all_official_rules() -> Vec<ExplicitRule> {
-    let explicit_rules = load_explicit_rules("data/ic_rules_of_deduction.ic");
-    let internalized_rules = internalized_rules(&explicit_rules);
-    //let proof_induction = definition_of_proof_induction(&generalized_axioms);
-    // let mut axioms = ordinary_axioms;
-    // axioms.extend(generalized_axioms);
-    // axioms.push(ExplicitRule {
-    //     name: "definition of proof induction".to_string(),
-    //     premises: vec![],
-    //     conclusion: proof_induction,
-    // });
-    #[allow(clippy::let_and_return)]
-    internalized_rules
+    let mut rules_of_deduction =
+        internalized_rules(&load_explicit_rules("data/ic_rules_of_deduction.ic"));
+    for r in &mut rules_of_deduction {
+        r.formula = ic!((implies empty_set) r.formula.clone());
+    }
+    let mut result = rules_of_deduction;
+    let extra_rules = internalized_rules(&load_explicit_rules("data/ic_extra_rules.ic"));
+    result.extend(extra_rules);
+    result
 }
 
 // #[derive(Clone, Eq, PartialEq, Debug)]
