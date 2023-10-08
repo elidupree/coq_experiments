@@ -15,7 +15,9 @@ impl AbstractionKind {
                 parameter_type,
                 body: std::mem::take(last),
             }));
-            let Formula::Abstraction(a) = last else {unreachable!()};
+            let Formula::Abstraction(a) = last else {
+                unreachable!()
+            };
             last = &mut a.body;
         }
         result
@@ -77,7 +79,7 @@ impl StronglyConnectedComponent<'_> {
                         self.usage_representing(precondition.predicate_type()),
                         precondition
                             .type_parameters()
-                            .map(|a| self.args_compound_formula(a)),
+                            .map(|a| Self::args_compound_formula(a)),
                     ),
                 )
             }))
@@ -125,7 +127,7 @@ impl StronglyConnectedComponent<'_> {
     fn return_types_and_case_handlers(&self) -> impl Iterator<Item = (String, Formula)> + '_ {
         self.return_types().chain(self.case_handlers())
     }
-    fn args_compound_formula(&self, compound: ArgsCompoundView) -> Formula {
+    fn args_compound_formula(compound: ArgsCompoundView) -> Formula {
         match compound.cases() {
             ArgsCompoundViewCases::Argument(argument) => Formula::Usage(argument.name().to_owned()),
             ArgsCompoundViewCases::Constructor {
@@ -133,7 +135,9 @@ impl StronglyConnectedComponent<'_> {
                 arguments,
             } => apply(
                 Formula::Usage(constructor.name().to_owned()),
-                arguments.into_iter().map(|a| self.args_compound_formula(a)),
+                arguments
+                    .into_iter()
+                    .map(|a| Self::args_compound_formula(a)),
             ),
         }
     }
@@ -143,7 +147,7 @@ impl StronglyConnectedComponent<'_> {
     ) -> impl Iterator<Item = Formula> + 'a {
         constructor
             .resulting_type_parameters()
-            .map(move |a| self.args_compound_formula(a))
+            .map(move |a| Self::args_compound_formula(a))
     }
     fn commands_defining_type(&self, ty: TypeView) -> Vec<Command> {
         let mut result = vec![

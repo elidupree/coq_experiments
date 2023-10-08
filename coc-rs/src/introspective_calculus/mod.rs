@@ -522,6 +522,7 @@ pub fn all_official_rules() -> Vec<ExplicitRule> {
     //     premises: vec![],
     //     conclusion: proof_induction,
     // });
+    #[allow(clippy::let_and_return)]
     internalized_rules
 }
 

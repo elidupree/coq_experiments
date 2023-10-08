@@ -473,14 +473,14 @@ impl MetavariablesInjectionContext<'_> {
     }
 }
 
-impl Command {
-    pub fn inject_as_metavariables(environment: &mut Environment) {
-        let mut existing_names: HashMap<String, Vec<MetavariableId>> = HashMap::new();
-        for metavariable in environment.metavariables() {
-            existing_names
-                .entry(metavariable.name().to_owned())
-                .or_default()
-                .push(metavariable.id());
-        }
-    }
-}
+// impl Command {
+//     pub fn inject_as_metavariables(environment: &mut Environment) {
+//         let mut existing_names: HashMap<String, Vec<MetavariableId>> = HashMap::new();
+//         for metavariable in environment.metavariables() {
+//             existing_names
+//                 .entry(metavariable.name().to_owned())
+//                 .or_default()
+//                 .push(metavariable.id());
+//         }
+//     }
+// }

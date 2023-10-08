@@ -244,7 +244,10 @@ impl<'a> PreconditionView<'a> {
         })
     }
     pub fn type_parameter(&self, index: usize) -> ArgsCompoundView<'a> {
-        let (Some(parameter), Some(datatype)) = (self.definition.type_parameters.get(index), self.predicate_type().definition.type_parameters.get(index)) else {
+        let (Some(parameter), Some(datatype)) = (
+            self.definition.type_parameters.get(index),
+            self.predicate_type().definition.type_parameters.get(index),
+        ) else {
             panic!("Tried to get nonexistent type parameter {index} of precondition {} of constructor {}", self.index, self.constructor_view.name)
         };
         ArgsCompoundView {
@@ -278,8 +281,11 @@ impl<'a> ConstructorView<'a> {
             })
     }
     pub fn data_argument_indexed(&self, index: usize) -> DataArgumentView<'a> {
-        let Some (argument) = self.definition.data_arguments.get(index) else {
-            panic!("Tried to get nonexistent data argument {index} of constructor {}", self.name)
+        let Some(argument) = self.definition.data_arguments.get(index) else {
+            panic!(
+                "Tried to get nonexistent data argument {index} of constructor {}",
+                self.name
+            )
         };
         DataArgumentView {
             index,
@@ -288,8 +294,16 @@ impl<'a> ConstructorView<'a> {
         }
     }
     pub fn data_argument_named(&self, name: &str) -> DataArgumentView<'a> {
-        let Some (index) = self.definition.data_arguments.iter().position(|argument |argument.name == name) else {
-            panic!("Tried to get nonexistent data argument {name} of constructor {}", self.name)
+        let Some(index) = self
+            .definition
+            .data_arguments
+            .iter()
+            .position(|argument| argument.name == name)
+        else {
+            panic!(
+                "Tried to get nonexistent data argument {name} of constructor {}",
+                self.name
+            )
         };
         DataArgumentView {
             index,
@@ -310,8 +324,11 @@ impl<'a> ConstructorView<'a> {
             })
     }
     pub fn precondition(&self, index: usize) -> PreconditionView<'a> {
-        let Some (precondition) = self.definition.preconditions.get(index) else {
-            panic!("Tried to get nonexistent precondition {index} of constructor {}", self.name)
+        let Some(precondition) = self.definition.preconditions.get(index) else {
+            panic!(
+                "Tried to get nonexistent precondition {index} of constructor {}",
+                self.name
+            )
         };
         PreconditionView {
             index,
@@ -332,8 +349,14 @@ impl<'a> ConstructorView<'a> {
         })
     }
     pub fn resulting_type_parameter(&self, index: usize) -> ArgsCompoundView<'a> {
-        let (Some(parameter), Some(datatype)) = (self.definition.resulting_type_parameters.get(index), self.type_view.definition.type_parameters.get(index)) else {
-            panic!("Tried to get nonexistent resulting-type-parameter {index} of constructor {}", self.name)
+        let (Some(parameter), Some(datatype)) = (
+            self.definition.resulting_type_parameters.get(index),
+            self.type_view.definition.type_parameters.get(index),
+        ) else {
+            panic!(
+                "Tried to get nonexistent resulting-type-parameter {index} of constructor {}",
+                self.name
+            )
         };
         ArgsCompoundView {
             datatype,
@@ -357,8 +380,11 @@ impl<'a> TypeView<'a> {
             .map(|typename| self.constructors.get(typename))
     }
     pub fn type_parameter(&self, index: usize) -> TypeView<'a> {
-        let Some (typename) = self.definition.type_parameters.get(index) else {
-            panic!("Tried to get nonexistent type parameter {index} of type {}", self.name)
+        let Some(typename) = self.definition.type_parameters.get(index) else {
+            panic!(
+                "Tried to get nonexistent type parameter {index} of type {}",
+                self.name
+            )
         };
         self.constructors.get(typename)
     }
@@ -373,8 +399,11 @@ impl<'a> TypeView<'a> {
             })
     }
     pub fn constructor(&self, name: &str) -> ConstructorView<'a> {
-        let Some ((name, definition)) = self.definition.constructors.get_key_value(name) else {
-            panic!("Tried to get nonexistent constructor {name} of type {}", self.name)
+        let Some((name, definition)) = self.definition.constructors.get_key_value(name) else {
+            panic!(
+                "Tried to get nonexistent constructor {name} of type {}",
+                self.name
+            )
         };
         ConstructorView {
             name,
@@ -405,7 +434,7 @@ impl Constructors {
     }
 
     pub fn get(&self, typename: &str) -> TypeView {
-        let Some ((name, definition)) = self.types.get_key_value(typename) else {
+        let Some((name, definition)) = self.types.get_key_value(typename) else {
             panic!("Tried to get nonexistent type `{typename}`")
         };
         TypeView {
@@ -519,7 +548,7 @@ impl Constructors {
     }
 
     fn notation_regex() -> Regex {
-        Regex::new(r#"\{([^{}]*)\}"#).unwrap()
+        Regex::new(r"\{([^{}]*)\}").unwrap()
     }
 
     pub fn check_invariants(&self) -> Result<(), String> {
@@ -536,9 +565,10 @@ impl Constructors {
             observe_global_name(typename)?;
             for type_parameter in &type_definition.type_parameters {
                 let Some(datatype) = self.types.get(type_parameter) else {
-                    return Err(format!("Predicate {} takes parameter of non-existent datatype {}",
-                                       typename,
-                                       type_parameter));
+                    return Err(format!(
+                        "Predicate {} takes parameter of non-existent datatype {}",
+                        typename, type_parameter
+                    ));
                 };
                 lpt_assert!(
                     datatype.type_parameters.is_empty(),
@@ -583,9 +613,10 @@ impl Constructors {
                     );
 
                     let Some(datatype) = self.types.get(&argument.datatype) else {
-                        return Err(format!("Constructor {} takes parameter of non-existent datatype {}",
-                                           constructor_name,
-                                           argument.datatype));
+                        return Err(format!(
+                            "Constructor {} takes parameter of non-existent datatype {}",
+                            constructor_name, argument.datatype
+                        ));
                     };
                     lpt_assert!(
                         datatype.type_parameters.is_empty(),
@@ -596,10 +627,12 @@ impl Constructors {
                 }
 
                 for precondition in &constructor.preconditions {
-                    let Some(precondition_type) = self.types.get(&precondition.predicate_type) else {
-                        return Err(format!("Constructor {} takes parameter of non-existent predicate {}",
-                                           constructor_name,
-                                           precondition.predicate_type, ));
+                    let Some(precondition_type) = self.types.get(&precondition.predicate_type)
+                    else {
+                        return Err(format!(
+                            "Constructor {} takes parameter of non-existent predicate {}",
+                            constructor_name, precondition.predicate_type,
+                        ));
                     };
                     lpt_assert_eq!(
                         precondition.type_parameters.len(),
@@ -670,7 +703,12 @@ fn value_must_be_type(
 ) -> Result<(), String> {
     match value {
         ArgsCompoundDefinition::Argument(argument_name) => {
-            let Some(&argument_type) = arguments_map.get(&**argument_name) else { return Err(format!("In constructor {}, tried to reference nonexistent argument {}", constructor_name, argument_name)); };
+            let Some(&argument_type) = arguments_map.get(&**argument_name) else {
+                return Err(format!(
+                    "In constructor {}, tried to reference nonexistent argument {}",
+                    constructor_name, argument_name
+                ));
+            };
             lpt_assert_eq!(
                 argument_type,
                 datatype_name,
@@ -684,7 +722,13 @@ fn value_must_be_type(
             arguments,
         } => {
             let datatype = types.get(datatype_name).unwrap();
-            let Some(datatype_constructor) = datatype.constructors.get(datatype_constructor_name) else { return Err(format!("In constructor {}, tried to reference nonexistent constructor {}", constructor_name, datatype_constructor_name)); };
+            let Some(datatype_constructor) = datatype.constructors.get(datatype_constructor_name)
+            else {
+                return Err(format!(
+                    "In constructor {}, tried to reference nonexistent constructor {}",
+                    constructor_name, datatype_constructor_name
+                ));
+            };
             lpt_assert!(
                 datatype.type_parameters.is_empty(),
                 "Constructor {} takes data-argument of predicate {}",

@@ -20,17 +20,12 @@ pub struct TermVariable {
     pub back_references: Vec<TermVariableId>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, Default)]
 pub enum TermContents {
+    #[default]
     Nothing,
     Reference(TermVariableId),
     Term(TermValue),
-}
-
-impl Default for TermContents {
-    fn default() -> Self {
-        TermContents::Nothing
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
