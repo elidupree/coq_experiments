@@ -105,14 +105,14 @@ impl Interface {
         //         }>To inference</button>});
         //     }
         // });
-        match formula.left_atom() {
-            Atom::Implies => {}
-            Atom::EmptySet => {}
-            Atom::Union => {
-                buttons.push(html! {<button>Specialize left</button>});
-                buttons.push(html! {<button>Specialize right</button>});
-            }
-            Atom::All => {
+        match_ic!(formula, {
+            ((union a) b) => {
+                let a = a.clone();
+                buttons.push(html! {<button onclick={
+                    interface_callback(move |i| {i.inferences[index].formula = a.clone();})
+                }>To inference</button>});
+            },
+            (all a) => {
                 buttons.push(html! {<button onclick={
                     interface_callback(move |i| {
                         let Formula::Apply(a) = &i.inferences[index].formula else { return };
@@ -120,13 +120,23 @@ impl Interface {
                         i.inferences[index].formula = ic!(rule empty_set);
                     })
                 }>Specialize</button>});
-            }
-            Atom::Const | Atom::Fuse => {
-                buttons.push(html! {<button onclick={
-                    interface_callback(move |i| {i.inferences[index].formula.unfold_left();})
-                }>Unfold</button>});
-            }
-        };
+            },
+        });
+        let mut unfolded = formula.clone();
+        if unfolded.unfold_left() {
+            buttons.push(html! {<button onclick={
+                interface_callback(move |i| {i.inferences[index].formula = unfolded.clone()})
+            }>Unfold</button>});
+            buttons.push(html! {<button onclick={
+                interface_callback(move |i| {
+                    for _ in 0..100 {
+                        if !i.inferences[index].formula.unfold_left() {
+                            break
+                        }
+                    }
+                })
+            }>Unfold+</button>});
+        }
         html! {
             <div class="inference-name">
                 {text!("{}: ", rule.name)}

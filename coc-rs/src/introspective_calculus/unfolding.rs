@@ -13,6 +13,35 @@ impl Formula {
     pub fn unfold_left(&mut self) -> bool {
         self.unfold_here()
             || match_ic!(self, {
+                ((implies l) r) => {
+                    let mut l = l.clone();
+                    let mut r = r.clone();
+                    if l.unfold_left() || r.unfold_left() {
+                        *self = ic!((implies l) r);
+                        true
+                    } else {
+                        false
+                    }
+                },
+                ((union l) r) => {
+                    let mut l = l.clone();
+                    let mut r = r.clone();
+                    if l.unfold_left() || r.unfold_left() {
+                        *self = ic!((union l) r);
+                        true
+                    } else {
+                        false
+                    }
+                },
+                (all r) => {
+                    let mut r = r.clone();
+                    if r.unfold_left() {
+                        *self = ic!(all r);
+                        true
+                    } else {
+                        false
+                    }
+                },
                 (l r) => {
                     let mut l = l.clone();
                     if l.unfold_left() {
