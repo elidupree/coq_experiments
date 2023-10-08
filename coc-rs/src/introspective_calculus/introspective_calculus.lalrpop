@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use crate::introspective_calculus::{Formula, Atom, ExplicitRule};
+use crate::introspective_calculus::{Formula, Atom, ExplicitRule, AbstractionKind};
 
 grammar;
 
@@ -66,8 +66,8 @@ ArrowChain1: Formula = {
   FormulaIndivisibleLeft,
 }
 ArrowChain2: Formula = {
-  <n:Name> "=>" <r:ArrowChain1> => Formula::NameAbstraction(n, Arc::new(r)),
-  "∀" <n:Name> "," <r:ArrowChain1> => Formula::Apply(Arc::new([Formula::Atom(Atom::All), Formula::NameAbstraction(n, Arc::new(r))])),
+  <n:Name> "=>" <r:ArrowChain1> => Formula::NameAbstraction(AbstractionKind::Lambda, n, Arc::new(r)),
+  "∀" <n:Name> "," <r:ArrowChain1> => Formula::NameAbstraction(AbstractionKind::ForAll, n, Arc::new(r)),
   //<antecedent:ApplyChain1> "->" <level:FormulaIndivisibleLeft> <consequent:ArrowChain1> => Formula::Implies(Arc::new(Implies{<>})),
 }
 

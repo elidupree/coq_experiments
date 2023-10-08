@@ -25,10 +25,17 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::sync::Arc;
 
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ExplicitRule {
     pub name: String,
     pub formula: Formula,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Default, Serialize, Deserialize)]
+pub enum AbstractionKind {
+    #[default]
+    Lambda,
+    ForAll,
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Default, Serialize, Deserialize)]
@@ -43,7 +50,7 @@ pub enum Formula {
     EmptySet,
 
     Metavariable(String),
-    NameAbstraction(String, Arc<Formula>),
+    NameAbstraction(AbstractionKind, String, Arc<Formula>),
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default, Serialize, Deserialize)]
@@ -77,6 +84,12 @@ macro_rules! ic {
     ($l:tt -> $r:tt) => {
         Formula::Implies(Arc::new([ic!($l), ic!($r)]))
     };
+    // ($l:expr => $r:tt) => {
+    //     Formula::NameAbstraction(AbstractionKind::Lambda, $l, Arc::new(ic!($r)))
+    // };
+    // (∀ $l:expr, $r:tt) => {
+    //     Formula::NameAbstraction(AbstractionKind::ForAll, $l, Arc::new(ic!($r)))
+    // };
     (id) => {
         Formula::Id
     };
@@ -199,9 +212,17 @@ impl Formula {
                 let b = f[1].to_raw_with_metavariables();
                 ic!((union a)b)
             }
-            Formula::NameAbstraction(name, body) => body
-                .to_raw_with_metavariables()
-                .with_metavariable_abstracted(name),
+            Formula::NameAbstraction(kind, name, body) => {
+                let body = body
+                    .to_raw_with_metavariables()
+                    .with_metavariable_abstracted(name);
+                match kind {
+                    AbstractionKind::Lambda => body,
+                    AbstractionKind::ForAll => {
+                        ic!(all body)
+                    }
+                }
+            }
             _ => self.map_children(Formula::to_raw_with_metavariables),
         }
     }
@@ -216,7 +237,7 @@ impl Formula {
                 ArrayVec::new()
             }
             Formula::Implies(f) | Formula::Union(f) | Formula::Apply(f) => f.iter().collect(),
-            Formula::NameAbstraction(_name, body) => [&**body].into_iter().collect(),
+            Formula::NameAbstraction(_kind, _name, body) => [&**body].into_iter().collect(),
         }
     }
     // pub fn children_mut(&mut self) -> ArrayVec<&mut Formula, 3> {
@@ -237,8 +258,8 @@ impl Formula {
             Formula::Implies(f) => Formula::Implies(Arc::new(f.each_ref().map(map))),
             Formula::Union(f) => Formula::Union(Arc::new(f.each_ref().map(map))),
             Formula::Apply(f) => Formula::Apply(Arc::new(f.each_ref().map(map))),
-            Formula::NameAbstraction(name, body) => {
-                Formula::NameAbstraction(name.clone(), Arc::new(map(body)))
+            Formula::NameAbstraction(kind, name, body) => {
+                Formula::NameAbstraction(*kind, name.clone(), Arc::new(map(body)))
             }
         }
     }
@@ -246,7 +267,9 @@ impl Formula {
     pub fn contains_free_metavariable(&self, name: &str) -> bool {
         match self {
             Formula::Metavariable(n) => n == name,
-            Formula::NameAbstraction(n, body) => n != name && body.contains_free_metavariable(name),
+            Formula::NameAbstraction(_kind, n, body) => {
+                n != name && body.contains_free_metavariable(name)
+            }
             _ => self
                 .children()
                 .into_iter()
@@ -257,7 +280,7 @@ impl Formula {
     pub fn free_metavariables(&self) -> Vec<&String> {
         match self {
             Formula::Metavariable(n) => vec![n],
-            Formula::NameAbstraction(n, body) => {
+            Formula::NameAbstraction(_kind, n, body) => {
                 let mut result = body.free_metavariables();
                 result.retain(|&v| v != n);
                 result
@@ -347,7 +370,7 @@ impl Formula {
             Formula::Metavariable(_) => {
                 panic!("can't call left_atom on a metavariable!")
             }
-            Formula::NameAbstraction(_, _) => Atom::Fuse, // TODO: technically wrong
+            Formula::NameAbstraction(_, _, _) => Atom::Fuse, // TODO: technically wrong
         }
     }
 }
