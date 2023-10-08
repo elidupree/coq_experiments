@@ -146,6 +146,11 @@ macro_rules! match_ic {
             $body;
         }
     };
+    (@unpack_pattern_in [$formula:expr] implies => $body:expr) => {
+        if let ic!(implies) = $formula {
+            $body;
+        }
+    };
     (@unpack_pattern_in [$formula:expr] const => $body:expr) => {
         if let ic!(const) = $formula {
             $body;
@@ -172,9 +177,11 @@ macro_rules! match_ic {
         $result.unwrap()
     }};
     (@arm $result:ident [$formula:expr] $pattern:tt => $arm:expr) => {
-        match_ic!(@unpack_pattern_in [$formula] $pattern => {
-            $result = Some($arm);
-        })
+        if $result.is_none() {
+            match_ic!(@unpack_pattern_in [$formula] $pattern => {
+                $result = Some($arm);
+            })
+        }
     };
     ($formula:expr, {$($pattern:tt => $arm:expr),*$(,)*}) => {{
         let mut result = None;
@@ -372,6 +379,37 @@ impl Formula {
             }
             Formula::NameAbstraction(_, _, _) => Atom::Fuse, // TODO: technically wrong
         }
+    }
+
+    /// basically "unfold (self variable_name)"
+    pub fn combinators_to_variable_usages(&self, variable_name: &str) -> Formula {
+        match_ic!(self, {
+            ((fuse const) const) => Formula::Metavariable(variable_name.into()),
+            id => Formula::Metavariable(variable_name.into()),
+            ((fuse a) b) => {
+                let a = a.combinators_to_variable_usages(variable_name);
+                let b = b.combinators_to_variable_usages(variable_name);
+                ic!(a b)
+            },
+            (const a) => {
+                a.clone()
+            },
+            _ => ic!((self.clone()) Formula::Metavariable(variable_name.into())),
+        })
+    }
+
+    pub fn prettify(&self, next_name: char) -> Formula {
+        let next_next_name = std::char::from_u32(next_name as u32 + 1).unwrap_or(next_name);
+        match_ic!(self, {
+            (all f) => Formula::NameAbstraction(AbstractionKind::ForAll,next_name.to_string(),f.combinators_to_variable_usages (&next_name.to_string()).prettify(next_next_name).into()),
+            ((fuse const) const) => Formula::Id,
+            ((fuse _a) _b) => Formula::NameAbstraction(AbstractionKind::Lambda,next_name.to_string(),self.combinators_to_variable_usages (&next_name.to_string()).prettify(next_next_name).into()),
+            (const _a) => Formula::NameAbstraction(AbstractionKind::Lambda,next_name.to_string(),self.combinators_to_variable_usages (&next_name.to_string()).prettify(next_next_name).into()),
+            ((union a) b) => ic!((a.prettify(next_name)) + (b.prettify(next_name))),
+            ((implies a) b) => ic!((a.prettify(next_name)) -> (b.prettify(next_name))),
+            empty_set => ic!(0),
+            _ => self.map_children(|c|c.prettify(next_name))
+        })
     }
 }
 

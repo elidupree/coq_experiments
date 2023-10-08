@@ -47,7 +47,7 @@ impl Interface {
             }
         };
         html! {
-            <div class="inference">{text!("{}", inference.as_shorthand())} {buttons}</div>
+            <div class="inference">{text!("{}", inference.prettify('a'))} {buttons}</div>
         }
     }
     fn whole_page(&self) -> Node {

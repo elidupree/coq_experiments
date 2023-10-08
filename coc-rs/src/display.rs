@@ -107,6 +107,33 @@ impl DisplayItem for DisplayItemSequence {
     }
 }
 
+pub struct WithUnsplittablePrefix<I> {
+    pub prefix: String,
+    pub item: I,
+}
+
+impl<I: DisplayItem> WithUnsplittablePrefix<I> {
+    pub fn new(prefix: impl Into<String>, item: I) -> Self {
+        WithUnsplittablePrefix {
+            prefix: prefix.into(),
+            item,
+        }
+    }
+}
+
+impl<I: DisplayItem> DisplayItem for WithUnsplittablePrefix<I> {
+    fn try_display(&self, writer: &mut dyn Write, kind: DisplayAttemptKind) -> fmt::Result {
+        write!(writer, "{}", self.prefix)?;
+        self.item.try_display(writer, kind)
+    }
+}
+
+impl DisplayItem for Box<dyn DisplayItem> {
+    fn try_display(&self, writer: &mut dyn Write, kind: DisplayAttemptKind) -> fmt::Result {
+        (**self).try_display(writer, kind)
+    }
+}
+
 impl DisplayItem for &str {
     fn try_display(&self, writer: &mut dyn Write, _kind: DisplayAttemptKind) -> fmt::Result {
         writer.write_str(self)
