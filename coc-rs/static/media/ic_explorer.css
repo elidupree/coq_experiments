@@ -2,3 +2,6 @@ body {
   font-size: 120%;
   margin: 0;
 }
+.subformula:hover:not(:has(.subformula:hover)) {
+  background-color: #ccc
+}
