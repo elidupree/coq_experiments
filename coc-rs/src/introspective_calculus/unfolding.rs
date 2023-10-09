@@ -10,49 +10,45 @@ impl Formula {
             _ => false,
         })
     }
-    pub fn unfold_left(&mut self) -> bool {
-        self.unfold_here()
-            || match_ic!(self, {
-                ((implies l) r) => {
+    pub fn unfold_left(&mut self, levels_deduction_available_under: u32) -> bool {
+        if self.unfold_here() {
+            return true;
+        }
+        match_ic!(self, {
+            ((implies l) r) => {
+                if let Some(less) = levels_deduction_available_under.checked_sub(1) {
                     let mut l = l.clone();
                     let mut r = r.clone();
-                    if l.unfold_left() || r.unfold_left() {
+                    if l.unfold_left(less) || r.unfold_left(less) {
                         *self = ic!((implies l) r);
-                        true
-                    } else {
-                        false
+                        return true
                     }
-                },
-                ((union l) r) => {
-                    let mut l = l.clone();
-                    let mut r = r.clone();
-                    if l.unfold_left() || r.unfold_left() {
-                        *self = ic!((union l) r);
-                        true
-                    } else {
-                        false
-                    }
-                },
-                (all r) => {
-                    let mut r = r.clone();
-                    if r.unfold_left() {
-                        *self = ic!(all r);
-                        true
-                    } else {
-                        false
-                    }
-                },
-                (l r) => {
-                    let mut l = l.clone();
-                    if l.unfold_left() {
-                        *self = ic!(l r.clone());
-                        true
-                    } else {
-                        false
-                    }
-                },
-                _ => false,
-            })
+                }
+            },
+            ((union l) r) => {
+                let mut l = l.clone();
+                let mut r = r.clone();
+                if l.unfold_left(levels_deduction_available_under) || r.unfold_left(levels_deduction_available_under) {
+                    *self = ic!((union l) r);
+                    return true
+                }
+            },
+            (all r) => {
+                let mut r = r.clone();
+                if r.unfold_left(levels_deduction_available_under) {
+                    *self = ic!(all r);
+                    return true
+                }
+            },
+            (l r) => {
+                let mut l = l.clone();
+                if l.unfold_left(levels_deduction_available_under) {
+                    *self = ic!(l r.clone());
+                    return true
+                }
+            },
+        });
+        false
     }
     pub fn unfold_many(&mut self) -> usize {
         // self.children_mut()

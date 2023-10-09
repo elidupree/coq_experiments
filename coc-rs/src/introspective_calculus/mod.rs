@@ -38,7 +38,7 @@ pub enum AbstractionKind {
     ForAll,
 }
 
-#[derive(Clone, Eq, PartialEq, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Serialize, Deserialize)]
 pub enum Formula {
     Atom(Atom),
     Apply(Arc<[Formula; 2]>),
@@ -53,7 +53,7 @@ pub enum Formula {
     NameAbstraction(AbstractionKind, String, Arc<Formula>),
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, Serialize, Deserialize)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Default, Serialize, Deserialize)]
 pub enum Atom {
     Implies,
     #[default]
@@ -177,6 +177,7 @@ macro_rules! match_ic {
         $result.unwrap()
     }};
     (@arm $result:ident [$formula:expr] $pattern:tt => $arm:expr) => {
+        #[allow(unused_assignments)]
         if $result.is_none() {
             match_ic!(@unpack_pattern_in [$formula] $pattern => {
                 $result = Some($arm);
@@ -512,12 +513,11 @@ pub fn internalized_rules(original_rules: &[ExplicitRule]) -> Vec<ExplicitRule> 
 // }
 
 pub fn all_official_rules() -> Vec<ExplicitRule> {
-    let mut rules_of_deduction =
-        internalized_rules(&load_explicit_rules("data/ic_rules_of_deduction.ic"));
+    let mut rules_of_deduction = load_explicit_rules("data/ic_rules_of_deduction.ic");
     for r in &mut rules_of_deduction {
         r.formula = ic!((implies empty_set) r.formula.clone());
     }
-    let mut result = rules_of_deduction;
+    let mut result = internalized_rules(&rules_of_deduction);
     let extra_rules = internalized_rules(&load_explicit_rules("data/ic_extra_rules.ic"));
     result.extend(extra_rules);
     result

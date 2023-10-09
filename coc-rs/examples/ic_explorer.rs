@@ -8,6 +8,7 @@ use coc_rs::utils::{read_json_file, write_json_file};
 use coc_rs::{ic, match_ic};
 use html_node::{html, text, Node};
 use quick_and_dirty_web_gui::{callback, callback_with};
+use std::collections::HashSet;
 use std::sync::{Arc, LazyLock, Mutex};
 
 struct Interface {
@@ -86,7 +87,7 @@ impl Interface {
             </span>
         }
     }
-    fn inference_html(&self, index: usize) -> Node {
+    fn inference_html(&self, index: usize, existing_inferences: &HashSet<Formula>) -> Node {
         let rule = &self.inferences[index];
         let formula = &rule.formula;
         let mut buttons = vec![
@@ -97,40 +98,46 @@ impl Interface {
                 interface_callback(move |i| {i.inferences.push(i.inferences[index].clone());})
             }>Copy</button>},
         ];
-        // match_ic!(formula, {
-        //     ((implies empty_set) a) => {
-        //         let a = a.clone();
-        //         buttons.push(html! {<button onclick={
-        //             interface_callback(move |i| {i.inferences[index].formula = a.clone();})
-        //         }>To inference</button>});
-        //     }
-        // });
+        match_ic!(formula, {
+            ((implies empty_set) ((implies a) b)) => {
+                if existing_inferences.contains (a) {
+                    let b = b.clone();
+                    buttons.push(html! {<button onclick={
+                        interface_callback(move |i| {i.inferences[index].formula = b.clone();})
+                    }>Proceed to consequent</button>});
+                }
+            }
+        });
         match_ic!(formula, {
             ((union a) b) => {
                 let a = a.clone();
+                let b = b.clone();
                 buttons.push(html! {<button onclick={
                     interface_callback(move |i| {i.inferences[index].formula = a.clone();})
-                }>To inference</button>});
+                }>Use left</button>});
+                buttons.push(html! {<button onclick={
+                    interface_callback(move |i| {i.inferences[index].formula = b.clone();})
+                }>Use right</button>});
             },
             (all a) => {
+                let a = a.clone();
                 buttons.push(html! {<button onclick={
                     interface_callback(move |i| {
-                        let Formula::Apply(a) = &i.inferences[index].formula else { return };
-                        let rule = a[1].clone();
+                        let rule = a.clone();
                         i.inferences[index].formula = ic!(rule empty_set);
                     })
                 }>Specialize</button>});
             },
         });
         let mut unfolded = formula.clone();
-        if unfolded.unfold_left() {
+        if unfolded.unfold_left(2) {
             buttons.push(html! {<button onclick={
                 interface_callback(move |i| {i.inferences[index].formula = unfolded.clone()})
             }>Unfold</button>});
             buttons.push(html! {<button onclick={
                 interface_callback(move |i| {
                     for _ in 0..100 {
-                        if !i.inferences[index].formula.unfold_left() {
+                        if !i.inferences[index].formula.unfold_left(2) {
                             break
                         }
                     }
@@ -150,11 +157,16 @@ impl Interface {
         }
     }
     fn whole_page(&self) -> Node {
+        let existing_inferences = self
+            .inferences
+            .iter()
+            .map(|rule| rule.formula.clone())
+            .collect();
         let inferences = self
             .inferences
             .iter()
             .enumerate()
-            .map(|(index, _inference)| self.inference_html(index));
+            .map(|(index, _inference)| self.inference_html(index, &existing_inferences));
         html! {
             <div class="inferences">
                 {inferences}
