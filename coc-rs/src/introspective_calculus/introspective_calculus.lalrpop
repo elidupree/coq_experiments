@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use crate::introspective_calculus::{Formula, Atom, ExplicitRule, AbstractionKind};
 
 grammar;
@@ -12,24 +11,20 @@ pub ExplicitRule: ExplicitRule = {
 }
 
 FormulaIndivisible: Formula = {
-  Name => Formula::Metavariable(<>),
+  Name => Formula::metavariable(<>),
   "(" <Formula> ")",
 
-  "0" => Formula::EmptySet,
-  "empty_set" => Formula::Atom(Atom::EmptySet),
-  "implies" => Formula::Atom(Atom::Implies),
-  "union" => Formula::Atom(Atom::Union),
-  "all" => Formula::Atom(Atom::All),
-  "const" => Formula::Atom(Atom::Const),
-  "fuse" => Formula::Atom(Atom::Fuse),
-  //"IC" => Formula::Atom(Atom::Ic),
+  "and" => Formula::atom(Atom::And),
+  "equals" => Formula::atom(Atom::Equals),
+  "const" => Formula::atom(Atom::Const),
+  "fuse" => Formula::atom(Atom::Fuse),
 }
 
 FormulaDivisibleRightOnly: Formula = {
 }
 
 FormulaDivisibleLeftOnly: Formula = {
-  //<FormulaIndivisibleRight> "+1" => Formula::LevelSuccessor(Arc::new(<>)),
+  //<FormulaIndivisibleRight> "+1" => Formula::LevelSuccessor(<>)),
 }
 
 FormulaIndivisibleLeft: Formula = {
@@ -43,8 +38,9 @@ FormulaIndivisibleRight: Formula = {
 }
 
 pub Formula: Formula = {
-  <ApplyChain1> "+" <Formula> => Formula::Union(Arc::new([<>])),
-  <ApplyChain1> "->" <Formula> => Formula::Implies(Arc::new([<>])),
+  <ApplyChain1> "&" <Formula> => Formula::and([<>]),
+  <ApplyChain1> "->" <Formula> => Formula::implies([<>]),
+  <ApplyChain1> "=" <Formula> => Formula::equals([<>]),
   ApplyChain2,
   ArrowChain2,
   FormulaDivisibleRightOnly,
@@ -57,7 +53,7 @@ ApplyChain1: Formula = {
   FormulaIndivisibleRight,
 }
 ApplyChain2: Formula = {
-  ApplyChain1 FormulaIndivisibleLeft => Formula::Apply(Arc::new([<>])),
+  ApplyChain1 FormulaIndivisibleLeft => Formula::apply([<>]),
 }
 
 ArrowChain1: Formula = {
@@ -66,9 +62,9 @@ ArrowChain1: Formula = {
   FormulaIndivisibleLeft,
 }
 ArrowChain2: Formula = {
-  <n:Name> "=>" <r:ArrowChain1> => Formula::NameAbstraction(AbstractionKind::Lambda, n, Arc::new(r)),
-  "∀" <n:Name> "," <r:ArrowChain1> => Formula::NameAbstraction(AbstractionKind::ForAll, n, Arc::new(r)),
-  //<antecedent:ApplyChain1> "->" <level:FormulaIndivisibleLeft> <consequent:ArrowChain1> => Formula::Implies(Arc::new(Implies{<>})),
+  <n:Name> "=>" <r:ArrowChain1> => Formula::name_abstraction(AbstractionKind::Lambda, n, r),
+  "∀" <n:Name> "," <r:ArrowChain1> => Formula::name_abstraction(AbstractionKind::ForAll, n, r),
+  //<antecedent:ApplyChain1> "->" <level:FormulaIndivisibleLeft> <consequent:ArrowChain1> => Formula::implies([<>])),
 }
 
 Name: String = r#"[a-zA-Z_][a-zA-Z0-9_]*|"[a-zA-Z ]*""# => <>.to_string();

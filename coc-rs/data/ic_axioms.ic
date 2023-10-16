@@ -1,0 +1,8 @@
+"symmetry of and" := (A and B) = (B and A)
+"associativity of and" := ((A and B) and C) = (A and (B and C))
+
+"definition of const" := const A B = A
+"definition of fuse" := fuse A B C = (A C)(B C)
+"indistinguishability" := (A = B) = ∀c, ((c A) = (c B))
+"extensionality" := (A = B) = ∀c, ((A c) = (B c))
+

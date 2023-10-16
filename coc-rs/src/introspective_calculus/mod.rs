@@ -1,7 +1,8 @@
 pub mod display;
 // mod from_constructors;
 // mod metavariable_conversions;
-pub mod prolog;
+pub mod logic;
+// pub mod prolog;
 pub mod unfolding;
 
 #[allow(clippy::all)]
@@ -16,14 +17,17 @@ use std::collections::HashMap;
 // use crate::metavariable::Environment;
 // use live_prop_test::{live_prop_test, lpt_assert_eq};
 // use regex::{Captures, Regex};
+use crate::display::DisplayItem;
+use crate::introspective_calculus::logic::TrueFormula;
 use arrayvec::ArrayVec;
 use itertools::Itertools;
 use live_prop_test::live_prop_test;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::ops::Deref;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 #[derive(Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ExplicitRule {
@@ -39,27 +43,58 @@ pub enum AbstractionKind {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Serialize, Deserialize)]
-pub enum Formula {
-    Atom(Atom),
-    Apply(Arc<[Formula; 2]>),
+pub struct Formula(Arc<FormulaWithMetadata>);
 
-    Implies(Arc<[Formula; 2]>),
-    Union(Arc<[Formula; 2]>),
+impl Deref for Formula {
+    type Target = FormulaWithMetadata;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Serialize, Deserialize)]
+pub enum FormulaRawness {
     #[default]
-    Id,
-    EmptySet,
+    Raw,
+    RawWithMetavariables,
+    Pretty {
+        raw_form: Formula,
+    },
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Serialize, Deserialize)]
+pub struct FormulaWithMetadata {
+    pub value: FormulaValue,
+    rawness: FormulaRawness,
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
+pub enum FormulaValue {
+    Atom(Atom),
+    Apply([Formula; 2]),
+
+    And([Formula; 2]),
+    Equals([Formula; 2]),
+    Implies([Formula; 2]),
+
+    NamedGlobal { name: String, value: Formula },
 
     Metavariable(String),
-    NameAbstraction(AbstractionKind, String, Arc<Formula>),
+    NameAbstraction(AbstractionKind, String, Formula),
+}
+
+impl Default for FormulaValue {
+    fn default() -> Self {
+        FormulaValue::Atom(Atom::default())
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Default, Serialize, Deserialize)]
 pub enum Atom {
-    Implies,
+    And,
     #[default]
-    EmptySet,
-    Union,
-    All,
+    Equals,
     Const,
     Fuse,
 }
@@ -69,95 +104,76 @@ pub enum Atom {
 /// manually is way too verbose. So here's a macro to be a middle ground.
 #[macro_export]
 macro_rules! ic {
+    ({$e:expr}) => {
+        $e
+    };
     (($($stuff:tt)+)) => {
         ic!($($stuff)+)
     };
     ($l:tt $r:tt) => {
-        Formula::Apply(Arc::new([ic!($l), ic!($r)]))
+        $crate::introspective_calculus::Formula::apply([ic!($l), ic!($r)])
     };
     ($l:tt $r:expr) => {
-        Formula::Apply(Arc::new([ic!($l), $r]))
+        $crate::introspective_calculus::Formula::apply([ic!($l), $r])
     };
-    ($l:tt + $r:tt) => {
-        Formula::Union(Arc::new([ic!($l), ic!($r)]))
+    ($l:tt & $r:tt) => {
+        $crate::introspective_calculus::Formula::and([ic!($l), ic!($r)])
+    };
+    ($l:tt = $r:tt) => {
+        $crate::introspective_calculus::Formula::equals([ic!($l), ic!($r)])
     };
     ($l:tt -> $r:tt) => {
-        Formula::Implies(Arc::new([ic!($l), ic!($r)]))
+        $crate::introspective_calculus::Formula::implies([ic!($l), ic!($r)])
     };
+    ($name:tt @ $val:tt) => {
+        $crate::introspective_calculus::Formula::make_named_global($name.into(), ic!($val))
+    };
+
     // ($l:expr => $r:tt) => {
     //     Formula::NameAbstraction(AbstractionKind::Lambda, $l, Arc::new(ic!($r)))
     // };
     // (∀ $l:expr, $r:tt) => {
     //     Formula::NameAbstraction(AbstractionKind::ForAll, $l, Arc::new(ic!($r)))
     // };
-    (id) => {
-        Formula::Id
+    // (id) => {
+    //     Formula::id()
+    // };
+    (and) => {
+        $crate::introspective_calculus::Formula::atom($crate::introspective_calculus::Atom::And)
     };
-    (0) => {
-        Formula::EmptySet
-    };
-    (implies) => {
-        Formula::Atom(Atom::Implies)
-    };
-    (empty_set) => {
-        Formula::Atom(Atom::EmptySet)
-    };
-    (union) => {
-        Formula::Atom(Atom::Union)
-    };
-    (all) => {
-        Formula::Atom(Atom::All)
+    (equals) => {
+        $crate::introspective_calculus::Formula::atom($crate::introspective_calculus::Atom::Equals)
     };
     (const) => {
-        Formula::Atom(Atom::Const)
+        $crate::introspective_calculus::Formula::atom($crate::introspective_calculus::Atom::Const)
     };
     (fuse) => {
-        Formula::Atom(Atom::Fuse)
+        $crate::introspective_calculus::Formula::atom($crate::introspective_calculus::Atom::Fuse)
     };
     ($e:expr) => {
-        $e
+        ($e).clone()
     };
 }
 
 #[macro_export]
 macro_rules! match_ic {
-    (@unpack_pattern_in [$formula:expr] id => $body:expr) => {
-        if let ic!(id) = $formula {
+    (@unpack_pattern_in [$formula:expr] and => $body:expr) => {
+        if $formula == &ic!(and) {
             $body;
         }
     };
-    (@unpack_pattern_in [$formula:expr] 0 => $body:expr) => {
-        if let ic!(0) = $formula {
-            $body;
-        }
-    };
-    (@unpack_pattern_in [$formula:expr] empty_set => $body:expr) => {
-        if let ic!(empty_set) = $formula {
-            $body;
-        }
-    };
-    (@unpack_pattern_in [$formula:expr] union => $body:expr) => {
-        if let ic!(union) = $formula {
-            $body;
-        }
-    };
-    (@unpack_pattern_in [$formula:expr] all => $body:expr) => {
-        if let ic!(all) = $formula {
-            $body;
-        }
-    };
-    (@unpack_pattern_in [$formula:expr] implies => $body:expr) => {
-        if let ic!(implies) = $formula {
+    (@unpack_pattern_in [$formula:expr] equals => $body:expr) => {
+        if $formula == &ic!(equals) {
             $body;
         }
     };
     (@unpack_pattern_in [$formula:expr] const => $body:expr) => {
-        if let ic!(const) = $formula {
+        if $formula == &ic!(const) {
             $body;
         }
     };
     (@unpack_pattern_in [$formula:expr] fuse => $body:expr) => {
-        if let ic!(fuse) = $formula {
+        if $formula == &ic!(fuse) {
             $body;
         }
     };
@@ -166,7 +182,22 @@ macro_rules! match_ic {
         $body;
     }};
     (@unpack_pattern_in [$formula:expr] ($l:tt $r:tt) => $body:expr) => {
-        if let Formula::Apply(children) = $formula {
+        if let $crate::introspective_calculus::FormulaValue::Apply(children) = &$formula.value {
+            match_ic!(@unpack_pattern_in [&children[0]] $l => match_ic!(@unpack_pattern_in [&children[1]] $r => $body))
+        }
+    };
+    (@unpack_pattern_in [$formula:expr] ($l:tt & $r:tt) => $body:expr) => {
+        if let $crate::introspective_calculus::FormulaValue::And(children) = &$formula.value {
+            match_ic!(@unpack_pattern_in [&children[0]] $l => match_ic!(@unpack_pattern_in [&children[1]] $r => $body))
+        }
+    };
+    (@unpack_pattern_in [$formula:expr] ($l:tt = $r:tt) => $body:expr) => {
+        if let $crate::introspective_calculus::FormulaValue::Equals(children) = &$formula.value {
+            match_ic!(@unpack_pattern_in [&children[0]] $l => match_ic!(@unpack_pattern_in [&children[1]] $r => $body))
+        }
+    };
+    (@unpack_pattern_in [$formula:expr] ($l:tt -> $r:tt) => $body:expr) => {
+        if let $crate::introspective_calculus::FormulaValue::Implies(children) = &$formula.value {
             match_ic!(@unpack_pattern_in [&children[0]] $l => match_ic!(@unpack_pattern_in [&children[1]] $r => $body))
         }
     };
@@ -202,80 +233,166 @@ pub struct GlobalContext {
     pub inductive_type_definitions: HashMap<String, InductiveTypeDefinition>,
 }
 
-#[live_prop_test]
+static ID: LazyLock<Formula> = LazyLock::new(|| ic!("id" @ ((fuse const) const)));
+static PROP_TRUE: LazyLock<Formula> = LazyLock::new(|| ic!("True" @ ((equals equals) equals)));
+static ALL: LazyLock<Formula> =
+    LazyLock::new(|| ic!("all" @ (equals (const {Formula::prop_true()}))));
+static PROP_FALSE: LazyLock<Formula> =
+    LazyLock::new(|| ic!("False" @ ({Formula::all()} {Formula::id()})));
+
+fn rawness_of_raw_pair(pair: &[Formula; 2]) -> Option<FormulaRawness> {
+    match pair.each_ref().map(|c| &c.rawness) {
+        [FormulaRawness::Raw, FormulaRawness::Raw] => Some(FormulaRawness::Raw),
+        [FormulaRawness::Pretty { .. }, _] | [_, FormulaRawness::Pretty { .. }] => None,
+        _ => Some(FormulaRawness::RawWithMetavariables),
+    }
+}
+
 impl Formula {
-    // should be idempotent:
-    #[live_prop_test(postcondition = "result.to_raw_with_metavariables() == result")]
-    pub fn to_raw_with_metavariables(&self) -> Formula {
-        match self {
-            Formula::EmptySet => Formula::Atom(Atom::EmptySet),
-            Formula::Id => ic!((fuse const) const),
-            Formula::Implies(f) => {
-                let a = f[0].to_raw_with_metavariables();
-                let b = f[1].to_raw_with_metavariables();
-                ic!((implies a)b)
-            }
-            Formula::Union(f) => {
-                let a = f[0].to_raw_with_metavariables();
-                let b = f[1].to_raw_with_metavariables();
-                ic!((union a)b)
-            }
-            Formula::NameAbstraction(kind, name, body) => {
-                let body = body
-                    .to_raw_with_metavariables()
-                    .with_metavariable_abstracted(name);
-                match kind {
-                    AbstractionKind::Lambda => body,
-                    AbstractionKind::ForAll => {
-                        ic!(all body)
-                    }
-                }
-            }
-            _ => self.map_children(Formula::to_raw_with_metavariables),
-        }
+    pub fn id() -> Formula {
+        ID.clone()
+    }
+    pub fn prop_true() -> Formula {
+        PROP_TRUE.clone()
+    }
+    pub fn all() -> Formula {
+        ALL.clone()
+    }
+    pub fn prop_false() -> Formula {
+        PROP_FALSE.clone()
+    }
+    pub fn atom(atom: Atom) -> Formula {
+        Formula(Arc::new(FormulaWithMetadata {
+            value: FormulaValue::Atom(atom),
+            rawness: FormulaRawness::Raw,
+        }))
+    }
+    pub fn metavariable(name: String) -> Formula {
+        Formula(Arc::new(FormulaWithMetadata {
+            value: FormulaValue::Metavariable(name),
+            rawness: FormulaRawness::RawWithMetavariables,
+        }))
     }
 
+    pub fn make_named_global(name: String, value: Formula) -> Formula {
+        Formula(Arc::new(FormulaWithMetadata {
+            value: FormulaValue::NamedGlobal {
+                name,
+                value: value.clone(),
+            },
+            rawness: FormulaRawness::Pretty {
+                raw_form: value.to_raw_with_metavariables(),
+            },
+        }))
+    }
+    pub fn apply(children: [Formula; 2]) -> Formula {
+        Formula(Arc::new({
+            if let Some(rawness) = rawness_of_raw_pair(&children) {
+                FormulaWithMetadata {
+                    value: FormulaValue::Apply(children),
+                    rawness,
+                }
+            } else {
+                let raw_children = children.each_ref().map(|c| c.to_raw_with_metavariables());
+                let raw_rawness = rawness_of_raw_pair(&raw_children).unwrap();
+                let raw_form = Formula(Arc::new(FormulaWithMetadata {
+                    value: FormulaValue::Apply(raw_children),
+                    rawness: raw_rawness,
+                }));
+                FormulaWithMetadata {
+                    value: FormulaValue::Apply(children),
+                    rawness: FormulaRawness::Pretty { raw_form },
+                }
+            }
+        }))
+    }
+    pub fn combine_pretty(
+        children: [Formula; 2],
+        combine: impl FnOnce([Formula; 2]) -> FormulaValue,
+        combine_raw: impl FnOnce([Formula; 2]) -> FormulaValue,
+    ) -> Formula {
+        let raw_children = children.each_ref().map(|c| c.to_raw_with_metavariables());
+        let raw_rawness = rawness_of_raw_pair(&raw_children).unwrap();
+        let raw_form = Formula(Arc::new(FormulaWithMetadata {
+            value: combine_raw(raw_children),
+            rawness: raw_rawness,
+        }));
+
+        Formula(Arc::new(FormulaWithMetadata {
+            value: combine(children),
+            rawness: FormulaRawness::Pretty { raw_form },
+        }))
+    }
+    pub fn and(children: [Formula; 2]) -> Formula {
+        Formula::combine_pretty(children, FormulaValue::Equals, |[a, b]| {
+            ic!((and a)b).value.clone()
+        })
+    }
+    pub fn equals(children: [Formula; 2]) -> Formula {
+        Formula::combine_pretty(children, FormulaValue::Equals, |[a, b]| {
+            ic!((equals a)b).value.clone()
+        })
+    }
+    pub fn implies(children: [Formula; 2]) -> Formula {
+        Formula::combine_pretty(children, FormulaValue::Implies, |[a, b]| {
+            ic!((equals a)((and a) b)).value.clone()
+        })
+    }
+    pub fn name_abstraction(kind: AbstractionKind, name: String, body: Formula) -> Formula {
+        let raw_abstracted_body = body
+            .as_raw_with_metavariables()
+            .with_metavariable_abstracted(&name);
+        Formula(Arc::new(FormulaWithMetadata {
+            value: FormulaValue::NameAbstraction(kind, name, body),
+            rawness: FormulaRawness::Pretty {
+                raw_form: match kind {
+                    AbstractionKind::Lambda => raw_abstracted_body,
+                    AbstractionKind::ForAll => {
+                        ic!({Formula::all().to_raw_with_metavariables()} raw_abstracted_body)
+                    }
+                },
+            },
+        }))
+    }
+    pub fn hard_coded_globals() -> HashMap<&'static str, Arc<Formula>> {
+        // Formula::Id => ic!((fuse const) const),
+        [].into_iter().collect()
+    }
+}
+#[live_prop_test]
+impl FormulaWithMetadata {
     pub fn is_raw_with_metavariables(&self) -> bool {
-        self.to_raw_with_metavariables() == *self
+        matches!(
+            self.rawness,
+            FormulaRawness::Raw | FormulaRawness::RawWithMetavariables
+        )
     }
 
     pub fn children(&self) -> ArrayVec<&Formula, 3> {
-        match self {
-            Formula::EmptySet | Formula::Id | Formula::Atom(_) | Formula::Metavariable(_) => {
-                ArrayVec::new()
-            }
-            Formula::Implies(f) | Formula::Union(f) | Formula::Apply(f) => f.iter().collect(),
-            Formula::NameAbstraction(_kind, _name, body) => [&**body].into_iter().collect(),
+        match &self.value {
+            FormulaValue::Atom(_) | FormulaValue::Metavariable(_) => ArrayVec::new(),
+            FormulaValue::Implies(f)
+            | FormulaValue::Equals(f)
+            | FormulaValue::And(f)
+            | FormulaValue::Apply(f) => f.iter().collect(),
+            FormulaValue::NamedGlobal { value, .. } => [value].into_iter().collect(),
+            FormulaValue::NameAbstraction(_kind, _name, body) => [body].into_iter().collect(),
         }
     }
     // pub fn children_mut(&mut self) -> ArrayVec<&mut Formula, 3> {
     //     match self {
-    //         Formula::EmptySet | Formula::Id | Formula::Atom(_) | Formula::Metavariable(_) => {
+    //         FormulaValue::EmptySet | FormulaValue::Id | FormulaValue::Atom(_) | FormulaValue::Metavariable(_) => {
     //             ArrayVec::new()
     //         }
-    //         Formula::Implies(f) | Formula::Union(f) | Formula::Apply(f) => f.iter_mut().collect(),
-    //         Formula::NameAbstraction(_name, body) => [&mut **body].into_iter().collect(),
+    //         FormulaValue::Implies(f) | FormulaValue::Union(f) | FormulaValue::Apply(f) => f.iter_mut().collect(),
+    //         FormulaValue::NameAbstraction(_name, body) => [&mut **body].into_iter().collect(),
     //     }
     // }
 
-    pub fn map_children(&self, mut map: impl FnMut(&Formula) -> Formula) -> Formula {
-        match self {
-            Formula::EmptySet | Formula::Id | Formula::Atom(_) | Formula::Metavariable(_) => {
-                self.clone()
-            }
-            Formula::Implies(f) => Formula::Implies(Arc::new(f.each_ref().map(map))),
-            Formula::Union(f) => Formula::Union(Arc::new(f.each_ref().map(map))),
-            Formula::Apply(f) => Formula::Apply(Arc::new(f.each_ref().map(map))),
-            Formula::NameAbstraction(kind, name, body) => {
-                Formula::NameAbstraction(*kind, name.clone(), Arc::new(map(body)))
-            }
-        }
-    }
-
     pub fn contains_free_metavariable(&self, name: &str) -> bool {
-        match self {
-            Formula::Metavariable(n) => n == name,
-            Formula::NameAbstraction(_kind, n, body) => {
+        match &self.value {
+            FormulaValue::Metavariable(n) => n == name,
+            FormulaValue::NameAbstraction(_kind, n, body) => {
                 n != name && body.contains_free_metavariable(name)
             }
             _ => self
@@ -286,9 +403,9 @@ impl Formula {
     }
 
     pub fn free_metavariables(&self) -> Vec<&String> {
-        match self {
-            Formula::Metavariable(n) => vec![n],
-            Formula::NameAbstraction(_kind, n, body) => {
+        match &self.value {
+            FormulaValue::Metavariable(n) => vec![n],
+            FormulaValue::NameAbstraction(_kind, n, body) => {
                 let mut result = body.free_metavariables();
                 result.retain(|&v| v != n);
                 result
@@ -306,6 +423,36 @@ impl Formula {
             }
         }
     }
+}
+
+#[live_prop_test]
+impl Formula {
+    pub fn as_raw_with_metavariables(&self) -> &Formula {
+        match &self.rawness {
+            FormulaRawness::Pretty { raw_form } => raw_form,
+            _ => self,
+        }
+    }
+    pub fn to_raw_with_metavariables(&self) -> Formula {
+        self.as_raw_with_metavariables().clone()
+    }
+    pub fn map_children(&self, mut map: impl FnMut(&Formula) -> Formula) -> Formula {
+        match &self.value {
+            FormulaValue::Atom(_) | FormulaValue::Metavariable(_) => self.clone(),
+            FormulaValue::And(f) => Formula::and(f.each_ref().map(map)),
+            FormulaValue::Equals(f) => Formula::equals(f.each_ref().map(map)),
+            FormulaValue::Implies(f) => Formula::implies(f.each_ref().map(map)),
+            FormulaValue::Apply(f) => Formula::apply(f.each_ref().map(map)),
+            FormulaValue::NamedGlobal { .. } => {
+                // HACK: assume map_children is only used for metavariables stuff where named globals
+                // don't need any attention because they don't contain metavariables
+                self.clone()
+            }
+            FormulaValue::NameAbstraction(kind, name, body) => {
+                Formula::name_abstraction(*kind, name.clone(), map(body))
+            }
+        }
+    }
 
     // assumes already in raw form:
     #[live_prop_test(precondition = "self.is_raw_with_metavariables()")]
@@ -313,14 +460,14 @@ impl Formula {
         if !self.contains_free_metavariable(name) {
             return ic!(const self.clone());
         }
-        match self {
-            Formula::Atom(_) => panic!("should've early-exited above"),
-            Formula::Metavariable(n) => {
+        match &self.value {
+            FormulaValue::Atom(_) => panic!("should've early-exited above"),
+            FormulaValue::Metavariable(n) => {
                 assert_eq!(n, name, "should've early-exited above");
-                Formula::Id.to_raw_with_metavariables()
+                Formula::id().to_raw_with_metavariables()
             }
-            Formula::Apply(c) => {
-                if matches!(&c[1], Formula::Metavariable(n) if n == name)
+            FormulaValue::Apply(c) => {
+                if matches!(&c[1].value, FormulaValue::Metavariable(n) if n == name)
                     && !c[0].contains_free_metavariable(name)
                 {
                     c[0].clone()
@@ -335,8 +482,8 @@ impl Formula {
     }
 
     pub fn with_metavariable_replaced(&self, name: &str, replacement: &Formula) -> Formula {
-        match self {
-            Formula::Metavariable(n) => {
+        match &self.value {
+            FormulaValue::Metavariable(n) => {
                 if n == name {
                     replacement.clone()
                 } else {
@@ -353,65 +500,68 @@ impl Formula {
     ) -> Formula {
         let mut result = self.clone();
         for variable in variables {
-            result = result.with_metavariable_abstracted(variable);
-            result = ic!(all result);
+            // result = result.with_metavariable_abstracted(variable);
+            // result = ic!({Formula::all()} result);
+            result =
+                Formula::name_abstraction(AbstractionKind::ForAll, variable.to_string(), result);
         }
         result
     }
 
     pub fn naive_size(&self) -> usize {
         1 + self
+            .as_raw_with_metavariables()
             .children()
             .into_iter()
             .map(Formula::naive_size)
             .sum::<usize>()
     }
 
-    pub fn left_atom(&self) -> Atom {
-        match self {
-            Formula::Atom(a) => *a,
-            Formula::Apply(c) => c[0].left_atom(),
-            Formula::Implies(_) => Atom::Implies,
-            Formula::Union(_) => Atom::Union,
-            Formula::Id => Atom::Fuse,
-            Formula::EmptySet => Atom::EmptySet,
-            Formula::Metavariable(_) => {
-                panic!("can't call left_atom on a metavariable!")
-            }
-            Formula::NameAbstraction(_, _, _) => Atom::Fuse, // TODO: technically wrong
-        }
-    }
+    // pub fn left_atom(&self) -> Atom {
+    //     match self {
+    //         FormulaValue::Atom(a) => *a,
+    //         FormulaValue::Apply(c) => c[0].left_atom(),
+    //         FormulaValue::Implies(_) => Atom::Implies,
+    //         FormulaValue::And(_) => Atom::And,
+    //         FormulaValue::Id => Atom::Fuse,
+    //         FormulaValue::EmptySet => Atom::EmptySet,
+    //         FormulaValue::Metavariable(_) => {
+    //             panic!("can't call left_atom on a metavariable!")
+    //         }
+    //         FormulaValue::NameAbstraction(_, _, _) => Atom::Fuse, // TODO: technically wrong
+    //     }
+    // }
 
-    /// basically "unfold (self variable_name)"
-    pub fn combinators_to_variable_usages(&self, variable_name: &str) -> Formula {
-        match_ic!(self, {
-            ((fuse const) const) => Formula::Metavariable(variable_name.into()),
-            id => Formula::Metavariable(variable_name.into()),
-            ((fuse a) b) => {
-                let a = a.combinators_to_variable_usages(variable_name);
-                let b = b.combinators_to_variable_usages(variable_name);
-                ic!(a b)
-            },
-            (const a) => {
-                a.clone()
-            },
-            _ => ic!((self.clone()) Formula::Metavariable(variable_name.into())),
-        })
-    }
+    // /// basically "unfold (self variable_name)"
+    // pub fn combinators_to_variable_usages(&self, variable_name: &str) -> Formula {
+    //     match_ic!(self, {
+    //         ((fuse const) const) => FormulaValue::Metavariable(variable_name.into()),
+    //         id => FormulaValue::Metavariable(variable_name.into()),
+    //         ((fuse a) b) => {
+    //             let a = a.combinators_to_variable_usages(variable_name);
+    //             let b = b.combinators_to_variable_usages(variable_name);
+    //             ic!(a b)
+    //         },
+    //         (const a) => {
+    //             a.clone()
+    //         },
+    //         _ => ic!((self.clone()) FormulaValue::Metavariable(variable_name.into())),
+    //     })
+    // }
 
-    pub fn prettify(&self, next_name: char) -> Formula {
-        let next_next_name = std::char::from_u32(next_name as u32 + 1).unwrap_or(next_name);
-        match_ic!(self, {
-            (all f) => Formula::NameAbstraction(AbstractionKind::ForAll,next_name.to_string(),f.combinators_to_variable_usages (&next_name.to_string()).prettify(next_next_name).into()),
-            ((fuse const) const) => Formula::Id,
-            ((fuse _a) _b) => Formula::NameAbstraction(AbstractionKind::Lambda,next_name.to_string(),self.combinators_to_variable_usages (&next_name.to_string()).prettify(next_next_name).into()),
-            (const _a) => Formula::NameAbstraction(AbstractionKind::Lambda,next_name.to_string(),self.combinators_to_variable_usages (&next_name.to_string()).prettify(next_next_name).into()),
-            ((union a) b) => ic!((a.prettify(next_name)) + (b.prettify(next_name))),
-            ((implies a) b) => ic!((a.prettify(next_name)) -> (b.prettify(next_name))),
-            empty_set => ic!(0),
-            _ => self.map_children(|c|c.prettify(next_name))
-        })
-    }
+    // pub fn prettify(&self, next_name: char) -> Formula {
+    //     let next_next_name = std::char::from_u32(next_name as u32 + 1).unwrap_or(next_name);
+    //     match_ic!(self, {
+    //         (all f) => Formula::NameAbstraction(AbstractionKind::ForAll,next_name.to_string(),f.combinators_to_variable_usages (&next_name.to_string()).prettify(next_next_name).into()),
+    //         ((fuse const) const) => Formula::Id,
+    //         ((fuse _a) _b) => Formula::NameAbstraction(AbstractionKind::Lambda,next_name.to_string(),self.combinators_to_variable_usages (&next_name.to_string()).prettify(next_next_name).into()),
+    //         (const _a) => Formula::NameAbstraction(AbstractionKind::Lambda,next_name.to_string(),self.combinators_to_variable_usages (&next_name.to_string()).prettify(next_next_name).into()),
+    //         ((and a) b) => ic!((a.prettify(next_name)) + (b.prettify(next_name))),
+    //         ((implies a) b) => ic!((a.prettify(next_name)) -> (b.prettify(next_name))),
+    //         empty_set => ic!(0),
+    //         _ => self.map_children(|c|c.prettify(next_name))
+    //     })
+    // }
 }
 
 pub fn load_explicit_rules(path: impl AsRef<Path>) -> Vec<ExplicitRule> {
@@ -512,15 +662,19 @@ pub fn internalized_rules(original_rules: &[ExplicitRule]) -> Vec<ExplicitRule> 
 //     first_part.with_metavariable_replaced("rest", &rest)
 // }
 
-pub fn all_official_rules() -> Vec<ExplicitRule> {
-    let mut rules_of_deduction = load_explicit_rules("data/ic_rules_of_deduction.ic");
-    for r in &mut rules_of_deduction {
-        r.formula = ic!((implies empty_set) r.formula.clone());
-    }
-    let mut result = internalized_rules(&rules_of_deduction);
-    let extra_rules = internalized_rules(&load_explicit_rules("data/ic_extra_rules.ic"));
-    result.extend(extra_rules);
-    result
+pub fn all_axioms() -> Vec<TrueFormula> {
+    let explicit_rules = load_explicit_rules("data/ic_axioms.ic");
+    // for r in &mut rules_of_deduction {
+    //     r.formula = ic!((implies empty_set) r.formula.clone());
+    // }
+    // let mut result = internalized_rules(&rules_of_deduction);
+    // let extra_rules = internalized_rules(&load_explicit_rules("data/ic_extra_rules.ic"));
+    // result.extend(extra_rules);
+    // result
+    internalized_rules(&explicit_rules)
+        .into_iter()
+        .map(|r| TrueFormula::axiom(Formula::make_named_global(r.name, r.formula)))
+        .collect()
 }
 
 // #[derive(Clone, Eq, PartialEq, Debug)]
