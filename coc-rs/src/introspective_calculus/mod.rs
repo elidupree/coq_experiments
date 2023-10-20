@@ -324,7 +324,7 @@ impl Formula {
         }))
     }
     pub fn and(children: [Formula; 2]) -> Formula {
-        Formula::combine_pretty(children, FormulaValue::Equals, |[a, b]| {
+        Formula::combine_pretty(children, FormulaValue::And, |[a, b]| {
             ic!((and a)b).value.clone()
         })
     }
@@ -357,6 +357,13 @@ impl Formula {
     pub fn hard_coded_globals() -> HashMap<&'static str, Arc<Formula>> {
         // Formula::Id => ic!((fuse const) const),
         [].into_iter().collect()
+    }
+    pub fn as_eq_sides(&self) -> Option<[&Formula; 2]> {
+        match_ic!(self, {
+            ((equals a) b) => Some([a, b]),
+            (a = b) => Some([a, b]),
+            _ => None,
+        })
     }
 }
 #[live_prop_test]
@@ -581,14 +588,14 @@ pub fn internalized_rules(original_rules: &[ExplicitRule]) -> Vec<ExplicitRule> 
     original_rules
         .iter()
         .map(|rule| {
-            let c = rule.formula.to_raw_with_metavariables();
-            let free_variables = c.free_metavariables();
+            //let c = rule.formula.to_raw_with_metavariables();
+            let free_variables = rule.formula.free_metavariables();
             let versions = free_variables
                 .iter()
                 .copied()
                 .permutations(free_variables.len())
                 .map(|permutation| {
-                    let result = c.with_metavariables_universalized(
+                    let result = rule.formula.with_metavariables_universalized(
                         permutation
                             .iter()
                             .rev()

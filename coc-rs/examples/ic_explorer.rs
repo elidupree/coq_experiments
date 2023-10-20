@@ -18,7 +18,7 @@ struct Interface {
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 enum ParenthesisNeeds {
-    AndChain,
+    AndLHS,
     ApplyLHS,
     AbstractionBody,
     AllCompounds,
@@ -40,16 +40,16 @@ impl Interface {
                 html! {<span class="apply">{l}{text!{" "}}{r}</span>}
             }
             FormulaValue::And(children) => {
-                parenthesize = !matches!(parenthesis_needs, AndChain | Nothing);
-                let l = self.formula_html(&children[0], AndChain);
-                let r = self.formula_html(&children[1], AndChain);
-                html! {<span class="union">{l}{text!{" & "}}{r}</span>}
+                parenthesize = !matches!(parenthesis_needs, AndLHS | Nothing);
+                let l = self.formula_html(&children[0], AndLHS);
+                let r = self.formula_html(&children[1], AllCompounds);
+                html! {<span class="and">{l}{text!{" & "}}{r}</span>}
             }
             FormulaValue::Equals(children) => {
                 parenthesize = parenthesis_needs != Nothing;
                 let l = self.formula_html(&children[0], AllCompounds);
                 let r = self.formula_html(&children[1], AllCompounds);
-                html! {<span class="union">{l}{text!{" = "}}{r}</span>}
+                html! {<span class="equals">{l}{text!{" = "}}{r}</span>}
             }
             FormulaValue::Implies(children) => {
                 parenthesize = parenthesis_needs != Nothing;
@@ -107,7 +107,7 @@ impl Interface {
             }>Copy</button>},
         ];
         // match_ic!(formula, {
-        //     //TODO reduce duplicate code ID 3894475843
+        //     //TODO use eq_sides instead
         //     ((equals a) b) => {
         //         if let Some(a) = existing_inferences.get(a) {
         //             let b = b.clone();
@@ -201,8 +201,12 @@ impl Interface {
 
 static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
     let args = Args::parse();
-    let inferences =
-        read_json_file::<_, Vec<TrueFormula>>(&args.file_path).unwrap_or_else(|_| all_axioms());
+    let mut inferences = read_json_file::<_, Vec<TrueFormula>>(&args.file_path).unwrap_or_default();
+    for axiom in all_axioms() {
+        if !inferences.contains(&axiom) {
+            inferences.push(axiom);
+        }
+    }
     Mutex::new(Interface {
         file_path: args.file_path,
         theorems: inferences,
