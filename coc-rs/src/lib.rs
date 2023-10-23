@@ -1,4 +1,5 @@
 #![feature(array_methods, lazy_cell)]
+#![feature(array_try_map)]
 
 extern crate core;
 

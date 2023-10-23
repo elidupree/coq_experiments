@@ -1,4 +1,5 @@
 use crate::introspective_calculus::{Formula, Atom, ExplicitRule, AbstractionKind};
+use crate::introspective_calculus::proofs::ProofLine;
 
 grammar;
 
@@ -9,6 +10,22 @@ extern {
 pub ExplicitRule: ExplicitRule = {
   <name:Name> ":=" <formula:Formula> => ExplicitRule{<>}
 }
+
+pub ProofLine: ProofLine = {
+  <name:Name> "." <formula:Formula> => ProofLine{<>, ..ProofLine::default()},
+  <name:Name> "." <formula:Formula> "[" <referents:CommaSeparated<Name>> "]" => ProofLine{name, formula, referents: referents.into_iter().collect(), ..ProofLine::default()},
+  <name:Name> "." <formula:Formula> "[" <referents:(<Name> ",")*> "by" <lemma_name: Name?> "]" => ProofLine{name, formula, referents: referents.into_iter().collect(), lemma_name},
+}
+
+CommaSeparated<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+};
 
 FormulaIndivisible: Formula = {
   Name => Formula::metavariable(<>),
@@ -67,4 +84,4 @@ ArrowChain2: Formula = {
   //<antecedent:ApplyChain1> "->" <level:FormulaIndivisibleLeft> <consequent:ArrowChain1> => Formula::implies([<>])),
 }
 
-Name: String = r#"[a-zA-Z_][a-zA-Z0-9_]*|"[a-zA-Z ]*""# => <>.to_string();
+Name: String = r#"[a-zA-Z0-9_]+|"[a-zA-Z ]*""# => <>.to_string();

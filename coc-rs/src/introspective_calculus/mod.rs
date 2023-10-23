@@ -3,6 +3,7 @@ pub mod display;
 // mod metavariable_conversions;
 pub mod logic;
 // pub mod prolog;
+pub mod proofs;
 pub mod unfolding;
 
 #[allow(clippy::all)]
@@ -11,13 +12,14 @@ mod lalrpop_wrapper {
     lalrpop_mod!(pub(crate) introspective_calculus, "/introspective_calculus/introspective_calculus.rs");
 }
 
-pub use self::lalrpop_wrapper::introspective_calculus::{ExplicitRuleParser, FormulaParser};
-use std::collections::HashMap;
+pub use self::lalrpop_wrapper::introspective_calculus::{
+    ExplicitRuleParser, FormulaParser, ProofLineParser,
+};
+use std::collections::{hash_map, HashMap};
 // use crate::introspective_calculus::metavariable_conversions::MetavariablesInjectionContext;
 // use crate::metavariable::Environment;
 // use live_prop_test::{live_prop_test, lpt_assert_eq};
 // use regex::{Captures, Regex};
-use crate::display::DisplayItem;
 use crate::introspective_calculus::logic::TrueFormula;
 use arrayvec::ArrayVec;
 use itertools::Itertools;
@@ -25,6 +27,7 @@ use live_prop_test::live_prop_test;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::iter::zip;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::{Arc, LazyLock};
@@ -151,7 +154,10 @@ macro_rules! ic {
         $crate::introspective_calculus::Formula::atom($crate::introspective_calculus::Atom::Fuse)
     };
     ($e:expr) => {
-        ($e).clone()
+        {
+            use $crate::introspective_calculus::ToFormula;
+            ($e).to_formula()
+        }
     };
 }
 
@@ -202,6 +208,7 @@ macro_rules! match_ic {
         }
     };
     (@arm $result:ident [$formula:expr] _ => $arm:expr) => {{
+        #[allow(unreachable_code)]
         if $result.is_none() {
             $result = Some($arm)
         }
@@ -245,6 +252,22 @@ fn rawness_of_raw_pair(pair: &[Formula; 2]) -> Option<FormulaRawness> {
         [FormulaRawness::Raw, FormulaRawness::Raw] => Some(FormulaRawness::Raw),
         [FormulaRawness::Pretty { .. }, _] | [_, FormulaRawness::Pretty { .. }] => None,
         _ => Some(FormulaRawness::RawWithMetavariables),
+    }
+}
+
+pub trait ToFormula {
+    fn to_formula(&self) -> Formula;
+}
+
+impl ToFormula for str {
+    fn to_formula(&self) -> Formula {
+        Formula::metavariable(self.to_string())
+    }
+}
+
+impl ToFormula for Formula {
+    fn to_formula(&self) -> Formula {
+        self.clone()
     }
 }
 
@@ -501,6 +524,19 @@ impl Formula {
         }
     }
 
+    pub fn with_metavariables_replaced(&self, replacements: &HashMap<String, Formula>) -> Formula {
+        match &self.value {
+            FormulaValue::Metavariable(n) => {
+                if let Some(replacement) = replacements.get(n) {
+                    replacement.clone()
+                } else {
+                    self.clone()
+                }
+            }
+            _ => self.map_children(|f| f.with_metavariables_replaced(replacements)),
+        }
+    }
+
     pub fn with_metavariables_universalized<'a>(
         &self,
         variables: impl IntoIterator<Item = &'a str>,
@@ -513,6 +549,41 @@ impl Formula {
                 Formula::name_abstraction(AbstractionKind::ForAll, variable.to_string(), result);
         }
         result
+    }
+
+    /// values for meta-variables such that the raw form would become exactly the specified raw form (not allowing definitional equality, but ignoring differences between pretty and raw forms)
+    pub fn metavariable_values_to_become(
+        &self,
+        goal: &Formula,
+    ) -> Option<HashMap<String, Formula>> {
+        match (
+            &self.as_raw_with_metavariables().value,
+            &goal.as_raw_with_metavariables().value,
+        ) {
+            (FormulaValue::Atom(s), FormulaValue::Atom(g)) => (s == g).then(HashMap::new),
+            (FormulaValue::Metavariable(name), _) => {
+                Some([(name.clone(), goal.clone())].into_iter().collect())
+            }
+            (FormulaValue::Apply(children), FormulaValue::Apply(goal_children)) => {
+                let mut result = HashMap::new();
+                for (child, goal_child) in zip(children, goal_children) {
+                    for (name, value) in child.metavariable_values_to_become(goal_child)? {
+                        match result.entry(name) {
+                            hash_map::Entry::Occupied(e) => {
+                                if e.get() != &value {
+                                    return None;
+                                }
+                            }
+                            hash_map::Entry::Vacant(e) => {
+                                e.insert(value);
+                            }
+                        }
+                    }
+                }
+                Some(result)
+            }
+            _ => None,
+        }
     }
 
     pub fn naive_size(&self) -> usize {

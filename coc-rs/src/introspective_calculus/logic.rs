@@ -93,7 +93,7 @@ impl TrueFormula {
     pub fn eq_sym(a_equals_b: &TrueFormula) -> Option<TrueFormula> {
         let [a, _b] = a_equals_b.as_eq_sides()?;
         let a_equals_a = TrueFormula::eq_refl(a.clone());
-        let eqa_equals_eqb = TrueFormula::compatibility_right(ic!(equals), &a_equals_b).unwrap();
+        let eqa_equals_eqb = TrueFormula::compatibility_right(ic!(equals), a_equals_b).unwrap();
         let eqaa_equals_eqba = TrueFormula::compatibility_left(&eqa_equals_eqb, a.clone()).unwrap();
         Some(TrueFormula::substitute_whole_formula(&eqaa_equals_eqba, &a_equals_a).unwrap())
     }
@@ -103,7 +103,7 @@ impl TrueFormula {
             return None;
         }
         let cta_equals_pa =
-            TrueFormula::compatibility_left(&universal_truth, argument.clone()).unwrap();
+            TrueFormula::compatibility_left(universal_truth, argument.clone()).unwrap();
         let cta_equals_true = TrueFormula::definition_of_const(Formula::prop_true(), argument);
         let true_equals_cta = TrueFormula::eq_sym(&cta_equals_true).unwrap();
         let cta =

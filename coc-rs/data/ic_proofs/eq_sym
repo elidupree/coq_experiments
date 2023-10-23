@@ -1,0 +1,6 @@
+P1. A = B
+
+1. A = A                     [by eq_refl]
+2. (equals A) = (equals B)   [P1]
+3. (A = A) = (B = A)         [2]
+4. B = A                     [3, 1]

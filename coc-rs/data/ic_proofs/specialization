@@ -1,0 +1,8 @@
+P1. (const True) = P
+
+1. ((const True) A) = (P A)   [P1]
+2. True                       [by eq_refl]
+3. (const True) A = True
+4. True = (const True) A      [3, by eq_sym]
+5. (const True) A             [4, 2]
+6. P A                        [1, 5]
