@@ -1,4 +1,4 @@
-P1. (const True) = P
+P1. All P
 
 1. ((const True) A) = (P A)   [P1]
 2. True                       [by eq_refl]

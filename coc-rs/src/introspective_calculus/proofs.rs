@@ -53,32 +53,36 @@ pub fn load_proof(path: impl AsRef<Path>) -> Vec<ProofLine> {
 pub fn lemma_step(
     lemma_name: &str,
     goal: &Formula,
-    available_premises: &[(usize, &Formula)],
+    provided_premises: &[(usize, &Formula)],
 ) -> Result<CompiledProofStep, String> {
     let lemma = get_proof_by_name(lemma_name);
     let claim = lemma.claim();
-    let Some(arguments) = claim.conclusion.metavariable_values_to_become(goal) else {
+    eprintln!("{} -> {goal}", &claim.conclusion);
+    let mut arguments: HashMap<String, Formula> = HashMap::new();
+    claim
+        .conclusion
+        .add_substitutions_to_become(goal, &mut arguments)
+        .map_err(|e| {
+            format!(
+                "Could not unify goal `{goal}` with conclusion `{}` of `{lemma_name}`: {e}",
+                &claim.conclusion
+            )
+        })?;
+    if provided_premises.len() != claim.premises.len() {
         return Err(format!(
-            "Could not unify goal `{goal}` with conclusion `{}` of `{lemma_name}`",
-            &claim.conclusion
+            "Wrong number of premises given for lemma `{lemma_name}` (given {}, needs {})",
+            provided_premises.len(),
+            claim.premises.len()
         ));
-    };
-    let mut satisfied_premises: Vec<Option<usize>> = claim.premises.iter().map(|_| None).collect();
-    for &(index, available_premise) in available_premises {
-        for (required, satisfied) in zip(&claim.premises, &mut satisfied_premises) {
-            if required.with_metavariables_replaced(&arguments) == *available_premise {
-                *satisfied = Some(index)
-            }
-        }
     }
-    let premises = satisfied_premises
-        .into_iter()
-        .zip(&claim.premises)
-        .map(|(satisfied, needed)| {
-            satisfied
-                .ok_or_else(|| format!("Could not satisfy premise `{needed}` of `{lemma_name}`"))
-        })
-        .collect::<Result<Vec<usize>, String>>()?;
+    for (needed, &(_index, provided)) in zip(claim.premises, provided_premises) {
+        needed.add_substitutions_to_become(provided, &mut arguments).map_err(|e| {
+            format!(
+                "Could not unify provided premise `{provided}` with premise `{needed}` of `{lemma_name}`: {e}",
+            )
+        })?;
+    }
+    let premises = provided_premises.iter().map(|&(index, _)| index).collect();
     Ok(CompiledProofStep::Lemma {
         lemma_name: lemma_name.to_string(),
         arguments,
@@ -119,7 +123,11 @@ pub fn compile(lines: &[ProofLine]) -> Result<CompiledProof, String> {
         steps.push(step);
     }
     Ok(CompiledProof {
-        conclusion: Default::default(),
+        conclusion: lines
+            .last()
+            .ok_or_else(|| "Proof has no lines".to_string())?
+            .formula
+            .clone(),
         steps,
     })
 }
@@ -168,7 +176,7 @@ impl Proof for SubstituteWholeFormula {
     fn claim(&self) -> Claim {
         Claim {
             premises: vec![ic!("A" = "B"), ic!("A")],
-            conclusion: ic!(((const "A") "B") = "A"),
+            conclusion: ic!("B"),
         }
     }
     fn execute(

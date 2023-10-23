@@ -551,39 +551,42 @@ impl Formula {
         result
     }
 
-    /// values for meta-variables such that the raw form would become exactly the specified raw form (not allowing definitional equality, but ignoring differences between pretty and raw forms)
-    pub fn metavariable_values_to_become(
+    /// values for meta-variables such that the raw form of `self` would become exactly the specified raw form (not allowing definitional equality, but ignoring differences between pretty and raw forms)
+    pub fn add_substitutions_to_become(
         &self,
         goal: &Formula,
-    ) -> Option<HashMap<String, Formula>> {
+        substitutions: &mut HashMap<String, Formula>,
+    ) -> Result<(), String> {
         match (
             &self.as_raw_with_metavariables().value,
             &goal.as_raw_with_metavariables().value,
         ) {
-            (FormulaValue::Atom(s), FormulaValue::Atom(g)) => (s == g).then(HashMap::new),
-            (FormulaValue::Metavariable(name), _) => {
-                Some([(name.clone(), goal.clone())].into_iter().collect())
+            (FormulaValue::Atom(s), FormulaValue::Atom(g)) => {
+                if s != g {
+                    return Err(format!(
+                        "Tried to unify formulas with conflicting atoms: `{s} := {g}`"
+                    ));
+                }
             }
-            (FormulaValue::Apply(children), FormulaValue::Apply(goal_children)) => {
-                let mut result = HashMap::new();
-                for (child, goal_child) in zip(children, goal_children) {
-                    for (name, value) in child.metavariable_values_to_become(goal_child)? {
-                        match result.entry(name) {
-                            hash_map::Entry::Occupied(e) => {
-                                if e.get() != &value {
-                                    return None;
-                                }
-                            }
-                            hash_map::Entry::Vacant(e) => {
-                                e.insert(value);
-                            }
-                        }
+            (FormulaValue::Metavariable(name), _) => match substitutions.entry(name.clone()) {
+                hash_map::Entry::Occupied(e) => {
+                    let existing = e.get();
+                    if existing.as_raw_with_metavariables() != goal.as_raw_with_metavariables() {
+                        return Err(format!("Variable `{name}`, which was already assigned value `{existing}`, also needs conflicting value `{goal}`"));
                     }
                 }
-                Some(result)
+                hash_map::Entry::Vacant(e) => {
+                    e.insert(goal.clone());
+                }
+            },
+            (FormulaValue::Apply(children), FormulaValue::Apply(goal_children)) => {
+                for (child, goal_child) in zip(children, goal_children) {
+                    child.add_substitutions_to_become(goal_child, substitutions)?;
+                }
             }
-            _ => None,
+            _ => return Err(format!("Could not unify `{self}` with `{goal}`")),
         }
+        Ok(())
     }
 
     pub fn naive_size(&self) -> usize {

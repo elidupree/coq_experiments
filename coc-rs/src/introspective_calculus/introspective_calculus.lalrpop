@@ -35,6 +35,11 @@ FormulaIndivisible: Formula = {
   "equals" => Formula::atom(Atom::Equals),
   "const" => Formula::atom(Atom::Const),
   "fuse" => Formula::atom(Atom::Fuse),
+
+  "id" => Formula::id(),
+  "All" => Formula::all(),
+  "True" => Formula::prop_true(),
+  "False" => Formula::prop_false(),
 }
 
 FormulaDivisibleRightOnly: Formula = {
