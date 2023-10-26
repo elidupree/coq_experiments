@@ -5,4 +5,5 @@ fn main() {
         let path = entry.unwrap().path();
         get_deriver_by_name(path.file_name().unwrap().to_str().unwrap());
     }
+    println!("all proofs compiled successfully!");
 }

@@ -44,9 +44,10 @@ pub enum SingleRuleInference {
     CompatibilityRight([Formula; 3]),
 }
 pub enum InferenceDerivation {
+    Premise(usize),
     Axiom(Formula),
     SingleRule(SingleRuleInference),
-    Chain(Arc<Inference>, Arc<Inference>),
+    Chain(Vec<Arc<Inference>>, Arc<Inference>),
 }
 
 pub struct Inference {
@@ -132,14 +133,20 @@ impl Inference {
                 .collect(),
             conclusion: self.conclusion.with_metavariables_replaced(arguments),
             derivation: match &self.derivation {
+                InferenceDerivation::Premise(which) => InferenceDerivation::Premise(*which),
                 InferenceDerivation::Axiom(axiom) => InferenceDerivation::Axiom(axiom.clone()),
                 InferenceDerivation::SingleRule(rule) => {
                     InferenceDerivation::SingleRule(rule.specialize(arguments))
                 }
-                InferenceDerivation::Chain(a, b) => InferenceDerivation::Chain(
-                    Arc::new(a.specialize(arguments)),
-                    Arc::new(b.specialize(arguments)),
-                ),
+                InferenceDerivation::Chain(premise_providers, conclusion_provider) => {
+                    InferenceDerivation::Chain(
+                        premise_providers
+                            .iter()
+                            .map(|p| Arc::new(p.specialize(arguments)))
+                            .collect(),
+                        Arc::new(conclusion_provider.specialize(arguments)),
+                    )
+                }
             },
         }
     }
@@ -161,17 +168,17 @@ impl Inference {
             }
         }
         match &self.derivation {
+            InferenceDerivation::Premise(which) => Ok(premises[*which].clone()),
             InferenceDerivation::Axiom(axiom) => Ok(TrueFormula::axiom(axiom.clone())),
             InferenceDerivation::SingleRule(rule) => Ok(rule.apply(premises).unwrap()),
-            InferenceDerivation::Chain(a, b) => {
-                let (ap, bp) = premises.split_at(a.premises.len());
-                let intermediate_conclusion = a.apply(ap).unwrap();
-                Ok(b.apply(
-                    &std::iter::once(&intermediate_conclusion)
-                        .chain(bp.iter().copied())
-                        .collect_vec(),
-                )
-                .unwrap())
+            InferenceDerivation::Chain(premise_providers, conclusion_provider) => {
+                let intermediate_premises: Vec<TrueFormula> = premise_providers
+                    .iter()
+                    .map(|p| p.apply(premises).unwrap())
+                    .collect();
+                Ok(conclusion_provider
+                    .apply(&intermediate_premises.iter().collect_vec())
+                    .unwrap())
             }
         }
     }
@@ -233,16 +240,48 @@ impl Inference {
         }
     }
 
-    pub fn axiom(axiom: Formula) -> Inference {
+    pub fn axiom(premises: Vec<Formula>, axiom: Formula) -> Inference {
         assert_eq!(
             axiom.as_raw_with_metavariables().rawness,
             FormulaRawness::Raw
         );
         Inference {
-            premises: vec![],
+            premises,
             conclusion: axiom.clone(),
             derivation: InferenceDerivation::Axiom(axiom),
         }
+    }
+
+    pub fn premise(premises: Vec<Formula>, which: usize) -> Inference {
+        let conclusion = premises[which].clone();
+        Inference {
+            premises,
+            conclusion,
+            derivation: InferenceDerivation::Premise(which),
+        }
+    }
+
+    pub fn chain(
+        premises: Vec<Formula>,
+        premise_providers: Vec<Arc<Inference>>,
+        conclusion_provider: Arc<Inference>,
+    ) -> Result<Inference, String> {
+        for (p, cp) in zip(&premise_providers, &conclusion_provider.premises) {
+            if p.premises != premises {
+                return Err("Wrong premises given for chain".to_string());
+            }
+            if p.conclusion.as_raw_with_metavariables() != cp.as_raw_with_metavariables() {
+                return Err(format!(
+                    "Conclusion of {} doesn't match premise {} of {}",
+                    p, cp, conclusion_provider
+                ));
+            }
+        }
+        Ok(Inference {
+            premises,
+            conclusion: conclusion_provider.conclusion.clone(),
+            derivation: InferenceDerivation::Chain(premise_providers, conclusion_provider),
+        })
     }
 }
 pub fn load_proof(path: impl AsRef<Path>) -> Vec<ProofLine> {
@@ -250,7 +289,7 @@ pub fn load_proof(path: impl AsRef<Path>) -> Vec<ProofLine> {
     BufReader::new(File::open(path).unwrap())
         .lines()
         .map(Result::unwrap)
-        .filter(|l| !l.chars().all(char::is_whitespace) && !l.starts_with("#"))
+        .filter(|l| !l.chars().all(char::is_whitespace) && !l.starts_with('#'))
         .map(|l| match parser.parse(&l) {
             Ok(a) => a,
             Err(e) => panic!("Got error `{e}` while parsing proof line `{l}`"),
@@ -258,20 +297,32 @@ pub fn load_proof(path: impl AsRef<Path>) -> Vec<ProofLine> {
         .collect()
 }
 pub fn compile(lines: &[ProofLine]) -> Result<Arc<Inference>, String> {
-    let mut conclusions_by_name = HashMap::with_capacity(lines.len());
     // inferences from the premises to that specific conclusion
-    let mut inferences_by_name = HashMap::with_capacity(lines.len());
+    let mut inferences_by_name: HashMap<&str, Arc<Inference>> = HashMap::with_capacity(lines.len());
     let mut last_inference = None;
+    let premises: Vec<Formula> = lines
+        .iter()
+        .filter(|line| line.name.starts_with('P'))
+        .map(|line| line.formula.clone())
+        .collect();
+    let mut which_premise = 0;
     for line in lines {
-        conclusions_by_name.insert(&*line.name, &line.formula);
         let inference = match line.name.chars().next().unwrap() {
-            'A' => Arc::new(Inference::axiom(line.formula.clone())),
-            'P' => todo!(),
+            'A' => Arc::new(Inference::axiom(premises.clone(), line.formula.clone())),
+            'P' => {
+                let result = Arc::new(Inference::premise(premises.clone(), which_premise));
+                which_premise += 1;
+                result
+            }
             _ => {
-                let available_premises: Vec<&Formula> = line
+                let available_premise_inferences: Vec<Arc<Inference>> = line
                     .referents
                     .iter()
-                    .map(|referent_name| *conclusions_by_name.get(&**referent_name).unwrap())
+                    .map(|referent_name| inferences_by_name.get(&**referent_name).unwrap().clone())
+                    .collect();
+                let available_premises: Vec<&Formula> = available_premise_inferences
+                    .iter()
+                    .map(|p| &p.conclusion)
                     .collect();
                 let deriver = line
                     .deriver_name
@@ -281,7 +332,11 @@ pub fn compile(lines: &[ProofLine]) -> Result<Arc<Inference>, String> {
                 let here_inference = deriver
                     .try_derive(&available_premises, &line.formula)
                     .map_err(|e| format!("In line {}: {e}", line.name))?;
-                Arc::new(here_inference)
+                Arc::new(Inference::chain(
+                    premises.clone(),
+                    available_premise_inferences,
+                    Arc::new(here_inference),
+                )?)
             }
         };
         inferences_by_name.insert(&*line.name, inference.clone());
