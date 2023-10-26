@@ -95,7 +95,6 @@ impl Default for FormulaValue {
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Default, Serialize, Deserialize)]
 pub enum Atom {
-    And,
     #[default]
     Equals,
     Const,
@@ -108,7 +107,11 @@ pub enum Atom {
 #[macro_export]
 macro_rules! ic {
     ({$e:expr}) => {
-        $e
+        {
+            #[allow(unused_imports)]
+            use $crate::introspective_calculus::ToFormula;
+            ($e).to_formula()
+        }
     };
     (($($stuff:tt)+)) => {
         ic!($($stuff)+)
@@ -116,11 +119,11 @@ macro_rules! ic {
     ($l:tt $r:tt) => {
         $crate::introspective_calculus::Formula::apply([ic!($l), ic!($r)])
     };
-    ($l:tt $r:expr) => {
-        $crate::introspective_calculus::Formula::apply([ic!($l), $r])
-    };
     ($l:tt & $r:tt) => {
         $crate::introspective_calculus::Formula::and([ic!($l), ic!($r)])
+    };
+    ($l:tt $r:expr) => {
+        $crate::introspective_calculus::Formula::apply([ic!($l), $r])
     };
     ($l:tt = $r:tt) => {
         $crate::introspective_calculus::Formula::equals([ic!($l), ic!($r)])
@@ -132,18 +135,21 @@ macro_rules! ic {
         $crate::introspective_calculus::Formula::make_named_global($name.into(), ic!($val))
     };
 
-    // ($l:expr => $r:tt) => {
-    //     Formula::NameAbstraction(AbstractionKind::Lambda, $l, Arc::new(ic!($r)))
-    // };
-    // (∀ $l:expr, $r:tt) => {
-    //     Formula::NameAbstraction(AbstractionKind::ForAll, $l, Arc::new(ic!($r)))
-    // };
+    ($l:expr => $r:tt) => {
+        $crate::introspective_calculus::Formula::name_abstraction(AbstractionKind::Lambda, $l.to_string(), ic!($r))
+    };
+    (forall $l:expr, $r:tt) => {
+        $crate::introspective_calculus::Formula::name_abstraction(AbstractionKind::ForAll, $l.to_string(), ic!($r))
+    };
     // (id) => {
     //     Formula::id()
     // };
-    (and) => {
-        $crate::introspective_calculus::Formula::atom($crate::introspective_calculus::Atom::And)
+    (True) => {
+        $crate::introspective_calculus::Formula::prop_true()
     };
+    // (And) => {
+    //     $crate::introspective_calculus::Formula::and_function()
+    // };
     (equals) => {
         $crate::introspective_calculus::Formula::atom($crate::introspective_calculus::Atom::Equals)
     };
@@ -155,6 +161,7 @@ macro_rules! ic {
     };
     ($e:expr) => {
         {
+            #[allow(unused_imports)]
             use $crate::introspective_calculus::ToFormula;
             ($e).to_formula()
         }
@@ -163,11 +170,6 @@ macro_rules! ic {
 
 #[macro_export]
 macro_rules! match_ic {
-    (@unpack_pattern_in [$formula:expr] and => $body:expr) => {
-        if $formula == &ic!(and) {
-            $body;
-        }
-    };
     (@unpack_pattern_in [$formula:expr] equals => $body:expr) => {
         if $formula == &ic!(equals) {
             $body;
@@ -244,6 +246,7 @@ static ID: LazyLock<Formula> = LazyLock::new(|| ic!("id" @ ((fuse const) const))
 static PROP_TRUE: LazyLock<Formula> = LazyLock::new(|| ic!("True" @ ((equals equals) equals)));
 static ALL: LazyLock<Formula> =
     LazyLock::new(|| ic!("all" @ (equals (const {Formula::prop_true()}))));
+// static AND: LazyLock<Formula> = LazyLock::new(|| ic!("And" @ (P => (((P A) B) = ((P True) True)))));
 static PROP_FALSE: LazyLock<Formula> =
     LazyLock::new(|| ic!("False" @ ({Formula::all()} {Formula::id()})));
 
@@ -281,6 +284,9 @@ impl Formula {
     pub fn all() -> Formula {
         ALL.clone()
     }
+    // pub fn and_function() -> Formula {
+    //     AND.clone()
+    // }
     pub fn prop_false() -> Formula {
         PROP_FALSE.clone()
     }
@@ -348,7 +354,10 @@ impl Formula {
     }
     pub fn and(children: [Formula; 2]) -> Formula {
         Formula::combine_pretty(children, FormulaValue::And, |[a, b]| {
-            ic!((and a)b).value.clone()
+            ic!(forall "P", ((("P" a) b) = (("P" True) True)))
+                .as_raw_with_metavariables()
+                .value
+                .clone()
         })
     }
     pub fn equals(children: [Formula; 2]) -> Formula {
@@ -358,7 +367,10 @@ impl Formula {
     }
     pub fn implies(children: [Formula; 2]) -> Formula {
         Formula::combine_pretty(children, FormulaValue::Implies, |[a, b]| {
-            ic!((equals a)((and a) b)).value.clone()
+            ic!((equals a)(a & b))
+                .as_raw_with_metavariables()
+                .value
+                .clone()
         })
     }
     pub fn name_abstraction(kind: AbstractionKind, name: String, body: Formula) -> Formula {

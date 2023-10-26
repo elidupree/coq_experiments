@@ -31,13 +31,13 @@ FormulaIndivisible: Formula = {
   Name => Formula::metavariable(<>),
   "(" <Formula> ")",
 
-  "and" => Formula::atom(Atom::And),
   "equals" => Formula::atom(Atom::Equals),
   "const" => Formula::atom(Atom::Const),
   "fuse" => Formula::atom(Atom::Fuse),
 
   "id" => Formula::id(),
   "All" => Formula::all(),
+  //"And" => Formula::and_function(),
   "True" => Formula::prop_true(),
   "False" => Formula::prop_false(),
 }

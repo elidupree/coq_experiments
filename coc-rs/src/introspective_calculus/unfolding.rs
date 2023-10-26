@@ -1,4 +1,5 @@
-use crate::introspective_calculus::Formula;
+use crate::introspective_calculus::logic::TrueFormula;
+use crate::introspective_calculus::{Formula, FormulaValue};
 use crate::{ic, match_ic};
 
 impl Formula {
@@ -74,7 +75,7 @@ impl Formula {
         }
     }
 
-    // pub fn fancy_unfold_here(&self) -> Option<TrueFormula> {
+    // pub fn fancy_unfold_here(&self) -> Option<FancyUnfoldResults> {
     //     match_ic!(self, {
     //         ((const a) b) => {Some(TrueFormula::definition_of_const(a.clone(), b.clone())) },
     //         (((fuse a) b) c) => {Some(TrueFormula::definition_of_fuse(a.clone(),b.clone(), c.clone())) },
@@ -84,28 +85,43 @@ impl Formula {
     // }
 }
 
-// /// assumes `body` is a pretty formula with `Metavariable`s for variable_name, not combinators
+// pub struct FancyUnfoldResults {
+//     pub new_formula: Formula,
+//     pub certificate: TrueFormula,
+// }
+//
+// /// assumes `body` is a pretty formula with `Metavariable`s for variable_name, not combinators, and has no free variables
 // /// raw_form is of (variable_name => body)
-// /// returns (raw_form argument) = body[variable_name:=argument]
-// fn (fancy_unfold_lambda
+// /// returns (raw_form argument) = (body[variable_name:=argument]).raw at same position
+// fn fancy_unfold_lambda(
 //     variable_name: &str,
 //     body: &Formula,
 //     argument: &Formula,
 //     raw_form: &Formula,
-// ) -> Option<TrueFormula> {
+// ) -> Option<FancyUnfoldResults> {
+//     if !body.contains_free_metavariable(variable_name) {
+//         return match_ic!(raw_form, {
+//             (const b) => Some(TrueFormula::definition_of_const(b.clone(), argument.clone())),
+//             _ =>  None,
+//         });
+//     }
 //     match &body.value {
 //         FormulaValue::Atom(_) => {}
 //         FormulaValue::Apply(children) => {
 //             let raw_children = match_ic!(raw_form, {
 //                 ((fuse l) r) => [l, r],
-//                 _ => return None,
+//                 _ => {
+//                     // We should only reach this case if the `fuse` was elided (`fuse (const foo) id` reduced to `foo`)
+//                     let result = body.with_metavariable_replaced(variable_name, argument);
+//                     return TrueFormula::eq_refl(ic!(raw_form argument))
+//                 }
 //             });
 //             let unfoldings = children
 //                 .iter()
 //                 .zip(raw_children)
 //                 .map(|(c, r)| fancy_unfold_lambda(variable_name, c, argument, r))
-//                 .collect::<Option<[TrueFormula; 2]>>()?;
-//             let new_forms = unfoldings.map(|u| u.as_eq_sides().unwrap()[1]);
+//                 .collect::<Option<[FancyUnfoldResults; 2]>>()?;
+//             // let new_forms = unfoldings.map(|u| u.as_eq_sides().unwrap()[1]);
 //
 //             let c1_raw_form_arg_equals_fused = TrueFormula::definition_of_fuse(raw_children[0].clone(), raw_children[1].clone(), argument.clone());
 //             let acbc_equals_ebc = TrueFormula::compatibility_left(&unfoldings[0], ic!({raw_children[1]} argument));

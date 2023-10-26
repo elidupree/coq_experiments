@@ -8,7 +8,6 @@ pub struct FormulaAsShorthand<'a>(&'a Formula);
 impl Display for Atom {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Atom::And => "and".fmt(f),
             Atom::Equals => "equals".fmt(f),
             Atom::Const => "const".fmt(f),
             Atom::Fuse => "fuse".fmt(f),
@@ -32,7 +31,6 @@ impl Display for FormulaAsShorthand<'_> {
             }
             FormulaValue::Atom(a) => {
                 let text = match a {
-                    Atom::And => "a",
                     Atom::Equals => "e",
                     Atom::Const => "c",
                     Atom::Fuse => "f",

@@ -43,7 +43,7 @@ pub fn load_proof(path: impl AsRef<Path>) -> Vec<ProofLine> {
     BufReader::new(File::open(path).unwrap())
         .lines()
         .map(Result::unwrap)
-        .filter(|l| !l.chars().all(char::is_whitespace))
+        .filter(|l| !l.chars().all(char::is_whitespace) && !l.starts_with("#"))
         .map(|l| match parser.parse(&l) {
             Ok(a) => a,
             Err(e) => panic!("Got error `{e}` while parsing proof line `{l}`"),

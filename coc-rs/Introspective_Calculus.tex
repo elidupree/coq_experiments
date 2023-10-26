@@ -93,53 +93,64 @@
   IC is a system of \emph{formulas}; some formulas represent \emph{propositions}, which may be true or false;
 
   
-  \subsection{[The paradox / What is truth?]}
+  \subsection{[Motivation: The paradox / What is truth?]}
   
-  We want to be able to talk about whether propositions are true or not. The introspection principle says we should be able to write \emph{formulas} that talk about whether other formulas are true or not.
+  We will want to be able to express the following:
+  \begin{itemize}
+    \item that some formulas are \emph{true};
+    \item that some formulas are \emph{logically equivalent} to each other, $A \equiv B$ (read as "A equals B");
+    \item universal quantification, saying that all formulas have some property.
+  \end{itemize}
   
-  If we can do this, then we can use Russell's paradox to construct a statement $P$, where:
+  The introspection principle says we should be able to write \emph{formulas} that express these concepts.
+  With these tools, we can immediately define absurdity and negation: $\bot$ (read as "false") is a formula that says "all formulas are true".
+  (Clearly we don't want this to be true.)
+  And we can express "not P" as the formula $P \equiv \bot$. 
   
+  If we can do this, then we can construct a version of the liar paradox, where:
+  
+  \newcommand{\name}[1]{\operatorname{\texttt{#1}}}
   \begin{equation*}
-    P \equiv (P \mathrm{\ is\ not\ }\mathpzc{true})\\
+    \name{liar}_0 \equiv (\name{liar}_0 \equiv \bot)\\
   \end{equation*}
   
-  (This formula contains a copy of itself.
-  It may not be obvious that this should be allowed; but we assert that it is.
-  We will later show how self-containing formulas arise naturally from how we define computation.
+  (It may not be obvious that this should be possible; but we assert that it is.
+  We will later show how self-referential formulas arise naturally from how we define computation.
   For now, simply assume that they are just as legitimate as other formulas.)
   
   What shall we say of this formula?
-  When it says $\mathpzc{true}$, that word must mean something; if it means anything like what you'd expect, then $P$ can't possibly be $\mathpzc{true}$, because if it was, then it wouldn't be.
-  That last sentence forms a proof that $P$ is not $\mathpzc{true}$; therefore "$P \mathrm{\ is\ not\ }\mathpzc{true}$" is true, which is the same as saying that $P$ is true.
-  To avoid a contradiction, we must say that $P$ is "true, but not $\mathpzc{true}$" – that is, that "$\mathpzc{true}$" and "true" are not the same concept.
+  If it were true, we could argue as follows: $\name{liar}_0$ is true; therefore the equivalent statement, $(\name{liar}_0 \equiv \bot)$, is true; therefore $\name{liar}_0$ and $\bot$ are equivalent, so since $\name{liar}_0$ is true, $\bot$ is also true.
   
-  ...but now the introspection principle says we should be able to write $(P \mathrm{\ is\ true,\ but\ not\ }\mathpzc{true})$ as a formula, and have it be true.
-  Which, in turn, allows us to write
+  Naïvely, the above argument suggests that $\name{liar}_0$ is equivalent to $\bot$.
+  But that's the same as saying $\name{liar}_0$ is true.
+  So we must say they are \emph{not} equivalent, or we immediately succumb to the paradox.
+  On the other hand, the above argument does say \emph{something}, so the introspection principal asks us to be able to express that: We will say $\name{liar}_0 \leadsto \bot$ (read as "liar zero \emph{leads to} false") to express the notion: "\emph{if} $\name{liar}_0$ were true, then we could reach $\bot$ by argument".
   
-  \begin{equation*}
-    Q \equiv (Q \mathrm{\ is\ neither\ }\mathpzc{true}\mathrm{\ nor\ true})\\
-  \end{equation*}
-  
-  Naïvely, we must continue by defining a third concept of truth to describe $Q$.
-  In fact, presumably we would need to keep making new concepts of truth forever, an end up with an ordinal hierarchy of concepts of truth, each weaker than all the earlier ones. But even then, you'd be able to write:
+  This immediately allows us to construct a second version of the paradox:
   
   \begin{equation*}
-    R \equiv (R \text{ is not true according to any level of the ordinal hierarchy})\\
+    \name{liar}_1 \equiv (\name{liar}_1 \leadsto \bot)\\
   \end{equation*}
   
-  At this point, it becomes futile to make another truth level to say that $R$ is true.
-  And if we look at $R$ and say "I guess it is true, just not in a way we can represent", then the introspection principle hasn't really been honored.
+  At this point, it is tempting to argue: "Suppose $\name{liar}_1$ is true; then $(\name{liar}_1 \leadsto \bot)$ is true; this means there exists an argument taking $\name{liar}_1$ to $\bot$, so simply apply that argument and obtain $\bot$."
+  But this argument can't be valid, or it would prove $\name{liar}_1$.
+   We must say that you can't automatically apply an argument just because of a hypothetical belief that one exists – because that belief might not be true.
+   
+  "But," you say, "if it were \emph{actually true}, and it concluded that an argument existed, then that argument \emph{would} exist, and you could use it!"
+  We will capture this in a notion of "arguments that are allowed to apply $\leadsto$ arguments", which we will express as $\stackrel{1}{\leadsto}$ (read as "A leads to B at level 1"), to hint at the endlessness of the task.
+  We can now construct a third liar paradox, $\name{liar}_2 \equiv (\name{liar}_2 \stackrel{1}{\leadsto} \bot)$, which only leads to $\bot$ at level 2 (expressed as $\stackrel{2}{\leadsto}$, an argument that is allowed to apply $\stackrel{1}{\leadsto}$ arguments).
+  This will go on forever; in fact, we may construct an "argument level" for every ordinal number, not just the natural numbers.
   
-  Instead, we must abandon some of our assumptions.
+  "But," whispers the introspection principle, "surely we still believe that it's impossible for any of these paradoxical formulas to be true. We should be able to express the property of impossibility, $\stackrel{\infty}{\leadsto})$"
   
-  For the rest of this paper, we will avoid the word "true"; instead, we split it into two different concepts, a stronger form and a weaker form, which we will call "proven" and "suggested"\footnote{For those familiar with modal logic, these correspond to "necessarily" and "possibly".}. As we will see, "this statement is not proven" is suggested, but not proven; and "this statement is not suggested" is [also suggested but not proven, I think??]
-  
+  [well, I haven't solved that, but maybe it isn't coherent in the metatheory either, because all ordinals]
+    
   \subsection{Formulas and inference}
   
-  \newcommand{\name}[1]{\operatorname{\texttt{#1}}}
   \newcommand{\id}{\name{id}}
   \newcommand{\const}{\name{const}}
   \newcommand{\fuse}{\name{fuse}}
+  
   \newcommand{\atomemptyset}{\name{empty\_set}}
   \newcommand{\atomsingleton}{\name{singleton}}
   \newcommand{\atomin}{\name{in}}
@@ -151,6 +162,8 @@
   \renewcommand{\emptyset}{\varnothing}
   \newcommand{\singleton}[1]{\{#1\}}
   \newcommand{\union}{\cup}
+  
+  \newcommand{\and}{\wedge}
   \newcommand{\all}{\bigcup}
   \newcommand{\atomequals}{\name{equals}}
   \newcommand{\equals}{\equiv}
@@ -166,8 +179,7 @@
   The raw grammar of IC is:
   
   \begin{align*}
-    Atom &\to \atomemptyset \mid \atomunion \mid \atomall \mid \atomimplies \mid \const \mid \fuse\\
-    F &\to Atom \mid FF \\
+    F &\to \atomequals \mid \const \mid \fuse \mid FF \\
   \end{align*}
   
   Adjacency means function application: The formula $AB$ is the function $A$ applied to the input $B$. We sometimes use parentheses to specify the order of operations; when we don't, it is left-associative ($ABC$ means $(AB)C$).
@@ -180,38 +192,24 @@
   To start with, we'll define these notations, and what they expand to:
   
   \begin{align*}
-    \emptyset &:= \atomemptyset\\
-    %\singleton{A} &:= \atomsingleton A\\
-    A \union B &:= \atomunion A\, B\\
-    \all A &:= \atomall A & (\text{binds weaker than function application})\\
-    %A \in B &:= \atomin A\, B\\
-    A \to B &:= \atomimplies A\, B\\
-    %A \concludes B &:= \atomconcludes A\, B\\
+    (A \equals B) &:= (\atomequals A\, B)\\
   \end{align*}
   
-  But as far as the internal logic is concerned, only the raw formulas exist.\footnote{"But," you say, "doesn't be introspection principle ask that if you're discussing notations in the metatheory, you should define a representation of them within the theory?" Well, yes – but they don't need to be part of the \emph{core calculus}, which is the main job of \emph{this paper}. A full programming language, which I plan to build around this core calculus, would naturally be able to implement functions that convert text into token-trees and token-trees into formulas of IC, and others such inconveniences of interfacing between raw mathematical objects and the human reader.}
-  
-  [Now, as for inference, we depart a little from the usual convention]
-  
-  For $(A \to B)$ to be \emph{true in IC}, means that $A$ and $B$ are sets of inference rules, and $B$ is derivable from $A$, using only the basic properties of how inference rules work.
-  
-  For $(A \to B)$ to be \emph{an inference rule of IC}, means that $A$ and $B$ are sets of statements, and if the statements $A$ are true in IC, then $B$ must also be true in IC.
-  
-  As we shall see, all true statements of IC are also derivable inferences of IC, but the converse is not true: some inference rules of IC are not true statements, because they only work for IC in particular, rather than being universal truths about how inference works.
-  
-  
+  But as far as the internal logic is concerned, only the raw formulas exist.\footnote{"But," you say, "doesn't be introspection principle ask that if you're discussing notations in the metatheory, you should define a representation of them within the theory?" Well, yes – but they don't need to be part of the \emph{core calculus}, which is the main job of \emph{this paper}. A full programming language, which I plan to build around this core calculus, would naturally be able to implement functions that convert text into token-trees and token-trees into formulas of IC, and others such inconveniences of interfacing between raw mathematical objects and the human reader.}  
   
   Having defined the raw grammar, we need only define our explicit list of inference rules. 
   All external inference rules (which are \emph{not} formulas, although we will later make formulas to represent them) will be written in the usual form:
   
-  \newcommand{\presep}{\hspace{1.8em}}
-  \newcommand{\globalrule}[2]{\frac{#1}{#2}}
+  %\newcommand{\presep}{\hspace{1.8em}}
+  %\newcommand{\globalrule}[2]{\frac{#1}{#2}}
+  \newcommand{\presep}{,\,}
+  \newcommand{\globalrule}[2]{#1 &\vdash #2}
   
   \begin{align*}
     \globalrule{Premises\dots}{Conclusion}\\
   \end{align*}
   
-  where $Premises\dots$ and $Conclusion$ are formulas, except that they may contain metavariables written with the capital Latin letters $A, B, C, \dots$ which range over all raw formulas. For any of our explicit rules and any concrete values of the metavariables, if an external judge (such as a human mathematician, or a computer program) has been convinced of all the premises, the rule can be used to convince them of the conclusion. You can even derive universal conclusions by filling in a metavariable with a formula that contains opaque metavariables itself.
+  where $Premises\dots$ and $Conclusion$ are formulas, except that they may contain metavariables written with the capital Latin letters $A, B, C, \dots$ which range over all raw formulas. For any of our explicit rules and any concrete values of the metavariables, if an external judge (such as a human mathematician, or a computer program) has been convinced of all the premises, the rule can be used to convince them of the conclusion.
   
   We must now define some inference rules that let us internalize the concept of inference rules.
 
@@ -233,6 +231,87 @@
   Before we can start defining concrete rules, we need to formalize how we define functions.
   
   \fi
+  
+  \subsection{Equality}
+  
+  $\atomequals$ is the relation of definitional equality. Informally, if $A \equals B$, then $A$ and $B$ are distinct formulas that refer to the same mathematical object. Equal formulas can be substituted for each other at any position within a larger formula:
+  
+  \begin{align*}
+    \label{subst}\tag{substitute whole formula}
+    \globalrule{A \equals B \presep A}{B} \\
+    \tag{compatibility, left}
+    \globalrule{A \equals B}{AC \equals BC} \\
+    \tag{compatibility, right}
+    \globalrule{A \equals B}{CA \equals CB}
+  \end{align*}
+  
+  We're going to be much more ambitious with this relation than usual: By the end of our definitions, all logically-equivalent formulas will be definitionally equal (in particular, all true formulas are equal to each other), and extensionally equal functions will also be equal.
+  
+  \subsection{Functions}
+
+  To internalize the concept of metavariables, we will implement arbitrary functions. To do this, we define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus. My "const" is the K combinator, and my "fuse" is the S combinator. These names have about the same meanings as the German words (K)onstanzfunktion and Ver(s)chmelzungsfunktion, for which K and S are named in Schönfinkel's original paper. Before I learned of SKI, I had to reinvent it for myself; but after learning of it, I renamed my "fuse" combinator to be more aligned with its naming scheme, because my original name, "apply", was no less confusing.} $\const$ takes two arguments and returns the first (or, equivalently, takes one value and returns a function which ignores its argument and returns that value); $\fuse$ takes two functions and a value, passes that value to \emph{both} functions, then applies the first output to the second output. We can write inference rules to describe this behavior:
+  
+  \begin{align*}
+    \tag{definition of const}
+    \globalrule{}{\const A\, B \equals A} \\
+    \tag{definition of fuse}
+    \globalrule{}{\fuse A\, B\, C \equals (AC)(BC)}
+  \end{align*}
+  
+  (Readers may note that, by allowing arbitrary computation here, we've made equality undecidable. This is fine and expected.)
+
+  \newcommand{\nameabst}[1]{#1 \Rightarrow}
+
+  Of course, usually, we don't want to write functions as giant piles of $\const$ and $\fuse$ – we want to write them with named arguments. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"\footnote{Although many systems write this as "$\lambda$" (lambda), after the lambda calculus, we do not. One of my eventual goals is to introduce proof systems to a more general audience of programmers; the notation \texttt{=>} will be familiar to users of JavaScript, at least, and it hints at the meaning of transforming one value to another, while "$\lambda$" is meaningless. [TODO: citation for the meaninglessness of $\lambda$]}), where $B$ is a formula except that it may contain usages of the name $x$, as if they are subformulas. This expands to a bunch of combinators where $(\nameabst{x} B) C$ returns "$B$ except the usages of $x$ are replaced with $C$". (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
+  
+  Next, we want to define universal statements, with a notation $\forall x, B$ (read as "for all x, B") – which is much like ($\nameabst{x} B$), but instead of being a function, it is the proposition that all outputs of that function are true formulas. We'll build this in several steps:
+   
+  \begin{itemize}
+    \item First, we define $\top$ (read as "true"), the canonical true formula. Since all true formulas will be equal, any of them will do. We arbitrarily choose $(\atomequals \equals \atomequals)$.
+    \item Next, we define $\name{All}$, the function where $\name{All} P$ means $\forall x, Px$. This can be implemented as $(\atomequals (\const \top))$, because $(\const \top))$ is the canonical "function that always returns a true proposition".
+    \item Now, the general case of $\forall x, B$ can be defined as $\name{All} (\nameabst{x} B)$.
+  \end{itemize}
+  
+  \subsection{[Axioms / Internalization]}
+  
+  With these pieces, the remaining [main] rules can be expressed as \textbf{axioms} – inference rules where the conclusion is just a raw formula, with no premises and no metavariables. This makes it possible to reason about them using internal logic. We'll start by internalizing the definitions of the combinators, which is a straightforward conversion:
+  
+  \begin{align*}
+    \tag{definition of const, internal}
+    \globalrule{}{\forall a, \forall b, \const a\, b \equals a} \\
+    \tag{definition of fuse, internal}
+    \globalrule{}{\forall a, \forall b, \forall c, \fuse a\, b\, c \equals (ac)(bc)}
+  \end{align*}
+  
+  By specializing these rules with concrete values of $a$ and $b$, we can do anything the external rules can\footnote{Though this doesn't make the external rules redundant, because you have to use the external rules in order to specialize the internal rules.}. But this also makes the universal statement available as a true formula, while the external rules could \emph{only} produce true formulas with concrete values of $A$ and $B$.
+  
+  For the compatibility rules, we use an even more powerful generalization.
+  
+  \begin{align*}
+    \tag{equality is extensionality}
+    \globalrule{}{\forall a, \forall b, (a \equals b) \equals (\forall c, ac \equals bc)} \\
+    \tag{equality is indistinguishability}
+    \globalrule{}{\forall a, \forall b, (a \equals b)  \equals (\forall c, ca \equals cb)}
+  \end{align*}
+  
+  For the reader familiar with type theory, the immediate question is "how can we get away with this"? [It looks like things that are unsound]
+  
+  The answer comes in the much weaker way we internalize the last of our 5 external rules, \eqref{subst}.
+  
+  First of all, that axiom has \emph{two} premises, and we haven't defined "and" yet. So let's define that:
+  \begin{align*}
+    A \and B := \forall c, cAB \equals c\top\top
+  \end{align*}
+  
+  
+  Now, a naive internalization of \eqref{subst} would look like this:
+  \begin{align*}
+    \globalrule{}{\forall a, \forall b, ((a \equals b) \and a) \equals ((a \equals b) \and b)} \\
+  \end{align*}
+  
+  This may seem true; in fact, it is true whenever $(a \equals b)$ is \emph{either true or false}. However, $(a \equals b)$ may be neither true nor false, and this rule immediately succumbs to the liar paradox! (You specialize it with $a := \name{liar}_0$ and $b := \bot$ to get $(\name{liar}_0 \and \name{liar}_0) \equals (\name{liar}_0 \and \bot)$).
+  
+  Fortunately, the introspection principle doesn't require us to accept \emph{this} rule. It only asks us to give \emph{some} representation of
   
   \subsection{Sets}
   
@@ -270,27 +349,9 @@
   \end{align*}
   \fi
 
-  \subsection{Functions}
-
-  To internalize the concept of metavariables, we will implement arbitrary functions. To do this, we define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus. My "const" is the K combinator, and my "fuse" is the S combinator. These names have about the same meanings as the German words (K)onstanzfunktion and Ver(s)chmelzungsfunktion, for which K and S are named in Schönfinkel's original paper. Before I learned of SKI, I had to reinvent it for myself; but after learning of it, I renamed my "fuse" combinator to be more aligned with its naming scheme, because my original name, "apply", was no less confusing.} $\const$ takes two arguments and returns the first (or, equivalently, takes one value and returns a function which ignores its argument and returns that value); $\fuse$ takes two functions and a value, passes that value to \emph{both} functions, then applies the first output to the second output. We can write inference rules to describe how this behavior acts on set membership:
-  \begin{align*}
-    \tag{unfold const}
-    (\const A\, B &\to A)\\
-    \tag{unfold fuse}
-    (\fuse A\, B\, C &\to (AC)(BC))\\
-  \end{align*}
-  \iffalse
-  \begin{align*}
-    \globalrule{X \in A}{X \in (\const A\, B)} &&
-    \globalrule{X \in (AC)(BC)}{X \in (\fuse A\, B\, C)}
-  \end{align*}
-  \fi
-
-  (Readers may note that, by allowing arbitrary computation here, we've made set membership undecidable. This is fine and expected.)
-
-  \newcommand{\nameabst}[1]{#1 \Rightarrow}
-
-  Of course, usually, we don't want to write functions as giant piles of $\const$ and $\fuse$ – we want to write them with named arguments. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"\footnote{Although many systems write this as "$\lambda$" (lambda), after the lambda calculus, we do not. One of my eventual goals is to introduce proof systems to a more general audience of programmers; the notation \texttt{=>} will be familiar to users of JavaScript, at least, and it hints at the meaning of transforming one value to another, while "$\lambda$" is meaningless. [TODO: citation for the meaninglessness of $\lambda$]}), where $B$ is a formula except that it may contain usages of the name $x$, as if they are subformulas. This expands to a bunch of combinators where $(\nameabst{x} B) C$ returns "$B$ except the usages of $x$ are replaced with $C$". (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
+  
+  
+  
 
   We can now give the internalization of metavariables. We define two things:
 
