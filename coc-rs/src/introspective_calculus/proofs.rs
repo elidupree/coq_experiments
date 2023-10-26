@@ -1,9 +1,11 @@
 use crate::ic;
 use crate::introspective_calculus::logic::TrueFormula;
-use crate::introspective_calculus::Formula;
 use crate::introspective_calculus::ProofLineParser;
+use crate::introspective_calculus::{Formula, FormulaRawness};
 use arrayvec::ArrayVec;
+use itertools::Itertools;
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::iter::zip;
@@ -15,29 +17,234 @@ pub struct ProofLine {
     pub name: String,
     pub formula: Formula,
     pub referents: ArrayVec<String, 2>,
-    pub lemma_name: Option<String>,
+    pub deriver_name: Option<String>,
 }
 
-pub enum CompiledProofStep {
-    Premise(Formula),
+// pub enum CompiledProofStep {
+//     Premise(Formula),
+//     Axiom(Formula),
+//     Lemma {
+//         lemma_name: String,
+//         arguments: HashMap<String, Formula>,
+//         premises: Vec<usize>,
+//     },
+// }
+//
+// pub struct CompiledProof {
+//     conclusion: Formula,
+//     steps: Vec<CompiledProofStep>,
+// }
+
+// everything in the same derivation tree is using the same metavariable identities
+pub enum SingleRuleInference {
+    SubstituteWholeFormula([Formula; 2]),
+    DefinitionOfConst([Formula; 2]),
+    DefinitionOfFuse([Formula; 3]),
+    CompatibilityLeft([Formula; 3]),
+    CompatibilityRight([Formula; 3]),
+}
+pub enum InferenceDerivation {
     Axiom(Formula),
-    Lemma {
-        lemma_name: String,
-        arguments: HashMap<String, Formula>,
-        premises: Vec<usize>,
-    },
+    SingleRule(SingleRuleInference),
+    Chain(Arc<Inference>, Arc<Inference>),
 }
 
-pub struct CompiledProof {
-    conclusion: Formula,
-    steps: Vec<CompiledProofStep>,
-}
-
-pub struct Claim {
+pub struct Inference {
     premises: Vec<Formula>,
     conclusion: Formula,
+    derivation: InferenceDerivation,
 }
 
+impl Display for Inference {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if let Some((last, rest)) = self.premises.split_last() {
+            for premise in rest {
+                premise.fmt(f)?;
+                ", ".fmt(f)?;
+            }
+            last.fmt(f)?;
+        }
+        write!(f, "|- {}", self.conclusion)
+    }
+}
+
+impl SingleRuleInference {
+    fn specialize(&self, arguments: &HashMap<String, Formula>) -> SingleRuleInference {
+        use SingleRuleInference::*;
+        match self {
+            SubstituteWholeFormula(a2) => SubstituteWholeFormula(
+                a2.each_ref()
+                    .map(|a2| a2.with_metavariables_replaced(arguments)),
+            ),
+            DefinitionOfConst(a2) => DefinitionOfConst(
+                a2.each_ref()
+                    .map(|a2| a2.with_metavariables_replaced(arguments)),
+            ),
+            DefinitionOfFuse(a2) => DefinitionOfFuse(
+                a2.each_ref()
+                    .map(|a2| a2.with_metavariables_replaced(arguments)),
+            ),
+            CompatibilityLeft(a2) => CompatibilityLeft(
+                a2.each_ref()
+                    .map(|a2| a2.with_metavariables_replaced(arguments)),
+            ),
+            CompatibilityRight(a2) => CompatibilityRight(
+                a2.each_ref()
+                    .map(|a2| a2.with_metavariables_replaced(arguments)),
+            ),
+        }
+    }
+    fn apply(&self, premises: &[&TrueFormula]) -> Result<TrueFormula, String> {
+        use SingleRuleInference::*;
+        match self {
+            SubstituteWholeFormula([_a, _b]) => {
+                // if premises[0].formula() != ic!(a = b) {
+                //     return Err(format!("Provided premise {} didn't match required premise {a_equals_b} of SubstituteWholeFormula", premises[0].formula()))
+                // }
+                // if premises[1].formula() != a {
+                //     return Err(format!("Provided premise {} didn't match required premise {a_equals_b} of SubstituteWholeFormula", premises[0].formula()))
+                // }
+                Ok(TrueFormula::substitute_whole_formula(premises[0], premises[1]).unwrap())
+            }
+            DefinitionOfConst([a, b]) => Ok(TrueFormula::definition_of_const(a.clone(), b.clone())),
+            DefinitionOfFuse([a, b, c]) => Ok(TrueFormula::definition_of_fuse(
+                a.clone(),
+                b.clone(),
+                c.clone(),
+            )),
+            CompatibilityLeft([_a, _b, c]) => {
+                Ok(TrueFormula::compatibility_left(premises[0], c.clone()).unwrap())
+            }
+            CompatibilityRight([_a, _b, c]) => {
+                Ok(TrueFormula::compatibility_right(c.clone(), premises[0]).unwrap())
+            }
+        }
+    }
+}
+
+impl Inference {
+    pub fn specialize(&self, arguments: &HashMap<String, Formula>) -> Inference {
+        Inference {
+            premises: self
+                .premises
+                .iter()
+                .map(|p| p.with_metavariables_replaced(arguments))
+                .collect(),
+            conclusion: self.conclusion.with_metavariables_replaced(arguments),
+            derivation: match &self.derivation {
+                InferenceDerivation::Axiom(axiom) => InferenceDerivation::Axiom(axiom.clone()),
+                InferenceDerivation::SingleRule(rule) => {
+                    InferenceDerivation::SingleRule(rule.specialize(arguments))
+                }
+                InferenceDerivation::Chain(a, b) => InferenceDerivation::Chain(
+                    Arc::new(a.specialize(arguments)),
+                    Arc::new(b.specialize(arguments)),
+                ),
+            },
+        }
+    }
+    pub fn apply(&self, premises: &[&TrueFormula]) -> Result<TrueFormula, String> {
+        if premises.len() != self.premises.len() {
+            return Err(format!(
+                "Wrong number of premises given for inference `{self}` (given {}, needs {})",
+                premises.len(),
+                self.premises.len()
+            ));
+        }
+        for (required, provided) in zip(&self.premises, premises) {
+            if provided.formula() != required {
+                return Err(format!(
+                    "provided premise {} did not match the required premise {}",
+                    provided.formula(),
+                    required
+                ));
+            }
+        }
+        match &self.derivation {
+            InferenceDerivation::Axiom(axiom) => Ok(TrueFormula::axiom(axiom.clone())),
+            InferenceDerivation::SingleRule(rule) => Ok(rule.apply(premises).unwrap()),
+            InferenceDerivation::Chain(a, b) => {
+                let (ap, bp) = premises.split_at(a.premises.len());
+                let intermediate_conclusion = a.apply(ap).unwrap();
+                Ok(b.apply(
+                    &std::iter::once(&intermediate_conclusion)
+                        .chain(bp.iter().copied())
+                        .collect_vec(),
+                )
+                .unwrap())
+            }
+        }
+    }
+
+    pub fn substitute_whole_formula() -> Inference {
+        Inference {
+            premises: vec![ic!("A" = "B"), ic!("A")],
+            conclusion: ic!("B"),
+            derivation: InferenceDerivation::SingleRule(
+                SingleRuleInference::SubstituteWholeFormula([ic!("A"), ic!("B")]),
+            ),
+        }
+    }
+
+    pub fn definition_of_const() -> Inference {
+        Inference {
+            premises: vec![],
+            conclusion: ic!(((const "A") "B") = "A"),
+            derivation: InferenceDerivation::SingleRule(SingleRuleInference::DefinitionOfConst([
+                ic!("A"),
+                ic!("B"),
+            ])),
+        }
+    }
+
+    pub fn definition_of_fuse() -> Inference {
+        Inference {
+            premises: vec![],
+            conclusion: ic!((((fuse "A") "B") "C") = (("A" "C") ("B" "C"))),
+            derivation: InferenceDerivation::SingleRule(SingleRuleInference::DefinitionOfFuse([
+                ic!("A"),
+                ic!("B"),
+                ic!("C"),
+            ])),
+        }
+    }
+
+    pub fn compatibility_left() -> Inference {
+        Inference {
+            premises: vec![ic!("A" = "B")],
+            conclusion: ic!(("A" "C") = ("B" "C")),
+            derivation: InferenceDerivation::SingleRule(SingleRuleInference::CompatibilityLeft([
+                ic!("A"),
+                ic!("B"),
+                ic!("C"),
+            ])),
+        }
+    }
+
+    pub fn compatibility_right() -> Inference {
+        Inference {
+            premises: vec![ic!("A" = "B")],
+            conclusion: ic!(("C" "A") = ("C" "B")),
+            derivation: InferenceDerivation::SingleRule(SingleRuleInference::CompatibilityRight([
+                ic!("A"),
+                ic!("B"),
+                ic!("C"),
+            ])),
+        }
+    }
+
+    pub fn axiom(axiom: Formula) -> Inference {
+        assert_eq!(
+            axiom.as_raw_with_metavariables().rawness,
+            FormulaRawness::Raw
+        );
+        Inference {
+            premises: vec![],
+            conclusion: axiom.clone(),
+            derivation: InferenceDerivation::Axiom(axiom),
+        }
+    }
+}
 pub fn load_proof(path: impl AsRef<Path>) -> Vec<ProofLine> {
     let parser = ProofLineParser::new();
     BufReader::new(File::open(path).unwrap())
@@ -50,268 +257,136 @@ pub fn load_proof(path: impl AsRef<Path>) -> Vec<ProofLine> {
         })
         .collect()
 }
-pub fn lemma_step(
-    lemma_name: &str,
-    goal: &Formula,
-    provided_premises: &[(usize, &Formula)],
-) -> Result<CompiledProofStep, String> {
-    let lemma = get_proof_by_name(lemma_name);
-    let claim = lemma.claim();
-    eprintln!("{} -> {goal}", &claim.conclusion);
-    let mut arguments: HashMap<String, Formula> = HashMap::new();
-    claim
-        .conclusion
-        .add_substitutions_to_become(goal, &mut arguments)
-        .map_err(|e| {
-            format!(
-                "Could not unify goal `{goal}` with conclusion `{}` of `{lemma_name}`: {e}",
-                &claim.conclusion
-            )
-        })?;
-    if provided_premises.len() != claim.premises.len() {
-        return Err(format!(
-            "Wrong number of premises given for lemma `{lemma_name}` (given {}, needs {})",
-            provided_premises.len(),
-            claim.premises.len()
-        ));
-    }
-    for (needed, &(_index, provided)) in zip(claim.premises, provided_premises) {
-        needed.add_substitutions_to_become(provided, &mut arguments).map_err(|e| {
-            format!(
-                "Could not unify provided premise `{provided}` with premise `{needed}` of `{lemma_name}`: {e}",
-            )
-        })?;
-    }
-    let premises = provided_premises.iter().map(|&(index, _)| index).collect();
-    Ok(CompiledProofStep::Lemma {
-        lemma_name: lemma_name.to_string(),
-        arguments,
-        premises,
-    })
-}
-pub fn compile(lines: &[ProofLine]) -> Result<CompiledProof, String> {
-    let mut steps = Vec::with_capacity(lines.len());
-    let mut positions_by_name = HashMap::with_capacity(lines.len());
+pub fn compile(lines: &[ProofLine]) -> Result<Arc<Inference>, String> {
+    let mut conclusions_by_name = HashMap::with_capacity(lines.len());
+    // inferences from the premises to that specific conclusion
+    let mut inferences_by_name = HashMap::with_capacity(lines.len());
+    let mut last_inference = None;
     for line in lines {
-        positions_by_name.insert(line.name.clone(), steps.len());
-        let step = match line.name.chars().next().unwrap() {
-            'A' => CompiledProofStep::Axiom(line.formula.clone()),
-            'P' => CompiledProofStep::Premise(line.formula.clone()),
+        conclusions_by_name.insert(&*line.name, &line.formula);
+        let inference = match line.name.chars().next().unwrap() {
+            'A' => Arc::new(Inference::axiom(line.formula.clone())),
+            'P' => todo!(),
             _ => {
-                let available_premises: Vec<(usize, &Formula)> = line
+                let available_premises: Vec<&Formula> = line
                     .referents
                     .iter()
-                    .map(|referent_name| {
-                        let index = *positions_by_name.get(referent_name).unwrap();
-                        let formula = &lines[index].formula;
-                        (index, formula)
-                    })
+                    .map(|referent_name| *conclusions_by_name.get(&**referent_name).unwrap())
                     .collect();
-                match &line.lemma_name {
-                    Some(lemma_name) => lemma_step(lemma_name, &line.formula, &available_premises)?,
-                    None => INHERENT_RULE_PROOFS
-                        .iter()
-                        .find_map(|(name, _)| {
-                            lemma_step(name, &line.formula, &available_premises).ok()
-                        })
-                        .ok_or_else(|| {
-                            format!("No inherent rule satisfied goal `{}`", &line.formula)
-                        })?,
-                }
+                let deriver = line
+                    .deriver_name
+                    .as_deref()
+                    .map(get_deriver_by_name)
+                    .unwrap_or_else(|| Arc::new(DeriveByAnySingleRule));
+                let here_inference = deriver
+                    .try_derive(&available_premises, &line.formula)
+                    .map_err(|e| format!("In line {}: {e}", line.name))?;
+                Arc::new(here_inference)
             }
         };
-        steps.push(step);
+        inferences_by_name.insert(&*line.name, inference.clone());
+        last_inference = Some(inference);
     }
-    Ok(CompiledProof {
-        conclusion: lines
-            .last()
-            .ok_or_else(|| "Proof has no lines".to_string())?
-            .formula
-            .clone(),
-        steps,
-    })
+    last_inference.ok_or_else(|| "Proof has no lines".to_string())
 }
 
-static INHERENT_RULE_PROOFS: LazyLock<[(&'static str, Arc<dyn Proof>); 5]> = LazyLock::new(|| {
-    [
-        ("substitute_whole_formula", Arc::new(SubstituteWholeFormula)),
-        ("definition_of_const", Arc::new(DefinitionOfConst)),
-        ("definition_of_fuse", Arc::new(DefinitionOfFuse)),
-        ("compatibility_left", Arc::new(CompatibilityLeft)),
-        ("compatibility_right", Arc::new(CompatibilityRight)),
-    ]
-});
+pub trait Deriver: Send + Sync {
+    fn try_derive(&self, premises: &[&Formula], conclusion: &Formula) -> Result<Inference, String>;
+}
+
+pub struct DeriveBySpecializing(pub Arc<Inference>);
+
+impl Deriver for DeriveBySpecializing {
+    fn try_derive(&self, premises: &[&Formula], conclusion: &Formula) -> Result<Inference, String> {
+        let inference = &self.0;
+        let mut arguments: HashMap<String, Formula> = HashMap::new();
+        inference
+            .conclusion
+            .add_substitutions_to_become(conclusion, &mut arguments)
+            .map_err(|e| {
+                format!("Could not unify goal `{conclusion}` with conclusion of `{inference}`: {e}")
+            })?;
+        if premises.len() != inference.premises.len() {
+            return Err(format!(
+                "Wrong number of premises given for inference `{inference}` (given {}, needs {})",
+                premises.len(),
+                inference.premises.len()
+            ));
+        }
+        for (needed, &provided) in zip(&inference.premises, premises) {
+            needed.add_substitutions_to_become(provided, &mut arguments).map_err(|e| {
+                format!(
+                    "Could not unify provided premise `{provided}` with premise `{needed}` of `{inference}`: {e}",
+                )
+            })?;
+        }
+        Ok(inference.specialize(&arguments))
+    }
+}
+
+pub struct DeriveByAnySingleRule;
+
+impl Deriver for DeriveByAnySingleRule {
+    fn try_derive(&self, premises: &[&Formula], conclusion: &Formula) -> Result<Inference, String> {
+        SINGLE_RULE_DERIVERS
+            .iter()
+            .find_map(|(_name, deriver)| deriver.try_derive(premises, conclusion).ok())
+            .ok_or_else(|| format!("No single rule satisfied goal `{}`", &conclusion))
+    }
+}
+
+static SINGLE_RULE_DERIVERS: LazyLock<[(&'static str, Arc<dyn Deriver>); 5]> =
+    LazyLock::new(|| {
+        [
+            (
+                "substitute_whole_formula",
+                Arc::new(DeriveBySpecializing(Arc::new(
+                    Inference::substitute_whole_formula(),
+                ))),
+            ),
+            (
+                "definition_of_const",
+                Arc::new(DeriveBySpecializing(Arc::new(
+                    Inference::definition_of_const(),
+                ))),
+            ),
+            (
+                "definition_of_fuse",
+                Arc::new(DeriveBySpecializing(Arc::new(
+                    Inference::definition_of_fuse(),
+                ))),
+            ),
+            (
+                "compatibility_left",
+                Arc::new(DeriveBySpecializing(Arc::new(
+                    Inference::compatibility_left(),
+                ))),
+            ),
+            (
+                "compatibility_right",
+                Arc::new(DeriveBySpecializing(Arc::new(
+                    Inference::compatibility_right(),
+                ))),
+            ),
+        ]
+    });
 
 thread_local! {
-    static ALL_PROOFS: std::cell::RefCell<HashMap<String, Arc<dyn Proof>>> = std::cell::RefCell::new(INHERENT_RULE_PROOFS.iter().map(|(name, proof)| (name.to_string(), proof.clone())).collect());
+    static ALL_DERIVERS: std::cell::RefCell<HashMap<String, Arc<dyn Deriver>>> = std::cell::RefCell::new(SINGLE_RULE_DERIVERS.iter().map(|(name, deriver)| (name.to_string(), deriver.clone())).collect());
 }
 
-pub fn get_proof_by_name(name: &str) -> Arc<dyn Proof> {
-    ALL_PROOFS.with(|p| {
+pub fn get_deriver_by_name(name: &str) -> Arc<dyn Deriver> {
+    ALL_DERIVERS.with(|p| {
         if let Some(existing) = p.borrow().get(name) {
             return existing.clone();
         }
-        let compiled = Arc::new(
+        let compiled = Arc::new(DeriveBySpecializing(
             compile(&load_proof(Path::new("./data/ic_proofs").join(name)))
                 .map_err(|e| format!("When compiling proof `{name}`, got error: {e}"))
                 .unwrap(),
-        );
+        ));
 
         p.borrow_mut().insert(name.to_string(), compiled.clone());
         compiled
     })
-}
-
-pub trait Proof: Send + Sync {
-    fn claim(&self) -> Claim;
-    fn execute(
-        &self,
-        arguments: &HashMap<String, Formula>,
-        premises: &[&TrueFormula],
-    ) -> Option<TrueFormula>;
-}
-
-pub struct SubstituteWholeFormula;
-impl Proof for SubstituteWholeFormula {
-    fn claim(&self) -> Claim {
-        Claim {
-            premises: vec![ic!("A" = "B"), ic!("A")],
-            conclusion: ic!("B"),
-        }
-    }
-    fn execute(
-        &self,
-        _arguments: &HashMap<String, Formula>,
-        premises: &[&TrueFormula],
-    ) -> Option<TrueFormula> {
-        TrueFormula::substitute_whole_formula(premises.get(0)?, premises.get(1)?)
-    }
-}
-
-pub struct DefinitionOfConst;
-impl Proof for DefinitionOfConst {
-    fn claim(&self) -> Claim {
-        Claim {
-            premises: vec![],
-            conclusion: ic!(((const "A") "B") = "A"),
-        }
-    }
-
-    fn execute(
-        &self,
-        arguments: &HashMap<String, Formula>,
-        _premises: &[&TrueFormula],
-    ) -> Option<TrueFormula> {
-        Some(TrueFormula::definition_of_const(
-            arguments.get("A")?.clone(),
-            arguments.get("B")?.clone(),
-        ))
-    }
-}
-
-pub struct DefinitionOfFuse;
-impl Proof for DefinitionOfFuse {
-    fn claim(&self) -> Claim {
-        Claim {
-            premises: vec![],
-            conclusion: ic!((((fuse "A") "B") "C") = (("A" "C") ("B" "C"))),
-        }
-    }
-    fn execute(
-        &self,
-        arguments: &HashMap<String, Formula>,
-        _premises: &[&TrueFormula],
-    ) -> Option<TrueFormula> {
-        Some(TrueFormula::definition_of_fuse(
-            arguments.get("A")?.clone(),
-            arguments.get("B")?.clone(),
-            arguments.get("C")?.clone(),
-        ))
-    }
-}
-
-pub struct CompatibilityLeft;
-impl Proof for CompatibilityLeft {
-    fn claim(&self) -> Claim {
-        Claim {
-            premises: vec![ic!("A" = "B")],
-            conclusion: ic!(("A" "C") = ("B" "C")),
-        }
-    }
-    fn execute(
-        &self,
-        arguments: &HashMap<String, Formula>,
-        premises: &[&TrueFormula],
-    ) -> Option<TrueFormula> {
-        TrueFormula::compatibility_left(premises.get(0)?, arguments.get("C")?.clone())
-    }
-}
-
-pub struct CompatibilityRight;
-impl Proof for CompatibilityRight {
-    fn claim(&self) -> Claim {
-        Claim {
-            premises: vec![ic!("A" = "B")],
-            conclusion: ic!(("C" "A") = ("C" "B")),
-        }
-    }
-    fn execute(
-        &self,
-        arguments: &HashMap<String, Formula>,
-        premises: &[&TrueFormula],
-    ) -> Option<TrueFormula> {
-        TrueFormula::compatibility_right(arguments.get("C")?.clone(), premises.get(0)?)
-    }
-}
-
-impl Proof for CompiledProof {
-    fn claim(&self) -> Claim {
-        Claim {
-            premises: self
-                .steps
-                .iter()
-                .filter_map(|step| match step {
-                    CompiledProofStep::Premise(p) => Some(p.clone()),
-                    _ => None,
-                })
-                .collect(),
-            conclusion: self.conclusion.clone(),
-        }
-    }
-    fn execute(
-        &self,
-        arguments: &HashMap<String, Formula>,
-        premises: &[&TrueFormula],
-    ) -> Option<TrueFormula> {
-        let mut conclusions = Vec::with_capacity(self.steps.len());
-        let specialize = |f: &Formula| f.with_metavariables_replaced(arguments);
-        let mut premises = premises.iter().copied();
-        for step in &self.steps {
-            let conclusion = match step {
-                CompiledProofStep::Premise(required) => {
-                    let p = premises
-                        .next()
-                        .expect("insufficient premises provided for proof");
-                    assert_eq!(p.formula(), required, "wrong premise provided for proof");
-                    p.clone()
-                }
-                CompiledProofStep::Axiom(a) => TrueFormula::axiom(a.clone()),
-                CompiledProofStep::Lemma {
-                    lemma_name,
-                    arguments,
-                    premises,
-                } => {
-                    let lemma = get_proof_by_name(lemma_name);
-                    let arguments = arguments
-                        .iter()
-                        .map(|(name, value)| (name.clone(), specialize(value)))
-                        .collect();
-                    let premises: Vec<_> = premises.iter().map(|&i| &conclusions[i]).collect();
-                    lemma.execute(&arguments, &premises)?
-                }
-            };
-            conclusions.push(conclusion);
-        }
-        Some(conclusions.pop().unwrap())
-    }
 }

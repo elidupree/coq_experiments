@@ -14,7 +14,7 @@ pub ExplicitRule: ExplicitRule = {
 pub ProofLine: ProofLine = {
   <name:Name> "." <formula:Formula> => ProofLine{<>, ..ProofLine::default()},
   <name:Name> "." <formula:Formula> "[" <referents:CommaSeparated<Name>> "]" => ProofLine{name, formula, referents: referents.into_iter().collect(), ..ProofLine::default()},
-  <name:Name> "." <formula:Formula> "[" <referents:(<Name> ",")*> "by" <lemma_name: Name?> "]" => ProofLine{name, formula, referents: referents.into_iter().collect(), lemma_name},
+  <name:Name> "." <formula:Formula> "[" <referents:(<Name> ",")*> "by" <deriver_name: Name?> "]" => ProofLine{name, formula, referents: referents.into_iter().collect(), deriver_name},
 }
 
 CommaSeparated<T>: Vec<T> = {
