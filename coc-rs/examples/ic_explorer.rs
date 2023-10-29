@@ -2,11 +2,14 @@
 
 use clap::{arg, Parser};
 use coc_rs::introspective_calculus::logic::TrueFormula;
-use coc_rs::introspective_calculus::{all_axioms, AbstractionKind, Atom, Formula, FormulaValue};
+use coc_rs::introspective_calculus::{
+    all_axioms, AbstractionKind, Atom, Formula, FormulaParser, FormulaValue,
+};
 use coc_rs::utils::{read_json_file, write_json_file};
 use coc_rs::{ic, match_ic};
 use html_node::{html, text, Node};
 use quick_and_dirty_web_gui::{callback, callback_with};
+use serde::de::DeserializeOwned;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
 
@@ -14,6 +17,8 @@ struct Interface {
     file_path: String,
     theorems: Vec<TrueFormula>,
     focus: Option<usize>,
+    sandbox_text: String,
+    sandbox_message: String,
 }
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
@@ -169,6 +174,39 @@ impl Interface {
             </div>
         }
     }
+    fn sandbox(&self) -> Node {
+        let callback = interface_callback_with(
+            r#"document.getElementById("sandbox_text").value"#,
+            move |text: String, i| {
+                i.sandbox_text = text;
+                match FormulaParser::new().parse(&i.sandbox_text) {
+                    Ok(mut formula) => {
+                        formula = formula.to_raw_with_metavariables();
+                        formula.unfold_until(100);
+                        let new = formula.to_string();
+                        if new == i.sandbox_text {
+                            i.sandbox_message = "Nothing to do".to_string();
+                        } else {
+                            i.sandbox_message = "Unfolded!".to_string();
+                        }
+                        i.sandbox_text = formula.to_string();
+                    }
+                    Err(e) => {
+                        i.sandbox_message = e.to_string();
+                    }
+                }
+            },
+        );
+        html! {
+            <div class="sandbox">
+                <textarea id="sandbox_text">{text!("{}", self.sandbox_text)}</textarea>
+                <button onclick={
+                    callback
+                }>Unfold</button>
+                <div>{text!("{}", self.sandbox_message)}</div>
+            </div>
+        }
+    }
     fn whole_page(&self) -> Node {
         let existing_inferences = self
             .theorems
@@ -185,9 +223,12 @@ impl Interface {
                 self.inference_html(index, &existing_inferences, &axioms)
             });
         html! {
-            <div class="inferences">
-                {inferences}
-                <div style="clear: both"></div>
+            <div class="page">
+                <div class="inferences">
+                    {inferences}
+                    <div style="clear: both"></div>
+                </div>
+                {self.sandbox()}
             </div>
         }
     }
@@ -211,6 +252,8 @@ static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
         file_path: args.file_path,
         theorems: inferences,
         focus: None,
+        sandbox_text: "".to_string(),
+        sandbox_message: "".to_string(),
     })
 });
 
@@ -224,6 +267,12 @@ fn with_interface(f: impl FnOnce(&mut Interface)) {
 
 fn interface_callback(mut f: impl FnMut(&mut Interface) + Send + 'static) -> String {
     callback(move || with_interface(|i| f(i)))
+}
+fn interface_callback_with<D: DeserializeOwned>(
+    js: &str,
+    mut f: impl FnMut(D, &mut Interface) + Send + 'static,
+) -> String {
+    callback_with(js, move |d| with_interface(|i| f(d, i)))
 }
 
 // fn unfocus() {

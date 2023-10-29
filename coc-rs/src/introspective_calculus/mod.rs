@@ -662,7 +662,7 @@ pub fn load_explicit_rules(path: impl AsRef<Path>) -> Vec<ExplicitRule> {
     BufReader::new(File::open(path).unwrap())
         .lines()
         .map(Result::unwrap)
-        .filter(|l| !l.chars().all(char::is_whitespace))
+        .filter(|l| !l.chars().all(char::is_whitespace) && !l.starts_with('#'))
         .map(|l| match parser.parse(&l) {
             Ok(a) => a,
             Err(e) => panic!("Got error `{e}` while parsing axiom `{l}`"),

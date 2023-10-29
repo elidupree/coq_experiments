@@ -26,3 +26,8 @@ body {
 .subformula:hover:not(:has(.subformula:hover)) {
   background-color: #ccc
 }
+
+#sandbox_text {
+  width: 90%;
+  height: 500px;
+}

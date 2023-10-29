@@ -1,6 +1,11 @@
+use crate::display::DisplayItem;
 use crate::introspective_calculus::logic::TrueFormula;
+use crate::introspective_calculus::proofs::{
+    get_deriver_by_name, DeriveBySpecializing, Deriver, Inference,
+};
 use crate::introspective_calculus::{Formula, FormulaValue};
 use crate::{ic, match_ic};
+use std::sync::Arc;
 
 impl Formula {
     pub fn unfold_here(&mut self) -> bool {
@@ -143,3 +148,89 @@ impl Formula {
 //         }
 //     })
 // }
+
+// ///
+// fn equivalence_search(a: &Formula, b: &Formula) -> Result<Inference, String> {
+//     if premises.len() != 1 {
+//         return Err("Unfolding must have exactly 1 premise".to_string());
+//     }
+//
+//     match (
+//         &premises[0].as_raw_with_metavariables().value,
+//         &conclusion.as_raw_with_metavariables().value,
+//     ) {}
+// }
+
+pub struct DeriveFoldEquivalence {
+    max_depth: usize,
+}
+impl Default for DeriveFoldEquivalence {
+    fn default() -> Self {
+        DeriveFoldEquivalence { max_depth: 100 }
+    }
+}
+impl Deriver for DeriveFoldEquivalence {
+    fn try_derive(&self, premises: &[&Formula], conclusion: &Formula) -> Result<Inference, String> {
+        let Some([a, b]) = conclusion.as_raw_with_metavariables().as_eq_sides() else {
+            return Err(format!(
+                "fold-equivalence requires `=` conclusion, but got {}",
+                conclusion
+            ));
+        };
+
+        if a == b {
+            return Ok(get_deriver_by_name("eq_refl")
+                .try_derive(&[], conclusion)
+                .unwrap());
+        }
+        if self.max_depth == 0 {
+            return Err("max depth exceeded in DeriveFoldEquivalence".to_string());
+        }
+        match (&a.value, &b.value) {
+            (FormulaValue::Apply(a), FormulaValue::Apply(b)) => {
+                todo!()
+            }
+            (FormulaValue::Apply(a), b) => {
+                // match_ic!(a, {
+                //     ((const a) _b) => {*self = a.clone(); true },
+                //     (((fuse a) b) c) => {*self = ic!((a c)(b c)); true },
+                //     _ => false,
+                // })
+                todo!()
+            }
+            (a, FormulaValue::Apply(b)) => {
+                todo!()
+            }
+            (a, b) => return Err("incompatible sides for DeriveFoldEquivalence".to_string()),
+        }
+    }
+}
+
+pub struct DeriveByUnfolding;
+impl Deriver for DeriveByUnfolding {
+    fn try_derive(&self, premises: &[&Formula], conclusion: &Formula) -> Result<Inference, String> {
+        if premises.len() != 1 {
+            return Err("Unfolding must have exactly 1 premise".to_string());
+        }
+
+        let premise = premises[0];
+        let equivalence_statement = ic!(premise = conclusion);
+        let equivalence_inference = Arc::new(
+            DeriveFoldEquivalence::default().try_derive(premises, &equivalence_statement)?,
+        );
+        let conclusion_provider =
+            DeriveBySpecializing(Arc::new(Inference::substitute_whole_formula()))
+                .try_derive(&[&equivalence_statement, premise], conclusion)
+                .unwrap();
+        let premises: Vec<Formula> = premises.iter().copied().cloned().collect();
+        Ok(Inference::chain(
+            premises.clone(),
+            vec![
+                equivalence_inference,
+                Arc::new(Inference::premise(premises, 0)),
+            ],
+            Arc::new(conclusion_provider),
+        )
+        .unwrap())
+    }
+}

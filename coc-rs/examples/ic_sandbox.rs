@@ -1,11 +1,11 @@
 use coc_rs::introspective_calculus;
 
 fn main() {
-    for axiom in introspective_calculus::all_axioms("data/ic_ordinary_axioms.ic") {
+    for axiom in introspective_calculus::all_axioms() {
         println!(
             "{}: {}",
-            axiom.name,
-            axiom.conclusion.to_raw_with_metavariables().as_shorthand()
+            axiom.formula(),
+            axiom.as_raw_with_metavariables().as_shorthand()
         );
     }
 }

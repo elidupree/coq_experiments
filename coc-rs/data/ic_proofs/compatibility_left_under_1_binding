@@ -1,0 +1,23 @@
+P1. ∀x, (A x = B x)
+
+A1. ∀A, ∀B, (A = B) = ∀C, ((A C) = (B C))
+
+1. (A => ∀B, (A = B) = ∀C, ((A C) = (B C))) A  [A1, by specialization]
+2. ∀B, (A = B) = ∀C, ((A C) = (B C))           [1, by unfolding]
+3. (B => (A = B) = ∀C, ((A C) = (B C))) B      [2, by specialization]
+4. (A = B) = ∀C, ((A C) = (B C))               [3, by unfolding]
+5. ∀C, ((A C) = (B C)) = (A = B)               [4, by eq_sym]
+
+6. A = B                                       [5, P1]
+7. ∀C, ((C A) = (C B))                         [...]
+3. (((y => (y x)(C x)) A) = (C B))                         [ by specialization]
+
+7, ∀x, ((A x)(C x) = (A x)(C x))               [by eq_refl_under_1_binding]
+7. ∀x, ((A x)(C x) = (B x)(C x))               [6, by subst]
+
+∀x, ((y x)(C x) = (y x)(C x))
+
+(A = B) = ((const True) = (const equals).fuse(A).fuse(B))  [ext]
+(A = B)
+(A = B) = ((const True) = ((const equals).fuse(A.fuse(C)).fuse(B.fuse(C)))  [ext]
+(const True) = ((const equals).fuse(A.fuse(C)).fuse(B.fuse(C)))
