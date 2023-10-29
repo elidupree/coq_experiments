@@ -77,10 +77,35 @@ impl WhatSubstitutions {
 /// in some sequence, try every choose-p of the known truths with every unsolved goal, and
 pub struct DeriveBySpecializing {
     inference_to_specialize: Inference,
-    premises: Vec<Formula>,
+    available_premises: Vec<Formula>,
     // inferences starting from the premises
     known_truths: Vec<TruthInfo>,
     unsolved_goals: HashMap<Formula, GoalInfo>,
+}
+
+impl DeriveBySpecializing {
+    pub fn new(
+        inference_to_specialize: Inference,
+        available_premises: Vec<Formula>,
+    ) -> DeriveBySpecializing {
+        let known_truths = available_premises
+            .iter()
+            .enumerate()
+            .map(|(i, _p)| TruthInfo {
+                known_inference: Inference::premise(available_premises.clone(), i),
+                substitutions_for_my_premises_to_become_this_conclusion: vec![
+                        WhatSubstitutions::NotYetCalculated;
+                        inference_to_specialize.premises().len()
+                    ],
+            })
+            .collect();
+        DeriveBySpecializing {
+            inference_to_specialize,
+            available_premises,
+            known_truths,
+            unsolved_goals: HashMap::new(),
+        }
+    }
 }
 
 impl IncrementalDeriver for DeriveBySpecializing {
@@ -92,7 +117,7 @@ impl IncrementalDeriver for DeriveBySpecializing {
                     WhatSubstitutions::NotYetCalculated,
                 premises_tried: PremisesTried {
                     already_tried_every_combination_before: 0,
-                    next_trial: vec![0; self.premises.len()],
+                    next_trial: vec![0; self.available_premises.len()],
                 },
             },
         );
@@ -103,7 +128,7 @@ impl IncrementalDeriver for DeriveBySpecializing {
         self.known_truths.push(TruthInfo {
             known_inference: proof,
             substitutions_for_my_premises_to_become_this_conclusion:
-                vec![WhatSubstitutions::NotYetCalculated; self.premises.len()],
+                vec![WhatSubstitutions::NotYetCalculated; self.available_premises.len()],
         })
     }
 
@@ -120,7 +145,7 @@ impl IncrementalDeriver for DeriveBySpecializing {
                 {
                     let trial = goal_info.premises_tried.pick_next_trial();
                     let mut substitutions = (*substitutions).clone();
-                    for (which_premise, i) in trial.into_iter().enumerate() {
+                    for (which_premise, &i) in trial.iter().enumerate() {
                         let c = self.known_truths[i].known_inference.conclusion().clone();
                         if let Some(premise_substitutions) = self.known_truths[i]
                             .substitutions_for_my_premises_to_become_this_conclusion[which_premise]
@@ -134,12 +159,21 @@ impl IncrementalDeriver for DeriveBySpecializing {
                         }
                     }
 
-                    return IncrementalDeriverWorkResult::DiscoveredInference(
-                        self.inference_to_specialize.specialize(&substitutions),
-                    );
+                    let specialized = self.inference_to_specialize.specialize(&substitutions);
+                    let full_inference = Inference::chain(
+                        self.available_premises.clone(),
+                        trial
+                            .iter()
+                            .map(|&i| self.known_truths[i].known_inference.clone())
+                            .collect(),
+                        specialized,
+                    )
+                    .unwrap();
+
+                    return IncrementalDeriverWorkResult::DiscoveredInference(full_inference);
                 }
             }
         }
-        IncrementalDeriverWorkResult::NothingLeftToDo
+        IncrementalDeriverWorkResult::NothingToDoRightNow
     }
 }
