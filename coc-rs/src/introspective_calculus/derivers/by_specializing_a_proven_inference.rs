@@ -117,7 +117,7 @@ impl IncrementalDeriver for DeriveBySpecializing {
                     WhatSubstitutions::NotYetCalculated,
                 premises_tried: PremisesTried {
                     already_tried_every_combination_before: 0,
-                    next_trial: vec![0; self.available_premises.len()],
+                    next_trial: vec![0; self.inference_to_specialize.premises().len()],
                 },
             },
         );
@@ -127,8 +127,10 @@ impl IncrementalDeriver for DeriveBySpecializing {
         self.unsolved_goals.remove(proof.conclusion());
         self.known_truths.push(TruthInfo {
             known_inference: proof,
-            substitutions_for_my_premises_to_become_this_conclusion:
-                vec![WhatSubstitutions::NotYetCalculated; self.available_premises.len()],
+            substitutions_for_my_premises_to_become_this_conclusion: vec![
+                    WhatSubstitutions::NotYetCalculated;
+                    self.inference_to_specialize.premises().len()
+                ],
         })
     }
 

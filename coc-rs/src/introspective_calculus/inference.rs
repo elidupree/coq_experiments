@@ -2,6 +2,7 @@ use crate::ic;
 use crate::introspective_calculus::logic::TrueFormula;
 use crate::introspective_calculus::ProofLineParser;
 use crate::introspective_calculus::{Formula, FormulaRawness};
+use anyhow::{anyhow, Context};
 use arrayvec::ArrayVec;
 use itertools::Itertools;
 use std::collections::HashMap;
@@ -70,6 +71,7 @@ impl Display for Inference {
                 ", ".fmt(f)?;
             }
             last.fmt(f)?;
+            " ".fmt(f)?;
         }
         write!(f, "|- {}", self.conclusion)
     }
@@ -331,27 +333,33 @@ impl Inference {
         deriver.try_derive(premises, conclusion)
     }
 }
-pub fn load_proof(path: impl AsRef<Path>) -> Vec<ProofLine> {
+pub fn load_proof(path: impl AsRef<Path>) -> Result<Vec<ProofLine>, anyhow::Error> {
     let parser = ProofLineParser::new();
-    BufReader::new(File::open(path).unwrap())
+    BufReader::new(File::open(path)?)
         .lines()
-        .map(Result::unwrap)
-        .filter(|l| !l.chars().all(char::is_whitespace) && !l.starts_with('#'))
-        .map(|l| match parser.parse(&l) {
-            Ok(a) => a,
-            Err(e) => panic!("Got error `{e}` while parsing proof line `{l}`"),
+        .filter_map(|l| match l {
+            Ok(l) => (!l.chars().all(char::is_whitespace) && !l.starts_with('#')).then(|| {
+                parser
+                    .parse(&l)
+                    .map_err(|e| anyhow!(e.to_string()))
+                    .with_context(|| format!("Error while parsing proof line `{l}`"))
+            }),
+            Err(e) => Some(Err(e.into())),
         })
+        .collect()
+}
+pub fn proof_premises(lines: &[ProofLine]) -> Vec<Formula> {
+    lines
+        .iter()
+        .filter(|line| line.name.starts_with('P'))
+        .map(|line| line.formula.clone())
         .collect()
 }
 pub fn compile(lines: &[ProofLine]) -> Result<Inference, String> {
     // inferences from the premises to that specific conclusion
     let mut inferences_by_name: HashMap<&str, Inference> = HashMap::with_capacity(lines.len());
     let mut last_inference = None;
-    let premises: Vec<Formula> = lines
-        .iter()
-        .filter(|line| line.name.starts_with('P'))
-        .map(|line| line.formula.clone())
-        .collect();
+    let premises = proof_premises(lines);
     let mut which_premise = 0;
     for line in lines {
         let inference = match line.name.chars().next().unwrap() {
@@ -437,30 +445,27 @@ impl Deriver for DeriveByAnySingleRule {
     }
 }
 
+pub static ALL_SINGLE_RULES: LazyLock<[(&'static str, Inference); 5]> = LazyLock::new(|| {
+    [
+        (
+            "substitute_whole_formula",
+            Inference::substitute_whole_formula(),
+        ),
+        ("definition_of_const", Inference::definition_of_const()),
+        ("definition_of_fuse", Inference::definition_of_fuse()),
+        ("compatibility_left", Inference::compatibility_left()),
+        ("compatibility_right", Inference::compatibility_right()),
+    ]
+});
+
 static SINGLE_RULE_DERIVERS: LazyLock<[(&'static str, Arc<dyn Deriver>); 5]> =
     LazyLock::new(|| {
-        [
+        ALL_SINGLE_RULES.each_ref().map(|(name, inference)| {
             (
-                "substitute_whole_formula",
-                Arc::new(DeriveBySpecializing(Inference::substitute_whole_formula())),
-            ),
-            (
-                "definition_of_const",
-                Arc::new(DeriveBySpecializing(Inference::definition_of_const())),
-            ),
-            (
-                "definition_of_fuse",
-                Arc::new(DeriveBySpecializing(Inference::definition_of_fuse())),
-            ),
-            (
-                "compatibility_left",
-                Arc::new(DeriveBySpecializing(Inference::compatibility_left())),
-            ),
-            (
-                "compatibility_right",
-                Arc::new(DeriveBySpecializing(Inference::compatibility_right())),
-            ),
-        ]
+                *name,
+                Arc::new(DeriveBySpecializing(inference.clone())) as Arc<dyn Deriver>,
+            )
+        })
     });
 
 thread_local! {
@@ -473,7 +478,7 @@ pub fn get_deriver_by_name(name: &str) -> Arc<dyn Deriver> {
             return existing.clone();
         }
         let compiled = Arc::new(DeriveBySpecializing(
-            compile(&load_proof(Path::new("./data/ic_proofs").join(name)))
+            compile(&load_proof(Path::new("./data/ic_proofs").join(name)).unwrap())
                 .map_err(|e| format!("When compiling proof `{name}`, got error: {e}"))
                 .unwrap(),
         ));
