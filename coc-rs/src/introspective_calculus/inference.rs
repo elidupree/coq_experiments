@@ -124,6 +124,15 @@ impl SingleRuleInference {
 }
 
 impl Inference {
+    pub fn premises(&self) -> &[Formula] {
+        &self.premises
+    }
+    pub fn conclusion(&self) -> &Formula {
+        &self.conclusion
+    }
+    pub fn derivation(&self) -> &InferenceDerivation {
+        &self.derivation
+    }
     pub fn specialize(&self, arguments: &HashMap<String, Formula>) -> Inference {
         Inference {
             premises: self

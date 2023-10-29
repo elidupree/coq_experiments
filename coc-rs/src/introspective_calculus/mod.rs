@@ -467,6 +467,15 @@ impl FormulaWithMetadata {
     }
 }
 
+#[macro_export]
+macro_rules! variable_values {
+    ($($var:tt := $val:expr),*$(,)?) => {{
+        #[allow(unused_imports)]
+        use $crate::introspective_calculus::ToFormula;
+        [$(($var.to_string(), $val.to_formula())),*].into_iter().collect::<::std::collections::HashMap<String, Formula>>()
+    }};
+}
+
 #[live_prop_test]
 impl Formula {
     pub fn as_raw_with_metavariables(&self) -> &Formula {

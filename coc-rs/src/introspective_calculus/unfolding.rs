@@ -4,9 +4,11 @@ use crate::introspective_calculus::inference::{
 };
 use crate::introspective_calculus::logic::TrueFormula;
 use crate::introspective_calculus::{Formula, FormulaValue};
-use crate::{ic, match_ic};
+use crate::{ic, match_ic, variable_values};
+use live_prop_test::live_prop_test;
 use std::sync::Arc;
 
+#[live_prop_test]
 impl Formula {
     pub fn unfold_here(&mut self) -> bool {
         match_ic!(self, {
@@ -14,6 +16,61 @@ impl Formula {
             (((fuse a) b) c) => {*self = ic!((a c)(b c)); true },
             _ => false,
         })
+    }
+    pub fn unfold_here_equality_inference(&self) -> Option<Inference> {
+        match_ic!(self, {
+            ((const a) b) => {
+                Some(Inference::definition_of_const().specialize (
+                    &variable_values!("A" := a, "B" := b)
+                ))
+            },
+            (((fuse a) b) c) => {
+                Some(Inference::definition_of_fuse().specialize (
+                    &variable_values!("A" := a, "B" := b, "C" := c)
+                ))
+            },
+            _ => None,
+        })
+    }
+    #[live_prop_test(precondition = "self.is_raw_with_metavariables()")]
+    pub fn unfold_any_one_subformula_equality_inference(&self) -> Option<Inference> {
+        if let Some(result) = self.unfold_here_equality_inference() {
+            return Some(result);
+        }
+        if let FormulaValue::Apply([l, r]) = &self.value {
+            if let Some(subresult) = l.unfold_any_one_subformula_equality_inference() {
+                let subresult = Arc::new(subresult);
+                let [a, b] = subresult.conclusion().as_eq_sides().unwrap();
+                return Some(
+                    Inference::chain(
+                        vec![],
+                        vec![subresult.clone()],
+                        Arc::new(
+                            Inference::compatibility_left()
+                                .specialize(&variable_values!("A" := a, "B" := b, "C" := r)),
+                        ),
+                    )
+                    .unwrap(),
+                );
+            }
+            if let Some(subresult) = r.unfold_any_one_subformula_equality_inference() {
+                let subresult = Arc::new(subresult);
+                let [a, b] = subresult.conclusion().as_eq_sides().unwrap();
+                return Some(
+                    Inference::chain(
+                        vec![],
+                        vec![subresult.clone()],
+                        Arc::new(
+                            Inference::compatibility_right()
+                                .specialize(&variable_values!("A" := a, "B" := b, "C" := l)),
+                        ),
+                    )
+                    .unwrap(),
+                );
+            }
+        }
+
+        None
     }
     // pub fn unfold_left(&mut self, levels_deduction_available_under: u32) -> bool {
     //     if self.unfold_here() {
