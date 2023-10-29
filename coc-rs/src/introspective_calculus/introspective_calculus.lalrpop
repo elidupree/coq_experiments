@@ -1,5 +1,5 @@
 use crate::introspective_calculus::{Formula, Atom, ExplicitRule, AbstractionKind};
-use crate::introspective_calculus::proofs::ProofLine;
+use crate::introspective_calculus::inference::ProofLine;
 
 grammar;
 

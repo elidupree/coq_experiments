@@ -3,7 +3,7 @@ pub mod display;
 // mod metavariable_conversions;
 pub mod logic;
 // pub mod prolog;
-pub mod proofs;
+pub mod inference;
 pub mod unfolding;
 
 #[allow(clippy::all)]

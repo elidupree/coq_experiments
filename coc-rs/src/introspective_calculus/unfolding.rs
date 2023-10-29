@@ -1,8 +1,8 @@
 use crate::display::DisplayItem;
-use crate::introspective_calculus::logic::TrueFormula;
-use crate::introspective_calculus::proofs::{
+use crate::introspective_calculus::inference::{
     get_deriver_by_name, DeriveBySpecializing, Deriver, Inference,
 };
+use crate::introspective_calculus::logic::TrueFormula;
 use crate::introspective_calculus::{Formula, FormulaValue};
 use crate::{ic, match_ic};
 use std::sync::Arc;
