@@ -3,6 +3,7 @@ pub mod display;
 // mod metavariable_conversions;
 pub mod logic;
 // pub mod prolog;
+pub mod derivers;
 pub mod inference;
 pub mod unfolding;
 
@@ -468,12 +469,41 @@ impl FormulaWithMetadata {
 }
 
 #[macro_export]
-macro_rules! variable_values {
+macro_rules! substitutions {
     ($($var:tt := $val:expr),*$(,)?) => {{
         #[allow(unused_imports)]
         use $crate::introspective_calculus::ToFormula;
         [$(($var.to_string(), $val.to_formula())),*].into_iter().collect::<::std::collections::HashMap<String, Formula>>()
     }};
+}
+
+pub fn merge_substitution_into(
+    substitutions: &mut HashMap<String, Formula>,
+    name: &str,
+    value: Formula,
+) -> Result<(), String> {
+    match substitutions.entry(name.to_string()) {
+        hash_map::Entry::Occupied(e) => {
+            let existing = e.get();
+            if existing.as_raw_with_metavariables() != value.as_raw_with_metavariables() {
+                return Err(format!("Variable `{name}`, which was already assigned value `{existing}`, also needs conflicting value `{value}`"));
+            }
+        }
+        hash_map::Entry::Vacant(e) => {
+            e.insert(value);
+        }
+    }
+    Ok(())
+}
+
+pub fn merge_substitutions_into(
+    dst: &mut HashMap<String, Formula>,
+    src: &HashMap<String, Formula>,
+) -> Result<(), String> {
+    for (name, value) in src {
+        merge_substitution_into(dst, name, value.clone())?;
+    }
+    Ok(())
 }
 
 #[live_prop_test]
@@ -589,17 +619,9 @@ impl Formula {
                     ));
                 }
             }
-            (FormulaValue::Metavariable(name), _) => match substitutions.entry(name.clone()) {
-                hash_map::Entry::Occupied(e) => {
-                    let existing = e.get();
-                    if existing.as_raw_with_metavariables() != goal.as_raw_with_metavariables() {
-                        return Err(format!("Variable `{name}`, which was already assigned value `{existing}`, also needs conflicting value `{goal}`"));
-                    }
-                }
-                hash_map::Entry::Vacant(e) => {
-                    e.insert(goal.clone());
-                }
-            },
+            (FormulaValue::Metavariable(name), _) => {
+                merge_substitution_into(substitutions, name, goal.clone())?
+            }
             (FormulaValue::Apply(children), FormulaValue::Apply(goal_children)) => {
                 for (child, goal_child) in zip(children, goal_children) {
                     child.add_substitutions_to_become(goal_child, substitutions)?;
@@ -608,6 +630,14 @@ impl Formula {
             _ => return Err(format!("Could not unify `{self}` with `{goal}`")),
         }
         Ok(())
+    }
+    pub fn substitutions_to_become(
+        &self,
+        goal: &Formula,
+    ) -> Result<HashMap<String, Formula>, String> {
+        let mut result = HashMap::new();
+        self.add_substitutions_to_become(goal, &mut result)?;
+        Ok(result)
     }
 
     pub fn naive_size(&self) -> usize {
