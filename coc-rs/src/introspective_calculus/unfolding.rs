@@ -72,6 +72,37 @@ impl Formula {
 
         None
     }
+
+    pub fn unfold_up_to_n_subformulas_equality_inference(&self, n: usize) -> Arc<Inference> {
+        let mut inference =
+            Arc::new(Inference::derive_by("eq_refl", &[], &ic!(self = self)).unwrap());
+        for _ in 0..n {
+            let Some(new_inference) = inference
+                .conclusion()
+                .unfold_any_one_subformula_equality_inference()
+            else {
+                return inference;
+            };
+            let [_a, b] = new_inference.conclusion().as_eq_sides().unwrap();
+            let joining_inference = Arc::new(
+                Inference::derive_by(
+                    "eq_trans",
+                    &[inference.conclusion(), new_inference.conclusion()],
+                    &ic!(self = b),
+                )
+                .unwrap(),
+            );
+            inference = Arc::new(
+                Inference::chain(
+                    vec![],
+                    vec![inference, Arc::new(new_inference)],
+                    joining_inference,
+                )
+                .unwrap(),
+            );
+        }
+        inference
+    }
     // pub fn unfold_left(&mut self, levels_deduction_available_under: u32) -> bool {
     //     if self.unfold_here() {
     //         return true;

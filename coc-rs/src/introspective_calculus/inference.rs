@@ -292,6 +292,15 @@ impl Inference {
             derivation: InferenceDerivation::Chain(premise_providers, conclusion_provider),
         })
     }
+
+    pub fn derive_by(
+        deriver_name: &str,
+        premises: &[&Formula],
+        conclusion: &Formula,
+    ) -> Result<Inference, String> {
+        let deriver = get_deriver_by_name(deriver_name);
+        deriver.try_derive(&premises, &conclusion)
+    }
 }
 pub fn load_proof(path: impl AsRef<Path>) -> Vec<ProofLine> {
     let parser = ProofLineParser::new();
