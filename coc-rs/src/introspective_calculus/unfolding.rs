@@ -1,4 +1,3 @@
-use crate::display::DisplayItem;
 use crate::introspective_calculus::inference::{
     get_deriver_by_name, DeriveBySpecializing, Deriver, Inference,
 };
@@ -6,7 +5,6 @@ use crate::introspective_calculus::logic::TrueFormula;
 use crate::introspective_calculus::{Formula, FormulaValue};
 use crate::{ic, match_ic, variable_values};
 use live_prop_test::live_prop_test;
-use std::sync::Arc;
 
 #[live_prop_test]
 impl Formula {
@@ -39,31 +37,25 @@ impl Formula {
         }
         if let FormulaValue::Apply([l, r]) = &self.value {
             if let Some(subresult) = l.unfold_any_one_subformula_equality_inference() {
-                let subresult = Arc::new(subresult);
                 let [a, b] = subresult.conclusion().as_eq_sides().unwrap();
                 return Some(
                     Inference::chain(
                         vec![],
                         vec![subresult.clone()],
-                        Arc::new(
-                            Inference::compatibility_left()
-                                .specialize(&variable_values!("A" := a, "B" := b, "C" := r)),
-                        ),
+                        Inference::compatibility_left()
+                            .specialize(&variable_values!("A" := a, "B" := b, "C" := r)),
                     )
                     .unwrap(),
                 );
             }
             if let Some(subresult) = r.unfold_any_one_subformula_equality_inference() {
-                let subresult = Arc::new(subresult);
                 let [a, b] = subresult.conclusion().as_eq_sides().unwrap();
                 return Some(
                     Inference::chain(
                         vec![],
                         vec![subresult.clone()],
-                        Arc::new(
-                            Inference::compatibility_right()
-                                .specialize(&variable_values!("A" := a, "B" := b, "C" := l)),
-                        ),
+                        Inference::compatibility_right()
+                            .specialize(&variable_values!("A" := a, "B" := b, "C" := l)),
                     )
                     .unwrap(),
                 );
@@ -73,9 +65,8 @@ impl Formula {
         None
     }
 
-    pub fn unfold_up_to_n_subformulas_equality_inference(&self, n: usize) -> Arc<Inference> {
-        let mut inference =
-            Arc::new(Inference::derive_by("eq_refl", &[], &ic!(self = self)).unwrap());
+    pub fn unfold_up_to_n_subformulas_equality_inference(&self, n: usize) -> Inference {
+        let mut inference = Inference::derive_by("eq_refl", &[], &ic!(self = self)).unwrap();
         for _ in 0..n {
             let Some(new_inference) = inference
                 .conclusion()
@@ -84,22 +75,14 @@ impl Formula {
                 return inference;
             };
             let [_a, b] = new_inference.conclusion().as_eq_sides().unwrap();
-            let joining_inference = Arc::new(
-                Inference::derive_by(
-                    "eq_trans",
-                    &[inference.conclusion(), new_inference.conclusion()],
-                    &ic!(self = b),
-                )
-                .unwrap(),
-            );
-            inference = Arc::new(
-                Inference::chain(
-                    vec![],
-                    vec![inference, Arc::new(new_inference)],
-                    joining_inference,
-                )
-                .unwrap(),
-            );
+            let joining_inference = Inference::derive_by(
+                "eq_trans",
+                &[inference.conclusion(), new_inference.conclusion()],
+                &ic!(self = b),
+            )
+            .unwrap();
+            inference = Inference::chain(vec![], vec![inference, new_inference], joining_inference)
+                .unwrap();
         }
         inference
     }
@@ -303,21 +286,16 @@ impl Deriver for DeriveByUnfolding {
 
         let premise = premises[0];
         let equivalence_statement = ic!(premise = conclusion);
-        let equivalence_inference = Arc::new(
-            DeriveFoldEquivalence::default().try_derive(premises, &equivalence_statement)?,
-        );
-        let conclusion_provider =
-            DeriveBySpecializing(Arc::new(Inference::substitute_whole_formula()))
-                .try_derive(&[&equivalence_statement, premise], conclusion)
-                .unwrap();
+        let equivalence_inference =
+            DeriveFoldEquivalence::default().try_derive(premises, &equivalence_statement)?;
+        let conclusion_provider = DeriveBySpecializing(Inference::substitute_whole_formula())
+            .try_derive(&[&equivalence_statement, premise], conclusion)
+            .unwrap();
         let premises: Vec<Formula> = premises.iter().copied().cloned().collect();
         Ok(Inference::chain(
             premises.clone(),
-            vec![
-                equivalence_inference,
-                Arc::new(Inference::premise(premises, 0)),
-            ],
-            Arc::new(conclusion_provider),
+            vec![equivalence_inference, Inference::premise(premises, 0)],
+            conclusion_provider,
         )
         .unwrap())
     }

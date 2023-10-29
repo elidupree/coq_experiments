@@ -9,10 +9,11 @@ use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::iter::zip;
+use std::ops::Deref;
 use std::path::Path;
 use std::sync::{Arc, LazyLock};
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ProofLine {
     pub name: String,
     pub formula: Formula,
@@ -36,6 +37,7 @@ pub struct ProofLine {
 // }
 
 // everything in the same derivation tree is using the same metavariable identities
+#[derive(Debug)]
 pub enum SingleRuleInference {
     SubstituteWholeFormula([Formula; 2]),
     DefinitionOfConst([Formula; 2]),
@@ -43,14 +45,18 @@ pub enum SingleRuleInference {
     CompatibilityLeft([Formula; 3]),
     CompatibilityRight([Formula; 3]),
 }
+#[derive(Debug)]
 pub enum InferenceDerivation {
     Premise(usize),
     Axiom(Formula),
     SingleRule(SingleRuleInference),
-    Chain(Vec<Arc<Inference>>, Arc<Inference>),
+    Chain(Vec<Inference>, Inference),
 }
 
-pub struct Inference {
+#[derive(Clone, Debug)]
+pub struct Inference(Arc<InferenceInner>);
+#[derive(Debug)]
+pub struct InferenceInner {
     premises: Vec<Formula>,
     conclusion: Formula,
     derivation: InferenceDerivation,
@@ -66,6 +72,20 @@ impl Display for Inference {
             last.fmt(f)?;
         }
         write!(f, "|- {}", self.conclusion)
+    }
+}
+
+impl Deref for Inference {
+    type Target = InferenceInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<InferenceInner> for Inference {
+    fn from(value: InferenceInner) -> Self {
+        Inference(Arc::new(value))
     }
 }
 
@@ -134,7 +154,7 @@ impl Inference {
         &self.derivation
     }
     pub fn specialize(&self, arguments: &HashMap<String, Formula>) -> Inference {
-        Inference {
+        InferenceInner {
             premises: self
                 .premises
                 .iter()
@@ -151,13 +171,14 @@ impl Inference {
                     InferenceDerivation::Chain(
                         premise_providers
                             .iter()
-                            .map(|p| Arc::new(p.specialize(arguments)))
+                            .map(|p| p.specialize(arguments))
                             .collect(),
-                        Arc::new(conclusion_provider.specialize(arguments)),
+                        conclusion_provider.specialize(arguments),
                     )
                 }
             },
         }
+        .into()
     }
     pub fn apply(&self, premises: &[&TrueFormula]) -> Result<TrueFormula, String> {
         if premises.len() != self.premises.len() {
@@ -193,17 +214,18 @@ impl Inference {
     }
 
     pub fn substitute_whole_formula() -> Inference {
-        Inference {
+        InferenceInner {
             premises: vec![ic!("A" = "B"), ic!("A")],
             conclusion: ic!("B"),
             derivation: InferenceDerivation::SingleRule(
                 SingleRuleInference::SubstituteWholeFormula([ic!("A"), ic!("B")]),
             ),
         }
+        .into()
     }
 
     pub fn definition_of_const() -> Inference {
-        Inference {
+        InferenceInner {
             premises: vec![],
             conclusion: ic!(((const "A") "B") = "A"),
             derivation: InferenceDerivation::SingleRule(SingleRuleInference::DefinitionOfConst([
@@ -211,10 +233,11 @@ impl Inference {
                 ic!("B"),
             ])),
         }
+        .into()
     }
 
     pub fn definition_of_fuse() -> Inference {
-        Inference {
+        InferenceInner {
             premises: vec![],
             conclusion: ic!((((fuse "A") "B") "C") = (("A" "C") ("B" "C"))),
             derivation: InferenceDerivation::SingleRule(SingleRuleInference::DefinitionOfFuse([
@@ -223,10 +246,11 @@ impl Inference {
                 ic!("C"),
             ])),
         }
+        .into()
     }
 
     pub fn compatibility_left() -> Inference {
-        Inference {
+        InferenceInner {
             premises: vec![ic!("A" = "B")],
             conclusion: ic!(("A" "C") = ("B" "C")),
             derivation: InferenceDerivation::SingleRule(SingleRuleInference::CompatibilityLeft([
@@ -235,10 +259,11 @@ impl Inference {
                 ic!("C"),
             ])),
         }
+        .into()
     }
 
     pub fn compatibility_right() -> Inference {
-        Inference {
+        InferenceInner {
             premises: vec![ic!("A" = "B")],
             conclusion: ic!(("C" "A") = ("C" "B")),
             derivation: InferenceDerivation::SingleRule(SingleRuleInference::CompatibilityRight([
@@ -247,6 +272,7 @@ impl Inference {
                 ic!("C"),
             ])),
         }
+        .into()
     }
 
     pub fn axiom(premises: Vec<Formula>, axiom: Formula) -> Inference {
@@ -254,26 +280,28 @@ impl Inference {
             axiom.as_raw_with_metavariables().rawness,
             FormulaRawness::Raw
         );
-        Inference {
+        InferenceInner {
             premises,
             conclusion: axiom.clone(),
             derivation: InferenceDerivation::Axiom(axiom),
         }
+        .into()
     }
 
     pub fn premise(premises: Vec<Formula>, which: usize) -> Inference {
         let conclusion = premises[which].clone();
-        Inference {
+        InferenceInner {
             premises,
             conclusion,
             derivation: InferenceDerivation::Premise(which),
         }
+        .into()
     }
 
     pub fn chain(
         premises: Vec<Formula>,
-        premise_providers: Vec<Arc<Inference>>,
-        conclusion_provider: Arc<Inference>,
+        premise_providers: Vec<Inference>,
+        conclusion_provider: Inference,
     ) -> Result<Inference, String> {
         for (p, cp) in zip(&premise_providers, &conclusion_provider.premises) {
             if p.premises != premises {
@@ -286,11 +314,12 @@ impl Inference {
                 ));
             }
         }
-        Ok(Inference {
+        Ok(InferenceInner {
             premises,
             conclusion: conclusion_provider.conclusion.clone(),
             derivation: InferenceDerivation::Chain(premise_providers, conclusion_provider),
-        })
+        }
+        .into())
     }
 
     pub fn derive_by(
@@ -314,9 +343,9 @@ pub fn load_proof(path: impl AsRef<Path>) -> Vec<ProofLine> {
         })
         .collect()
 }
-pub fn compile(lines: &[ProofLine]) -> Result<Arc<Inference>, String> {
+pub fn compile(lines: &[ProofLine]) -> Result<Inference, String> {
     // inferences from the premises to that specific conclusion
-    let mut inferences_by_name: HashMap<&str, Arc<Inference>> = HashMap::with_capacity(lines.len());
+    let mut inferences_by_name: HashMap<&str, Inference> = HashMap::with_capacity(lines.len());
     let mut last_inference = None;
     let premises: Vec<Formula> = lines
         .iter()
@@ -326,14 +355,14 @@ pub fn compile(lines: &[ProofLine]) -> Result<Arc<Inference>, String> {
     let mut which_premise = 0;
     for line in lines {
         let inference = match line.name.chars().next().unwrap() {
-            'A' => Arc::new(Inference::axiom(premises.clone(), line.formula.clone())),
+            'A' => Inference::axiom(premises.clone(), line.formula.clone()),
             'P' => {
-                let result = Arc::new(Inference::premise(premises.clone(), which_premise));
+                let result = Inference::premise(premises.clone(), which_premise);
                 which_premise += 1;
                 result
             }
             _ => {
-                let available_premise_inferences: Vec<Arc<Inference>> = line
+                let available_premise_inferences: Vec<Inference> = line
                     .referents
                     .iter()
                     .map(|referent_name| inferences_by_name.get(&**referent_name).unwrap().clone())
@@ -350,11 +379,11 @@ pub fn compile(lines: &[ProofLine]) -> Result<Arc<Inference>, String> {
                 let here_inference = deriver
                     .try_derive(&available_premises, &line.formula)
                     .map_err(|e| format!("In line {}: {e}", line.name))?;
-                Arc::new(Inference::chain(
+                Inference::chain(
                     premises.clone(),
                     available_premise_inferences,
-                    Arc::new(here_inference),
-                )?)
+                    here_inference,
+                )?
             }
         };
         inferences_by_name.insert(&*line.name, inference.clone());
@@ -367,7 +396,7 @@ pub trait Deriver: Send + Sync {
     fn try_derive(&self, premises: &[&Formula], conclusion: &Formula) -> Result<Inference, String>;
 }
 
-pub struct DeriveBySpecializing(pub Arc<Inference>);
+pub struct DeriveBySpecializing(pub Inference);
 
 impl Deriver for DeriveBySpecializing {
     fn try_derive(&self, premises: &[&Formula], conclusion: &Formula) -> Result<Inference, String> {
@@ -413,33 +442,23 @@ static SINGLE_RULE_DERIVERS: LazyLock<[(&'static str, Arc<dyn Deriver>); 5]> =
         [
             (
                 "substitute_whole_formula",
-                Arc::new(DeriveBySpecializing(Arc::new(
-                    Inference::substitute_whole_formula(),
-                ))),
+                Arc::new(DeriveBySpecializing(Inference::substitute_whole_formula())),
             ),
             (
                 "definition_of_const",
-                Arc::new(DeriveBySpecializing(Arc::new(
-                    Inference::definition_of_const(),
-                ))),
+                Arc::new(DeriveBySpecializing(Inference::definition_of_const())),
             ),
             (
                 "definition_of_fuse",
-                Arc::new(DeriveBySpecializing(Arc::new(
-                    Inference::definition_of_fuse(),
-                ))),
+                Arc::new(DeriveBySpecializing(Inference::definition_of_fuse())),
             ),
             (
                 "compatibility_left",
-                Arc::new(DeriveBySpecializing(Arc::new(
-                    Inference::compatibility_left(),
-                ))),
+                Arc::new(DeriveBySpecializing(Inference::compatibility_left())),
             ),
             (
                 "compatibility_right",
-                Arc::new(DeriveBySpecializing(Arc::new(
-                    Inference::compatibility_right(),
-                ))),
+                Arc::new(DeriveBySpecializing(Inference::compatibility_right())),
             ),
         ]
     });
