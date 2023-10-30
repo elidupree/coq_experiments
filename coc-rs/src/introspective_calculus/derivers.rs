@@ -3,6 +3,7 @@ use crate::introspective_calculus::inference::{
     proof_premises, Inference, ProofLine, ALL_SINGLE_RULES,
 };
 use crate::introspective_calculus::Formula;
+use std::collections::{HashMap, HashSet};
 
 pub mod by_specializing_a_proven_inference;
 
@@ -27,7 +28,8 @@ pub struct TrackedDeriver {
 
 pub struct SearchFromPremisesEnvironment {
     premises: Vec<Formula>,
-    goals: Vec<Formula>,
+    goals: HashSet<Formula>,
+    known_truths: HashMap<Formula, Inference>,
     derivers: Vec<TrackedDeriver>,
 }
 
@@ -35,19 +37,24 @@ impl SearchFromPremisesEnvironment {
     pub fn new(premises: Vec<Formula>) -> SearchFromPremisesEnvironment {
         SearchFromPremisesEnvironment {
             premises,
-            goals: vec![],
+            goals: Default::default(),
+            known_truths: Default::default(),
             derivers: vec![],
         }
     }
     pub fn add_goal(&mut self, goal: Formula) {
+        println!("adding goal {goal}");
         for deriver in &mut self.derivers {
             deriver.deriver.add_goal(goal.clone());
         }
-        self.goals.push(goal);
+        self.goals.insert(goal);
     }
     pub fn add_deriver(&mut self, mut deriver: Box<dyn IncrementalDeriver>) {
         for goal in &self.goals {
-            deriver.add_goal(goal.clone())
+            deriver.add_goal(goal.clone());
+        }
+        for (_known_truth, inference) in &self.known_truths {
+            deriver.goal_got_proven(inference.clone());
         }
         self.derivers.push(TrackedDeriver { deriver, runs: 0 });
     }
@@ -67,6 +74,21 @@ impl SearchFromPremisesEnvironment {
                     for deriver in &mut self.derivers {
                         deriver.deriver.goal_got_proven(inference.clone());
                     }
+                    let existing = self
+                        .known_truths
+                        .insert(inference.conclusion().clone(), inference.clone());
+                    println!("...discovered {inference}");
+                    if existing.is_some() {
+                        panic!("wait a minute, that was already known!")
+                    }
+                    if !self.goals.contains(inference.conclusion()) {
+                        eprintln!("wait a minute, that wasn't a goal! Goals are:");
+                        for goal in &self.goals {
+                            eprintln!("> {goal}");
+                        }
+                        panic!();
+                    }
+
                     return IncrementalDeriverWorkResult::DiscoveredInference(inference);
                 }
             }
@@ -91,13 +113,16 @@ impl SearchManyEnvironment {
         }
     }
     pub fn add_written_proof(&mut self, proof: &[ProofLine]) {
-        let premises = proof_premises(proof);
+        let premises: Vec<Formula> = proof_premises(proof)
+            .iter()
+            .map(Formula::to_raw_with_metavariables)
+            .collect();
         let mut environment = SearchFromPremisesEnvironment::new(premises.clone());
         for line in proof {
             match line.name.chars().next().unwrap() {
                 'P' => {}
                 'A' => {}
-                _ => environment.add_goal(line.formula.clone()),
+                _ => environment.add_goal(line.formula.to_raw_with_metavariables()),
             }
         }
         for (_name, inference) in &*ALL_SINGLE_RULES {

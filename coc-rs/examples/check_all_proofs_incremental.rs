@@ -9,8 +9,14 @@ fn main() {
 
     for entry in std::fs::read_dir("./data/ic_proofs").unwrap() {
         let path = entry.unwrap().path();
-        if let Ok(proof) = load_proof(path) {
-            environment.add_written_proof(&proof);
+        match load_proof(&path) {
+            Ok(proof) => {
+                println!("loaded {path:?}");
+                environment.add_written_proof(&proof);
+            }
+            Err(e) => {
+                println!("failed to load {path:?}: {e}");
+            }
         }
     }
     let mut steps = 0;

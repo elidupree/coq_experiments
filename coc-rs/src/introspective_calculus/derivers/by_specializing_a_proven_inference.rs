@@ -24,8 +24,15 @@ struct PremisesTried {
     next_trial: Vec<usize>,
 }
 impl PremisesTried {
-    fn pick_next_trial(&mut self) -> Vec<usize> {
+    fn pick_next_trial(&mut self, num_known_truths: usize) -> Option<Vec<usize>> {
         let result = self.next_trial.clone();
+        if result.is_empty() {
+            if self.already_tried_every_combination_before != 0 {
+                return None;
+            }
+        } else if self.already_tried_every_combination_before >= num_known_truths {
+            return None;
+        }
         for (which_premise, i) in self.next_trial.iter_mut().enumerate() {
             *i += 1;
             if *i <= self.already_tried_every_combination_before {
@@ -50,7 +57,7 @@ impl PremisesTried {
                 *self.next_trial.first_mut().unwrap() = self.already_tried_every_combination_before;
             }
         }
-        result
+        Some(result)
     }
 }
 
@@ -140,12 +147,11 @@ impl IncrementalDeriver for DeriveBySpecializing {
                 .substitutions_for_my_conclusion_to_become_this_goal
                 .get(self.inference_to_specialize.conclusion(), goal)
             {
-                if goal_info
+                if let Some(trial) = goal_info
                     .premises_tried
-                    .already_tried_every_combination_before
-                    < self.known_truths.len()
+                    .pick_next_trial(self.known_truths.len())
                 {
-                    let trial = goal_info.premises_tried.pick_next_trial();
+                    // dbg!(self.known_truths.len(), &trial);
                     let mut substitutions = (*substitutions).clone();
                     for (which_premise, &i) in trial.iter().enumerate() {
                         let c = self.known_truths[i].known_inference.conclusion().clone();
