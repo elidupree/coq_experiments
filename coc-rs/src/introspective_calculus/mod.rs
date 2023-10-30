@@ -21,7 +21,6 @@ use std::collections::{hash_map, HashMap};
 // use crate::metavariable::Environment;
 // use live_prop_test::{live_prop_test, lpt_assert_eq};
 // use regex::{Captures, Regex};
-use crate::introspective_calculus::logic::TrueFormula;
 use arrayvec::ArrayVec;
 use itertools::Itertools;
 use live_prop_test::live_prop_test;
@@ -49,11 +48,63 @@ pub enum AbstractionKind {
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Serialize, Deserialize)]
 pub struct Formula(Arc<FormulaWithMetadata>);
 
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Serialize, Deserialize)]
+pub struct RWMFormula(Formula);
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Serialize, Deserialize)]
+pub struct RawFormula(Formula);
+
 impl Deref for Formula {
     type Target = FormulaWithMetadata;
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl Deref for RWMFormula {
+    type Target = Formula;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Deref for RawFormula {
+    type Target = Formula;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<Formula> for RWMFormula {
+    fn from(value: Formula) -> Self {
+        value.to_rwm()
+    }
+}
+
+impl From<&Formula> for RWMFormula {
+    fn from(value: &Formula) -> Self {
+        value.to_rwm()
+    }
+}
+
+impl From<RWMFormula> for Formula {
+    fn from(value: RWMFormula) -> Self {
+        value.0
+    }
+}
+
+impl From<&RWMFormula> for Formula {
+    fn from(value: &RWMFormula) -> Self {
+        value.0.clone()
+    }
+}
+
+impl From<&Formula> for Formula {
+    fn from(value: &Formula) -> Self {
+        value.clone()
     }
 }
 
@@ -63,13 +114,13 @@ pub enum FormulaRawness {
     Raw,
     RawWithMetavariables,
     Pretty {
-        raw_form: Formula,
+        raw_form: RWMFormula,
     },
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Serialize, Deserialize)]
 pub struct FormulaWithMetadata {
-    pub value: FormulaValue,
+    value: FormulaValue,
     rawness: FormulaRawness,
 }
 
@@ -86,6 +137,12 @@ pub enum FormulaValue {
 
     Metavariable(String),
     NameAbstraction(AbstractionKind, String, Formula),
+}
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
+pub enum RWMFormulaValue {
+    Atom(Atom),
+    Apply([RWMFormula; 2]),
+    Metavariable(String),
 }
 
 impl Default for FormulaValue {
@@ -227,7 +284,12 @@ macro_rules! match_ic {
     };
     ($formula:expr, {$($pattern:tt => $arm:expr),*$(,)*}) => {{
         let mut result = None;
-        $(match_ic!(@arm result [$formula] $pattern => $arm));*
+        let formula = {
+            #[allow(unused_imports)]
+            use $crate::introspective_calculus::ToFormula;
+            $formula.to_formula()
+        };
+        $(match_ic!(@arm result [formula] $pattern => $arm));*
     }};
 }
 
@@ -251,7 +313,7 @@ static ALL: LazyLock<Formula> =
 static PROP_FALSE: LazyLock<Formula> =
     LazyLock::new(|| ic!("False" @ ({Formula::all()} {Formula::id()})));
 
-fn rawness_of_raw_pair(pair: &[Formula; 2]) -> Option<FormulaRawness> {
+fn rawness_of_raw_pair(pair: &[RWMFormula; 2]) -> Option<FormulaRawness> {
     match pair.each_ref().map(|c| &c.rawness) {
         [FormulaRawness::Raw, FormulaRawness::Raw] => Some(FormulaRawness::Raw),
         [FormulaRawness::Pretty { .. }, _] | [_, FormulaRawness::Pretty { .. }] => None,
@@ -269,9 +331,12 @@ impl ToFormula for str {
     }
 }
 
-impl ToFormula for Formula {
+impl<T> ToFormula for T
+where
+    for<'a> &'a T: Into<Formula>,
+{
     fn to_formula(&self) -> Formula {
-        self.clone()
+        self.into()
     }
 }
 
@@ -311,24 +376,25 @@ impl Formula {
                 value: value.clone(),
             },
             rawness: FormulaRawness::Pretty {
-                raw_form: value.to_raw_with_metavariables(),
+                raw_form: value.to_rwm(),
             },
         }))
     }
     pub fn apply(children: [Formula; 2]) -> Formula {
         Formula(Arc::new({
-            if let Some(rawness) = rawness_of_raw_pair(&children) {
+            if let [Some(a), Some(b)] = children.each_ref().map(Formula::already_rwm) {
+                let rawness = rawness_of_raw_pair(&[a, b]).unwrap();
                 FormulaWithMetadata {
                     value: FormulaValue::Apply(children),
                     rawness,
                 }
             } else {
-                let raw_children = children.each_ref().map(|c| c.to_raw_with_metavariables());
+                let raw_children = children.each_ref().map(|c| c.to_rwm());
                 let raw_rawness = rawness_of_raw_pair(&raw_children).unwrap();
-                let raw_form = Formula(Arc::new(FormulaWithMetadata {
-                    value: FormulaValue::Apply(raw_children),
+                let raw_form = RWMFormula(Formula(Arc::new(FormulaWithMetadata {
+                    value: FormulaValue::Apply(raw_children.each_ref().map(Formula::from)),
                     rawness: raw_rawness,
-                }));
+                })));
                 FormulaWithMetadata {
                     value: FormulaValue::Apply(children),
                     rawness: FormulaRawness::Pretty { raw_form },
@@ -339,14 +405,14 @@ impl Formula {
     pub fn combine_pretty(
         children: [Formula; 2],
         combine: impl FnOnce([Formula; 2]) -> FormulaValue,
-        combine_raw: impl FnOnce([Formula; 2]) -> FormulaValue,
+        combine_raw: impl FnOnce([RWMFormula; 2]) -> Formula,
     ) -> Formula {
-        let raw_children = children.each_ref().map(|c| c.to_raw_with_metavariables());
+        let raw_children = children.each_ref().map(|c| c.to_rwm());
         let raw_rawness = rawness_of_raw_pair(&raw_children).unwrap();
-        let raw_form = Formula(Arc::new(FormulaWithMetadata {
-            value: combine_raw(raw_children),
+        let raw_form = RWMFormula(Formula(Arc::new(FormulaWithMetadata {
+            value: combine_raw(raw_children).value.clone(),
             rawness: raw_rawness,
-        }));
+        })));
 
         Formula(Arc::new(FormulaWithMetadata {
             value: combine(children),
@@ -354,38 +420,30 @@ impl Formula {
         }))
     }
     pub fn and(children: [Formula; 2]) -> Formula {
-        Formula::combine_pretty(children, FormulaValue::And, |[a, b]| {
-            ic!(forall "P", ((("P" a) b) = (("P" True) True)))
-                .as_raw_with_metavariables()
-                .value
-                .clone()
-        })
+        Formula::combine_pretty(
+            children,
+            FormulaValue::And,
+            |[a, b]| ic!(forall "P", ((("P" a) b) = (("P" True) True))),
+        )
     }
     pub fn equals(children: [Formula; 2]) -> Formula {
-        Formula::combine_pretty(children, FormulaValue::Equals, |[a, b]| {
-            ic!((equals a)b).value.clone()
-        })
+        Formula::combine_pretty(children, FormulaValue::Equals, |[a, b]| ic!((equals a)b))
     }
     pub fn implies(children: [Formula; 2]) -> Formula {
-        Formula::combine_pretty(children, FormulaValue::Implies, |[a, b]| {
-            ic!((equals a)(a & b))
-                .as_raw_with_metavariables()
-                .value
-                .clone()
-        })
+        Formula::combine_pretty(
+            children,
+            FormulaValue::Implies,
+            |[a, b]| ic!((equals a)(a & b)),
+        )
     }
     pub fn name_abstraction(kind: AbstractionKind, name: String, body: Formula) -> Formula {
-        let raw_abstracted_body = body
-            .as_raw_with_metavariables()
-            .with_metavariable_abstracted(&name);
+        let raw_abstracted_body = body.to_rwm().with_metavariable_abstracted(&name);
         Formula(Arc::new(FormulaWithMetadata {
             value: FormulaValue::NameAbstraction(kind, name, body),
             rawness: FormulaRawness::Pretty {
                 raw_form: match kind {
                     AbstractionKind::Lambda => raw_abstracted_body,
-                    AbstractionKind::ForAll => {
-                        ic!({Formula::all().to_raw_with_metavariables()} raw_abstracted_body)
-                    }
+                    AbstractionKind::ForAll => ic!(ALL raw_abstracted_body).to_rwm(),
                 },
             },
         }))
@@ -394,16 +452,20 @@ impl Formula {
         // Formula::Id => ic!((fuse const) const),
         [].into_iter().collect()
     }
-    pub fn as_eq_sides(&self) -> Option<[&Formula; 2]> {
+    pub fn as_eq_sides(&self) -> Option<[Formula; 2]> {
         match_ic!(self, {
-            ((equals a) b) => Some([a, b]),
-            (a = b) => Some([a, b]),
+            ((equals a) b) => Some([a.clone(), b.clone()]),
+            (a = b) => Some([a.clone(), b.clone()]),
             _ => None,
         })
     }
 }
+
 #[live_prop_test]
 impl FormulaWithMetadata {
+    pub fn value(&self) -> &FormulaValue {
+        &self.value
+    }
     pub fn is_raw_with_metavariables(&self) -> bool {
         matches!(
             self.rawness,
@@ -468,19 +530,72 @@ impl FormulaWithMetadata {
     }
 }
 
+impl RWMFormula {
+    pub fn value(&self) -> RWMFormulaValue {
+        match &self.0.value {
+            FormulaValue::Atom(a) => RWMFormulaValue::Atom(*a),
+            FormulaValue::Apply(children) => {
+                RWMFormulaValue::Apply(children.each_ref().map(Formula::to_rwm))
+            }
+            FormulaValue::Metavariable(s) => RWMFormulaValue::Metavariable(s.clone()),
+            _ => unreachable!(),
+        }
+    }
+    pub fn map_children_rwm(&self, mut map: impl FnMut(RWMFormula) -> RWMFormula) -> RWMFormula {
+        self.map_children(|f| map(f.to_rwm()).into()).to_rwm()
+    }
+    pub fn as_eq_sides(&self) -> Option<[RWMFormula; 2]> {
+        match_ic!(self, {
+            ((equals a) b) => Some([a.to_rwm(), b.to_rwm()]),
+            _ => None,
+        })
+    }
+
+    pub fn with_metavariables_replaced_rwm(
+        &self,
+        replacements: &HashMap<String, RWMFormula>,
+    ) -> RWMFormula {
+        match &self.value {
+            FormulaValue::Metavariable(n) => {
+                if let Some(replacement) = replacements.get(n) {
+                    replacement.clone()
+                } else {
+                    self.clone()
+                }
+            }
+            _ => self.map_children_rwm(|f| f.with_metavariables_replaced_rwm(replacements)),
+        }
+    }
+}
+impl RawFormula {
+    pub fn as_eq_sides(&self) -> Option<[RawFormula; 2]> {
+        match_ic!(self, {
+            ((equals a) b) => Some([a.already_raw().unwrap(), b.already_raw().unwrap()]),
+            _ => None,
+        })
+    }
+}
+//
+// #[macro_export]
+// macro_rules! substitutions {
+//     ($($var:tt := $val:expr),*$(,)?) => {{
+//         #[allow(unused_imports)]
+//         use $crate::introspective_calculus::ToFormula;
+//         [$(($var.to_string(), $val.to_formula())),*].into_iter().collect::<::std::collections::HashMap<String, Formula>>()
+//     }};
+// }
+
 #[macro_export]
 macro_rules! substitutions {
     ($($var:tt := $val:expr),*$(,)?) => {{
-        #[allow(unused_imports)]
-        use $crate::introspective_calculus::ToFormula;
-        [$(($var.to_string(), $val.to_formula())),*].into_iter().collect::<::std::collections::HashMap<String, Formula>>()
+        [$(($var.to_string(), $crate::introspective_calculus::RWMFormula::from($val))),*].into_iter().collect::<::std::collections::HashMap<String, RWMFormula>>()
     }};
 }
 
 pub fn merge_substitution_into(
-    substitutions: &mut HashMap<String, Formula>,
+    substitutions: &mut HashMap<String, RWMFormula>,
     name: &str,
-    value: Formula,
+    value: RWMFormula,
 ) -> Result<(), String> {
     match substitutions.entry(name.to_string()) {
         hash_map::Entry::Occupied(e) => {
@@ -497,8 +612,8 @@ pub fn merge_substitution_into(
 }
 
 pub fn merge_substitutions_into(
-    dst: &mut HashMap<String, Formula>,
-    src: &HashMap<String, Formula>,
+    dst: &mut HashMap<String, RWMFormula>,
+    src: &HashMap<String, RWMFormula>,
 ) -> Result<(), String> {
     for (name, value) in src {
         merge_substitution_into(dst, name, value.clone())?;
@@ -514,8 +629,23 @@ impl Formula {
             _ => self,
         }
     }
-    pub fn to_raw_with_metavariables(&self) -> Formula {
-        self.as_raw_with_metavariables().clone()
+    pub fn to_rwm(&self) -> RWMFormula {
+        RWMFormula(self.as_raw_with_metavariables().clone())
+    }
+    pub fn already_rwm(&self) -> Option<RWMFormula> {
+        match &self.rawness {
+            FormulaRawness::Pretty { .. } => None,
+            _ => Some(RWMFormula(self.clone())),
+        }
+    }
+    pub fn already_raw(&self) -> Option<RawFormula> {
+        match &self.rawness {
+            FormulaRawness::Pretty { .. } => None,
+            _ => Some(RawFormula(self.clone())),
+        }
+    }
+    pub fn to_raw(&self) -> Option<RawFormula> {
+        self.to_rwm().already_raw()
     }
     pub fn map_children(&self, mut map: impl FnMut(&Formula) -> Formula) -> Formula {
         match &self.value {
@@ -534,34 +664,69 @@ impl Formula {
             }
         }
     }
+}
 
-    // assumes already in raw form:
-    #[live_prop_test(precondition = "self.is_raw_with_metavariables()")]
-    pub fn with_metavariable_abstracted(&self, name: &str) -> Formula {
+impl RWMFormula {
+    pub fn with_metavariable_abstracted(&self, name: &str) -> RWMFormula {
         if !self.contains_free_metavariable(name) {
-            return ic!(const self.clone());
+            return ic!(const self).to_rwm();
         }
-        match &self.value {
-            FormulaValue::Atom(_) => panic!("should've early-exited above"),
-            FormulaValue::Metavariable(n) => {
+        match self.value() {
+            RWMFormulaValue::Atom(_) => panic!("should've early-exited above"),
+            RWMFormulaValue::Metavariable(n) => {
                 assert_eq!(n, name, "should've early-exited above");
-                Formula::id().to_raw_with_metavariables()
+                Formula::id().to_rwm()
             }
-            FormulaValue::Apply(c) => {
+            RWMFormulaValue::Apply(c) => {
                 if matches!(&c[1].value, FormulaValue::Metavariable(n) if n == name)
                     && !c[0].contains_free_metavariable(name)
                 {
-                    c[0].clone()
+                    c[0].to_rwm()
                 } else {
                     let a = c[0].with_metavariable_abstracted(name);
                     let b = c[1].with_metavariable_abstracted(name);
-                    ic!((fuse a) b)
+                    ic!((fuse a) b).to_rwm()
                 }
             }
-            _ => panic!("should already be raw"),
         }
     }
 
+    /// values for meta-variables such that the raw form of `self` would become exactly the specified raw form (not allowing definitional equality, but ignoring differences between pretty and raw forms)
+    pub fn add_substitutions_to_become(
+        &self,
+        goal: &RWMFormula,
+        substitutions: &mut HashMap<String, RWMFormula>,
+    ) -> Result<(), String> {
+        match (self.value(), goal.value()) {
+            (RWMFormulaValue::Atom(s), RWMFormulaValue::Atom(g)) => {
+                if s != g {
+                    return Err(format!(
+                        "Tried to unify formulas with conflicting atoms: `{s} := {g}`"
+                    ));
+                }
+            }
+            (RWMFormulaValue::Metavariable(name), _) => {
+                merge_substitution_into(substitutions, &name, goal.clone())?
+            }
+            (RWMFormulaValue::Apply(children), RWMFormulaValue::Apply(goal_children)) => {
+                for (child, goal_child) in zip(children, goal_children) {
+                    child.add_substitutions_to_become(&goal_child, substitutions)?;
+                }
+            }
+            _ => return Err(format!("Could not unify `{self}` with `{goal}`")),
+        }
+        Ok(())
+    }
+    pub fn substitutions_to_become(
+        &self,
+        goal: &RWMFormula,
+    ) -> Result<HashMap<String, RWMFormula>, String> {
+        let mut result = HashMap::new();
+        self.add_substitutions_to_become(goal, &mut result)?;
+        Ok(result)
+    }
+}
+impl Formula {
     pub fn with_metavariable_replaced(&self, name: &str, replacement: &Formula) -> Formula {
         match &self.value {
             FormulaValue::Metavariable(n) => {
@@ -600,44 +765,6 @@ impl Formula {
                 Formula::name_abstraction(AbstractionKind::ForAll, variable.to_string(), result);
         }
         result
-    }
-
-    /// values for meta-variables such that the raw form of `self` would become exactly the specified raw form (not allowing definitional equality, but ignoring differences between pretty and raw forms)
-    pub fn add_substitutions_to_become(
-        &self,
-        goal: &Formula,
-        substitutions: &mut HashMap<String, Formula>,
-    ) -> Result<(), String> {
-        match (
-            &self.as_raw_with_metavariables().value,
-            &goal.as_raw_with_metavariables().value,
-        ) {
-            (FormulaValue::Atom(s), FormulaValue::Atom(g)) => {
-                if s != g {
-                    return Err(format!(
-                        "Tried to unify formulas with conflicting atoms: `{s} := {g}`"
-                    ));
-                }
-            }
-            (FormulaValue::Metavariable(name), _) => {
-                merge_substitution_into(substitutions, name, goal.clone())?
-            }
-            (FormulaValue::Apply(children), FormulaValue::Apply(goal_children)) => {
-                for (child, goal_child) in zip(children, goal_children) {
-                    child.add_substitutions_to_become(goal_child, substitutions)?;
-                }
-            }
-            _ => return Err(format!("Could not unify `{self}` with `{goal}`")),
-        }
-        Ok(())
-    }
-    pub fn substitutions_to_become(
-        &self,
-        goal: &Formula,
-    ) -> Result<HashMap<String, Formula>, String> {
-        let mut result = HashMap::new();
-        self.add_substitutions_to_become(goal, &mut result)?;
-        Ok(result)
     }
 
     pub fn naive_size(&self) -> usize {
@@ -794,7 +921,7 @@ pub fn internalized_rules(original_rules: &[ExplicitRule]) -> Vec<ExplicitRule> 
 //     first_part.with_metavariable_replaced("rest", &rest)
 // }
 
-pub fn all_axioms() -> Vec<TrueFormula> {
+pub fn all_axioms() -> Vec<Formula> {
     let explicit_rules = load_explicit_rules("data/ic_axioms.ic");
     // for r in &mut rules_of_deduction {
     //     r.formula = ic!((implies empty_set) r.formula.clone());
@@ -805,7 +932,7 @@ pub fn all_axioms() -> Vec<TrueFormula> {
     // result
     internalized_rules(&explicit_rules)
         .into_iter()
-        .map(|r| TrueFormula::axiom(Formula::make_named_global(r.name, r.formula)))
+        .map(|r| Formula::make_named_global(r.name, r.formula.clone()))
         .collect()
 }
 

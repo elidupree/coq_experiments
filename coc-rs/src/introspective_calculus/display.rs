@@ -1,6 +1,10 @@
 use crate::display::{DisplayItem, DisplayItemSequence, WithUnsplittablePrefix};
-use crate::introspective_calculus::{AbstractionKind, Atom, Formula, FormulaValue};
+use crate::introspective_calculus::{
+    AbstractionKind, Atom, Formula, FormulaValue, RWMFormula, RawFormula,
+};
+use itertools::Itertools;
 use live_prop_test::live_prop_test;
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
 pub struct FormulaAsShorthand<'a>(&'a Formula);
@@ -156,4 +160,26 @@ impl Display for Formula {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         self.to_display_item(false).display().fmt(f)
     }
+}
+
+impl Display for RWMFormula {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl Display for RawFormula {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+pub fn format_substitutions(substitutions: &HashMap<String, RWMFormula>) -> String {
+    format!(
+        "{{ {} }}",
+        substitutions
+            .iter()
+            .map(|(k, v)| format!("{k} := {v}"))
+            .join(", ")
+    )
 }

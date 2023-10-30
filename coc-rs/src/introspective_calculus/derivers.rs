@@ -2,7 +2,7 @@ use crate::introspective_calculus::derivers::by_specializing_a_proven_inference:
 use crate::introspective_calculus::inference::{
     proof_premises, Inference, ProofLine, ALL_SINGLE_RULES,
 };
-use crate::introspective_calculus::Formula;
+use crate::introspective_calculus::{Formula, RWMFormula};
 use std::collections::{HashMap, HashSet};
 
 pub mod by_specializing_a_proven_inference;
@@ -15,8 +15,8 @@ pub enum IncrementalDeriverWorkResult {
 }
 
 pub trait IncrementalDeriver: Send + Sync {
-    // fn new(premises: Vec<Formula>) -> Self;
-    fn add_goal(&mut self, goal: Formula);
+    // fn new(premises: Vec<RWMFormula>) -> Self;
+    fn add_goal(&mut self, goal: RWMFormula);
     fn goal_got_proven(&mut self, proof: Inference);
     fn do_some_work(&mut self) -> IncrementalDeriverWorkResult;
 }
@@ -27,14 +27,14 @@ pub struct TrackedDeriver {
 }
 
 pub struct SearchFromPremisesEnvironment {
-    premises: Vec<Formula>,
-    goals: HashSet<Formula>,
-    known_truths: HashMap<Formula, Inference>,
+    premises: Vec<RWMFormula>,
+    goals: HashSet<RWMFormula>,
+    known_truths: HashMap<RWMFormula, Inference>,
     derivers: Vec<TrackedDeriver>,
 }
 
 impl SearchFromPremisesEnvironment {
-    pub fn new(premises: Vec<Formula>) -> SearchFromPremisesEnvironment {
+    pub fn new(premises: Vec<RWMFormula>) -> SearchFromPremisesEnvironment {
         SearchFromPremisesEnvironment {
             premises,
             goals: Default::default(),
@@ -42,8 +42,8 @@ impl SearchFromPremisesEnvironment {
             derivers: vec![],
         }
     }
-    pub fn add_goal(&mut self, goal: Formula) {
-        println!("adding goal {goal}");
+    pub fn add_goal(&mut self, goal: RWMFormula) {
+        // println!("adding goal {goal}");
         for deriver in &mut self.derivers {
             deriver.deriver.add_goal(goal.clone());
         }
@@ -53,7 +53,7 @@ impl SearchFromPremisesEnvironment {
         for goal in &self.goals {
             deriver.add_goal(goal.clone());
         }
-        for (_known_truth, inference) in &self.known_truths {
+        for inference in self.known_truths.values() {
             deriver.goal_got_proven(inference.clone());
         }
         self.derivers.push(TrackedDeriver { deriver, runs: 0 });
@@ -77,7 +77,7 @@ impl SearchFromPremisesEnvironment {
                     let existing = self
                         .known_truths
                         .insert(inference.conclusion().clone(), inference.clone());
-                    println!("...discovered {inference}");
+                    // println!("...discovered {inference}");
                     if existing.is_some() {
                         panic!("wait a minute, that was already known!")
                     }
@@ -106,6 +106,11 @@ struct SearchForProofOfSpecificInference {
 pub struct SearchManyEnvironment {
     searches: Vec<SearchForProofOfSpecificInference>,
 }
+impl Default for SearchManyEnvironment {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl SearchManyEnvironment {
     pub fn new() -> SearchManyEnvironment {
         SearchManyEnvironment {
@@ -113,16 +118,13 @@ impl SearchManyEnvironment {
         }
     }
     pub fn add_written_proof(&mut self, proof: &[ProofLine]) {
-        let premises: Vec<Formula> = proof_premises(proof)
-            .iter()
-            .map(Formula::to_raw_with_metavariables)
-            .collect();
+        let premises: Vec<RWMFormula> = proof_premises(proof);
         let mut environment = SearchFromPremisesEnvironment::new(premises.clone());
         for line in proof {
             match line.name.chars().next().unwrap() {
                 'P' => {}
                 'A' => {}
-                _ => environment.add_goal(line.formula.to_raw_with_metavariables()),
+                _ => environment.add_goal(line.formula.to_rwm()),
             }
         }
         for (_name, inference) in &*ALL_SINGLE_RULES {
@@ -148,7 +150,7 @@ impl SearchManyEnvironment {
                     return IncrementalDeriverWorkResult::StillWorking
                 }
                 IncrementalDeriverWorkResult::DiscoveredInference(inference) => {
-                    if inference.conclusion() == &search.conclusion {
+                    if inference.conclusion() == &search.conclusion.to_rwm() {
                         self.searches.remove(i);
                         for search in &mut self.searches {
                             search

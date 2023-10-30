@@ -2,7 +2,6 @@ use coc_rs::introspective_calculus::derivers::{
     IncrementalDeriverWorkResult, SearchManyEnvironment,
 };
 use coc_rs::introspective_calculus::inference::load_proof;
-use std::path::Path;
 
 fn main() {
     let mut environment = SearchManyEnvironment::new();

@@ -1,14 +1,14 @@
 use crate::introspective_calculus::inference::Inference;
-use crate::introspective_calculus::{Formula, FormulaValue};
+use crate::introspective_calculus::{RWMFormula, RWMFormulaValue};
 use crate::{ic, match_ic, substitutions};
 use live_prop_test::live_prop_test;
 
 #[live_prop_test]
-impl Formula {
+impl RWMFormula {
     pub fn unfold_here(&mut self) -> bool {
         match_ic!(self, {
-            ((const a) _b) => {*self = a.clone(); true },
-            (((fuse a) b) c) => {*self = ic!((a c)(b c)); true },
+            ((const a) _b) => {*self = a.to_rwm(); true },
+            (((fuse a) b) c) => {*self = ic!((a c)(b c)).to_rwm(); true },
             _ => false,
         })
     }
@@ -32,7 +32,7 @@ impl Formula {
         if let Some(result) = self.unfold_here_equality_inference() {
             return Some(result);
         }
-        if let FormulaValue::Apply([l, r]) = &self.value {
+        if let RWMFormulaValue::Apply([l, r]) = self.value() {
             if let Some(subresult) = l.unfold_any_one_subformula_equality_inference() {
                 let [a, b] = subresult.conclusion().as_eq_sides().unwrap();
                 return Some(
@@ -63,7 +63,8 @@ impl Formula {
     }
 
     pub fn unfold_up_to_n_subformulas_equality_inference(&self, n: usize) -> Inference {
-        let mut inference = Inference::derive_by("eq_refl", &[], &ic!(self = self)).unwrap();
+        let mut inference =
+            Inference::derive_by("eq_refl", &[], &ic!(self = self).to_rwm()).unwrap();
         for _ in 0..n {
             let Some(new_inference) = inference
                 .conclusion()
@@ -75,7 +76,7 @@ impl Formula {
             let joining_inference = Inference::derive_by(
                 "eq_trans",
                 &[inference.conclusion(), new_inference.conclusion()],
-                &ic!(self = b),
+                &ic!(self = b).to_rwm(),
             )
             .unwrap();
             inference = Inference::chain(vec![], vec![inference, new_inference], joining_inference)
@@ -130,7 +131,7 @@ impl Formula {
         //     .sum::<usize>()
         //     + self.unfold_here() as usize
         let mut result = self.unfold_here() as usize;
-        *self = self.map_children(|c| {
+        *self = self.map_children_rwm(|c| {
             let mut c = c.clone();
             result += c.unfold_many();
             c

@@ -1,6 +1,8 @@
 use crate::introspective_calculus::derivers::{IncrementalDeriver, IncrementalDeriverWorkResult};
+use crate::introspective_calculus::display::format_substitutions;
 use crate::introspective_calculus::inference::Inference;
-use crate::introspective_calculus::{merge_substitutions_into, Formula};
+use crate::introspective_calculus::{merge_substitutions_into, RWMFormula};
+use itertools::Itertools;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -8,7 +10,7 @@ use std::sync::Arc;
 enum WhatSubstitutions {
     NotYetCalculated,
     Unsatisfiable,
-    Known(Arc<HashMap<String, Formula>>),
+    Known(Arc<HashMap<String, RWMFormula>>),
 }
 
 struct TruthInfo {
@@ -64,9 +66,9 @@ impl PremisesTried {
 impl WhatSubstitutions {
     pub fn get(
         &mut self,
-        parametric: &Formula,
-        goal: &Formula,
-    ) -> Option<Arc<HashMap<String, Formula>>> {
+        parametric: &RWMFormula,
+        goal: &RWMFormula,
+    ) -> Option<Arc<HashMap<String, RWMFormula>>> {
         if let WhatSubstitutions::NotYetCalculated = self {
             *self = match parametric.substitutions_to_become(goal) {
                 Ok(substitutions) => WhatSubstitutions::Known(Arc::new(substitutions)),
@@ -84,16 +86,16 @@ impl WhatSubstitutions {
 /// in some sequence, try every choose-p of the known truths with every unsolved goal, and
 pub struct DeriveBySpecializing {
     inference_to_specialize: Inference,
-    available_premises: Vec<Formula>,
+    available_premises: Vec<RWMFormula>,
     // inferences starting from the premises
     known_truths: Vec<TruthInfo>,
-    unsolved_goals: HashMap<Formula, GoalInfo>,
+    unsolved_goals: HashMap<RWMFormula, GoalInfo>,
 }
 
 impl DeriveBySpecializing {
     pub fn new(
         inference_to_specialize: Inference,
-        available_premises: Vec<Formula>,
+        available_premises: Vec<RWMFormula>,
     ) -> DeriveBySpecializing {
         let known_truths = available_premises
             .iter()
@@ -116,7 +118,7 @@ impl DeriveBySpecializing {
 }
 
 impl IncrementalDeriver for DeriveBySpecializing {
-    fn add_goal(&mut self, goal: Formula) {
+    fn add_goal(&mut self, goal: RWMFormula) {
         self.unsolved_goals.insert(
             goal,
             GoalInfo {
@@ -155,19 +157,40 @@ impl IncrementalDeriver for DeriveBySpecializing {
                     let mut substitutions = (*substitutions).clone();
                     for (which_premise, &i) in trial.iter().enumerate() {
                         let c = self.known_truths[i].known_inference.conclusion().clone();
-                        if let Some(premise_substitutions) = self.known_truths[i]
+                        let premise_substitutions = self.known_truths[i]
                             .substitutions_for_my_premises_to_become_this_conclusion[which_premise]
-                            .get(&self.inference_to_specialize.premises()[which_premise], &c)
+                            .get(&self.inference_to_specialize.premises()[which_premise], &c);
+                        let Some(premise_substitutions) = premise_substitutions else {
+                            return IncrementalDeriverWorkResult::StillWorking;
+                        };
+
+                        // eprintln!(
+                        //     "merging {} <- {}",
+                        //     format_substitutions(&substitutions),
+                        //     format_substitutions(&premise_substitutions)
+                        // );
+                        if merge_substitutions_into(&mut substitutions, &premise_substitutions)
+                            .is_err()
                         {
-                            if merge_substitutions_into(&mut substitutions, &premise_substitutions)
-                                .is_err()
-                            {
-                                return IncrementalDeriverWorkResult::StillWorking;
-                            }
+                            // eprintln!("failed");
+                            return IncrementalDeriverWorkResult::StillWorking;
                         }
+                        // eprintln!("success");
                     }
 
                     let specialized = self.inference_to_specialize.specialize(&substitutions);
+                    // eprintln!(
+                    //     "> {}\n> {}\n> to: {}\n> by: {}\n> {}",
+                    //     self.inference_to_specialize,
+                    //     trial
+                    //         .iter()
+                    //         .map(|&i| self.known_truths[i].known_inference.clone())
+                    //         .map(|i| i.to_string())
+                    //         .join("\n> "),
+                    //     goal,
+                    //     format_substitutions(&substitutions),
+                    //     specialized
+                    // );
                     let full_inference = Inference::chain(
                         self.available_premises.clone(),
                         trial

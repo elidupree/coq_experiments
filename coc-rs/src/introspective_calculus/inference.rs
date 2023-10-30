@@ -1,7 +1,7 @@
 use crate::ic;
 use crate::introspective_calculus::logic::TrueFormula;
-use crate::introspective_calculus::ProofLineParser;
-use crate::introspective_calculus::{Formula, FormulaRawness};
+use crate::introspective_calculus::{Formula, FormulaRawness, RawFormula};
+use crate::introspective_calculus::{ProofLineParser, RWMFormula};
 use anyhow::{anyhow, Context};
 use arrayvec::ArrayVec;
 use itertools::Itertools;
@@ -38,18 +38,19 @@ pub struct ProofLine {
 // }
 
 // everything in the same derivation tree is using the same metavariable identities
+// here we specify the _parameters_ to the rules (as opposed to the premises/conclusions)
 #[derive(Debug)]
 pub enum SingleRuleInference {
-    SubstituteWholeFormula([Formula; 2]),
-    DefinitionOfConst([Formula; 2]),
-    DefinitionOfFuse([Formula; 3]),
-    CompatibilityLeft([Formula; 3]),
-    CompatibilityRight([Formula; 3]),
+    SubstituteWholeFormula([RWMFormula; 2]),
+    DefinitionOfConst([RWMFormula; 2]),
+    DefinitionOfFuse([RWMFormula; 3]),
+    CompatibilityLeft([RWMFormula; 3]),
+    CompatibilityRight([RWMFormula; 3]),
 }
 #[derive(Debug)]
 pub enum InferenceDerivation {
     Premise(usize),
-    Axiom(Formula),
+    Axiom(RawFormula),
     SingleRule(SingleRuleInference),
     Chain(Vec<Inference>, Inference),
 }
@@ -58,8 +59,8 @@ pub enum InferenceDerivation {
 pub struct Inference(Arc<InferenceInner>);
 #[derive(Debug)]
 pub struct InferenceInner {
-    premises: Vec<Formula>,
-    conclusion: Formula,
+    premises: Vec<RWMFormula>,
+    conclusion: RWMFormula,
     derivation: InferenceDerivation,
 }
 
@@ -92,33 +93,38 @@ impl From<InferenceInner> for Inference {
 }
 
 impl SingleRuleInference {
-    fn specialize(&self, arguments: &HashMap<String, Formula>) -> SingleRuleInference {
+    fn specialize(&self, arguments: &HashMap<String, RWMFormula>) -> SingleRuleInference {
         use SingleRuleInference::*;
         match self {
             SubstituteWholeFormula(a2) => SubstituteWholeFormula(
                 a2.each_ref()
-                    .map(|a2| a2.with_metavariables_replaced(arguments)),
+                    .map(|a2| a2.with_metavariables_replaced_rwm(arguments)),
             ),
             DefinitionOfConst(a2) => DefinitionOfConst(
                 a2.each_ref()
-                    .map(|a2| a2.with_metavariables_replaced(arguments)),
+                    .map(|a2| a2.with_metavariables_replaced_rwm(arguments)),
             ),
             DefinitionOfFuse(a2) => DefinitionOfFuse(
                 a2.each_ref()
-                    .map(|a2| a2.with_metavariables_replaced(arguments)),
+                    .map(|a2| a2.with_metavariables_replaced_rwm(arguments)),
             ),
             CompatibilityLeft(a2) => CompatibilityLeft(
                 a2.each_ref()
-                    .map(|a2| a2.with_metavariables_replaced(arguments)),
+                    .map(|a2| a2.with_metavariables_replaced_rwm(arguments)),
             ),
             CompatibilityRight(a2) => CompatibilityRight(
                 a2.each_ref()
-                    .map(|a2| a2.with_metavariables_replaced(arguments)),
+                    .map(|a2| a2.with_metavariables_replaced_rwm(arguments)),
             ),
         }
     }
     fn apply(&self, premises: &[&TrueFormula]) -> Result<TrueFormula, String> {
         use SingleRuleInference::*;
+        let raw = |formula: &RWMFormula| -> Result<RawFormula, String> {
+            formula
+                .already_raw()
+                .ok_or_else(|| format!("required premise {} wasn't already raw", formula))
+        };
         match self {
             SubstituteWholeFormula([_a, _b]) => {
                 // if premises[0].formula() != ic!(a = b) {
@@ -129,40 +135,38 @@ impl SingleRuleInference {
                 // }
                 Ok(TrueFormula::substitute_whole_formula(premises[0], premises[1]).unwrap())
             }
-            DefinitionOfConst([a, b]) => Ok(TrueFormula::definition_of_const(a.clone(), b.clone())),
-            DefinitionOfFuse([a, b, c]) => Ok(TrueFormula::definition_of_fuse(
-                a.clone(),
-                b.clone(),
-                c.clone(),
-            )),
+            DefinitionOfConst([a, b]) => Ok(TrueFormula::definition_of_const(raw(a)?, raw(b)?)),
+            DefinitionOfFuse([a, b, c]) => {
+                Ok(TrueFormula::definition_of_fuse(raw(a)?, raw(b)?, raw(c)?))
+            }
             CompatibilityLeft([_a, _b, c]) => {
-                Ok(TrueFormula::compatibility_left(premises[0], c.clone()).unwrap())
+                Ok(TrueFormula::compatibility_left(premises[0], raw(c)?).unwrap())
             }
             CompatibilityRight([_a, _b, c]) => {
-                Ok(TrueFormula::compatibility_right(c.clone(), premises[0]).unwrap())
+                Ok(TrueFormula::compatibility_right(raw(c)?, premises[0]).unwrap())
             }
         }
     }
 }
 
 impl Inference {
-    pub fn premises(&self) -> &[Formula] {
+    pub fn premises(&self) -> &[RWMFormula] {
         &self.premises
     }
-    pub fn conclusion(&self) -> &Formula {
+    pub fn conclusion(&self) -> &RWMFormula {
         &self.conclusion
     }
     pub fn derivation(&self) -> &InferenceDerivation {
         &self.derivation
     }
-    pub fn specialize(&self, arguments: &HashMap<String, Formula>) -> Inference {
+    pub fn specialize(&self, arguments: &HashMap<String, RWMFormula>) -> Inference {
         InferenceInner {
             premises: self
                 .premises
                 .iter()
-                .map(|p| p.with_metavariables_replaced(arguments))
+                .map(|p| p.with_metavariables_replaced_rwm(arguments))
                 .collect(),
-            conclusion: self.conclusion.with_metavariables_replaced(arguments),
+            conclusion: self.conclusion.with_metavariables_replaced_rwm(arguments),
             derivation: match &self.derivation {
                 InferenceDerivation::Premise(which) => InferenceDerivation::Premise(*which),
                 InferenceDerivation::Axiom(axiom) => InferenceDerivation::Axiom(axiom.clone()),
@@ -190,8 +194,11 @@ impl Inference {
                 self.premises.len()
             ));
         }
-        for (required, provided) in zip(&self.premises, premises) {
-            if provided.formula() != required {
+        for (required, &provided) in zip(&self.premises, premises) {
+            let Some(required) = required.already_raw() else {
+                return Err(format!("required premise {required} wasn't already raw"));
+            };
+            if **provided != required {
                 return Err(format!(
                     "provided premise {} did not match the required premise {}",
                     provided.formula(),
@@ -217,10 +224,10 @@ impl Inference {
 
     pub fn substitute_whole_formula() -> Inference {
         InferenceInner {
-            premises: vec![ic!("A" = "B"), ic!("A")],
-            conclusion: ic!("B"),
+            premises: vec![ic!("A" = "B").to_rwm(), ic!("A").to_rwm()],
+            conclusion: ic!("B").to_rwm(),
             derivation: InferenceDerivation::SingleRule(
-                SingleRuleInference::SubstituteWholeFormula([ic!("A"), ic!("B")]),
+                SingleRuleInference::SubstituteWholeFormula([ic!("A").to_rwm(), ic!("B").to_rwm()]),
             ),
         }
         .into()
@@ -229,10 +236,10 @@ impl Inference {
     pub fn definition_of_const() -> Inference {
         InferenceInner {
             premises: vec![],
-            conclusion: ic!(((const "A") "B") = "A"),
+            conclusion: ic!(((const "A") "B") = "A").to_rwm(),
             derivation: InferenceDerivation::SingleRule(SingleRuleInference::DefinitionOfConst([
-                ic!("A"),
-                ic!("B"),
+                ic!("A").to_rwm(),
+                ic!("B").to_rwm(),
             ])),
         }
         .into()
@@ -241,11 +248,11 @@ impl Inference {
     pub fn definition_of_fuse() -> Inference {
         InferenceInner {
             premises: vec![],
-            conclusion: ic!((((fuse "A") "B") "C") = (("A" "C") ("B" "C"))),
+            conclusion: ic!((((fuse "A") "B") "C") = (("A" "C") ("B" "C"))).to_rwm(),
             derivation: InferenceDerivation::SingleRule(SingleRuleInference::DefinitionOfFuse([
-                ic!("A"),
-                ic!("B"),
-                ic!("C"),
+                ic!("A").to_rwm(),
+                ic!("B").to_rwm(),
+                ic!("C").to_rwm(),
             ])),
         }
         .into()
@@ -253,12 +260,12 @@ impl Inference {
 
     pub fn compatibility_left() -> Inference {
         InferenceInner {
-            premises: vec![ic!("A" = "B")],
-            conclusion: ic!(("A" "C") = ("B" "C")),
+            premises: vec![ic!("A" = "B").to_rwm()],
+            conclusion: ic!(("A" "C") = ("B" "C")).to_rwm(),
             derivation: InferenceDerivation::SingleRule(SingleRuleInference::CompatibilityLeft([
-                ic!("A"),
-                ic!("B"),
-                ic!("C"),
+                ic!("A").to_rwm(),
+                ic!("B").to_rwm(),
+                ic!("C").to_rwm(),
             ])),
         }
         .into()
@@ -266,31 +273,31 @@ impl Inference {
 
     pub fn compatibility_right() -> Inference {
         InferenceInner {
-            premises: vec![ic!("A" = "B")],
-            conclusion: ic!(("C" "A") = ("C" "B")),
+            premises: vec![ic!("A" = "B").to_rwm()],
+            conclusion: ic!(("C" "A") = ("C" "B")).to_rwm(),
             derivation: InferenceDerivation::SingleRule(SingleRuleInference::CompatibilityRight([
-                ic!("A"),
-                ic!("B"),
-                ic!("C"),
+                ic!("A").to_rwm(),
+                ic!("B").to_rwm(),
+                ic!("C").to_rwm(),
             ])),
         }
         .into()
     }
 
-    pub fn axiom(premises: Vec<Formula>, axiom: Formula) -> Inference {
+    pub fn axiom(premises: Vec<RWMFormula>, axiom: RawFormula) -> Inference {
         assert_eq!(
             axiom.as_raw_with_metavariables().rawness,
             FormulaRawness::Raw
         );
         InferenceInner {
             premises,
-            conclusion: axiom.clone(),
+            conclusion: axiom.to_rwm(),
             derivation: InferenceDerivation::Axiom(axiom),
         }
         .into()
     }
 
-    pub fn premise(premises: Vec<Formula>, which: usize) -> Inference {
+    pub fn premise(premises: Vec<RWMFormula>, which: usize) -> Inference {
         let conclusion = premises[which].clone();
         InferenceInner {
             premises,
@@ -301,7 +308,7 @@ impl Inference {
     }
 
     pub fn chain(
-        premises: Vec<Formula>,
+        premises: Vec<RWMFormula>,
         premise_providers: Vec<Inference>,
         conclusion_provider: Inference,
     ) -> Result<Inference, String> {
@@ -326,8 +333,8 @@ impl Inference {
 
     pub fn derive_by(
         deriver_name: &str,
-        premises: &[&Formula],
-        conclusion: &Formula,
+        premises: &[&RWMFormula],
+        conclusion: &RWMFormula,
     ) -> Result<Inference, String> {
         let deriver = get_deriver_by_name(deriver_name);
         deriver.try_derive(premises, conclusion)
@@ -348,11 +355,11 @@ pub fn load_proof(path: impl AsRef<Path>) -> Result<Vec<ProofLine>, anyhow::Erro
         })
         .collect()
 }
-pub fn proof_premises(lines: &[ProofLine]) -> Vec<Formula> {
+pub fn proof_premises(lines: &[ProofLine]) -> Vec<RWMFormula> {
     lines
         .iter()
         .filter(|line| line.name.starts_with('P'))
-        .map(|line| line.formula.clone())
+        .map(|line| line.formula.to_rwm())
         .collect()
 }
 pub fn compile(lines: &[ProofLine]) -> Result<Inference, String> {
@@ -363,7 +370,12 @@ pub fn compile(lines: &[ProofLine]) -> Result<Inference, String> {
     let mut which_premise = 0;
     for line in lines {
         let inference = match line.name.chars().next().unwrap() {
-            'A' => Inference::axiom(premises.clone(), line.formula.clone()),
+            'A' => Inference::axiom(
+                premises.clone(),
+                line.formula.already_raw().ok_or_else(|| {
+                    format!("In line {}: non-raw axiom {}", line.name, line.formula)
+                })?,
+            ),
             'P' => {
                 let result = Inference::premise(premises.clone(), which_premise);
                 which_premise += 1;
@@ -375,7 +387,7 @@ pub fn compile(lines: &[ProofLine]) -> Result<Inference, String> {
                     .iter()
                     .map(|referent_name| inferences_by_name.get(&**referent_name).unwrap().clone())
                     .collect();
-                let available_premises: Vec<&Formula> = available_premise_inferences
+                let available_premises: Vec<&RWMFormula> = available_premise_inferences
                     .iter()
                     .map(|p| &p.conclusion)
                     .collect();
@@ -385,7 +397,7 @@ pub fn compile(lines: &[ProofLine]) -> Result<Inference, String> {
                     .map(get_deriver_by_name)
                     .unwrap_or_else(|| Arc::new(DeriveByAnySingleRule));
                 let here_inference = deriver
-                    .try_derive(&available_premises, &line.formula)
+                    .try_derive(&available_premises, &line.formula.to_rwm())
                     .map_err(|e| format!("In line {}: {e}", line.name))?;
                 Inference::chain(
                     premises.clone(),
@@ -401,15 +413,23 @@ pub fn compile(lines: &[ProofLine]) -> Result<Inference, String> {
 }
 
 pub trait Deriver: Send + Sync {
-    fn try_derive(&self, premises: &[&Formula], conclusion: &Formula) -> Result<Inference, String>;
+    fn try_derive(
+        &self,
+        premises: &[&RWMFormula],
+        conclusion: &RWMFormula,
+    ) -> Result<Inference, String>;
 }
 
 pub struct DeriveBySpecializing(pub Inference);
 
 impl Deriver for DeriveBySpecializing {
-    fn try_derive(&self, premises: &[&Formula], conclusion: &Formula) -> Result<Inference, String> {
+    fn try_derive(
+        &self,
+        premises: &[&RWMFormula],
+        conclusion: &RWMFormula,
+    ) -> Result<Inference, String> {
         let inference = &self.0;
-        let mut arguments: HashMap<String, Formula> = HashMap::new();
+        let mut arguments: HashMap<String, RWMFormula> = HashMap::new();
         inference
             .conclusion
             .add_substitutions_to_become(conclusion, &mut arguments)
@@ -437,7 +457,11 @@ impl Deriver for DeriveBySpecializing {
 pub struct DeriveByAnySingleRule;
 
 impl Deriver for DeriveByAnySingleRule {
-    fn try_derive(&self, premises: &[&Formula], conclusion: &Formula) -> Result<Inference, String> {
+    fn try_derive(
+        &self,
+        premises: &[&RWMFormula],
+        conclusion: &RWMFormula,
+    ) -> Result<Inference, String> {
         SINGLE_RULE_DERIVERS
             .iter()
             .find_map(|(_name, deriver)| deriver.try_derive(premises, conclusion).ok())
