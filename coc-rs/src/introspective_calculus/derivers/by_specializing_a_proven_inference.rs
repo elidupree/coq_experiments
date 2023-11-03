@@ -105,6 +105,10 @@ impl DeriveBySpecializing {
 }
 
 impl IncrementalDeriver for DeriveBySpecializing {
+    fn description(&self) -> String {
+        format!("DeriveBySpecializing({})", self.inference_to_specialize)
+    }
+
     fn add_goal(&mut self, goal: RWMFormula) {
         self.unsolved_goals.insert(
             goal,

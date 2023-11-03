@@ -3,7 +3,7 @@ use crate::introspective_calculus::inference::Inference;
 use crate::introspective_calculus::{RWMFormula, RWMFormulaValue};
 use crate::{ic, substitutions};
 use live_prop_test::live_prop_test;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::iter::zip;
 
 enum FormulaEqualityInfo {
@@ -25,8 +25,10 @@ struct GoalInfo {
 }
 
 /// maintain a collection of all known equalities and try to use them to equate (known truth, unsolved goal) pairs
-pub struct DeriveBySubstitution {
+pub struct DeriveBySubstitutionAndUnfolding {
     unsolved_goals: HashMap<RWMFormula, GoalInfo>,
+    unfolding_heads: VecDeque<(RWMFormula, usize)>,
+    unfolding_visited: HashSet<RWMFormula>,
     known_truths: KnownTruths,
 }
 
@@ -112,6 +114,7 @@ impl KnownTruths {
                     &ic!(a = d).to_rwm(),
                 )
                 .unwrap();
+                // println!("{proof}, {inference}");
                 proof = Inference::chain(
                     self.available_premises.clone(),
                     vec![proof.clone(), inference],
@@ -158,6 +161,7 @@ impl KnownTruths {
     }
 
     fn proven(&mut self, proof: Inference) {
+        assert_eq!(proof.premises(), &self.available_premises);
         self.truths.push(proof.clone());
         let Some(sides) = proof.conclusion().as_eq_sides() else {
             return;
@@ -187,21 +191,30 @@ impl KnownTruths {
     }
 }
 
-impl DeriveBySubstitution {
-    pub fn new(available_premises: Vec<RWMFormula>) -> DeriveBySubstitution {
-        DeriveBySubstitution {
+impl DeriveBySubstitutionAndUnfolding {
+    pub fn new(available_premises: Vec<RWMFormula>) -> DeriveBySubstitutionAndUnfolding {
+        DeriveBySubstitutionAndUnfolding {
             known_truths: KnownTruths {
                 available_premises,
                 truths: vec![],
                 equalities: Default::default(),
             },
             unsolved_goals: HashMap::new(),
+            unfolding_heads: Default::default(),
+            unfolding_visited: HashSet::new(),
         }
     }
 }
 
-impl IncrementalDeriver for DeriveBySubstitution {
+impl IncrementalDeriver for DeriveBySubstitutionAndUnfolding {
+    fn description(&self) -> String {
+        "DeriveBySubstitutionAndUnfolding".to_string()
+    }
+
     fn add_goal(&mut self, goal: RWMFormula) {
+        if self.unfolding_visited.insert(goal.clone()) {
+            self.unfolding_heads.push_front((goal.clone(), 0));
+        }
         self.unsolved_goals.insert(
             goal,
             GoalInfo {
@@ -213,11 +226,34 @@ impl IncrementalDeriver for DeriveBySubstitution {
     }
 
     fn goal_got_proven(&mut self, proof: Inference) {
+        if self.unfolding_visited.insert(proof.conclusion().clone()) {
+            self.unfolding_heads
+                .push_front((proof.conclusion().clone(), 0));
+        }
         self.unsolved_goals.remove(proof.conclusion());
         self.known_truths.proven(proof);
     }
 
     fn do_some_work(&mut self) -> IncrementalDeriverWorkResult {
+        if let Some((head, steps)) = self.unfolding_heads.pop_front() {
+            if steps < 100 {
+                if let Some(inference) = head.unfold_any_one_subformula_equality_inference() {
+                    let [a, b] = inference.conclusion().as_eq_sides().unwrap();
+                    assert_eq!(a, head);
+                    if self.unfolding_visited.insert(b.clone()) {
+                        self.unfolding_heads.push_back((b, steps + 1));
+                    }
+                    self.known_truths.proven(
+                        Inference::chain(
+                            self.known_truths.available_premises.clone(),
+                            vec![],
+                            inference,
+                        )
+                        .unwrap(),
+                    );
+                }
+            }
+        }
         for (goal, goal_info) in &mut self.unsolved_goals {
             if let Some(truth) = self
                 .known_truths

@@ -1,13 +1,14 @@
 use crate::introspective_calculus::derivers::by_specializing_a_proven_inference::DeriveBySpecializing;
-use crate::introspective_calculus::derivers::by_substitution::DeriveBySubstitution;
+use crate::introspective_calculus::derivers::by_substitution_and_unfolding::DeriveBySubstitutionAndUnfolding;
 use crate::introspective_calculus::inference::{
     proof_axioms, proof_premises, Inference, ProofLine, ALL_SINGLE_RULES,
 };
 use crate::introspective_calculus::{Formula, RWMFormula, RawFormula};
+use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
 
 pub mod by_specializing_a_proven_inference;
-pub mod by_substitution;
+pub mod by_substitution_and_unfolding;
 
 #[derive(Debug)]
 pub enum IncrementalDeriverWorkResult {
@@ -18,6 +19,7 @@ pub enum IncrementalDeriverWorkResult {
 
 pub trait IncrementalDeriver: Send + Sync {
     // fn new(premises: Vec<RWMFormula>) -> Self;
+    fn description(&self) -> String;
     fn add_goal(&mut self, goal: RWMFormula);
     fn goal_got_proven(&mut self, proof: Inference);
     fn do_some_work(&mut self) -> IncrementalDeriverWorkResult;
@@ -86,24 +88,35 @@ impl SearchFromPremisesEnvironment {
                     return IncrementalDeriverWorkResult::StillWorking
                 }
                 IncrementalDeriverWorkResult::DiscoveredInference(inference) => {
-                    for deriver in &mut self.derivers {
-                        deriver.deriver.goal_got_proven(inference.clone());
-                    }
+                    let deriver_description = deriver.deriver.description();
                     let existing = self
                         .known_truths
                         .insert(inference.conclusion().clone(), inference.clone());
                     // println!("...discovered {inference}");
+                    let mut problems = Vec::new();
+                    if inference.premises() != self.premises {
+                        problems.push("* That has the wrong premises!".to_string());
+                    }
                     if existing.is_some() {
-                        panic!("discovered {inference}\nwait a minute, that was already known!")
+                        problems.push("* That was already known!".to_string());
                     }
                     if !self.goals.contains(inference.conclusion()) {
-                        eprintln!(
-                            "discovered {inference}\nwait a minute, that wasn't a goal! Goals are:"
+                        problems.push("* That wasn't a goal!".to_string());
+                        format!(
+                            "* That wasn't a goal! Goals are:\n{}",
+                            self.goals.iter().map(|goal| format!("> {goal}")).join("\n")
                         );
-                        for goal in &self.goals {
-                            eprintln!("> {goal}");
-                        }
-                        panic!();
+                    }
+                    if !problems.is_empty() {
+                        let problems = problems.join("\n");
+                        panic!(
+                            "While working from {}...\n{deriver_description} discovered {inference}\nWait a minute!\n{problems}\n",
+                            self.premises.iter().map(ToString::to_string).join(", ")
+                        );
+                    }
+
+                    for deriver in &mut self.derivers {
+                        deriver.deriver.goal_got_proven(inference.clone());
                     }
 
                     return IncrementalDeriverWorkResult::DiscoveredInference(inference);
@@ -144,7 +157,9 @@ impl SearchManyEnvironment {
                 premises.clone(),
             )))
         }
-        environment.add_deriver(Box::new(DeriveBySubstitution::new(premises.clone())));
+        environment.add_deriver(Box::new(DeriveBySubstitutionAndUnfolding::new(
+            premises.clone(),
+        )));
         for line in proof {
             match line.name.chars().next().unwrap() {
                 'P' => {}
