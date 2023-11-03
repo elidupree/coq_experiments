@@ -40,6 +40,8 @@ FormulaIndivisible: Formula = {
   //"And" => Formula::and_function(),
   "True" => Formula::prop_true(),
   "False" => Formula::prop_false(),
+
+  "(" <Formula> "," <Formula> ")" => Formula::pair([<>]),
 }
 
 FormulaDivisibleRightOnly: Formula = {

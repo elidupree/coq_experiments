@@ -1,4 +1,6 @@
-use crate::display::{DisplayItem, DisplayItemSequence, WithUnsplittablePrefix};
+use crate::display::{
+    DisplayItem, DisplayItemSequence, WithUnsplittablePrefix, WithUnsplittableSuffix,
+};
 use crate::introspective_calculus::{
     AbstractionKind, Atom, Formula, FormulaValue, RWMFormula, RawFormula,
 };
@@ -104,6 +106,16 @@ impl Formula {
                         "-> ",
                         children[1].to_display_item(true),
                     )),
+                ],
+            }),
+            FormulaValue::Pair(children) => Box::new(DisplayItemSequence {
+                always_parens: true,
+                items: vec![
+                    Box::new(WithUnsplittableSuffix::new(
+                        ",",
+                        children[0].to_display_item(true),
+                    )),
+                    children[1].to_display_item(true),
                 ],
             }),
             FormulaValue::NameAbstraction(kind, name, body) => {

@@ -138,6 +138,7 @@ pub enum FormulaValue {
     And([Formula; 2]),
     Equals([Formula; 2]),
     Implies([Formula; 2]),
+    Pair([Formula; 2]),
 
     NamedGlobal { name: String, value: Formula },
 
@@ -194,6 +195,9 @@ macro_rules! ic {
     };
     ($l:tt -> $r:tt) => {
         $crate::introspective_calculus::Formula::implies([ic!($l), ic!($r)])
+    };
+    ($l:tt, $r:tt) => {
+        $crate::introspective_calculus::Formula::pair([ic!($l), ic!($r)])
     };
     ($name:tt @ $val:tt) => {
         $crate::introspective_calculus::Formula::make_named_global($name.into(), ic!($val))
@@ -270,6 +274,11 @@ macro_rules! match_ic {
     };
     (@unpack_pattern_in [$formula:expr] ($l:tt -> $r:tt) => $body:expr) => {
         if let $crate::introspective_calculus::FormulaValue::Implies(children) = &$formula.value {
+            match_ic!(@unpack_pattern_in [&children[0]] $l => match_ic!(@unpack_pattern_in [&children[1]] $r => $body))
+        }
+    };
+    (@unpack_pattern_in [$formula:expr] ($l:tt, $r:tt) => $body:expr) => {
+        if let $crate::introspective_calculus::FormulaValue::Pair(children) = &$formula.value {
             match_ic!(@unpack_pattern_in [&children[0]] $l => match_ic!(@unpack_pattern_in [&children[1]] $r => $body))
         }
     };
@@ -442,6 +451,13 @@ impl Formula {
             |[a, b]| ic!((equals a)(a & b)),
         )
     }
+    pub fn pair(children: [Formula; 2]) -> Formula {
+        Formula::combine_pretty(
+            children,
+            FormulaValue::Pair,
+            |[a, b]| ic!("f" => (("f" a) b)),
+        )
+    }
     pub fn name_abstraction(kind: AbstractionKind, name: String, body: Formula) -> Formula {
         let raw_abstracted_body = body.to_rwm().with_metavariable_abstracted(&name);
         Formula(Arc::new(FormulaWithMetadata {
@@ -485,6 +501,7 @@ impl FormulaWithMetadata {
             FormulaValue::Implies(f)
             | FormulaValue::Equals(f)
             | FormulaValue::And(f)
+            | FormulaValue::Pair(f)
             | FormulaValue::Apply(f) => f.iter().collect(),
             FormulaValue::NamedGlobal { value, .. } => [value].into_iter().collect(),
             FormulaValue::NameAbstraction(_kind, _name, body) => [body].into_iter().collect(),
@@ -669,6 +686,7 @@ impl Formula {
             FormulaValue::And(f) => Formula::and(f.each_ref().map(map)),
             FormulaValue::Equals(f) => Formula::equals(f.each_ref().map(map)),
             FormulaValue::Implies(f) => Formula::implies(f.each_ref().map(map)),
+            FormulaValue::Pair(f) => Formula::pair(f.each_ref().map(map)),
             FormulaValue::Apply(f) => Formula::apply(f.each_ref().map(map)),
             FormulaValue::NamedGlobal { .. } => {
                 // HACK: assume map_children is only used for metavariables stuff where named globals

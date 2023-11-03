@@ -128,6 +128,27 @@ impl<I: DisplayItem> DisplayItem for WithUnsplittablePrefix<I> {
     }
 }
 
+pub struct WithUnsplittableSuffix<I> {
+    pub suffix: String,
+    pub item: I,
+}
+
+impl<I: DisplayItem> WithUnsplittableSuffix<I> {
+    pub fn new(suffix: impl Into<String>, item: I) -> Self {
+        WithUnsplittableSuffix {
+            suffix: suffix.into(),
+            item,
+        }
+    }
+}
+
+impl<I: DisplayItem> DisplayItem for WithUnsplittableSuffix<I> {
+    fn try_display(&self, writer: &mut dyn Write, kind: DisplayAttemptKind) -> fmt::Result {
+        self.item.try_display(writer, kind)?;
+        write!(writer, "{}", self.suffix)
+    }
+}
+
 impl DisplayItem for Box<dyn DisplayItem> {
     fn try_display(&self, writer: &mut dyn Write, kind: DisplayAttemptKind) -> fmt::Result {
         (**self).try_display(writer, kind)

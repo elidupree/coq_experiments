@@ -1,21 +1,19 @@
 #![feature(lazy_cell)]
 
 use clap::{arg, Parser};
-use coc_rs::introspective_calculus::logic::TrueFormula;
 use coc_rs::introspective_calculus::{
-    all_axioms, AbstractionKind, Atom, Formula, FormulaParser, FormulaValue,
+    all_axioms, AbstractionKind, Formula, FormulaParser, FormulaValue,
 };
 use coc_rs::utils::{read_json_file, write_json_file};
-use coc_rs::{ic, match_ic};
 use html_node::{html, text, Node};
 use quick_and_dirty_web_gui::{callback, callback_with};
 use serde::de::DeserializeOwned;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex};
 
 struct Interface {
     file_path: String,
-    theorems: Vec<TrueFormula>,
+    theorems: Vec<Formula>,
     focus: Option<usize>,
     sandbox_text: String,
     sandbox_message: String,
@@ -34,7 +32,7 @@ impl Interface {
     fn formula_html(&self, formula: &Formula, parenthesis_needs: ParenthesisNeeds) -> Node {
         use ParenthesisNeeds::*;
         let mut parenthesize = false;
-        let specific = match &formula.value {
+        let specific = match formula.value() {
             FormulaValue::Atom(a) => {
                 html! {<span class="atom">{text!("{a}")}</span>}
             }
@@ -61,6 +59,12 @@ impl Interface {
                 let l = self.formula_html(&children[0], AllCompounds);
                 let r = self.formula_html(&children[1], AllCompounds);
                 html! {<span class="implies">{l}{text!{" → "}}{r}</span>}
+            }
+            FormulaValue::Pair(children) => {
+                parenthesize = parenthesis_needs != Nothing;
+                let l = self.formula_html(&children[0], AllCompounds);
+                let r = self.formula_html(&children[1], AllCompounds);
+                html! {<span class="pair">{l}{text!{", "}}{r}</span>}
             }
             FormulaValue::NamedGlobal { name, .. } => {
                 html! {<span class="named_global">{text!("{name}")}</span>}
@@ -95,14 +99,14 @@ impl Interface {
             </span>
         }
     }
-    fn inference_html(
+    fn theorem_html(
         &self,
         index: usize,
-        existing_inferences: &HashMap<Formula, usize>,
+        existing_theorems: &HashMap<Formula, usize>,
         axioms: &HashSet<Formula>,
     ) -> Node {
         let theorem = &self.theorems[index];
-        let formula = theorem.formula();
+        let formula = theorem;
         let mut buttons = vec![
             html! {<button onclick={
                 interface_callback(move |i| {i.theorems.remove(index);})
@@ -114,10 +118,10 @@ impl Interface {
         // match_ic!(formula, {
         //     //TODO use eq_sides instead
         //     ((equals a) b) => {
-        //         if let Some(a) = existing_inferences.get(a) {
+        //         if let Some(a) = existing_theorems.get(a) {
         //             let b = b.clone();
         //             buttons.push(html! {<button onclick={
-        //                 interface_callback(move |i| {i.inferences[index] = TrueFormula::substitute_whole_formula(theorem, a).unwrap();})
+        //                 interface_callback(move |i| {i.theorems[index] = TrueFormula::substitute_whole_formula(theorem, a).unwrap();})
         //             }>Proceed to consequent</button>});
         //         }
         //     }
@@ -158,18 +162,18 @@ impl Interface {
         //         })
         //     }>Unfold+</button>});
         // }
-        let (name, formula) = match &formula.value {
+        let (name, formula) = match formula.value() {
             FormulaValue::NamedGlobal { name, value } => (&**name, value),
             _ => ("", formula),
         };
         html! {
-            <div class="inference-name">
+            <div class="theorem-name">
                 {text!("{}: ", name)}
             </div>
-            <div class="inference-body">
+            <div class="theorem-body">
                 {self.formula_html(formula, ParenthesisNeeds::Nothing)}
             </div>
-            <div class="inference-buttons">
+            <div class="theorem-buttons">
                 {buttons}
             </div>
         }
@@ -180,8 +184,8 @@ impl Interface {
             move |text: String, i| {
                 i.sandbox_text = text;
                 match FormulaParser::new().parse(&i.sandbox_text) {
-                    Ok(mut formula) => {
-                        formula = formula.to_raw_with_metavariables();
+                    Ok(formula) => {
+                        let mut formula = formula.to_rwm();
                         formula.unfold_until(100);
                         let new = formula.to_string();
                         if new == i.sandbox_text {
@@ -208,24 +212,22 @@ impl Interface {
         }
     }
     fn whole_page(&self) -> Node {
-        let existing_inferences = self
+        let existing_theorems = self
             .theorems
             .iter()
             .enumerate()
-            .map(|(i, t)| (t.formula().clone(), i))
+            .map(|(i, t)| (t.clone(), i))
             .collect();
-        let axioms = all_axioms()
-            .into_iter()
-            .map(|t| t.formula().clone())
-            .collect();
-        let inferences =
-            self.theorems.iter().enumerate().map(|(index, _inference)| {
-                self.inference_html(index, &existing_inferences, &axioms)
-            });
+        let axioms = all_axioms().into_iter().collect();
+        let theorems = self
+            .theorems
+            .iter()
+            .enumerate()
+            .map(|(index, _theorem)| self.theorem_html(index, &existing_theorems, &axioms));
         html! {
             <div class="page">
-                <div class="inferences">
-                    {inferences}
+                <div class="theorems">
+                    {theorems}
                     <div style="clear: both"></div>
                 </div>
                 {self.sandbox()}
@@ -233,7 +235,7 @@ impl Interface {
         }
     }
 
-    fn click_formula(&mut self, formula: &Formula) {}
+    fn click_formula(&mut self, _formula: &Formula) {}
 
     fn update_gui(&self) {
         quick_and_dirty_web_gui::replace_html(self.whole_page().to_string());
@@ -242,15 +244,15 @@ impl Interface {
 
 static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
     let args = Args::parse();
-    let mut inferences = read_json_file::<_, Vec<TrueFormula>>(&args.file_path).unwrap_or_default();
+    let mut theorems = read_json_file::<_, Vec<Formula>>(&args.file_path).unwrap_or_default();
     for axiom in all_axioms() {
-        if !inferences.contains(&axiom) {
-            inferences.push(axiom);
+        if !theorems.contains(&axiom) {
+            theorems.push(axiom);
         }
     }
     Mutex::new(Interface {
         file_path: args.file_path,
-        theorems: inferences,
+        theorems: theorems,
         focus: None,
         sandbox_text: "".to_string(),
         sandbox_message: "".to_string(),

@@ -3,25 +3,25 @@ body {
   margin: 0;
 }
 
-.inferences {
+.theorems {
   display: grid;
   grid-template-columns: max-content max-content max-content;
 }
-.inference-name {
+.theorem-name {
   grid-column: 1 / span 1;
   justify-self: right;
 }
-.inference-body {
+.theorem-body {
   padding: 0 0.4em;
   grid-column: 2 / span 1;
 }
-.inference-buttons {
+.theorem-buttons {
   grid-column: 3 / span 1;
 }
 
-.inference-name:nth-child(odd) {background-color:#eee; }
-.inference-body:nth-child(even) {background-color:#eee; }
-.inference-buttons:nth-child(odd) {background-color:#eee; }
+.theorem-name:nth-child(odd) {background-color:#eee; }
+.theorem-body:nth-child(even) {background-color:#eee; }
+.theorem-buttons:nth-child(odd) {background-color:#eee; }
 
 .subformula:hover:not(:has(.subformula:hover)) {
   background-color: #ccc
