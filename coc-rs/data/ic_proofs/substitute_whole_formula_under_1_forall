@@ -1,0 +1,8 @@
+P1. ∀x, (A x = B x)
+P2. ∀x, (A x)
+
+A1. ∀A, ∀B, (A = B) = ∀x, ((A x) = (B x))
+
+1. (A = B) = ∀x, ((A x) = (B x))               [A1, by specialization]
+2. A = B                                       [2, P1]
+3. ∀x, (B x)                                   [2, P2, by subst]

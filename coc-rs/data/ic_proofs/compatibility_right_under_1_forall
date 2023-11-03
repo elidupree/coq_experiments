@@ -1,0 +1,10 @@
+P1. ∀x, (A x = B x)
+
+A1. ∀A, ∀B, (A = B) = ∀x, ((A x) = (B x))
+
+1. (A = B) = ∀x, ((A x) = (B x))               [A1, by specialization]
+2. A = B                                       [1, P1]
+3. (fuse C A) = (fuse C A)                     [by eq_refl]
+4. (fuse C A) = (fuse C B)                     [2, 3, by subst]
+5. ∀A, ∀B, ((fuse C A) = (fuse C B)) = ∀x, ((C x)(A x) = (C x)(B x))  [A1, by specialization]
+4. ∀x, ((C x)(A x) = (C x)(B x))               [4, 5, by subst]

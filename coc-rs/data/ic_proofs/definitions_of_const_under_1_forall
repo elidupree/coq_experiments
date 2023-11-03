@@ -1,0 +1,5 @@
+A1. (x => const (A x) (B x)) = A
+A2. ∀A, ∀B, (A = B) = ∀x, ((A x) = (B x))
+
+1. ((x => const (A x) (B x)) = B) = ∀x, ((const (A x) (B x)) = (B x))  [A2, by specialization]
+2. ∀x, ((const (A x) (B x)) = (A x))          [1, A1, by subst]

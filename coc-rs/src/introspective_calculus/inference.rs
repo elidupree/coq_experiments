@@ -147,6 +147,16 @@ impl SingleRuleInference {
             }
         }
     }
+    pub fn abstract_metavariable(&self, variable_name: &str) -> InferenceDerivation {
+        todo!()
+        // match self {
+        //     SingleRuleInference::SubstituteWholeFormula([a, b]) => {}
+        //     SingleRuleInference::DefinitionOfConst([a, b]) => {}
+        //     SingleRuleInference::DefinitionOfFuse([a, b, c]) => {}
+        //     SingleRuleInference::CompatibilityLeft([a, b, c]) => {}
+        //     SingleRuleInference::CompatibilityRight([a, b, c]) => {}
+        // }
+    }
 }
 
 impl Inference {
@@ -339,6 +349,32 @@ impl Inference {
         let deriver = get_deriver_by_name(deriver_name);
         deriver.try_derive(premises, conclusion)
     }
+
+    pub fn abstract_metavariable(&self, variable_name: &str) -> Inference {
+        let abstract_formula = |f: &RWMFormula| ic!(forall variable_name, f).to_rwm();
+        let premises = self.premises.iter().map(abstract_formula).collect();
+        let conclusion = abstract_formula(&self.conclusion);
+        let derivation = match &self.derivation {
+            InferenceDerivation::Premise(which) => InferenceDerivation::Premise(*which),
+            InferenceDerivation::Axiom(a) => InferenceDerivation::Axiom(a.clone()),
+            InferenceDerivation::SingleRule(rule) => rule.abstract_metavariable(variable_name),
+            InferenceDerivation::Chain(premise_providers, conclusion_provider) => {
+                InferenceDerivation::Chain(
+                    premise_providers
+                        .iter()
+                        .map(|i| i.abstract_metavariable(variable_name))
+                        .collect(),
+                    conclusion_provider.abstract_metavariable(variable_name),
+                )
+            }
+        };
+        InferenceInner {
+            premises,
+            conclusion,
+            derivation,
+        }
+        .into()
+    }
 }
 pub fn load_proof(path: impl AsRef<Path>) -> Result<Vec<ProofLine>, anyhow::Error> {
     let parser = ProofLineParser::new();
@@ -360,6 +396,13 @@ pub fn proof_premises(lines: &[ProofLine]) -> Vec<RWMFormula> {
         .iter()
         .filter(|line| line.name.starts_with('P'))
         .map(|line| line.formula.to_rwm())
+        .collect()
+}
+pub fn proof_axioms(lines: &[ProofLine]) -> Vec<RawFormula> {
+    lines
+        .iter()
+        .filter(|line| line.name.starts_with('A'))
+        .filter_map(|line| line.formula.to_raw())
         .collect()
 }
 pub fn compile(lines: &[ProofLine]) -> Result<Inference, String> {

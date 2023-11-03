@@ -1,0 +1,5 @@
+A1. (x => fuse (A x) (B x) (C x)) = (x => (A x)(C x)((B x)(C x)))
+A2. ∀A, ∀B, (A = B) = ∀x, ((A x) = (B x))
+
+1. ((x => fuse (A x) (B x) (C x)) = (x => (A x)(C x)((B x)(C x)))) = ∀x, ((fuse (A x) (B x) (C x)) = ((A x)(C x)((B x)(C x))))  [A2, by specialization]
+2. ∀x, ((fuse (A x) (B x) (C x)) = ((A x)(C x)((B x)(C x))))          [1, A1, by subst]

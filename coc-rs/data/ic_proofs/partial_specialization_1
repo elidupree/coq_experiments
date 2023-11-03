@@ -1,35 +1,12 @@
 P1. All P
 
-A1. ∀A, ∀B, (A = B) = ∀C, ((A C) = (B C))
+A1. ∀A, (const (const A) = fuse (const (const A)))
 
-1. (A => ∀B, (A = B) = ∀C, ((A C) = (B C))) (const True)        [A1, by specialization]
-2. ∀B, ((const True) = B) = ∀C, (((const True) C) = (B C))      [1, by unfolding]
-3. (B => ((const True) = B) = ∀C, (((const True) C) = (B C))) P [2, by specialization]
-4. ((const True) = P) = ∀C, (((const True) C) = (P C))          [3, by unfolding]
-
-5. ∀C, (((const True) C) = (P C))                               [4, P1]
-
-
-1. ∀b, ((const True) (A b)) = (P (A b))   [P1]
-2. True                       [by eq_refl]
-3. (const True) A = True
-4. True = (const True) A      [3, by eq_sym]
-5. (const True) A             [4, 2]
-6. ∀b, P (A b)     / fuse (const b)             [1, 5]
-
-. (const True) = (const (const True)) A           []
-2. ∀B, fuse (const (const True)) A B = (const (const True))B(AB)
-2. ∀B, fuse (const (const True)) A B = (const (const True))B(AB)
-2. ∀B, (const True) B = (const True) [by specializing definition of const]
-2. ∀B, (const True) B = fuse (const (const True)) A B   [by specializing definition of fuse]
-2. (const True) = fuse (const (const True)) A           [by extensionality]
-3. (const True) = fuse (const P) A                      [P1, 2, by subst]
-
-
-(A = B) = ((const True) = (const equals).fuse(A).fuse(B))  [ext]
-(const True) = P
-(const True) = (fuse (const (const True)) A)
-
-(const True) = (const equals).fuse(const A).fuse(const A) [inference, defn of const, int]
-(const True) = (const equals).fuse(const (const True)).fuse(const (const True)) [spec of that inf]
-(const equals).fuse(const (const True)).fuse(const (const True))
+1. (∀A, (const (const A) = fuse (const (const A)))) True      [A1, by specialization]
+2. (const (const True) = fuse (const (const True)))           [1, by unfolding]
+3. const P = fuse (const P)                                   [P1, 2, by substitution]
+4. const P A = P
+5. fuse (const P) A = P
+6. P = fuse (const P) A                                       [5, by eq_sym]
+7. ∀b, P (A b)                                                [6, P1, by substitution]
+# (= All (fuse (const P) A))

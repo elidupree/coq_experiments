@@ -1,0 +1,6 @@
+P1. A = B
+P2. C = D
+
+1. A C = A D   [P2]
+2. A D = B D   [P1]
+3. A C = B D   [1, 2, by eq_trans]

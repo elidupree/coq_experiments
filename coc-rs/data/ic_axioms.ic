@@ -1,11 +1,17 @@
-"truth" := A = (∀B, (B = (A = B)))
+#"truth" := A = (∀B, (B = (A = B)))
 #"contraction" := (A & A) = A
 #"symmetry of and" := (A & B) = (B & A)
 #"associativity of and" := ((A & B) & C) = (A & (B & C))
+"symmetry of equals" := (A = B) = (B = A)
+"associativity of equals" := ((A = B) & (B = C)) -> (A = C)
+"specialization" := (A = B) -> (A C = B C)
+#"specialization" := (A = B) = ((x => x A (A C)) = (x => x B (B C)))
 
 #"definition of const" := const A B = A
 "const under binding" := (x => const (A x) (B x)) = A
 #"definition of fuse" := fuse A B C = (A C)(B C)
 "fuse under binding" := (x => fuse (A x) (B x) (C x)) = (x => (A x)(C x)((B x)(C x)))
 "ignore second binding" := (const (const A)) = (fuse (const (const A)))
-"extensionality" := (A = B) = ∀C, ((A C) = (B C))
+"function extensionality" := (A = B) = ∀x, ((A x) = (B x))
+"pair extensionality" := ((A, B) = (C, D)) = ((A = C) & (B = D))
+#"indistinguishability" := (A = B) = ((x => x A) = (x => x B))

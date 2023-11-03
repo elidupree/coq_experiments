@@ -4,6 +4,7 @@ use coc_rs::introspective_calculus::derivers::{
 use coc_rs::introspective_calculus::inference::load_proof;
 
 fn main() {
+    live_prop_test::initialize();
     let mut environment = SearchManyEnvironment::new();
 
     for entry in std::fs::read_dir("./data/ic_proofs").unwrap() {

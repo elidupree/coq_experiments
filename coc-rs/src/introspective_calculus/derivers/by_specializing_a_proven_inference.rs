@@ -1,8 +1,6 @@
 use crate::introspective_calculus::derivers::{IncrementalDeriver, IncrementalDeriverWorkResult};
-use crate::introspective_calculus::display::format_substitutions;
 use crate::introspective_calculus::inference::Inference;
 use crate::introspective_calculus::{merge_substitutions_into, RWMFormula};
-use itertools::Itertools;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -97,21 +95,10 @@ impl DeriveBySpecializing {
         inference_to_specialize: Inference,
         available_premises: Vec<RWMFormula>,
     ) -> DeriveBySpecializing {
-        let known_truths = available_premises
-            .iter()
-            .enumerate()
-            .map(|(i, _p)| TruthInfo {
-                known_inference: Inference::premise(available_premises.clone(), i),
-                substitutions_for_my_premises_to_become_this_conclusion: vec![
-                        WhatSubstitutions::NotYetCalculated;
-                        inference_to_specialize.premises().len()
-                    ],
-            })
-            .collect();
         DeriveBySpecializing {
             inference_to_specialize,
             available_premises,
-            known_truths,
+            known_truths: Vec::new(),
             unsolved_goals: HashMap::new(),
         }
     }

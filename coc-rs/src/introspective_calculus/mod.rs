@@ -90,6 +90,12 @@ impl From<&Formula> for RWMFormula {
     }
 }
 
+impl From<&RWMFormula> for RWMFormula {
+    fn from(value: &RWMFormula) -> Self {
+        value.clone()
+    }
+}
+
 impl From<RWMFormula> for Formula {
     fn from(value: RWMFormula) -> Self {
         value.0
@@ -194,10 +200,10 @@ macro_rules! ic {
     };
 
     ($l:expr => $r:tt) => {
-        $crate::introspective_calculus::Formula::name_abstraction(AbstractionKind::Lambda, $l.to_string(), ic!($r))
+        $crate::introspective_calculus::Formula::name_abstraction($crate::introspective_calculus::AbstractionKind::Lambda, $l.to_string(), ic!($r))
     };
     (forall $l:expr, $r:tt) => {
-        $crate::introspective_calculus::Formula::name_abstraction(AbstractionKind::ForAll, $l.to_string(), ic!($r))
+        $crate::introspective_calculus::Formula::name_abstraction($crate::introspective_calculus::AbstractionKind::ForAll, $l.to_string(), ic!($r))
     };
     // (id) => {
     //     Formula::id()
@@ -410,7 +416,7 @@ impl Formula {
         let raw_children = children.each_ref().map(|c| c.to_rwm());
         let raw_rawness = rawness_of_raw_pair(&raw_children).unwrap();
         let raw_form = RWMFormula(Formula(Arc::new(FormulaWithMetadata {
-            value: combine_raw(raw_children).value.clone(),
+            value: combine_raw(raw_children).to_rwm().value.clone(),
             rawness: raw_rawness,
         })));
 
@@ -538,7 +544,7 @@ impl RWMFormula {
                 RWMFormulaValue::Apply(children.each_ref().map(Formula::to_rwm))
             }
             FormulaValue::Metavariable(s) => RWMFormulaValue::Metavariable(s.clone()),
-            _ => unreachable!(),
+            _ => unreachable!("RWMFormula had non-RWM value {}", self),
         }
     }
     pub fn map_children_rwm(&self, mut map: impl FnMut(RWMFormula) -> RWMFormula) -> RWMFormula {
@@ -549,6 +555,16 @@ impl RWMFormula {
             ((equals a) b) => Some([a.to_rwm(), b.to_rwm()]),
             _ => None,
         })
+    }
+    pub fn other_eq_side(&self, first: &RWMFormula) -> Option<RWMFormula> {
+        let [a, b] = self.as_eq_sides()?;
+        if *first == a {
+            Some(b)
+        } else if *first == b {
+            Some(a)
+        } else {
+            None
+        }
     }
 
     pub fn with_metavariables_replaced_rwm(
