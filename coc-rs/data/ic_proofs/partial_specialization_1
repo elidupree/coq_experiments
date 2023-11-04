@@ -2,7 +2,7 @@ P1. All P
 
 A1. ∀A, (const (const A) = fuse (const (const A)))
 
-1. (∀A, (const (const A) = fuse (const (const A)))) True      [A1, by specialization]
+1. (A => (const (const A) = fuse (const (const A)))) True      [A1, by specialization]
 2. (const (const True) = fuse (const (const True)))           [1, by unfolding]
 3. const P = fuse (const P)                                   [P1, 2, by substitution]
 4. const P A = P

@@ -1,4 +1,4 @@
 P1. A & B
 
-1. ∀D, (C => (C A B = C True True)) (x=>y=>(D y x))   [P1, by partial_specialization_1]
+1. ∀D, (C => (C A B = C True True)) (((D=>x=>y=>(D y x)) D))   [P1, by partial_specialization_1]
 2. B & A                                               [1, by unfolding]

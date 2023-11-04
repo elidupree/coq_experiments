@@ -673,8 +673,8 @@ impl Formula {
     }
     pub fn already_raw(&self) -> Option<RawFormula> {
         match &self.rawness {
-            FormulaRawness::Pretty { .. } => None,
-            _ => Some(RawFormula(self.clone())),
+            FormulaRawness::Raw => Some(RawFormula(self.clone())),
+            _ => None,
         }
     }
     pub fn to_raw(&self) -> Option<RawFormula> {

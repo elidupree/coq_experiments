@@ -31,3 +31,28 @@ body {
   width: 90%;
   height: 500px;
 }
+
+.partial_proof {
+  padding: 1.2em;
+}
+.partial_proof_name {
+  font-weight: bold;
+  font-size: bigger;
+}
+.proof_line.proven {
+  background-color: #bfb
+}
+.proof_line {
+  display: flex;
+}
+.proof_line_name {
+  width: 8em;
+  text-align: right;
+}
+.proof_line_name:after {
+  content: ". ";
+}
+.proof_line_formula {
+  width: 40em;
+  padding: 0 0.8em;
+}

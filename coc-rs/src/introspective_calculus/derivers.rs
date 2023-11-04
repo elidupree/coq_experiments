@@ -1,11 +1,10 @@
 use crate::introspective_calculus::derivers::by_specializing_a_proven_inference::DeriveBySpecializing;
 use crate::introspective_calculus::derivers::by_substitution_and_unfolding::DeriveBySubstitutionAndUnfolding;
-use crate::introspective_calculus::inference::{
-    proof_axioms, proof_premises, Inference, ProofLine, ALL_SINGLE_RULES,
-};
+use crate::introspective_calculus::inference::{Inference, ProofLine, ALL_SINGLE_RULES};
 use crate::introspective_calculus::{Formula, RWMFormula, RawFormula};
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 
 pub mod by_specializing_a_proven_inference;
 pub mod by_substitution_and_unfolding;
@@ -127,29 +126,96 @@ impl SearchFromPremisesEnvironment {
     }
 }
 
-struct SearchForProofOfSpecificInference {
+struct SearchForProofOfSpecificInference<Line> {
+    lines: Vec<Line>,
     environment: SearchFromPremisesEnvironment,
-    conclusion: Formula,
     runs: usize,
 }
 
-pub struct SearchManyEnvironment {
-    searches: Vec<SearchForProofOfSpecificInference>,
+pub struct SearchManyEnvironment<SearchKey, Line> {
+    searches: HashMap<SearchKey, SearchForProofOfSpecificInference<Line>>,
 }
-impl Default for SearchManyEnvironment {
+impl<SearchKey, Line> Default for SearchManyEnvironment<SearchKey, Line> {
     fn default() -> Self {
         Self::new()
     }
 }
-impl SearchManyEnvironment {
-    pub fn new() -> SearchManyEnvironment {
+
+pub trait SearchLineTrait {
+    fn formula(&self) -> RWMFormula;
+    fn is_premise(&self) -> bool;
+    fn is_axiom(&self) -> bool;
+    fn is_conclusion(&self) -> bool;
+    fn proven(&mut self, inference: Inference);
+}
+
+pub struct PrettyLine {
+    pub name: String,
+    pub formula: Formula,
+    pub is_premise: bool,
+    pub is_axiom: bool,
+    pub is_conclusion: bool,
+    pub proof: Option<Inference>,
+}
+
+impl SearchLineTrait for PrettyLine {
+    fn formula(&self) -> RWMFormula {
+        self.formula.to_rwm()
+    }
+
+    fn is_premise(&self) -> bool {
+        self.is_premise
+    }
+
+    fn is_axiom(&self) -> bool {
+        self.is_axiom
+    }
+
+    fn is_conclusion(&self) -> bool {
+        self.is_conclusion
+    }
+
+    fn proven(&mut self, inference: Inference) {
+        self.proof = Some(inference)
+    }
+}
+
+pub fn pretty_lines(lines: &[ProofLine]) -> Vec<PrettyLine> {
+    let mut result: Vec<PrettyLine> = lines
+        .iter()
+        .map(|line| PrettyLine {
+            name: line.name.clone(),
+            formula: line.formula.clone(),
+            is_premise: line.name.starts_with('P'),
+            is_axiom: line.name.starts_with('A'),
+            is_conclusion: false,
+            proof: None,
+        })
+        .collect();
+    result.last_mut().unwrap().is_conclusion = true;
+    result
+}
+
+impl<SearchKey, Line> SearchManyEnvironment<SearchKey, Line> {
+    pub fn new() -> Self {
         SearchManyEnvironment {
-            searches: Vec::new(),
+            searches: HashMap::new(),
         }
     }
-    pub fn add_written_proof(&mut self, proof: &[ProofLine]) {
-        let premises: Vec<RWMFormula> = proof_premises(proof);
-        let axioms: Vec<RawFormula> = proof_axioms(proof);
+}
+impl<SearchKey: Eq + Hash + Clone, Line: SearchLineTrait> SearchManyEnvironment<SearchKey, Line> {
+    pub fn add_search(&mut self, key: SearchKey, lines: Vec<Line>) {
+        let premises: Vec<RWMFormula> = lines
+            .iter()
+            .filter(|l| l.is_premise())
+            .map(Line::formula)
+            .collect();
+        let axioms: Vec<RawFormula> = lines
+            .iter()
+            .filter(|l| l.is_axiom())
+            .map(Line::formula)
+            .map(|f| f.to_raw().unwrap())
+            .collect();
         let mut environment = SearchFromPremisesEnvironment::new(premises.clone(), axioms);
         for (_name, inference) in &*ALL_SINGLE_RULES {
             environment.add_deriver(Box::new(DeriveBySpecializing::new(
@@ -160,23 +226,25 @@ impl SearchManyEnvironment {
         environment.add_deriver(Box::new(DeriveBySubstitutionAndUnfolding::new(
             premises.clone(),
         )));
-        for line in proof {
-            match line.name.chars().next().unwrap() {
-                'P' => {}
-                'A' => {}
-                _ => environment.add_goal(line.formula.to_rwm()),
+        for line in &lines {
+            if !(line.is_premise() || line.is_axiom()) {
+                environment.add_goal(line.formula());
             }
         }
-        self.searches.push(SearchForProofOfSpecificInference {
-            environment,
-            conclusion: proof.last().unwrap().formula.clone(),
-            runs: 0,
-        });
+        self.searches.insert(
+            key,
+            SearchForProofOfSpecificInference {
+                lines,
+                environment,
+                runs: 0,
+            },
+        );
     }
-    pub fn do_some_work(&mut self) -> IncrementalDeriverWorkResult {
-        self.searches.sort_by_key(|d| d.runs);
 
-        for (i, search) in self.searches.iter_mut().enumerate() {
+    pub fn do_some_work(&mut self) -> IncrementalDeriverWorkResult {
+        //self.searches.sort_by_key(|d| d.runs);
+
+        for (key, search) in self.searches.iter_mut() {
             search.runs += 1;
             match search.environment.do_some_work() {
                 IncrementalDeriverWorkResult::NothingToDoRightNow => {}
@@ -184,9 +252,21 @@ impl SearchManyEnvironment {
                     return IncrementalDeriverWorkResult::StillWorking
                 }
                 IncrementalDeriverWorkResult::DiscoveredInference(inference) => {
-                    if inference.conclusion() == &search.conclusion.to_rwm() {
-                        self.searches.remove(i);
-                        for search in &mut self.searches {
+                    let mut is_conclusion = false;
+                    for line in &mut search.lines {
+                        if &line.formula() == inference.conclusion() {
+                            line.proven(inference.clone());
+                            if line.is_conclusion() {
+                                is_conclusion = true
+                            }
+                        }
+                    }
+                    if is_conclusion {
+                        if false {
+                            let key = key.clone();
+                            self.searches.remove(&key);
+                        }
+                        for search in self.searches.values_mut() {
                             search
                                 .environment
                                 .add_deriver(Box::new(DeriveBySpecializing::new(
@@ -194,12 +274,15 @@ impl SearchManyEnvironment {
                                     search.environment.premises.clone(),
                                 )))
                         }
-                        return IncrementalDeriverWorkResult::DiscoveredInference(inference);
                     }
-                    return IncrementalDeriverWorkResult::StillWorking;
+                    return IncrementalDeriverWorkResult::DiscoveredInference(inference);
                 }
             }
         }
         IncrementalDeriverWorkResult::NothingToDoRightNow
+    }
+
+    pub fn searches_lines(&self) -> HashMap<&SearchKey, &[Line]> {
+        self.searches.iter().map(|(k, v)| (k, &*v.lines)).collect()
     }
 }

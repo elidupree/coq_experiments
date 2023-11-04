@@ -297,7 +297,8 @@ impl Inference {
     pub fn axiom(premises: Vec<RWMFormula>, axiom: RawFormula) -> Inference {
         assert_eq!(
             axiom.as_raw_with_metavariables().rawness,
-            FormulaRawness::Raw
+            FormulaRawness::Raw,
+            "'RawFormula' {axiom} wasn't raw - huh?"
         );
         InferenceInner {
             premises,

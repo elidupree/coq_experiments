@@ -1,8 +1,12 @@
 #![feature(lazy_cell)]
 
 use clap::{arg, Parser};
+use coc_rs::introspective_calculus::derivers::{
+    IncrementalDeriverWorkResult, PrettyLine, SearchManyEnvironment,
+};
+use coc_rs::introspective_calculus::inference::load_proof;
 use coc_rs::introspective_calculus::{
-    all_axioms, AbstractionKind, Formula, FormulaParser, FormulaValue,
+    all_axioms, derivers, AbstractionKind, Formula, FormulaParser, FormulaValue,
 };
 use coc_rs::utils::{read_json_file, write_json_file};
 use html_node::{html, text, Node};
@@ -10,6 +14,7 @@ use quick_and_dirty_web_gui::{callback, callback_with};
 use serde::de::DeserializeOwned;
 use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
+use std::time::Instant;
 
 struct Interface {
     file_path: String,
@@ -17,6 +22,7 @@ struct Interface {
     focus: Option<usize>,
     sandbox_text: String,
     sandbox_message: String,
+    partial_proofs: SearchManyEnvironment<String, PrettyLine>,
 }
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
@@ -211,6 +217,36 @@ impl Interface {
             </div>
         }
     }
+
+    fn partial_proof_html(&self, name: &str, lines: &[PrettyLine]) -> Node {
+        let lines = lines.iter().map(|line| {
+            let classes = if line.proof.is_some() {
+                "proof_line proven"
+            } else {
+                "proof_line"
+            };
+            html! {
+                <div class={classes}>
+                    <div class="proof_line_name">
+                        {text!("{}", line.name)}
+                    </div>
+                    <div class="proof_line_formula">
+                        {self.formula_html(&line.formula, ParenthesisNeeds::Nothing)}
+                    </div>
+                    <div class="proof_line_raw_formula">
+                        {self.formula_html(&line.formula.to_rwm().into(), ParenthesisNeeds::Nothing)}
+                    </div>
+                </div>
+            }
+        });
+        html! {
+            <div class="partial_proof">
+                <div class="partial_proof_name">{text!("{}", name)}</div>
+                {lines}
+            </div>
+        }
+    }
+
     fn whole_page(&self) -> Node {
         let existing_theorems = self
             .theorems
@@ -224,6 +260,11 @@ impl Interface {
             .iter()
             .enumerate()
             .map(|(index, _theorem)| self.theorem_html(index, &existing_theorems, &axioms));
+        let partial_proofs = self
+            .partial_proofs
+            .searches_lines()
+            .into_iter()
+            .map(|(name, lines)| self.partial_proof_html(name, lines));
         html! {
             <div class="page">
                 <div class="theorems">
@@ -231,6 +272,7 @@ impl Interface {
                     <div style="clear: both"></div>
                 </div>
                 {self.sandbox()}
+                {partial_proofs}
             </div>
         }
     }
@@ -250,12 +292,29 @@ static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
             theorems.push(axiom);
         }
     }
+    let mut partial_proofs = SearchManyEnvironment::new();
+    for entry in std::fs::read_dir("./data/ic_proofs").unwrap() {
+        let path = entry.unwrap().path();
+        match load_proof(&path) {
+            Ok(proof) => {
+                println!("loaded {path:?}");
+                partial_proofs.add_search(
+                    path.file_name().unwrap().to_str().unwrap().to_string(),
+                    derivers::pretty_lines(&proof),
+                );
+            }
+            Err(e) => {
+                println!("failed to load {path:?}: {e}");
+            }
+        }
+    }
     Mutex::new(Interface {
         file_path: args.file_path,
         theorems: theorems,
         focus: None,
         sandbox_text: "".to_string(),
         sandbox_message: "".to_string(),
+        partial_proofs,
     })
 });
 
@@ -304,6 +363,30 @@ struct Args {
 #[actix_web::main]
 async fn main() {
     with_interface(|_| {});
+    actix_web::rt::spawn(async {
+        let mut done = false;
+        while !done {
+            let mut steps = 0;
+            with_interface(|interface| {
+                let start = Instant::now();
+                while start.elapsed().as_secs_f64() < 0.1 {
+                    match interface.partial_proofs.do_some_work() {
+                        IncrementalDeriverWorkResult::NothingToDoRightNow => {
+                            println!("No more work to do ({steps} steps total)");
+                            done = true;
+                            return;
+                        }
+                        IncrementalDeriverWorkResult::StillWorking => {
+                            steps += 1;
+                        }
+                        IncrementalDeriverWorkResult::DiscoveredInference(inference) => {
+                            println!("Completed {inference}");
+                        }
+                    }
+                }
+            });
+        }
+    });
     // actix_web::rt::spawn(async {
     //     loop {
     //         actix_web::rt::time::sleep(Duration::from_millis(1000)).await;
