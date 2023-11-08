@@ -5,7 +5,7 @@
 "symmetry of equals" := (A = B) = (B = A)
 "transitivity of equals" := ((A = B) & (B = C)) -> (A = C)
 "specialization" := (A = B) -> (A C = B C)
-"pair-eq-sym" := ((A, B) = (C, D)) = ((B, A) = (D, C))
+"pair eq sym" := ((A, B) = (C, D)) = ((B, A) = (D, C))
 #"specialization" := (A = B) = ((x => x A (A C)) = (x => x B (B C)))
 
 #"definition of const" := const A B = A

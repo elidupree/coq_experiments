@@ -214,7 +214,7 @@ impl<SearchKey: Eq + Hash + Clone, Line: SearchLineTrait> SearchManyEnvironment<
             .iter()
             .filter(|l| l.is_axiom())
             .map(Line::formula)
-            .map(|f| f.to_raw().unwrap())
+            .filter_map(|f| f.to_raw())
             .collect();
         let mut environment = SearchFromPremisesEnvironment::new(premises.clone(), axioms);
         for (_name, inference) in &*ALL_SINGLE_RULES {
