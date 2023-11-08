@@ -8,6 +8,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::LazyLock;
+use std::time::Duration;
 use uuid::Uuid;
 
 struct Manager {
@@ -33,6 +34,7 @@ struct NewCallback {
 #[derive(Clone, Serialize, Debug, Message)]
 #[rtype(result = "()")]
 enum MessageToClient {
+    Heartbeat,
     ReplaceDom(String),
     AppMessage(String),
 }
@@ -182,6 +184,13 @@ pub async fn launch(index_file: &str, port: u16) {
         index_file: index_file.into(),
     });
 
+    actix_web::rt::spawn(async {
+        loop {
+            MANAGER.do_send(MessageToClient::Heartbeat);
+            actix_web::rt::time::sleep(Duration::from_millis(200)).await;
+        }
+    });
+
     HttpServer::new(move || {
         App::new()
             .app_data(state.clone())
@@ -191,6 +200,7 @@ pub async fn launch(index_file: &str, port: u16) {
             .service(actix_files::Files::new("/media", "./static/media"))
     })
     .workers(1)
+    .shutdown_timeout(1)
     .bind(("localhost", port))
     .unwrap()
     .run()

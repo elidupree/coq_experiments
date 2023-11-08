@@ -1,0 +1,19 @@
+
+
+let augmented = (((A=B) & (C=D)) = ((A=B) & ((C=D) & (E=F))))
+Lemma. ((C=D) -> (E=F)) -> augmented  [by compat left imp]
+
+((A=B) -> (C=D)) & ((C=D) -> (E=F))
+#= (((A=B) -> (C=D)) & ((C=D) = ((C,E)=(D,F)))
+= ((A=B) -> (C=D)) & (((C=D) -> (E=F)) & augmented)  [by Lemma]
+= ((A=B) -> (C=D)) & (augmented & ((C=D) -> (E=F)))  [by and_sym]
+= (((A=B) -> (C=D)) & augmented) & ((C=D) -> (E=F))  [by and_assoc]
+= ((((A=B) -> (C=D)) & augmented) & ((A=B) -> ((C=D) & (E=F)))) & ((C=D) -> (E=F)) [by eq_trans]
+= (((A=B) -> (C=D)) & ((A=B) -> ((C=D) & (E=F)))) & ((C=D) -> (E=F)) [shuffle augmented back to the end and absorb it]
+=
+
+
+
+
+. (((A=B) = ((A,C)=(B,D)))) & ((C=D) -> (E=F))) -> ((A=B) -> (E=F))
+. (((A=B) -> (C=D)) & ((C=D) -> (E=F))) -> ((A=B) -> (E=F))

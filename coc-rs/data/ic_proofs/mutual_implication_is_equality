@@ -1,0 +1,9 @@
+
+A1. (A = B) = (B = A)
+A2. ((A = B) & (B = C)) -> (A = C)
+A3. ((A, B) = (C, D)) = ((B, A) = (D, C))
+A4. ((A, B) = (C, D)) = ((A = C) & (B = D))
+
+1. (((A=B) -> (C=D)) & (((A=B) & (C=D)) = (C=D)) -> ((A=B) = (C=D))  [by eq_trans]
+2. (((A=B) -> (C=D)) & (((C=D) & (A=B)) = (C=D)) -> ((A=B) = (C=D))  [by and_sym]
+3. (((A=B) -> (C=D)) & ((C=D) -> (A=B))) -> ((A=B) = (C=D))          [by eq_sym]

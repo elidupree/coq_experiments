@@ -3,8 +3,9 @@
 #"symmetry of and" := (A & B) = (B & A)
 #"associativity of and" := ((A & B) & C) = (A & (B & C))
 "symmetry of equals" := (A = B) = (B = A)
-"associativity of equals" := ((A = B) & (B = C)) -> (A = C)
+"transitivity of equals" := ((A = B) & (B = C)) -> (A = C)
 "specialization" := (A = B) -> (A C = B C)
+"pair-eq-sym" := ((A, B) = (C, D)) = ((B, A) = (D, C))
 #"specialization" := (A = B) = ((x => x A (A C)) = (x => x B (B C)))
 
 #"definition of const" := const A B = A

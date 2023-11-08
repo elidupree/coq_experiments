@@ -1,0 +1,7 @@
+P1. A = (x => (A x) & (B x))
+P2. B = (x => (B x) & (C x))
+
+1. A = x => ((A x) & ((B x) & (C x)))  [P2, P1, by subst]
+2. A = x => (((A x) & (B x)) & (C x))) [by and_assoc]
+2. A = x => ((A x) & (C x))        [by subst]
+

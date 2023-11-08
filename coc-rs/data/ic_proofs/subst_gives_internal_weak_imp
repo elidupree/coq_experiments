@@ -1,0 +1,15 @@
+#P1. J (A=B) (C=D)
+#P2. J A B
+#P3. ∀x,y,z,w, (J (x=y) (z=w))->((J x y)=(J z w))
+
+#1. (J (A=B) (C=D))->((J A B)=(J C D))   [P3, by specialization]
+#2. (J A B)=(J C D)                      [1, P1, by mp]
+#3. J C D                                [2, P2]
+
+# actual goal is just "can spawn all the necessary imps from P3", i.e. P3 -> (((J (A=B) (C=D)) & (J A B)) -> (J C D)), unconditionally
+# which
+
+1. ∀x,y,z,w, (J (x=y) (z=w))->((J x y)=(J z w)) -> (J (A=B) (C=D))->((J A B)=(J C D))  [by specialization]
+= (J (A=B) (C=D))->((J A B)=(J C D))
+
+A=(A & (B=C))

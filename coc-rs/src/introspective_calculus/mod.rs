@@ -435,11 +435,9 @@ impl Formula {
         }))
     }
     pub fn and(children: [Formula; 2]) -> Formula {
-        Formula::combine_pretty(
-            children,
-            FormulaValue::And,
-            |[a, b]| ic!(forall "P", ((("P" a) b) = (("P" True) True))),
-        )
+        Formula::combine_pretty(children, FormulaValue::And, |[a, b]| {
+            ic!((True, True) = (a, b))
+        })
     }
     pub fn equals(children: [Formula; 2]) -> Formula {
         Formula::combine_pretty(children, FormulaValue::Equals, |[a, b]| ic!((equals a)b))

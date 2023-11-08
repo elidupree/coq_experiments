@@ -8,13 +8,13 @@ use coc_rs::introspective_calculus::inference::load_proof;
 use coc_rs::introspective_calculus::{
     all_axioms, derivers, AbstractionKind, Formula, FormulaParser, FormulaValue,
 };
-use coc_rs::utils::{read_json_file, write_json_file};
+// use coc_rs::utils::{read_json_file, write_json_file};
 use html_node::{html, text, Node};
 use quick_and_dirty_web_gui::{callback, callback_with};
 use serde::de::DeserializeOwned;
 use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 struct Interface {
     file_path: String,
@@ -23,6 +23,7 @@ struct Interface {
     sandbox_text: String,
     sandbox_message: String,
     partial_proofs: SearchManyEnvironment<String, PrettyLine>,
+    proof_order: Vec<String>,
 }
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
@@ -260,10 +261,11 @@ impl Interface {
             .iter()
             .enumerate()
             .map(|(index, _theorem)| self.theorem_html(index, &existing_theorems, &axioms));
+        let mut searches_lines = self.partial_proofs.searches_lines();
         let partial_proofs = self
-            .partial_proofs
-            .searches_lines()
-            .into_iter()
+            .proof_order
+            .iter()
+            .map(|s| (s, searches_lines.remove(s).unwrap()))
             .map(|(name, lines)| self.partial_proof_html(name, lines));
         html! {
             <div class="page">
@@ -286,28 +288,36 @@ impl Interface {
 
 static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
     let args = Args::parse();
-    let mut theorems = read_json_file::<_, Vec<Formula>>(&args.file_path).unwrap_or_default();
+    // let mut theorems = read_json_file::<_, Vec<Formula>>(&args.file_path).unwrap_or_default();
+    let mut theorems: Vec<Formula> = Vec::new();
     for axiom in all_axioms() {
         if !theorems.contains(&axiom) {
             theorems.push(axiom);
         }
     }
     let mut partial_proofs = SearchManyEnvironment::new();
+    let mut proof_order = Vec::new();
     for entry in std::fs::read_dir("./data/ic_proofs").unwrap() {
         let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_str().unwrap();
+        let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
         match load_proof(&path) {
             Ok(proof) => {
                 println!("loaded {path:?}");
-                partial_proofs.add_search(
-                    path.file_name().unwrap().to_str().unwrap().to_string(),
-                    derivers::pretty_lines(&proof),
-                );
+                partial_proofs.add_search(name.to_string(), derivers::pretty_lines(&proof));
+                proof_order.push((name.to_string(), modified));
             }
             Err(e) => {
                 println!("failed to load {path:?}: {e}");
             }
         }
     }
+    proof_order.sort_by_key(|(_name, time)| *time);
+    let proof_order = proof_order
+        .into_iter()
+        .rev()
+        .map(|(name, _time)| name)
+        .collect();
     Mutex::new(Interface {
         file_path: args.file_path,
         theorems: theorems,
@@ -315,6 +325,7 @@ static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
         sandbox_text: "".to_string(),
         sandbox_message: "".to_string(),
         partial_proofs,
+        proof_order,
     })
 });
 
@@ -322,8 +333,13 @@ fn with_interface(f: impl FnOnce(&mut Interface)) {
     let mut interface = INTERFACE.lock().unwrap();
     f(&mut *interface);
     //interface.optimize_positions();
+    let start = Instant::now();
     interface.update_gui();
-    write_json_file(&interface.file_path, &interface.theorems).unwrap();
+    let elapsed = start.elapsed();
+    if elapsed > Duration::from_millis(10) {
+        eprintln!("UI update took a while: {elapsed:?}");
+    }
+    //write_json_file(&interface.file_path, &interface.theorems).unwrap();
 }
 
 fn interface_callback(mut f: impl FnMut(&mut Interface) + Send + 'static) -> String {

@@ -1,4 +1,40 @@
-P1. A & B
+#P1. A & B
+# (A, B) = (True, True)
 
+A1. ∀A, ∀B, ∀C, (A = B) -> (A C = B C)
+A2. ∀A, ∀B, (A = B) = ∀x, ((A x) = (B x))
+
+1. (A = B) -> (A C = B C)
+2. (A & B) = ((A & B) & ((A, B)d = (True, True)d))
 1. ∀D, (C => (C A B = C True True)) (((D=>x=>y=>(D y x)) D))   [P1, by partial_specialization_1]
 2. B & A                                               [1, by unfolding]
+A&B = A&B&(B&A)
+= ((A&B, B&A) = (True, True))
+B&A = B&A&(A&B)
+A & B = ∀x, (A, B)x = (True, True)x)
+
+let pair = (x => y => (x, y))
+let flipped_pair = (x => y => (y, x))
+((A = B) & (C = D))
+= ((A, C) = (B, D))
+= ((A, C) = (B, D)) & (A, C)flipped_pair = (B, D)flipped_pair
+= ((A, C) = (B, D)) & ((C, A) = (D, B))
+= ((A, C), (C, A)) = ((B, D), (D, B))
+= ((B, D), (D, B)) = ((A, C), (C, A))
+= ((B, D) = (A, C)) & ((D, B) = (C, A))
+= ((B, D) = (A, C)) & ((B, D)flipped_pair = (A, C)flipped_pair)
+= ((B, D) = (A, C))
+= ((B = A) & (D = C))
+= (A, C) = (B, D) & (A, C)(A=>C=>(C, A)) = (B, D)(A=>C=>(C, A))
+= (A=B&C=D) & (C=D&A=B)
+= (y => y (x => x A B) (x => x C D)) = (y => y (x => x C D) (x => x A B))
+
+
+
+A1. ((A, B) = (C, D)) = ((A = C) & (B = D))
+A2. ((A, B) = (C, D)) = ((B, A) = (D, C))
+
+(A=B) & (C=D)
+= (A, C) = (B, D)
+= (C, A) = (D, B)
+= (C=D) & (A=B)

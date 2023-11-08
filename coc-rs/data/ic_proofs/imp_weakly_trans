@@ -1,0 +1,7 @@
+P1. A -> B
+P2. B -> C
+
+1. A = (A & (B & C))  [P2, P1, by subst]
+2. A = ((A & B) & C)) [by and_assoc]
+2. A = (A & C)        [by subst]
+
