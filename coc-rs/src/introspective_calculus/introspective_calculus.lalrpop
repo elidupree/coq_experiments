@@ -1,5 +1,5 @@
-use crate::introspective_calculus::{Formula, Atom, ExplicitRule, AbstractionKind};
-use crate::introspective_calculus::inference::ProofLine;
+use crate::introspective_calculus::{Formula, Atom, ExplicitRule, AbstractionKind, ArrowChain};
+use crate::introspective_calculus::inference::{ProofLine, PrettyInference, PrettyInferenceInner};
 
 grammar;
 
@@ -15,6 +15,11 @@ pub ProofLine: ProofLine = {
   <name:Name> "." <formula:Formula> => ProofLine{<>, ..ProofLine::default()},
   <name:Name> "." <formula:Formula> "[" <referents:CommaSeparated<Name>> "]" => ProofLine{name, formula, referents: referents.into_iter().collect(), ..ProofLine::default()},
   <name:Name> "." <formula:Formula> "[" <referents:(<Name> ",")*> "by" <deriver_name: Name?> "]" => ProofLine{name, formula, referents: referents.into_iter().collect(), deriver_name},
+}
+
+pub Inference: PrettyInference = {
+  //<name:Name> ":=" "|-" <conclusion:Formula> => PrettyInferenceInner {premises: Vec::new(), <>}.into(),
+  <name:Name> ":=" <premises:CommaSeparated<Formula>> "|-" <conclusion:Formula> => PrettyInferenceInner {<>}.into(),
 }
 
 CommaSeparated<T>: Vec<T> = {
@@ -41,54 +46,63 @@ FormulaIndivisible: Formula = {
   "True" => Formula::prop_true(),
   "False" => Formula::prop_false(),
 
-  "(" <Formula> "," <Formula> ")" => Formula::pair([<>]),
+  "(" <first:Formula> "," <mut rest:CommaSeparated<Formula>> ")" => {
+    rest.insert(0, first);
+    Formula::tuple(vec![a, rest])
+  },
 }
 
-FormulaDivisibleRightOnly: Formula = {
-}
 
-FormulaDivisibleLeftOnly: Formula = {
+//FormulaDivisibleRightOnly: Formula = {
+//}
+
+//FormulaDivisibleLeftOnly: Formula = {
   //<FormulaIndivisibleRight> "+1" => Formula::LevelSuccessor(<>)),
-}
+//}
 
-FormulaIndivisibleLeft: Formula = {
-  FormulaDivisibleRightOnly,
-  FormulaIndivisible,
-}
+//FormulaIndivisibleLeft: Formula = {
+  //FormulaDivisibleRightOnly,
+  //FormulaIndivisible,
+//}
 
-FormulaIndivisibleRight: Formula = {
-  FormulaDivisibleLeftOnly,
-  FormulaIndivisible,
-}
+//FormulaIndivisibleRight: Formula = {
+  //FormulaDivisibleLeftOnly,
+  //FormulaIndivisible,
+//}
 
 pub Formula: Formula = {
-  <ApplyChain1> "&" <Formula> => Formula::and([<>]),
-  <ApplyChain1> "->" <Formula> => Formula::implies([<>]),
-  <ApplyChain1> "=" <Formula> => Formula::equals([<>]),
-  ApplyChain2,
-  ArrowChain2,
-  FormulaDivisibleRightOnly,
-  FormulaDivisibleLeftOnly,
-  FormulaIndivisible,
+  <ApplyChain> "&" <ApplyChain> => Formula::and([<>]),
+  <ApplyChain> "->" <ApplyChain> => Formula::implies([<>]),
+  <ApplyChain> "=" <ApplyChain> => Formula::equals([<>]),
+  ApplyChain,
+  //ApplyChain2,
+  <c:ArrowChain> <f:ApplyChain> => c.to_formula(f),
+  //FormulaDivisibleRightOnly,
+  //FormulaDivisibleLeftOnly,
+  //FormulaIndivisible,
+  //ApplyChain2,
 }
 
-ApplyChain1: Formula = {
-  ApplyChain2,
-  FormulaIndivisibleRight,
-}
-ApplyChain2: Formula = {
-  ApplyChain1 FormulaIndivisibleLeft => Formula::apply([<>]),
+ApplyChain: Formula = {
+  FormulaIndivisible,//FormulaIndivisibleRight,
+
+  ApplyChain FormulaIndivisible => Formula::apply([<>]),
+  //ApplyChain FormulaIndivisibleLeft => Formula::apply([<>]),
 }
 
-ArrowChain1: Formula = {
-  ArrowChain2,
-  ApplyChain2,
-  FormulaIndivisibleLeft,
-}
-ArrowChain2: Formula = {
-  <n:Name> "=>" <r:ArrowChain1> => Formula::name_abstraction(AbstractionKind::Lambda, n, r),
-  "∀" <n:Name> "," <r:ArrowChain1> => Formula::name_abstraction(AbstractionKind::ForAll, n, r),
-  //<antecedent:ApplyChain1> "->" <level:FormulaIndivisibleLeft> <consequent:ArrowChain1> => Formula::implies([<>])),
+Arrow: (AbstractionKind, String) = {
+  <n:Name> "=>" => (AbstractionKind::Lambda, n),
+  "∀" <n:Name> "," => (AbstractionKind::ForAll, n),
+  //<antecedent:ApplyChain> "->" <level:FormulaIndivisibleLeft> <consequent:ArrowChain> => Formula::implies([<>])),
 }
 
-Name: String = r#"[a-zA-Z0-9_]+|"[a-zA-Z ]*""# => <>.to_string();
+ArrowChain: ArrowChain = {
+  //ApplyChain => ArrowChain::Formula(<>),
+  //ApplyChain2,
+  //FormulaIndivisible, //FormulaIndivisibleLeft,
+
+  Arrow => ArrowChain(<>, None),
+  <c:ArrowChain> <a:Arrow> => ArrowChain(a, Some(Box::new(c))),
+}
+
+Name: String = r#"[a-zA-Z0-9_]+|"([a-zA-Z ]*)""# => <>.to_string();

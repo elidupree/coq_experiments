@@ -2,11 +2,10 @@ use crate::display::{
     DisplayItem, DisplayItemSequence, WithUnsplittablePrefix, WithUnsplittableSuffix,
 };
 use crate::introspective_calculus::{
-    AbstractionKind, Atom, Formula, FormulaValue, RWMFormula, RawFormula,
+    AbstractionKind, Atom, Formula, FormulaValue, RWMFormula, RawFormula, Substitutions,
 };
 use itertools::Itertools;
 use live_prop_test::live_prop_test;
-use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
 pub struct FormulaAsShorthand<'a>(&'a Formula);
@@ -108,15 +107,20 @@ impl Formula {
                     )),
                 ],
             }),
-            FormulaValue::Pair(children) => Box::new(DisplayItemSequence {
+            FormulaValue::Tuple(children) => Box::new(DisplayItemSequence {
                 always_parens: true,
-                items: vec![
-                    Box::new(WithUnsplittableSuffix::new(
-                        ",",
-                        children[0].to_display_item(true),
-                    )),
-                    children[1].to_display_item(true),
-                ],
+                items: children
+                    .iter()
+                    .enumerate()
+                    .map(|(i, child)| {
+                        let unmarked = child.to_display_item(true);
+                        if i + 1 < children.len() || children.len() <= 1 {
+                            Box::new(WithUnsplittableSuffix::new(",", unmarked))
+                        } else {
+                            unmarked
+                        }
+                    })
+                    .collect(),
             }),
             FormulaValue::NameAbstraction(kind, name, body) => {
                 let mut chain_members = vec![(kind, name)];
@@ -186,7 +190,7 @@ impl Display for RawFormula {
     }
 }
 
-pub fn format_substitutions(substitutions: &HashMap<String, RWMFormula>) -> String {
+pub fn format_substitutions(substitutions: &Substitutions) -> String {
     format!(
         "{{ {} }}",
         substitutions

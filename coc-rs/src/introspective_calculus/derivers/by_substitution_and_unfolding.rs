@@ -1,5 +1,5 @@
 use crate::introspective_calculus::derivers::{IncrementalDeriver, IncrementalDeriverWorkResult};
-use crate::introspective_calculus::inference::Inference;
+use crate::introspective_calculus::inference::ProvenInference;
 use crate::introspective_calculus::{RWMFormula, RWMFormulaValue};
 use crate::{ic, substitutions};
 use live_prop_test::live_prop_test;
@@ -8,7 +8,7 @@ use std::iter::zip;
 
 enum FormulaEqualityInfo {
     RepresentativeOfClass,
-    ProvenEqualToOtherFormulaCloserToRepresentativeBy(Inference),
+    ProvenEqualToOtherFormulaCloserToRepresentativeBy(ProvenInference),
 }
 
 enum GoalTruthPairInfo {
@@ -36,14 +36,17 @@ pub struct DeriveBySubstitutionAndUnfolding {
 struct KnownTruths {
     available_premises: Vec<RWMFormula>,
     // inferences starting from the premises
-    truths: Vec<Inference>,
+    truths: Vec<ProvenInference>,
     equalities: HashMap<RWMFormula, FormulaEqualityInfo>,
 }
 
 #[live_prop_test]
 impl KnownTruths {
     // path of formulas (containing `formula`) and path of inferences that is 1 shorter
-    fn path_to_representative(&self, formula: RWMFormula) -> (Vec<RWMFormula>, Vec<Inference>) {
+    fn path_to_representative(
+        &self,
+        formula: RWMFormula,
+    ) -> (Vec<RWMFormula>, Vec<ProvenInference>) {
         let mut formulas = vec![formula.clone()];
         let mut running_formula = formula;
 
@@ -53,7 +56,7 @@ impl KnownTruths {
         )) = self.equalities.get(&running_formula)
         {
             running_formula = inference
-                .conclusion()
+                .conclusion
                 .other_eq_side(&running_formula)
                 .unwrap();
             formulas.push(running_formula.clone());
@@ -62,13 +65,20 @@ impl KnownTruths {
         (formulas, inferences)
     }
 
-    fn try_pair(&self, truth: Inference, goal: RWMFormula) -> Result<Inference, GoalTruthPairInfo> {
-        if let Some(proof) = self.known_equality_proof([truth.conclusion().clone(), goal.clone()]) {
-            let c = Inference::substitute_whole_formula()
-                .specialize(&substitutions!("A" := truth.conclusion(), "B" := goal));
-            return Ok(
-                Inference::chain(self.available_premises.clone(), vec![proof, truth], c).unwrap(),
-            );
+    fn try_pair(
+        &self,
+        truth: ProvenInference,
+        goal: RWMFormula,
+    ) -> Result<ProvenInference, GoalTruthPairInfo> {
+        if let Some(proof) = self.known_equality_proof([truth.conclusion.clone(), goal.clone()]) {
+            let c = ProvenInference::substitute_whole_formula()
+                .specialize(&substitutions!("A" := truth.conclusion, "B" := goal));
+            return Ok(ProvenInference::chain(
+                self.available_premises.clone(),
+                vec![proof, truth],
+                c,
+            )
+            .unwrap());
         }
 
         Err(GoalTruthPairInfo::WasntEqualLastTimeWeChecked {
@@ -77,45 +87,48 @@ impl KnownTruths {
     }
 
     #[live_prop_test(
-        postcondition = "result.as_ref().map_or(true, |r| r.conclusion().as_eq_sides().unwrap() == old(formulas.clone()))"
+        postcondition = "result.as_ref().map_or(true, |r| r.conclusion.as_eq_sides().unwrap() == old(formulas.clone()))"
     )]
-    fn known_equality_proof(&self, formulas: [RWMFormula; 2]) -> Option<Inference> {
+    fn known_equality_proof(&self, formulas: [RWMFormula; 2]) -> Option<ProvenInference> {
         let paths = formulas.clone().map(|f| self.path_to_representative(f));
         let representatives = paths.each_ref().map(|(f, _i)| f.last().unwrap());
         if representatives[0] == representatives[1] {
             // TODO maybe: make this more efficient by popping shared tail from paths
-            let mut proof = Inference::derive_by(
+            let mut proof = ProvenInference::derive_by(
                 "eq_refl",
                 &[],
                 &ic!({ formulas[0] } = { formulas[0] }).to_rwm(),
             )
             .unwrap();
-            proof = Inference::chain(self.available_premises.clone(), vec![], proof).unwrap();
-            let mut extend_proof_with = |mut inference: Inference| {
+            proof = ProvenInference::chain(self.available_premises.clone(), vec![], proof).unwrap();
+            let mut extend_proof_with = |mut inference: ProvenInference| {
                 // println!("{} with {}", proof, inference);
-                let [a, b] = proof.conclusion().as_eq_sides().unwrap();
-                let [c, d] = inference.conclusion().as_eq_sides().unwrap();
+                let [a, b] = proof.conclusion.as_eq_sides().unwrap();
+                let [c, d] = inference.conclusion.as_eq_sides().unwrap();
                 if b == d {
                     // println!("flipping {}", inference);
-                    let i2 = Inference::derive_by(
+                    let i2 = ProvenInference::derive_by(
                         "eq_sym",
-                        &[inference.conclusion()],
+                        &[&inference.conclusion],
                         &ic!(d = c).to_rwm(),
                     )
                     .unwrap();
-                    inference =
-                        Inference::chain(self.available_premises.clone(), vec![inference], i2)
-                            .unwrap();
+                    inference = ProvenInference::chain(
+                        self.available_premises.clone(),
+                        vec![inference],
+                        i2,
+                    )
+                    .unwrap();
                 }
-                let [_c, d] = inference.conclusion().as_eq_sides().unwrap();
-                let i3 = Inference::derive_by(
+                let [_c, d] = inference.conclusion.as_eq_sides().unwrap();
+                let i3 = ProvenInference::derive_by(
                     "eq_trans",
-                    &[proof.conclusion(), inference.conclusion()],
+                    &[&proof.conclusion, &inference.conclusion],
                     &ic!(a = d).to_rwm(),
                 )
                 .unwrap();
                 // println!("{proof}, {inference}");
-                proof = Inference::chain(
+                proof = ProvenInference::chain(
                     self.available_premises.clone(),
                     vec![proof.clone(), inference],
                     i3,
@@ -139,14 +152,14 @@ impl KnownTruths {
         {
             if let Some(il) = self.known_equality_proof([al.clone(), bl.clone()]) {
                 if let Some(ir) = self.known_equality_proof([ar.clone(), br.clone()]) {
-                    let conclusion_provider = Inference::derive_by(
+                    let conclusion_provider = ProvenInference::derive_by(
                         "compatibility_both",
-                        &[&il.conclusion(), ir.conclusion()],
+                        &[&il.conclusion, &ir.conclusion],
                         &ic!((al ar) = (bl br)).to_rwm(),
                     )
                     .unwrap();
                     return Some(
-                        Inference::chain(
+                        ProvenInference::chain(
                             self.available_premises.clone(),
                             vec![il, ir],
                             conclusion_provider,
@@ -160,10 +173,10 @@ impl KnownTruths {
         None
     }
 
-    fn proven(&mut self, proof: Inference) {
-        assert_eq!(proof.premises(), &self.available_premises);
+    fn proven(&mut self, proof: ProvenInference) {
+        assert_eq!(proof.premises, self.available_premises);
         self.truths.push(proof.clone());
-        let Some(sides) = proof.conclusion().as_eq_sides() else {
+        let Some(sides) = proof.conclusion.as_eq_sides() else {
             return;
         };
 
@@ -225,12 +238,12 @@ impl IncrementalDeriver for DeriveBySubstitutionAndUnfolding {
         );
     }
 
-    fn goal_got_proven(&mut self, proof: Inference) {
-        if self.unfolding_visited.insert(proof.conclusion().clone()) {
+    fn goal_got_proven(&mut self, proof: ProvenInference) {
+        if self.unfolding_visited.insert(proof.conclusion.clone()) {
             self.unfolding_heads
-                .push_front((proof.conclusion().clone(), 0));
+                .push_front((proof.conclusion.clone(), 0));
         }
-        self.unsolved_goals.remove(proof.conclusion());
+        self.unsolved_goals.remove(&proof.conclusion);
         self.known_truths.proven(proof);
     }
 
@@ -238,13 +251,13 @@ impl IncrementalDeriver for DeriveBySubstitutionAndUnfolding {
         if let Some((head, steps)) = self.unfolding_heads.pop_front() {
             if steps < 100 {
                 if let Some(inference) = head.unfold_any_one_subformula_equality_inference() {
-                    let [a, b] = inference.conclusion().as_eq_sides().unwrap();
+                    let [a, b] = inference.conclusion.as_eq_sides().unwrap();
                     assert_eq!(a, head);
                     if self.unfolding_visited.insert(b.clone()) {
                         self.unfolding_heads.push_back((b, steps + 1));
                     }
                     self.known_truths.proven(
-                        Inference::chain(
+                        ProvenInference::chain(
                             self.known_truths.available_premises.clone(),
                             vec![],
                             inference,

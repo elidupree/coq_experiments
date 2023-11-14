@@ -1,0 +1,10 @@
+
+# |- (l=r) is a rule, with l,r raw
+# we want the internalization, which is
+# |- (id=id) = ((l,)=(r,))
+
+P1. (l=r)
+
+1. (x=>(x,))l = (x=>(x,))r  [P1, by compatibility left]
+2. (l,) = (r,)              [1, by unfolding]
+3. (id=id) = ((l,)=(r,))    [2, by true_equals_intro]

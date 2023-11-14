@@ -1,0 +1,16 @@
+# equality:
+"symmetry" := (A = B) |- (B = A)
+"transitivity" := (A=B), (B=C) |- (A=C)
+
+# unfolding:
+"definition of const" := |- (const A B) = A
+"definition of fuse" := |- (fuse A B C) = (A C) (B C)
+
+# subformula substitution:
+"substitute in LHS" := (A = B) |- (A C = B C)
+"substitute in RHS" := (A = B) |- (C A = C B)
+
+# equality forms of some inferences that are already true, for bootstrapping
+"symmetry equality" := |- (A = B) = (B = A)
+"singleton" := |- (A = B) = ((A,) = (B,))
+"pair eq sym" := |- ((A, B) = (C, D)) = ((B, A) = (D, C))

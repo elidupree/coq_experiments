@@ -1,0 +1,5 @@
+P1. (A=B)
+
+1. (id=id) = (A=A)   [by tautologies_equal]
+2. (A=A) = (A=B)     [P1, by compatibility right]
+3. (id=id) = (A=B)   [1, 2, by transitivity]

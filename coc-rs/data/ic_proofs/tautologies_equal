@@ -1,0 +1,9 @@
+1. True    [by eq_refl]
+2. ((B,)=(B,)) = ((B,(const A)B)=(B,(const A)B))  [by internal compatibility right]
+3. ((B,)=(B,)) = ((B,A)=(B,A))   [by unfolding]
+4. ((A,)=(A,)) = ((A,(const B)A)=(A,(const B)A))  [by internal compatibility right]
+3. ((A,)=(A,)) = ((A,B)=(A,B))   [by unfolding]
+. ((B,A)=(B,A)) = ((A,B)=(A,B)) [by pair_eq_sym]
+. (A=A) = ((A,)=(A,))
+. (B=B) = ((B,)=(B,))
+. (A=A) = (B=B)  [by a bunch of transitivity]

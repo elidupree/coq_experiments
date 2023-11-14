@@ -2,17 +2,23 @@
 #"contraction" := (A & A) = A
 #"symmetry of and" := (A & B) = (B & A)
 #"associativity of and" := ((A & B) & C) = (A & (B & C))
+#"transitivity of equals" := ((A = B) & (B = C)) -> (A = C)
+
 "symmetry of equals" := (A = B) = (B = A)
-"transitivity of equals" := ((A = B) & (B = C)) -> (A = C)
-"specialization" := (A = B) -> (A C = B C)
+
+"singleton" := (A = B) = ((A,) = (B,))
 "pair eq sym" := ((A, B) = (C, D)) = ((B, A) = (D, C))
+
+#"specialization" := (A = B) -> (A C = B C)
 #"specialization" := (A = B) = ((x => x A (A C)) = (x => x B (B C)))
 
+#"const under binding" := (x => const (A x) (B x)) = A
+#"fuse under binding" := (x => fuse (A x) (B x) (C x)) = (x => (A x)(C x)((B x)(C x)))
+
 #"definition of const" := const A B = A
-"const under binding" := (x => const (A x) (B x)) = A
 #"definition of fuse" := fuse A B C = (A C)(B C)
-"fuse under binding" := (x => fuse (A x) (B x) (C x)) = (x => (A x)(C x)((B x)(C x)))
-"ignore second binding" := (const (const A)) = (fuse (const (const A)))
-"function extensionality" := (A = B) = ∀x, ((A x) = (B x))
-"pair extensionality" := ((A, B) = (C, D)) = ((A = C) & (B = D))
+
+#"ignore second binding" := (const (const A)) = (fuse (const (const A)))
+#"function extensionality" := (A = B) = ∀x, ((A x) = (B x))
+#"pair extensionality" := ((A, B) = (C, D)) = ((A = C) & (B = D))
 #"indistinguishability" := (A = B) = ((x => x A) = (x => x B))

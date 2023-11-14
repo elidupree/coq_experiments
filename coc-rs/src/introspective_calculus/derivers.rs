@@ -1,6 +1,7 @@
 use crate::introspective_calculus::derivers::by_specializing_a_proven_inference::DeriveBySpecializing;
 use crate::introspective_calculus::derivers::by_substitution_and_unfolding::DeriveBySubstitutionAndUnfolding;
-use crate::introspective_calculus::inference::{Inference, ProofLine, ALL_SINGLE_RULES};
+use crate::introspective_calculus::inference::{ProofLine, ProvenInference};
+use crate::introspective_calculus::rules::RULES;
 use crate::introspective_calculus::{Formula, RWMFormula, RawFormula};
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
@@ -13,14 +14,14 @@ pub mod by_substitution_and_unfolding;
 pub enum IncrementalDeriverWorkResult {
     NothingToDoRightNow,
     StillWorking,
-    DiscoveredInference(Inference),
+    DiscoveredInference(ProvenInference),
 }
 
 pub trait IncrementalDeriver: Send + Sync {
     // fn new(premises: Vec<RWMFormula>) -> Self;
     fn description(&self) -> String;
     fn add_goal(&mut self, goal: RWMFormula);
-    fn goal_got_proven(&mut self, proof: Inference);
+    fn goal_got_proven(&mut self, proof: ProvenInference);
     fn do_some_work(&mut self) -> IncrementalDeriverWorkResult;
 }
 
@@ -32,7 +33,7 @@ pub struct TrackedDeriver {
 pub struct SearchFromPremisesEnvironment {
     premises: Vec<RWMFormula>,
     goals: HashSet<RWMFormula>,
-    known_truths: HashMap<RWMFormula, Inference>,
+    known_truths: HashMap<RWMFormula, ProvenInference>,
     derivers: Vec<TrackedDeriver>,
 }
 
@@ -44,11 +45,11 @@ impl SearchFromPremisesEnvironment {
         let known_truths = premises
             .iter()
             .enumerate()
-            .map(|(i, p)| (p.clone(), Inference::premise(premises.clone(), i)))
+            .map(|(i, p)| (p.clone(), ProvenInference::premise(premises.clone(), i)))
             .chain(
                 axioms
                     .into_iter()
-                    .map(|a| (a.to_rwm(), Inference::axiom(premises.clone(), a))),
+                    .map(|a| (a.to_rwm(), ProvenInference::axiom(premises.clone(), a))),
             )
             .collect();
         SearchFromPremisesEnvironment {
@@ -90,16 +91,16 @@ impl SearchFromPremisesEnvironment {
                     let deriver_description = deriver.deriver.description();
                     let existing = self
                         .known_truths
-                        .insert(inference.conclusion().clone(), inference.clone());
+                        .insert(inference.conclusion.clone(), inference.clone());
                     // println!("...discovered {inference}");
                     let mut problems = Vec::new();
-                    if inference.premises() != self.premises {
+                    if inference.premises != self.premises {
                         problems.push("* That has the wrong premises!".to_string());
                     }
                     if existing.is_some() {
                         problems.push("* That was already known!".to_string());
                     }
-                    if !self.goals.contains(inference.conclusion()) {
+                    if !self.goals.contains(&inference.conclusion) {
                         problems.push("* That wasn't a goal!".to_string());
                         format!(
                             "* That wasn't a goal! Goals are:\n{}",
@@ -146,7 +147,7 @@ pub trait SearchLineTrait {
     fn is_premise(&self) -> bool;
     fn is_axiom(&self) -> bool;
     fn is_conclusion(&self) -> bool;
-    fn proven(&mut self, inference: Inference);
+    fn proven(&mut self, inference: ProvenInference);
 }
 
 pub struct PrettyLine {
@@ -155,7 +156,7 @@ pub struct PrettyLine {
     pub is_premise: bool,
     pub is_axiom: bool,
     pub is_conclusion: bool,
-    pub proof: Option<Inference>,
+    pub proof: Option<ProvenInference>,
 }
 
 impl SearchLineTrait for PrettyLine {
@@ -175,7 +176,7 @@ impl SearchLineTrait for PrettyLine {
         self.is_conclusion
     }
 
-    fn proven(&mut self, inference: Inference) {
+    fn proven(&mut self, inference: ProvenInference) {
         self.proof = Some(inference)
     }
 }
@@ -217,9 +218,9 @@ impl<SearchKey: Eq + Hash + Clone, Line: SearchLineTrait> SearchManyEnvironment<
             .filter_map(|f| f.to_raw())
             .collect();
         let mut environment = SearchFromPremisesEnvironment::new(premises.clone(), axioms);
-        for (_name, inference) in &*ALL_SINGLE_RULES {
+        for (_name, rule) in &*RULES {
             environment.add_deriver(Box::new(DeriveBySpecializing::new(
-                inference.clone(),
+                rule.internal_proof().clone(),
                 premises.clone(),
             )))
         }
@@ -254,7 +255,7 @@ impl<SearchKey: Eq + Hash + Clone, Line: SearchLineTrait> SearchManyEnvironment<
                 IncrementalDeriverWorkResult::DiscoveredInference(inference) => {
                     let mut is_conclusion = false;
                     for line in &mut search.lines {
-                        if &line.formula() == inference.conclusion() {
+                        if line.formula() == inference.conclusion {
                             line.proven(inference.clone());
                             if line.is_conclusion() {
                                 is_conclusion = true

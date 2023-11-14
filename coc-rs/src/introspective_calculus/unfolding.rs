@@ -1,4 +1,4 @@
-use crate::introspective_calculus::inference::Inference;
+use crate::introspective_calculus::inference::ProvenInference;
 use crate::introspective_calculus::{RWMFormula, RWMFormulaValue};
 use crate::{ic, match_ic, substitutions};
 use live_prop_test::live_prop_test;
@@ -12,15 +12,15 @@ impl RWMFormula {
             _ => false,
         })
     }
-    pub fn unfold_here_equality_inference(&self) -> Option<Inference> {
+    pub fn unfold_here_equality_inference(&self) -> Option<ProvenInference> {
         match_ic!(self, {
             ((const a) b) => {
-                Some(Inference::definition_of_const().specialize (
+                Some(ProvenInference::definition_of_const().specialize (
                     &substitutions!("A" := a, "B" := b)
                 ))
             },
             (((fuse a) b) c) => {
-                Some(Inference::definition_of_fuse().specialize (
+                Some(ProvenInference::definition_of_fuse().specialize (
                     &substitutions!("A" := a, "B" := b, "C" := c)
                 ))
             },
@@ -28,30 +28,30 @@ impl RWMFormula {
         })
     }
     #[live_prop_test(precondition = "self.is_raw_with_metavariables()")]
-    pub fn unfold_any_one_subformula_equality_inference(&self) -> Option<Inference> {
+    pub fn unfold_any_one_subformula_equality_inference(&self) -> Option<ProvenInference> {
         if let Some(result) = self.unfold_here_equality_inference() {
             return Some(result);
         }
         if let RWMFormulaValue::Apply([l, r]) = self.value() {
             if let Some(subresult) = l.unfold_any_one_subformula_equality_inference() {
-                let [a, b] = subresult.conclusion().as_eq_sides().unwrap();
+                let [a, b] = subresult.conclusion.as_eq_sides().unwrap();
                 return Some(
-                    Inference::chain(
+                    ProvenInference::chain(
                         vec![],
                         vec![subresult.clone()],
-                        Inference::compatibility_left()
+                        ProvenInference::compatibility_left()
                             .specialize(&substitutions!("A" := a, "B" := b, "C" := r)),
                     )
                     .unwrap(),
                 );
             }
             if let Some(subresult) = r.unfold_any_one_subformula_equality_inference() {
-                let [a, b] = subresult.conclusion().as_eq_sides().unwrap();
+                let [a, b] = subresult.conclusion.as_eq_sides().unwrap();
                 return Some(
-                    Inference::chain(
+                    ProvenInference::chain(
                         vec![],
                         vec![subresult.clone()],
-                        Inference::compatibility_right()
+                        ProvenInference::compatibility_right()
                             .specialize(&substitutions!("A" := a, "B" := b, "C" := l)),
                     )
                     .unwrap(),
@@ -62,25 +62,22 @@ impl RWMFormula {
         None
     }
 
-    pub fn unfold_up_to_n_subformulas_equality_inference(&self, n: usize) -> Inference {
-        let mut inference =
-            Inference::derive_by("eq_refl", &[], &ic!(self = self).to_rwm()).unwrap();
+    pub fn unfold_up_to_n_subformulas_equality_inference(&self, n: usize) -> ProvenInference {
+        let mut inference = ProvenInference::eq_refl(self);
         for _ in 0..n {
             let Some(new_inference) = inference
-                .conclusion()
+                .conclusion
                 .unfold_any_one_subformula_equality_inference()
             else {
                 return inference;
             };
-            let [_a, b] = new_inference.conclusion().as_eq_sides().unwrap();
-            let joining_inference = Inference::derive_by(
+            let [_a, b] = new_inference.conclusion.as_eq_sides().unwrap();
+            inference = ProvenInference::derive_chain(
                 "eq_trans",
-                &[inference.conclusion(), new_inference.conclusion()],
+                vec![inference, new_inference],
                 &ic!(self = b).to_rwm(),
             )
             .unwrap();
-            inference = Inference::chain(vec![], vec![inference, new_inference], joining_inference)
-                .unwrap();
         }
         inference
     }
@@ -157,6 +154,14 @@ impl RWMFormula {
     //         _ => None,
     //     })
     // }
+}
+
+impl ProvenInference {
+    pub fn fold_equivalence(a: RWMFormula, b: RWMFormula) -> Option<ProvenInference> {
+        let ap = a.unfold_up_to_n_subformulas_equality_inference(100);
+        let bp = b.unfold_up_to_n_subformulas_equality_inference(100);
+        ProvenInference::eq_trans_chain(&[ap, bp.flip_conclusion()]).ok()
+    }
 }
 
 // pub struct FancyUnfoldResults {
