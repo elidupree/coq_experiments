@@ -389,7 +389,7 @@ impl ProvenInference {
     }
 
     #[live_prop_test(
-        postcondition = "result.inference.conclusion == self.inference.tuple_equality_form().formula()"
+        postcondition = "result.premises.is_empty() && result.inference.conclusion == self.inference.tuple_equality_form().formula()"
     )]
     pub fn tuple_equality_form(&self) -> ProvenInference {
         match &self.derivation {
@@ -427,6 +427,18 @@ impl ProvenInference {
                     .map(|i| i.tuple_equality_form())
                     .collect();
                 let conclusion_provider = conclusion_provider.tuple_equality_form();
+                let [p, pc] = self.inference.tuple_equality_form();
+                let mut form = p;
+                let mut result = ProvenInference::eq_refl(&p.formula());
+                for premise_provider in premise_providers {
+                    let (pp, e) = form.extend_with_conclusion(premise_provider);
+                    form = pp;
+                    result = ProvenInference::eq_trans_chain(&[result, e]).unwrap();
+                }
+                let (ppc, e) = form.extend_with_conclusion(conclusion_provider);
+                form = ppc;
+                result = ProvenInference::eq_trans_chain(&[result, e]).unwrap();
+
                 ProvenInference::chain(new.premises, premise_providers, conclusion_provider)
                     .unwrap()
             }

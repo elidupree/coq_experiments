@@ -4,6 +4,7 @@ use crate::{ic, substitutions};
 use std::collections::BTreeMap;
 use std::iter::zip;
 
+#[derive(Clone)]
 pub enum TupleEqualityTree<F> {
     Element([F; 2]),
     Tuple(Vec<TupleEqualityTree<F>>),
@@ -113,6 +114,21 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
         })
     }
 
+    /// return self |- other
+    pub fn external_extraction(&self, other: &TupleEqualityTree<F>) -> Option<ProvenInference> {
+        let extractor = self.extractor(other)?;
+        let a = self.sides();
+        let [c0, c1] = other.sides();
+        let b = a.map(|s| ic!(s extractor));
+        let b_eq_c = [
+            ProvenInference::fold_equivalence(c0.into(), b[0].to_rwm())?,
+            ProvenInference::fold_equivalence(b[1].to_rwm(), c1.into())?,
+        ];
+        let a_to_b = ProvenInference::compatibility_left()
+            .specialize(&substitutions! {"A":=a[0],"B":=a[1], "C":=extractor});
+        // then use eq_trans on b_eq_c halves
+    }
+
     /// return |- ((self,) = (self, other))
     pub fn internal_extraction(&self, other: &TupleEqualityTree<F>) -> Option<ProvenInference> {
         let extractor = self.extractor(other)?;
@@ -131,18 +147,45 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
         // and then trans it with b_eq_c to get a=c
     }
 
-    /// return self |- other
-    pub fn external_extraction(&self, other: &TupleEqualityTree<F>) -> Option<ProvenInference> {
-        let extractor = self.extractor(other)?;
-        let a = self.sides();
-        let [c0, c1] = other.sides();
-        let b = a.map(|s| ic!(s extractor));
-        let b_eq_c = [
-            ProvenInference::fold_equivalence(c0.into(), b[0].to_rwm())?,
-            ProvenInference::fold_equivalence(b[1].to_rwm(), c1.into())?,
-        ];
-        let a_to_b = ProvenInference::compatibility_left()
-            .specialize(&substitutions! {"A":=a[0],"B":=a[1], "C":=extractor});
-        // then use eq_trans on b_eq_c halves
+    pub fn equivalence(&self, other: &TupleEqualityTree<F>) -> Option<ProvenInference> {
+        let a = self.internal_extraction(other)?;
+        let b = other.internal_extraction(self)?;
+        Some(
+            ProvenInference::derive_chain(
+                "mutual_implication_gives_equality",
+                vec![a, b],
+                &ic!({ self.formula() } = { other.formula() }).to_rwm(),
+            )
+            .unwrap(),
+        )
+    }
+
+    pub fn extend_with_conclusion(
+        &self,
+        proof: ProvenInference,
+    ) -> Option<(TupleEqualityTree<F>, ProvenInference)> {
+        let [p, pc] = proof.conclusion.as_eq_sides().unwrap();
+        let TupleEqualityTree::Tuple([.., c]) = p else {
+            return None;
+        };
+        let TupleEqualityTree::Tuple(mut children_with_c) = self.clone() else {
+            return None;
+        };
+        children_with_c.push(c);
+        let with_p = TupleEqualityTree::Tuple(vec![self.clone(), p]);
+        let with_pc = TupleEqualityTree::Tuple(vec![self.clone(), pc]);
+        let with_c = TupleEqualityTree::Tuple(children_with_c);
+        let e1 = self.equivalence(&with_p)?;
+        let e2 = ProvenInference::derive_chain(
+            "substitute_in_conjunction_right",
+            vec![proof.clone()],
+            &ic!(with_p = with_pc).to_rwm(),
+        )
+        .unwrap();
+        let e3 = with_pc.equivalence(&with_c)?;
+        Some((
+            with_c,
+            ProvenInference::eq_trans_chain(&[e1, e2, e3]).unwrap(),
+        ))
     }
 }

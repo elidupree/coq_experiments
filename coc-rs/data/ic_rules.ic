@@ -9,6 +9,7 @@
 # subformula substitution:
 "substitute in LHS" := (A = B) |- (A C = B C)
 "substitute in RHS" := (A = B) |- (C A = C B)
+"substitute in conjunction" := (A=B) = (C=D) |- ((A,E)=(B,F)) = ((C,E)=(D,F))
 
 # equality forms of some inferences that are already true, for bootstrapping
 "symmetry equality" := |- (A = B) = (B = A)
