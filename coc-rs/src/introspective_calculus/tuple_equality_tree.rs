@@ -33,6 +33,13 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
         let [a, b] = self.sides();
         ic!(a = b).try_into().ok().unwrap()
     }
+    // pub fn from_formula(formula: Formula) ->Option<TupleEqualityTree<F>> {
+    //     let [a, b] = formula.as_eq_sides()?;
+    //
+    //     match (a.value(), b.value()) {
+    //         (FormulaValue::Tuple(_), FormulaValue::Tuple(_)
+    //     }
+    // }
     pub fn to_rwm(&self) -> TupleEqualityTree<RWMFormula> {
         match self {
             TupleEqualityTree::Element(sides) => {
@@ -160,6 +167,24 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
         )
     }
 
+    pub fn equivalence_with_substitution(
+        &self,
+        other: &TupleEqualityTree<F>,
+        substitution: ProvenInference,
+    ) -> Option<ProvenInference> {
+        let [a, b] = substitution.conclusion.as_eq_sides().unwrap();
+        let with_a = TupleEqualityTree::Tuple(vec![a, self.clone()]);
+        let with_b = TupleEqualityTree::Tuple(vec![b, self.clone()]);
+        let e1 = self.equivalence(&with_a)?;
+        let e2 = ProvenInference::derive_chain(
+            "substitute in conjunction",
+            vec![substitution],
+            &ic!({ with_a.formula() } = { with_b.formula() }).to_rwm(),
+        )
+        .unwrap();
+        let e3 = with_b.equivalence(other)?;
+    }
+
     pub fn extend_with_conclusion(
         &self,
         proof: ProvenInference,
@@ -168,13 +193,13 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
         let TupleEqualityTree::Tuple([.., c]) = p else {
             return None;
         };
-        let TupleEqualityTree::Tuple(mut children_with_c) = self.clone() else {
+        let TupleEqualityTree::Tuple(mut children_to_add_c_to) = self.clone() else {
             return None;
         };
-        children_with_c.push(c);
+        children_to_add_c_to.push(c);
         let with_p = TupleEqualityTree::Tuple(vec![self.clone(), p]);
         let with_pc = TupleEqualityTree::Tuple(vec![self.clone(), pc]);
-        let with_c = TupleEqualityTree::Tuple(children_with_c);
+        let with_c = TupleEqualityTree::Tuple(children_to_add_c_to);
         let e1 = self.equivalence(&with_p)?;
         let e2 = ProvenInference::derive_chain(
             "substitute_in_conjunction_right",

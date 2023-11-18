@@ -438,11 +438,13 @@ impl ProvenInference {
                 let (ppc, e) = form.extend_with_conclusion(conclusion_provider);
                 form = ppc;
                 result = ProvenInference::eq_trans_chain(&[result, e]).unwrap();
-
-                ProvenInference::chain(new.premises, premise_providers, conclusion_provider)
-                    .unwrap()
+                result = p.equivalence_with_substitution(&pc, result).unwrap();
+                result
             }
         }
+    }
+    pub fn tuple_intro(premises: Vec<RWMFormula>) -> ProvenInference{
+        ProvenInference::
     }
 
     pub fn metavariable_to_argument(&self, variable_name: &str) -> ProvenInference {
