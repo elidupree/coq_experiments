@@ -2,7 +2,7 @@ use crate::display::{
     DisplayItem, DisplayItemSequence, WithUnsplittablePrefix, WithUnsplittableSuffix,
 };
 use crate::introspective_calculus::{
-    AbstractionKind, Atom, Formula, FormulaValue, RWMFormula, RawFormula, Substitutions,
+    AbstractionKind, Atom, Formula, FormulaValue, RWMFormula, RawFormula, Substitutions, ID,
 };
 use itertools::Itertools;
 use live_prop_test::live_prop_test;
@@ -152,6 +152,9 @@ impl Formula {
                 })
             }
             FormulaValue::Apply(children) => {
+                if self.to_rwm() == ID.to_rwm() {
+                    return ID.to_display_item(parenthesize_abstractions);
+                }
                 let mut chain_members = vec![&children[1]];
                 let mut walker = &children[0];
                 while let FormulaValue::Apply(cx) = &walker.value {
