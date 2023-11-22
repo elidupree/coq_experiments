@@ -12,6 +12,8 @@
 "substitute in conjunction" := (A=B) = (C=D) |- ((A,E)=(B,F)) = ((C,E)=(D,F))
 
 # equality forms of some inferences that are already true, for bootstrapping
-"symmetry equality" := |- (A = B) = (B = A)
-"singleton" := |- (A = B) = ((A,) = (B,))
-"pair eq sym" := |- ((A, B) = (C, D)) = ((B, A) = (D, C))
+"const under bindings" := |- (A => B => (const A B)) = (A => B => A)
+"fuse under bindings" := |- (A => B => C => (fuse A B C)) = (A => B => C => (A C) (B C))
+"symmetry equality" := |- (A => B => (A = B)) = (A => B => (B = A))
+"singleton" := |- (A => B => (A = B)) = (A => B => ((A,) = (B,)))
+"pair eq sym" := |- (A => B => C => D => ((A, B) = (C, D))) = (A => B => C => D => ((B, A) = (D, C)))

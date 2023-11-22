@@ -40,17 +40,17 @@ pub struct SearchFromPremisesEnvironment {
 impl SearchFromPremisesEnvironment {
     pub fn new(
         premises: Vec<RWMFormula>,
-        axioms: Vec<RawFormula>,
+        _axioms: Vec<RawFormula>,
     ) -> SearchFromPremisesEnvironment {
         let known_truths = premises
             .iter()
             .enumerate()
             .map(|(i, p)| (p.clone(), ProvenInference::premise(premises.clone(), i)))
-            .chain(
-                axioms
-                    .into_iter()
-                    .map(|a| (a.to_rwm(), ProvenInference::axiom(premises.clone(), a))),
-            )
+            // .chain(
+            //     axioms
+            //         .into_iter()
+            //         .map(|a| (a.to_rwm(), ProvenInference::axiom(premises.clone(), a))),
+            // )
             .collect();
         SearchFromPremisesEnvironment {
             premises,

@@ -6,14 +6,21 @@
 
 "symmetry of equals" := (A = B) = (B = A)
 
-"singleton" := (A = B) = ((A,) = (B,))
+#"singleton" := (A = B) = ((A,) = (B,))
 "pair eq sym" := ((A, B) = (C, D)) = ((B, A) = (D, C))
 
 #"specialization" := (A = B) -> (A C = B C)
 #"specialization" := (A = B) = ((x => x A (A C)) = (x => x B (B C)))
 
+
+# extensionality stuff:
+"const under binding" := (fuse (fuse (const const) A) B) = A
+"fuse under binding" := (fuse (fuse (fuse (const fuse) A) B) C) = fuse (fuse A C) (fuse B C)
 #"const under binding" := (x => const (A x) (B x)) = A
 #"fuse under binding" := (x => fuse (A x) (B x) (C x)) = (x => (A x)(C x)((B x)(C x)))
+"combine const" := (fuse (const A) (const B)) = const (A B)
+"eta reduction or something" := (fuse (const A) id) = A
+
 
 #"definition of const" := const A B = A
 #"definition of fuse" := fuse A B C = (A C)(B C)

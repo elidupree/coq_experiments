@@ -48,7 +48,7 @@ FormulaIndivisible: Formula = {
 
   "(" <first:Formula> "," <mut rest:CommaSeparated<Formula>> ")" => {
     rest.insert(0, first);
-    Formula::tuple(vec![a, rest])
+    Formula::tuple(rest)
   },
 }
 

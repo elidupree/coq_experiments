@@ -6,6 +6,7 @@ pub mod logic;
 pub mod derivers;
 pub mod inference;
 pub mod rules;
+pub mod specialization;
 pub mod tuple_equality_tree;
 pub mod unfolding;
 
@@ -24,7 +25,7 @@ use std::fmt::Debug;
 // use crate::metavariable::Environment;
 // use live_prop_test::{live_prop_test, lpt_assert_eq};
 // use regex::{Captures, Regex};
-use arrayvec::ArrayVec;
+// use arrayvec::ArrayVec;
 use itertools::Itertools;
 use live_prop_test::live_prop_test;
 use serde::{Deserialize, Serialize};
@@ -840,12 +841,12 @@ impl RWMFormula {
     }
 
     pub fn simplest_function_equality_form(&self) -> RWMFormula {
-        if let Ok([a, b]) = ic!("a" & "b").matches(self) {
+        if let Ok([a, b]) = ic!("a" & "b").matches::<[RWMFormula; 2]>(self) {
             let [al, ar] = a.simplest_function_equality_form().as_eq_sides().unwrap();
             let [bl, br] = b.simplest_function_equality_form().as_eq_sides().unwrap();
             ic!((al, bl) = (ar, br)).to_rwm()
-        } else if let Ok([a]) = ic!((const True) = "a").matches(self) {
-            let varname = format!("FEF_Placeholder_{}", a.free_variables().len());
+        } else if let Ok([a]) = ic!((const True) = "a").matches::<[RWMFormula; 1]>(self) {
+            let varname = format!("FEF_Placeholder_{}", a.free_metavariables().len());
             let mut variableized = ic!(a {&varname}).to_rwm();
             variableized.unfold_until(1000);
             let [al, ar] = variableized

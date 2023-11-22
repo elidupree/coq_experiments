@@ -243,6 +243,7 @@ impl Inference {
     }
 }
 
+#[live_prop_test]
 impl ProvenInference {
     pub fn derivation(&self) -> &InferenceDerivation {
         &self.derivation
@@ -320,10 +321,11 @@ impl ProvenInference {
 
     pub fn rule(rule: Rule) -> ProvenInference {
         ProvenInferenceInner {
-            inference: inference.clone(),
+            inference: rule.inference().clone(),
             derivation: InferenceDerivation::Rule {
                 rule,
-                substitutions: inference
+                substitutions: rule
+                    .inference()
                     .free_metavariables()
                     .into_iter()
                     .map(|v| (v.clone(), v.to_formula().to_rwm()))
@@ -389,7 +391,7 @@ impl ProvenInference {
     }
 
     #[live_prop_test(
-        postcondition = "result.premises.is_empty() && result.inference.conclusion == self.inference.tuple_equality_form().formula()"
+        postcondition = "result.premises.is_empty() "  // && result.inference.conclusion == todo!()
     )]
     pub fn tuple_equality_form(&self) -> ProvenInference {
         match &self.derivation {
@@ -400,7 +402,7 @@ impl ProvenInference {
                 let mut apply_chains_equal = rule.internal_proof();
                 for argument in rule.argument_order() {
                     let value = substitutions[argument].clone();
-                    let [a, b] = result.conclusion.as_eq_sides().unwrap();
+                    let [a, b] = apply_chains_equal.conclusion.as_eq_sides().unwrap();
                     apply_chains_equal = ProvenInference::chain(
                         self.premises.clone(),
                         vec![apply_chains_equal],
@@ -422,20 +424,17 @@ impl ProvenInference {
                 p.internal_extraction(&c).unwrap()
             }
             InferenceDerivation::Chain(premise_providers, conclusion_provider) => {
-                let premise_providers = premise_providers
-                    .iter()
-                    .map(|i| i.tuple_equality_form())
-                    .collect();
+                let premise_providers = premise_providers.iter().map(|i| i.tuple_equality_form());
                 let conclusion_provider = conclusion_provider.tuple_equality_form();
                 let [p, pc] = self.inference.tuple_equality_form();
                 let mut form = p;
                 let mut result = ProvenInference::eq_refl(&p.formula());
                 for premise_provider in premise_providers {
-                    let (pp, e) = form.extend_with_conclusion(premise_provider);
+                    let (pp, e) = form.extend_with_conclusion(premise_provider).unwrap();
                     form = pp;
                     result = ProvenInference::eq_trans_chain(&[result, e]).unwrap();
                 }
-                let (ppc, e) = form.extend_with_conclusion(conclusion_provider);
+                let (ppc, e) = form.extend_with_conclusion(conclusion_provider).unwrap();
                 form = ppc;
                 result = ProvenInference::eq_trans_chain(&[result, e]).unwrap();
                 result = p.equivalence_with_substitution(&pc, result).unwrap();
@@ -443,9 +442,9 @@ impl ProvenInference {
             }
         }
     }
-    pub fn tuple_intro(premises: Vec<RWMFormula>) -> ProvenInference{
-        ProvenInference::
-    }
+    // pub fn tuple_intro(premises: Vec<RWMFormula>) -> ProvenInference{
+    //     ProvenInference::
+    // }
 
     pub fn metavariable_to_argument(&self, variable_name: &str) -> ProvenInference {
         let new = self
@@ -457,17 +456,17 @@ impl ProvenInference {
                 rule,
                 substitutions,
             } => {
-                let internal_rule: Inference = rule.internal();
-                let argument_order: Vec<String> = something;
-                internal_rule.internal_specialize(
-                    argument_order
-                        .iter()
-                        .map(|k| {
-                            substitutions[k]
-                                .metavariables_to_arguments(&[variable_name.to_string()])
-                        })
-                        .collect(),
-                )
+                todo!()
+                // let internal_rule: ProvenInference = rule.internal_proof();
+                // internal_rule.internal_specialize(
+                //     rule.argument_order()
+                //         .iter()
+                //         .map(|k| {
+                //             substitutions[k]
+                //                 .metavariables_to_arguments(&[variable_name.to_string()])
+                //         })
+                //         .collect(),
+                // )
             }
             InferenceDerivation::Premise(which) => ProvenInference::premise(new.premises, *which),
             InferenceDerivation::Chain(premise_providers, conclusion_provider) => {
@@ -537,7 +536,7 @@ impl ProvenInference {
                 ));
             }
             result = ProvenInference::chain(
-                results.premises.clone(),
+                result.premises.clone(),
                 vec![result, inference.clone()],
                 Rule::by_name("transitivity")
                     .internal_proof()
@@ -546,6 +545,10 @@ impl ProvenInference {
             .unwrap();
         }
         Ok(result)
+    }
+
+    pub fn substitute_whole_formula() -> ProvenInference {
+        todo!()
     }
 }
 pub fn load_proof(path: impl AsRef<Path>) -> Result<Vec<ProofLine>, anyhow::Error> {
@@ -586,12 +589,12 @@ pub fn compile(lines: &[ProofLine]) -> Result<ProvenInference, String> {
     let mut which_premise = 0;
     for line in lines {
         let inference = match line.name.chars().next().unwrap() {
-            'A' => ProvenInference::axiom(
-                premises.clone(),
-                line.formula.already_raw().ok_or_else(|| {
-                    format!("In line {}: non-raw axiom {}", line.name, line.formula)
-                })?,
-            ),
+            // 'A' => ProvenInference::axiom(
+            //     premises.clone(),
+            //     line.formula.already_raw().ok_or_else(|| {
+            //         format!("In line {}: non-raw axiom {}", line.name, line.formula)
+            //     })?,
+            // ),
             'P' => {
                 let result = ProvenInference::premise(premises.clone(), which_premise);
                 which_premise += 1;

@@ -10,6 +10,10 @@ pub enum TupleEqualityTree<F> {
     Tuple(Vec<TupleEqualityTree<F>>),
 }
 
+fn todo<T>() -> T {
+    todo!()
+}
+
 impl<F: FormulaTrait> TupleEqualityTree<F> {
     pub fn sides(&self) -> [F; 2] {
         match self {
@@ -43,7 +47,7 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
     pub fn to_rwm(&self) -> TupleEqualityTree<RWMFormula> {
         match self {
             TupleEqualityTree::Element(sides) => {
-                TupleEqualityTree::Element(sides.each_ref().map(|side| side.into()))
+                TupleEqualityTree::Element(sides.each_ref().map(|side| side.to_formula().to_rwm()))
             }
             TupleEqualityTree::Tuple(children) => {
                 TupleEqualityTree::Tuple(children.iter().map(|c| c.to_rwm()).collect())
@@ -73,7 +77,7 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
                 continuation(context)
             }
             TupleEqualityTree::Tuple(children) => {
-                let names: Vec<String> = children.iter().map().collect();
+                let names: Vec<String> = children.iter().map(|c| todo()).collect();
                 for (name, child) in zip(&names, children) {
                     context.insert(name.clone(), child.sides());
                 }
@@ -133,7 +137,8 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
         ];
         let a_to_b = ProvenInference::compatibility_left()
             .specialize(&substitutions! {"A":=a[0],"B":=a[1], "C":=extractor});
-        // then use eq_trans on b_eq_c halves
+        let [b_eq_c_0, b_eq_c_1] = b_eq_c;
+        Some(ProvenInference::eq_trans_chain(&[b_eq_c_0, a_to_b, b_eq_c_1]).unwrap())
     }
 
     /// return |- ((self,) = (self, other))
@@ -141,10 +146,10 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
         let extractor = self.extractor(other)?;
         let self_sides = self.sides();
         let other_sides = other.sides();
-        let a = self.formula();
+        //let a = self.formula();
         let a_sides = self_sides.map(|s| ic!((s,)));
         let b_sides = self_sides.map(|s| ic!((s, (s extractor))));
-        let a = ic!({ a_sides[0] } = { a_sides[1] }).to_rwm();
+        //let a = ic!({ a_sides[0] } = { a_sides[1] }).to_rwm();
         let b = ic!({ b_sides[0] } = { b_sides[1] }).to_rwm();
         let c =
             ic!(({ self_sides[0] }, { other_sides[0] }) = ({ self_sides[1] }, { other_sides[1] }))
@@ -152,6 +157,7 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
         let b_eq_c = ProvenInference::fold_equivalence(b, c)?;
         // derive a=b by internal specialization
         // and then trans it with b_eq_c to get a=c
+        Some(ProvenInference::eq_trans_chain(&[b_eq_c]).unwrap())
     }
 
     pub fn equivalence(&self, other: &TupleEqualityTree<F>) -> Option<ProvenInference> {
@@ -172,7 +178,8 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
         other: &TupleEqualityTree<F>,
         substitution: ProvenInference,
     ) -> Option<ProvenInference> {
-        let [a, b] = substitution.conclusion.as_eq_sides().unwrap();
+        let [_a, _b] = substitution.conclusion.as_eq_sides().unwrap();
+        let [a, b]: [TupleEqualityTree<F>; 2] = todo();
         let with_a = TupleEqualityTree::Tuple(vec![a, self.clone()]);
         let with_b = TupleEqualityTree::Tuple(vec![b, self.clone()]);
         let e1 = self.equivalence(&with_a)?;
@@ -183,16 +190,19 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
         )
         .unwrap();
         let e3 = with_b.equivalence(other)?;
+        Some(ProvenInference::eq_trans_chain(&[e1, e2, e3]).unwrap())
     }
 
     pub fn extend_with_conclusion(
         &self,
         proof: ProvenInference,
     ) -> Option<(TupleEqualityTree<F>, ProvenInference)> {
-        let [p, pc] = proof.conclusion.as_eq_sides().unwrap();
-        let TupleEqualityTree::Tuple([.., c]) = p else {
+        let [_p, _pc] = proof.conclusion.as_eq_sides().unwrap();
+        let [p, pc]: [TupleEqualityTree<F>; 2] = todo();
+        let TupleEqualityTree::Tuple(pc_children) = pc else {
             return None;
         };
+        let c = pc_children.last().unwrap().clone();
         let TupleEqualityTree::Tuple(mut children_to_add_c_to) = self.clone() else {
             return None;
         };
@@ -204,7 +214,7 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
         let e2 = ProvenInference::derive_chain(
             "substitute_in_conjunction_right",
             vec![proof.clone()],
-            &ic!(with_p = with_pc).to_rwm(),
+            &ic!({ with_p.formula() } = { with_pc.formula() }).to_rwm(),
         )
         .unwrap();
         let e3 = with_pc.equivalence(&with_c)?;

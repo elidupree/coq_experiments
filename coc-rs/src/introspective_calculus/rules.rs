@@ -41,7 +41,13 @@ impl Rule {
                     argument_order,
                 });
         versions
-            .min_by_key(|r| r.inference.tuple_equality_form().naive_size())
+            .min_by_key(|r| {
+                r.inference
+                    .tuple_equality_form()
+                    .map(|side| side.formula().naive_size())
+                    .iter()
+                    .sum::<usize>()
+            })
             .unwrap()
     }
     pub fn inference(&self) -> &Inference {
@@ -54,9 +60,11 @@ impl Rule {
         RULES.get(name).unwrap()
     }
     pub fn canonical_internalization(&self) -> RWMFormula {
-        self.inference
-            .tuple_equality_form()
-            .metavariables_to_arguments(&self.argument_order)
+        let [a, b] = self.inference.tuple_equality_form().map(|side| {
+            side.formula()
+                .metavariables_to_arguments(&self.argument_order)
+        });
+        ic!(a = b).to_rwm()
     }
     pub fn external_proof(&self) -> ProvenInference {
         // the type Rule guarantees that it only has the actual rules as constructible values, so we are allowed to use make_rule here
