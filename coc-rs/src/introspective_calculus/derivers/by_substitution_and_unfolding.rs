@@ -72,7 +72,7 @@ impl KnownTruths {
     ) -> Result<ProvenInference, GoalTruthPairInfo> {
         if let Some(proof) = self.known_equality_proof([truth.conclusion.clone(), goal.clone()]) {
             let c = ProvenInference::substitute_whole_formula()
-                .specialize(&substitutions!("A" := truth.conclusion, "B" := goal));
+                .specialize(&substitutions!("A" := &truth.conclusion, "B" := goal));
             return Ok(ProvenInference::chain(
                 self.available_premises.clone(),
                 vec![proof, truth],

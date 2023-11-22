@@ -218,7 +218,7 @@ impl<SearchKey: Eq + Hash + Clone, Line: SearchLineTrait> SearchManyEnvironment<
             .filter_map(|f| f.to_raw())
             .collect();
         let mut environment = SearchFromPremisesEnvironment::new(premises.clone(), axioms);
-        for (_name, rule) in &*RULES {
+        for rule in RULES.values() {
             environment.add_deriver(Box::new(DeriveBySpecializing::new(
                 rule.internal_proof().clone(),
                 premises.clone(),

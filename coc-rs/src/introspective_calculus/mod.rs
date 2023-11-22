@@ -382,6 +382,7 @@ fn rawness_of_rwm_formulas(formulas: &[RWMFormula]) -> FormulaRawness {
             FormulaRawness::Pretty { .. } => {
                 panic!()
             }
+            _ => {}
         }
     }
     result
@@ -548,16 +549,16 @@ impl FormulaWithMetadata {
         )
     }
 
-    pub fn children(&self) -> Vec<Formula> {
+    pub fn children(&self) -> Vec<&Formula> {
         match &self.value {
             FormulaValue::Atom(_) | FormulaValue::Metavariable(_) => Vec::new(),
             FormulaValue::Implies(f)
             | FormulaValue::Equals(f)
             | FormulaValue::And(f)
-            | FormulaValue::Apply(f) => f.to_vec(),
-            FormulaValue::NamedGlobal { value, .. } => vec![value.clone()],
-            FormulaValue::Tuple(children) => children.clone(),
-            FormulaValue::NameAbstraction(_kind, _name, body) => vec![body.clone()],
+            | FormulaValue::Apply(f) => f.iter().collect(),
+            FormulaValue::NamedGlobal { value, .. } => vec![value],
+            FormulaValue::Tuple(children) => children.iter().collect(),
+            FormulaValue::NameAbstraction(_kind, _name, body) => vec![body],
         }
     }
     // pub fn children_mut(&mut self) -> ArrayVec<&mut Formula, 3> {
@@ -906,7 +907,7 @@ impl Formula {
         1 + self
             .as_raw_with_metavariables()
             .children()
-            .iter()
+            .into_iter()
             .map(Formula::naive_size)
             .sum::<usize>()
     }
@@ -1005,7 +1006,7 @@ pub fn internalized_rules(original_rules: &[ExplicitRule]) -> Vec<ExplicitRule> 
                     result
                 });
             ExplicitRule {
-                name: format!("{}", rule.name),
+                name: format!("{}, internal", rule.name),
                 formula: versions.min_by_key(Formula::naive_size).unwrap(),
             }
 

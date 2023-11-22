@@ -2,6 +2,7 @@ use crate::introspective_calculus::rules::{Rule, RULES};
 use crate::introspective_calculus::tuple_equality_tree::TupleEqualityTree;
 use crate::introspective_calculus::{Formula, RawFormula, Substitutions, ToFormula};
 use crate::introspective_calculus::{ProofLineParser, RWMFormula};
+use crate::utils::todo;
 use crate::{ic, substitutions};
 use anyhow::{anyhow, Context};
 use arrayvec::ArrayVec;
@@ -210,7 +211,7 @@ impl Inference {
         PrettyInferenceInner {
             name: Default::default(),
             premises: self.premises.iter().map(Formula::from).collect(),
-            conclusion: self.conclusion.into(),
+            conclusion: self.conclusion.to_formula(),
         }
         .into()
     }
@@ -320,16 +321,17 @@ impl ProvenInference {
     // }
 
     pub fn rule(rule: Rule) -> ProvenInference {
+        let substitutions = rule
+            .inference()
+            .free_metavariables()
+            .into_iter()
+            .map(|v| (v.clone(), v.to_formula().to_rwm()))
+            .collect();
         ProvenInferenceInner {
             inference: rule.inference().clone(),
             derivation: InferenceDerivation::Rule {
                 rule,
-                substitutions: rule
-                    .inference()
-                    .free_metavariables()
-                    .into_iter()
-                    .map(|v| (v.clone(), v.to_formula().to_rwm()))
-                    .collect(),
+                substitutions,
             },
         }
         .into()
@@ -419,7 +421,7 @@ impl ProvenInference {
                 ProvenInference::eq_trans_chain(&[ac.flip_conclusion(), apply_chains_equal, bd])
                     .unwrap()
             }
-            InferenceDerivation::Premise(which) => {
+            InferenceDerivation::Premise(_which) => {
                 let [p, c] = self.inference.tuple_equality_form();
                 p.internal_extraction(&c).unwrap()
             }
@@ -427,15 +429,15 @@ impl ProvenInference {
                 let premise_providers = premise_providers.iter().map(|i| i.tuple_equality_form());
                 let conclusion_provider = conclusion_provider.tuple_equality_form();
                 let [p, pc] = self.inference.tuple_equality_form();
-                let mut form = p;
                 let mut result = ProvenInference::eq_refl(&p.formula());
+                let mut form = p.clone();
                 for premise_provider in premise_providers {
                     let (pp, e) = form.extend_with_conclusion(premise_provider).unwrap();
                     form = pp;
                     result = ProvenInference::eq_trans_chain(&[result, e]).unwrap();
                 }
-                let (ppc, e) = form.extend_with_conclusion(conclusion_provider).unwrap();
-                form = ppc;
+                let (_ppc, e) = form.extend_with_conclusion(conclusion_provider).unwrap();
+                //form = ppc;
                 result = ProvenInference::eq_trans_chain(&[result, e]).unwrap();
                 result = p.equivalence_with_substitution(&pc, result).unwrap();
                 result
@@ -456,7 +458,7 @@ impl ProvenInference {
                 rule,
                 substitutions,
             } => {
-                todo!()
+                todo((rule, substitutions))
                 // let internal_rule: ProvenInference = rule.internal_proof();
                 // internal_rule.internal_specialize(
                 //     rule.argument_order()
@@ -468,7 +470,9 @@ impl ProvenInference {
                 //         .collect(),
                 // )
             }
-            InferenceDerivation::Premise(which) => ProvenInference::premise(new.premises, *which),
+            InferenceDerivation::Premise(which) => {
+                ProvenInference::premise(new.premises.clone(), *which)
+            }
             InferenceDerivation::Chain(premise_providers, conclusion_provider) => {
                 let premise_providers = premise_providers
                     .iter()
@@ -476,7 +480,7 @@ impl ProvenInference {
                     .collect();
                 let conclusion_provider =
                     conclusion_provider.metavariable_to_argument(variable_name);
-                ProvenInference::chain(new.premises, premise_providers, conclusion_provider)
+                ProvenInference::chain(new.premises.clone(), premise_providers, conclusion_provider)
                     .unwrap()
             }
         }
@@ -522,8 +526,8 @@ impl ProvenInference {
         for inference in rest {
             if inference.premises != result.premises {
                 return Err(format!(
-                    "eq_trans_chain components have different premises",
-                    //result.premises, inference.premises
+                    "eq_trans_chain components have different premises: `{}`, `{}`",
+                    result, inference
                 ));
             }
             let [a, b1] = result.conclusion.as_eq_sides().unwrap();

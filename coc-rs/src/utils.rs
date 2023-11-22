@@ -14,3 +14,7 @@ pub fn write_json_file<P: AsRef<Path>, T: Serialize>(path: P, value: &T) -> anyh
         value,
     )?)
 }
+
+pub fn todo<T, U>(_arg: U) -> T {
+    todo!()
+}

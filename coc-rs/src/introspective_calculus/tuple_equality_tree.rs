@@ -1,5 +1,6 @@
 use crate::introspective_calculus::inference::ProvenInference;
 use crate::introspective_calculus::{Formula, FormulaTrait, FormulaValue, RWMFormula, ToFormula};
+use crate::utils::todo;
 use crate::{ic, substitutions};
 use std::collections::BTreeMap;
 use std::iter::zip;
@@ -8,10 +9,6 @@ use std::iter::zip;
 pub enum TupleEqualityTree<F> {
     Element([F; 2]),
     Tuple(Vec<TupleEqualityTree<F>>),
-}
-
-fn todo<T>() -> T {
-    todo!()
 }
 
 impl<F: FormulaTrait> TupleEqualityTree<F> {
@@ -68,8 +65,8 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
                     "we don't currently support unpacking singletons by themselves"
                 );
                 // now self_side_representation is already a variable containing this,
-                let FormulaValue::Metavariable(name) = self_side_representation.unwrap().value()
-                else {
+                let self_side_representation = self_side_representation.unwrap();
+                let FormulaValue::Metavariable(name) = self_side_representation.value() else {
                     panic!()
                 };
                 assert_eq!(context.get(name), Some(sides));
@@ -77,12 +74,14 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
                 continuation(context)
             }
             TupleEqualityTree::Tuple(children) => {
-                let names: Vec<String> = children.iter().map(|c| todo()).collect();
+                let names: Vec<String> = children.iter().map(todo).collect();
                 for (name, child) in zip(&names, children) {
                     context.insert(name.clone(), child.sides());
                 }
-                let mut continuation: Box<dyn FnOnce(BTreeMap<String, [F; 2]>) -> Option<Formula>> =
-                    Box::new(continuation);
+                #[allow(clippy::type_complexity)]
+                let mut continuation: Box<
+                    dyn FnOnce(BTreeMap<String, [F; 2]>) -> Option<Formula>,
+                > = Box::new(continuation);
                 for (name, child) in zip(&names, children).rev() {
                     let var = name.to_formula();
                     continuation =
@@ -130,13 +129,14 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
         let extractor = self.extractor(other)?;
         let a = self.sides();
         let [c0, c1] = other.sides();
-        let b = a.map(|s| ic!(s extractor));
+        let b = a.each_ref().map(|s| ic!(s extractor));
         let b_eq_c = [
             ProvenInference::fold_equivalence(c0.into(), b[0].to_rwm())?,
             ProvenInference::fold_equivalence(b[1].to_rwm(), c1.into())?,
         ];
+        let [a0, a1] = a;
         let a_to_b = ProvenInference::compatibility_left()
-            .specialize(&substitutions! {"A":=a[0],"B":=a[1], "C":=extractor});
+            .specialize(&substitutions! {"A":=a0,"B":=a1, "C":=extractor});
         let [b_eq_c_0, b_eq_c_1] = b_eq_c;
         Some(ProvenInference::eq_trans_chain(&[b_eq_c_0, a_to_b, b_eq_c_1]).unwrap())
     }
@@ -147,8 +147,8 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
         let self_sides = self.sides();
         let other_sides = other.sides();
         //let a = self.formula();
-        let a_sides = self_sides.map(|s| ic!((s,)));
-        let b_sides = self_sides.map(|s| ic!((s, (s extractor))));
+        // let a_sides = self_sides.each_ref().map(|s| ic!((s,)));
+        let b_sides = self_sides.each_ref().map(|s| ic!((s, (s extractor))));
         //let a = ic!({ a_sides[0] } = { a_sides[1] }).to_rwm();
         let b = ic!({ b_sides[0] } = { b_sides[1] }).to_rwm();
         let c =
@@ -178,8 +178,8 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
         other: &TupleEqualityTree<F>,
         substitution: ProvenInference,
     ) -> Option<ProvenInference> {
-        let [_a, _b] = substitution.conclusion.as_eq_sides().unwrap();
-        let [a, b]: [TupleEqualityTree<F>; 2] = todo();
+        let [a, b] = substitution.conclusion.as_eq_sides().unwrap();
+        let [a, b]: [TupleEqualityTree<F>; 2] = todo((a, b));
         let with_a = TupleEqualityTree::Tuple(vec![a, self.clone()]);
         let with_b = TupleEqualityTree::Tuple(vec![b, self.clone()]);
         let e1 = self.equivalence(&with_a)?;
@@ -197,9 +197,9 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
         &self,
         proof: ProvenInference,
     ) -> Option<(TupleEqualityTree<F>, ProvenInference)> {
-        let [_p, _pc] = proof.conclusion.as_eq_sides().unwrap();
-        let [p, pc]: [TupleEqualityTree<F>; 2] = todo();
-        let TupleEqualityTree::Tuple(pc_children) = pc else {
+        let [p, pc] = proof.conclusion.as_eq_sides().unwrap();
+        let [p, pc]: [TupleEqualityTree<F>; 2] = todo((p, pc));
+        let TupleEqualityTree::Tuple(pc_children) = &pc else {
             return None;
         };
         let c = pc_children.last().unwrap().clone();

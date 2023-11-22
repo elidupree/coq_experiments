@@ -22,7 +22,7 @@ pub static RULES: LazyLock<BTreeMap<String, Rule>> = LazyLock::new(|| {
     let mut file = BufReader::new(File::open("./data/ic_intrinsic_rules.ic").unwrap());
     lines(&mut file)
         .map(|l| match parser.parse(&l) {
-            Ok(a) => (a.name, Rule::new(a.to_rwm())),
+            Ok(a) => (a.name.clone(), Rule::new(a.to_rwm())),
             Err(e) => panic!("Got error `{e}` while parsing rule `{l}`"),
         })
         .collect()
@@ -37,7 +37,7 @@ impl Rule {
                 .into_iter()
                 .permutations(num_variables)
                 .map(|argument_order| Rule {
-                    inference,
+                    inference: inference.clone(),
                     argument_order,
                 });
         versions
