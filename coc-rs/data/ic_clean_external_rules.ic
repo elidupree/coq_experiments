@@ -1,0 +1,8 @@
+
+# unfolding:
+"definition of const" := |- (const A B) = A
+"definition of fuse" := |- (fuse A B C) = (A C) (B C)
+
+# subformula substitution:
+"substitute in LHS" := (A = B) |- (A C = B C)
+"substitute in RHS" := (A = B) |- (C A = C B)

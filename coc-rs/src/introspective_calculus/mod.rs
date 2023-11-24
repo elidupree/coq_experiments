@@ -5,6 +5,8 @@ pub mod logic;
 // pub mod prolog;
 pub mod derivers;
 pub mod inference;
+pub mod proof_hierarchy;
+pub mod raw_proofs;
 pub mod rules;
 pub mod specialization;
 pub mod tuple_equality_tree;

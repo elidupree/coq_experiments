@@ -1,54 +1,95 @@
 use coc_rs::ic;
 use coc_rs::introspective_calculus::{Formula, RWMFormula, RWMFormulaValue};
+use std::collections::BTreeSet;
 
 type Unfoldings<'a> = &'a [[Formula; 2]];
+#[derive(Eq, PartialEq, Default, Debug)]
+struct UnfoldingsUsed {
+    indices: BTreeSet<usize>,
+}
 
-fn unfold(f: RWMFormula, unfoldings: Unfoldings) -> RWMFormula {
-    for [from, to] in unfoldings {
+impl UnfoldingsUsed {
+    fn extend_with(&mut self, other: &UnfoldingsUsed) {
+        self.indices.extend(other.indices.iter().copied());
+    }
+}
+
+fn unfold(f: RWMFormula, unfoldings: Unfoldings) -> (RWMFormula, UnfoldingsUsed) {
+    for (index, [from, to]) in unfoldings.iter().enumerate() {
         if let Ok(substitutions) = from.to_rwm().substitutions_to_become(&f) {
-            return to.to_rwm().with_metavariables_replaced_rwm(&substitutions);
+            return (
+                to.to_rwm().with_metavariables_replaced_rwm(&substitutions),
+                UnfoldingsUsed {
+                    indices: [index].into_iter().collect(),
+                },
+            );
         }
     }
     if let RWMFormulaValue::Apply(c) = f.value() {
-        return Formula::apply(c.map(|c| unfold(c, unfoldings).into())).to_rwm();
+        let [(a, mut ua), (b, ub)] = c.map(|c| unfold(c, unfoldings));
+        ua.extend_with(&ub);
+        return (Formula::apply([a.into(), b.into()]).to_rwm(), ua);
     }
-    f
+    (f, UnfoldingsUsed::default())
 }
 
-fn unfold_lots(mut f: RWMFormula, unfoldings: Unfoldings) -> RWMFormula {
+fn unfold_lots(mut f: RWMFormula, unfoldings: Unfoldings) -> (RWMFormula, UnfoldingsUsed) {
+    let mut result_unf = UnfoldingsUsed::default();
     for _ in 0..100 {
-        let next = unfold(f.clone(), unfoldings);
+        let (next, unf) = unfold(f.clone(), unfoldings);
         if next == f {
-            return f;
+            break;
         }
+        result_unf.extend_with(&unf);
         f = next;
     }
-    f
+    (f, result_unf)
 }
 
-// enum CheckResult {}
+#[derive(Eq, PartialEq)]
+enum CheckResult {
+    DidntFinish,
+    IdenticalRebuild(UnfoldingsUsed),
+    DistinctRebuild(RWMFormula),
+}
 
-fn check(f: RWMFormula, unfoldings: Unfoldings) -> bool {
-    let result = unfold_lots(ic!(((((f "A") "B") "C") "D") "E").to_rwm(), unfoldings);
-    let next = unfold(result.clone(), unfoldings);
+impl CheckResult {
+    fn print(&self) {
+        match self {
+            CheckResult::DidntFinish => {
+                println!("Didn't finish")
+            }
+            CheckResult::IdenticalRebuild(u) => {
+                println!("Identical rebuild using unfoldings {:?}", u)
+            }
+            CheckResult::DistinctRebuild(r) => {
+                println!("Distinct rebuild, only got to {r}")
+            }
+        }
+    }
+}
+
+fn check(f: RWMFormula, unfoldings: Unfoldings) -> CheckResult {
+    let (result, _) = unfold_lots(ic!(((((f "A") "B") "C") "D") "E").to_rwm(), unfoldings);
+    let (next, _) = unfold(result.clone(), unfoldings);
     if next != result {
         // println!("Didn't finish: {f}");
-        return false;
+        return CheckResult::DidntFinish;
     }
 
     let rebuilt = ic!("A" => ("B" => ("C" => ("D" => ("E" => (result))))));
-    let ur = unfold_lots(rebuilt.to_rwm(), unfoldings);
+    let (ur, unf) = unfold_lots(rebuilt.to_rwm(), unfoldings);
     if ur != f {
         println!("{f} = {ur} = {rebuilt}");
-        true
+        CheckResult::DistinctRebuild(ur)
     } else {
-        false
+        CheckResult::IdenticalRebuild(unf)
     }
 }
 
 fn main() {
     let manual_tests = [
-        ic!(
+        ic!( "X" => ("Y" => (
             (
                 fuse
                 (
@@ -57,6 +98,7 @@ fn main() {
                 )
             )
             (fuse (const (fuse (const "Y"))))
+            ))
         ),
         ic!(((fuse ((fuse (const fuse)) (fuse (const (const "X"))))) (fuse id))),
         ic!(((fuse ((fuse (const fuse)) (const (const "X")))) (fuse id))),
@@ -80,6 +122,14 @@ fn main() {
             ic!(((fuse ((fuse (const fuse)) (fuse (const "A")))) (fuse id))),
             ic!(fuse (fuse "A")),
         ],
+        [
+            ic!((fuse ((fuse (const fuse))(fuse (const "A")))) (fuse (const "B"))),
+            ic!(fuse (const ((fuse "A") "B"))),
+        ],
+        [
+            ic!("A"=>("B"=>("X"=>("Y"=>("Z"=>(("A" (("X" "Y") "Z")) ("B" (("X" "Y") "Z")))))))),
+            ic!("A"=>("B"=>("X"=>("Y"=>("Z"=>((((fuse "A") "B") (("X" "Y") "Z")))))))),
+        ],
     ];
     let unfoldings = &already_discovered_unfoldings;
     let already_discovered_redundant = [
@@ -96,6 +146,7 @@ fn main() {
                 ic!(((((side "G") "H") "I") "J") "K").to_rwm(),
                 &basic_unfoldings,
             )
+            .0
         });
         assert_eq!(a, b);
     }
@@ -103,18 +154,16 @@ fn main() {
         println!(
             "{}\n=\n{}\n=\n{}",
             t,
-            unfold_lots(t.to_rwm(), unfoldings),
-            unfold_lots(ic!(((((t "A") "B") "C") "D") "E").to_rwm(), unfoldings)
+            unfold_lots(t.to_rwm(), unfoldings).0,
+            unfold_lots(ic!(((((t "A") "B") "C") "D") "E").to_rwm(), unfoldings).0
         );
     }
-    dbg!(check(
+    check(
         ic!(fuse (const (fuse (const ((fuse "X") "Y"))))).to_rwm(),
         unfoldings,
-    ));
-    dbg!(check(
-        ic!(fuse (const (fuse (const ("X"))))).to_rwm(),
-        unfoldings
-    ));
+    )
+    .print();
+    check(ic!(fuse (const (fuse (const ("X"))))).to_rwm(), unfoldings).print();
 
     let mut formulas_by_size: Vec<Vec<RWMFormula>> = vec![
         vec![],
@@ -147,12 +196,15 @@ fn main() {
             }
         }
         new_formulas.retain(|f| {
-            unfold(f.clone(), unfoldings) == *f
+            unfold(f.clone(), unfoldings).0 == *f
                 && already_discovered_redundant.iter().all(|r| r != f)
         });
         for f in &new_formulas {
             assert_eq!(f.naive_size(), size_of_new_formulas * 2 - 1, "{}", f);
-            if check(f.clone(), unfoldings) {
+            if matches!(
+                check(f.clone(), unfoldings),
+                CheckResult::DistinctRebuild(_)
+            ) {
                 num_found += 1;
                 if num_found > 5 {
                     break;
