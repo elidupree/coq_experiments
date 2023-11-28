@@ -1,12 +1,11 @@
-use crate::display::DisplayItem;
 use crate::ic;
 use crate::introspective_calculus::inference::Inference;
-use crate::introspective_calculus::{RWMFormula, RawFormula, Substitutions};
+use crate::introspective_calculus::{InferenceParser, RWMFormula, RawFormula, Substitutions};
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
-use std::io::BufReader;
-use std::iter::zip;
+use std::io::{BufRead, BufReader};
+use std::iter::{once, zip};
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 
@@ -78,6 +77,12 @@ impl Deref for CleanExternalRuleInstance {
     }
 }
 
+fn lines(file: &mut impl BufRead) -> impl Iterator<Item = String> + '_ {
+    file.lines()
+        .map(Result::unwrap)
+        .filter(|l| !l.chars().all(char::is_whitespace) && !l.starts_with('#'))
+}
+
 pub static CLEAN_EXTERNAL_RULES: LazyLock<BTreeMap<String, CleanExternalRule>> =
     LazyLock::new(|| {
         let parser = InferenceParser::new();
@@ -91,9 +96,10 @@ pub static CLEAN_EXTERNAL_RULES: LazyLock<BTreeMap<String, CleanExternalRule>> =
     });
 
 pub static ALL_EXTERNAL_RULES: LazyLock<BTreeMap<String, ExternalRule>> = LazyLock::new(|| {
-    let mut result = CLEAN_EXTERNAL_RULES
+    let mut result: BTreeMap<String, ExternalRule> = CLEAN_EXTERNAL_RULES
         .iter()
-        .map(|(key, value)| (key.clone(), value.0.clone()));
+        .map(|(key, value)| (key.clone(), value.0.clone()))
+        .collect();
     result.insert(
         "conclusion equivalence".to_string(),
         ExternalRule(Inference::new(
@@ -109,7 +115,7 @@ impl ExternalRule {
         for variable in self.free_metavariables() {
             if !substitutions.contains_key(&variable) {
                 panic!(
-                        "Tried to specialize external rule {rule} without specifying variable {variable}"
+                        "Tried to specialize external rule {self} without specifying variable {variable}"
                     )
             }
         }
@@ -128,8 +134,10 @@ impl CleanExternalRule {
 
 impl ExternalRuleInstance {
     pub fn assume_raw(self) -> ExternalRuleRawInstance {
-        assert_eq!(self.
-            .free_metavariables(), vec![]
+        assert!(
+            self.premises()
+                .chain(once(self.conclusion()))
+                .all(|f| f.is_raw()),
             "assumed non-raw instance was raw"
         );
         ExternalRuleRawInstance(self)
@@ -169,13 +177,14 @@ impl ExternalRuleRawInstance {
 }
 impl RawProof {
     pub fn new(
-        rule_instance: ExternalRuleInstance,
+        rule_instance: ExternalRuleRawInstance,
         premises: Vec<RawProof>,
     ) -> Result<RawProof, String> {
-        let required_premises: Vec<RWMFormula> = rule_instance.premises().collect();
+        let required_premises: Vec<RawFormula> = rule_instance.premises().collect();
         if premises.len() != required_premises.len() {
             return Err(format!(
-                "Wrong number of premises to rule `{rule}` (need {}, got {})",
+                "Wrong number of premises to rule `{}` (need {}, got {})",
+                rule_instance.rule,
                 required_premises.len(),
                 premises.len(),
             ));
@@ -183,7 +192,8 @@ impl RawProof {
         for (required, provided) in zip(&required_premises, &premises) {
             if provided.conclusion() != *required {
                 return Err(format!(
-                    "Incorrect premise provided to rule {rule} (need {required}, got {})",
+                    "Incorrect premise provided to rule {} (need {required}, got {})",
+                    rule_instance.rule,
                     provided.conclusion(),
                 ));
             }
@@ -192,5 +202,9 @@ impl RawProof {
             rule_instance,
             premises,
         })))
+    }
+
+    pub fn conclusion(&self) -> RawFormula {
+        self.rule_instance.conclusion()
     }
 }

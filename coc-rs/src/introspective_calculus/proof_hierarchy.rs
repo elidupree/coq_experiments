@@ -1,6 +1,8 @@
-use crate::introspective_calculus::inference::Inference;
-use crate::introspective_calculus::raw_proofs::{CleanExternalRuleInstance, ExternalRuleInstance};
-use crate::introspective_calculus::{RWMFormula, RawFormula};
+use crate::ic;
+use crate::introspective_calculus::raw_proofs::{CleanExternalRuleInstance, RawProof};
+use crate::introspective_calculus::{Formula, RWMFormula, RawFormula, ToFormula};
+use crate::utils::todo;
+use hash_capsule::HashCapsule;
 use std::cmp::max;
 use std::collections::BTreeSet;
 use std::iter::zip;
@@ -8,38 +10,40 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 // later to be extended to ordinals
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
-pub struct PremiseLevel(PremiseLevelInner);
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+pub struct WeaknessLevel(HashCapsule<WeaknessLevelInner>);
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
-enum PremiseLevelInner {
-    NoPremiseUsed,
-    Finite(u32),
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+enum WeaknessLevelInner {
+    Zero,
+    Successor(WeaknessLevel),
 }
 
 pub struct FullySpecifiedInference {
-    pub inference: Inference,
+    // yes Some<[]> is different from None
+    pub premises: Option<Vec<RWMFormula>>,
+    pub conclusion: RWMFormula,
     pub argument_order: Vec<String>,
-    pub level: Level,
+    pub weakness_level: WeaknessLevel,
 }
 
 #[derive(Clone)]
 pub struct Proof(Arc<ProofInner>);
 
 pub struct ProofInner {
-    what_was_proved: WhatWasProved,
     derivation: ProofDerivation,
+    what_was_proved_cache: WhatWasProved,
 }
 
 pub enum ProofDerivation {
-    Premise(usize),
+    Premise(RWMFormula),
     Rule(ProofByRule),
     EqualConclusion(ProofByEqualConclusion),
 }
 
 pub struct WhatWasProved {
     pub premises: BTreeSet<RWMFormula>,
-    pub level: PremiseLevel,
+    pub weakness_level: WeaknessLevel,
     pub conclusion: RWMFormula,
 }
 
@@ -64,37 +68,89 @@ impl From<ProofInner> for Proof {
         Proof(Arc::new(value))
     }
 }
+impl Deref for ProofInner {
+    type Target = WhatWasProved;
 
-impl PremiseLevel {
+    fn deref(&self) -> &Self::Target {
+        &self.what_was_proved_cache
+    }
+}
+
+impl WeaknessLevel {
     pub fn no_premise_used() -> Self {
-        PremiseLevel(PremiseLevelInner::NoPremiseUsed)
+        WeaknessLevel(HashCapsule::new(WeaknessLevelInner::Zero))
     }
     pub fn premise() -> Self {
-        PremiseLevel(PremiseLevelInner::Finite(0))
+        Self::no_premise_used() //.successor()
     }
     pub fn successor(&self) -> Self {
-        match self.0 {
-            PremiseLevelInner::NoPremiseUsed => PremiseLevel(PremiseLevelInner::NoPremiseUsed),
-            PremiseLevelInner::Finite(l) => PremiseLevel(PremiseLevelInner::Finite(l + 1)),
+        WeaknessLevel(HashCapsule::new(WeaknessLevelInner::Successor(
+            self.clone(),
+        )))
+    }
+    pub fn successors_of_members(&self) -> Self {
+        match *(self.0) {
+            WeaknessLevelInner::Successor(_) => self.successor(),
+            _ => self.clone(),
+        }
+    }
+
+    pub fn wrap_proposition(&self, proposition: Formula) -> Formula {
+        match *(self.0) {
+            WeaknessLevelInner::Zero => proposition,
+            WeaknessLevelInner::Successor(n) => {
+                ic!(True = { n.wrap_proposition(proposition) })
+            }
         }
     }
 }
 
 impl FullySpecifiedInference {
-    pub fn internal_form(&self) -> RawFormula {}
+    pub fn internal_form(&self) -> RawFormula {
+        let curry = |f: &Formula| f.metavariables_to_arguments(&self.argument_order);
+        let conclusion = self
+            .weakness_level
+            .wrap_proposition(self.conclusion.to_formula());
+        if let Some(premises) = &self.premises {
+            let internal_premises =
+                Formula::true_and_and(&premises.iter().map(|f| f.to_formula()).collect::<Vec<_>>())
+                    .unwrap();
+            let p: Formula = curry(&internal_premises);
+            let pc: Formula = curry(&Formula::and([internal_premises, conclusion]).unwrap());
+            ic!(p = pc).already_raw().unwrap()
+        } else {
+            let [c1, c2] = conclusion.as_eq_sides().unwrap().each_ref().map(curry);
+            ic!(c1 = c2).already_raw().unwrap()
+        }
+    }
+}
+impl WhatWasProved {
+    pub fn proves(&self, inference: &FullySpecifiedInference) -> bool {
+        // can prove something weaker or with more premises
+        self.premises.iter().all(|provided| {
+            inference
+                .premises
+                .iter()
+                .flatten()
+                .any(|required| required == provided)
+        }) && inference.conclusion == self.conclusion
+            && inference.weakness_level >= self.weakness_level
+    }
 }
 
 impl Proof {
-    pub fn by_premise(premises: Vec<RWMFormula>, which: usize) -> Proof {
-        assert!(premises.get(which).is_some());
+    pub fn by_premise(premise: RWMFormula) -> Proof {
         ProofInner {
-            premises,
-            derivation: ProofDerivation::Premise(which),
+            derivation: ProofDerivation::Premise(premise.clone()),
+            what_was_proved_cache: WhatWasProved {
+                premises: [premise.clone()].into_iter().collect(),
+                weakness_level: WeaknessLevel::premise(),
+                conclusion: premise,
+            },
         }
         .into()
     }
     pub fn by_rule(
-        premises: Vec<RWMFormula>,
         rule_premise_providers: Vec<Proof>,
         rule_instance: CleanExternalRuleInstance,
     ) -> Proof {
@@ -106,28 +162,35 @@ impl Proof {
         );
         for (provider, required) in zip(&rule_premise_providers, required) {
             assert_eq!(
-                provider.premises, premises,
-                "premises don't match in by_rule"
-            );
-            assert_eq!(
-                provider.conclusion(),
-                required,
+                provider.conclusion, required,
                 "conclusion doesn't match premise in by_rule"
             );
         }
+        let what_was_proved_cache = WhatWasProved {
+            premises: rule_premise_providers
+                .iter()
+                .flat_map(|provider| provider.premises.iter().cloned())
+                .collect(),
+            weakness_level: rule_premise_providers
+                .iter()
+                .map(|p| p.weakness_level)
+                .max()
+                .unwrap_or(WeaknessLevel::no_premise_used()),
+            conclusion: rule_instance.conclusion(),
+        };
         ProofInner {
-            premises,
             derivation: ProofDerivation::Rule(ProofByRule {
                 rule_instance,
                 premises: rule_premise_providers,
             }),
+            what_was_proved_cache,
         }
         .into()
     }
     pub fn by_equal_conclusion(source_proof: Proof, equivalence: Proof) -> Proof {
         assert_eq!(
-            source_proof.conclusion(),
-            equivalence.conclusion().as_eq_sides().unwrap()[0],
+            source_proof.conclusion,
+            equivalence.conclusion.as_eq_sides().unwrap()[0],
             "proofs don't match in by_equal_conclusion"
         );
         assert_eq!(
@@ -135,39 +198,93 @@ impl Proof {
             "premises don't match in by_equal_conclusion"
         );
 
+        let what_was_proved_cache = WhatWasProved {
+            premises: [&source_proof, &equivalence]
+                .into_iter()
+                .flat_map(|provider| provider.premises.iter().cloned())
+                .collect(),
+            weakness_level: max(
+                source_proof.weakness_level.clone(),
+                if equivalence.premises.is_empty() {
+                    WeaknessLevel::no_premise_used()
+                } else {
+                    equivalence.weakness_level.successor()
+                },
+            ),
+            conclusion: equivalence.conclusion.as_eq_sides().unwrap()[1].clone(),
+        };
         ProofInner {
-            premises: source_proof.premises.clone(),
             derivation: ProofDerivation::EqualConclusion(ProofByEqualConclusion {
                 source_proof,
                 equivalence,
             }),
+            what_was_proved_cache,
         }
         .into()
     }
 
-    pub fn premise_level(&self) -> PremiseLevel {
-        match &self.derivation {
-            ProofDerivation::Premise(_) => PremiseLevel::premise(),
-            ProofDerivation::Rule(proof) => proof
-                .premises
-                .iter()
-                .map(Proof::premise_level)
-                .max()
-                .unwrap_or(PremiseLevel::no_premise_used()),
-            ProofDerivation::EqualConclusion(proof) => max(
-                proof.source_proof.premise_level(),
-                proof.equivalence.premise_level().successor(),
-            ),
-        }
+    pub fn what_was_proved(&self) -> &WhatWasProved {
+        &self.what_was_proved_cache
     }
 
-    pub fn conclusion(&self) -> RWMFormula {
-        match &self.derivation {
-            ProofDerivation::Premise(which) => self.premises[which].clone(),
-            ProofDerivation::Rule(proof) => proof.rule_instance.conclusion(),
-            ProofDerivation::EqualConclusion(proof) => {
-                proof.equivalence.conclusion().as_eq_sides().unwrap()[1].clone()
-            }
+    pub fn internalize(&self, inference: &FullySpecifiedInference) -> RawProof {
+        assert!(self.what_was_proved().proves(inference));
+        let result: RawProof = match self.derivation {
+            ProofDerivation::Premise(p) => {}
+            ProofDerivation::Rule(proof) => proof.internalize(inference),
+            ProofDerivation::EqualConclusion(proof) => proof.internalize(inference),
+        };
+        if inference.weakness_level > todo(()) {
+            result = result.weaken(inference.weakness_level - todo(()));
+        }
+        assert_eq!(result.conclusion(), inference.internal_form());
+        result
+    }
+}
+
+impl ProofByRule {
+    pub fn internalize(&self, inference: &FullySpecifiedInference) -> RawProof {
+        let internal_premise_providers = self.premises.iter().map(|p| {
+            p.internalize(&FullySpecifiedInference {
+                premises: inference.premises.clone(),
+                conclusion: p.conclusion.clone(),
+                argument_order: inference.argument_order.clone(),
+                weakness_level: inference.weakness_level.clone(),
+            })
+        });
+        self.rule_instance.weaken(inference.weakness_level)
+    }
+}
+
+impl ProofByEqualConclusion {
+    pub fn internalize(&self, inference: &FullySpecifiedInference) -> RawProof {
+        let internal_source_proof = self.source_proof.internalize(&FullySpecifiedInference {
+            premises: inference.premises.clone(),
+            conclusion: self.source_proof.conclusion.clone(),
+            argument_order: inference.argument_order.clone(),
+            weakness_level: inference.weakness_level.clone(),
+        });
+        if self.equivalence.premises.is_empty() {
+            let internal_equivalence = self.equivalence.internalize(&FullySpecifiedInference {
+                premises: None,
+                conclusion: self.equivalence.conclusion.clone(),
+                argument_order: inference.argument_order.clone(),
+                weakness_level: WeaknessLevel::no_premise_used(),
+            });
+            internal_source_proof.substitute_in_conclusion(internal_equivalence)
+        } else {
+            let internal_equivalence = self.equivalence.internalize(&FullySpecifiedInference {
+                premises: inference.premises.clone(),
+                conclusion: self.equivalence.conclusion.clone(),
+                argument_order: inference.argument_order.clone(),
+                weakness_level: inference.weakness_level.predecessor(),
+            });
+            // now we have e.g.
+            // P -> True = (True = (True = C))
+            // P -> True = (True = (C = D))
+            // so proceed by "transitivity under premises"
+
+            todo(internal_equivalence)
         }
     }
 }

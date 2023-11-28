@@ -2,6 +2,7 @@ use crate::introspective_calculus::derivers::{IncrementalDeriver, IncrementalDer
 use crate::introspective_calculus::inference::ProvenInference;
 use crate::introspective_calculus::{RWMFormula, RWMFormulaValue};
 use crate::{ic, substitutions};
+use hash_capsule::BuildHasherForHashCapsules;
 use live_prop_test::live_prop_test;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::iter::zip;
@@ -26,9 +27,9 @@ struct GoalInfo {
 
 /// maintain a collection of all known equalities and try to use them to equate (known truth, unsolved goal) pairs
 pub struct DeriveBySubstitutionAndUnfolding {
-    unsolved_goals: HashMap<RWMFormula, GoalInfo>,
+    unsolved_goals: HashMap<RWMFormula, GoalInfo, BuildHasherForHashCapsules>,
     unfolding_heads: VecDeque<(RWMFormula, usize)>,
-    unfolding_visited: HashSet<RWMFormula>,
+    unfolding_visited: HashSet<RWMFormula, BuildHasherForHashCapsules>,
     known_truths: KnownTruths,
 }
 
@@ -212,9 +213,9 @@ impl DeriveBySubstitutionAndUnfolding {
                 truths: vec![],
                 equalities: Default::default(),
             },
-            unsolved_goals: HashMap::new(),
+            unsolved_goals: HashMap::with_hasher(Default::default()),
             unfolding_heads: Default::default(),
-            unfolding_visited: HashSet::new(),
+            unfolding_visited: HashSet::with_hasher(Default::default()),
         }
     }
 }

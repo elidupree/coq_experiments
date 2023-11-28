@@ -1,5 +1,6 @@
 use crate::introspective_calculus::{Formula, Atom, ExplicitRule, AbstractionKind, ArrowChain};
 use crate::introspective_calculus::inference::{ProofLine, PrettyInference, PrettyInferenceInner};
+use lalrpop_util::ParseError;
 
 grammar;
 
@@ -71,7 +72,8 @@ FormulaIndivisible: Formula = {
 //}
 
 pub Formula: Formula = {
-  <ApplyChain> "&" <ApplyChain> => Formula::and([<>]),
+  <ApplyChain> "&" <ApplyChain> =>? Formula::and([<>])
+    .map_err(|error| ParseError::User { error }),
   <ApplyChain> "->" <ApplyChain> => Formula::implies([<>]),
   <ApplyChain> "=" <ApplyChain> => Formula::equals([<>]),
   ApplyChain,

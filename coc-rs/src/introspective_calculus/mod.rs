@@ -28,6 +28,7 @@ use std::fmt::Debug;
 // use live_prop_test::{live_prop_test, lpt_assert_eq};
 // use regex::{Captures, Regex};
 // use arrayvec::ArrayVec;
+use hash_capsule::HashCapsule;
 use itertools::Itertools;
 use live_prop_test::live_prop_test;
 use serde::{Deserialize, Serialize};
@@ -37,9 +38,9 @@ use std::io::{BufRead, BufReader};
 use std::iter::zip;
 use std::ops::Deref;
 use std::path::Path;
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
-#[derive(Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct ExplicitRule {
     pub name: String,
     pub formula: Formula,
@@ -54,13 +55,13 @@ pub enum AbstractionKind {
     ForAll,
 }
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize)]
-pub struct Formula(Arc<FormulaWithMetadata>);
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default)]
+pub struct Formula(HashCapsule<FormulaWithMetadata>);
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default)]
 pub struct RWMFormula(Formula);
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default)]
 pub struct RawFormula(Formula);
 
 impl Deref for Formula {
@@ -135,12 +136,15 @@ pub trait FormulaTrait:
     + Into<Formula>
     + TryFrom<RWMFormula>
     + Into<RWMFormula>
+    + Send
+    + Sync
+    + 'static
 {
 }
 impl FormulaTrait for Formula {}
 impl FormulaTrait for RWMFormula {}
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default)]
 pub enum FormulaRawness {
     #[default]
     Raw,
@@ -150,13 +154,13 @@ pub enum FormulaRawness {
     },
 }
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default)]
 pub struct FormulaWithMetadata {
     value: FormulaValue,
     rawness: FormulaRawness,
 }
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug)]
 pub enum FormulaValue {
     Atom(Atom),
     Apply([Formula; 2]),
@@ -171,7 +175,7 @@ pub enum FormulaValue {
     Metavariable(String),
     NameAbstraction(AbstractionKind, String, Formula),
 }
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug)]
 pub enum RWMFormulaValue {
     Atom(Atom),
     Apply([RWMFormula; 2]),
@@ -222,7 +226,7 @@ macro_rules! ic {
         ic!($($stuff)+)
     };
     ($l:tt & $r:tt) => {
-        $crate::introspective_calculus::Formula::and([ic!($l), ic!($r)])
+        $crate::introspective_calculus::Formula::and([ic!($l), ic!($r)]).unwrap()
     };
     ($l:tt = $r:tt) => {
         $crate::introspective_calculus::Formula::equals([ic!($l), ic!($r)])
@@ -354,17 +358,17 @@ macro_rules! match_ic {
     }};
 }
 
-pub struct InductiveTypeConstructor {
-    pub constructors: Vec<InductiveTypeConstructor>,
-}
-pub struct InductiveTypeDefinition {
-    pub constructors: Vec<InductiveTypeConstructor>,
-}
+// pub struct InductiveTypeConstructor {
+//     pub constructors: Vec<InductiveTypeConstructor>,
+// }
+// pub struct InductiveTypeDefinition {
+//     pub constructors: Vec<InductiveTypeConstructor>,
+// }
 
-pub struct GlobalContext {
-    pub definitions: BTreeMap<String, Arc<Formula>>,
-    pub inductive_type_definitions: BTreeMap<String, InductiveTypeDefinition>,
-}
+// pub struct GlobalContext {
+//     pub definitions: BTreeMap<String, Arc<Formula>>,
+//     pub inductive_type_definitions: BTreeMap<String, InductiveTypeDefinition>,
+// }
 
 static ID: LazyLock<Formula> = LazyLock::new(|| ic!("id" @ ((fuse const) const)));
 static PROP_TRUE: LazyLock<Formula> = LazyLock::new(|| ic!("True" @ ((equals equals) equals)));
@@ -426,20 +430,20 @@ impl Formula {
         PROP_FALSE.clone()
     }
     pub fn atom(atom: Atom) -> Formula {
-        Formula(Arc::new(FormulaWithMetadata {
+        Formula(HashCapsule::new(FormulaWithMetadata {
             value: FormulaValue::Atom(atom),
             rawness: FormulaRawness::Raw,
         }))
     }
     pub fn metavariable(name: String) -> Formula {
-        Formula(Arc::new(FormulaWithMetadata {
+        Formula(HashCapsule::new(FormulaWithMetadata {
             value: FormulaValue::Metavariable(name),
             rawness: FormulaRawness::RawWithMetavariables,
         }))
     }
 
     pub fn make_named_global(name: String, value: Formula) -> Formula {
-        Formula(Arc::new(FormulaWithMetadata {
+        Formula(HashCapsule::new(FormulaWithMetadata {
             value: FormulaValue::NamedGlobal {
                 name,
                 value: value.clone(),
@@ -450,7 +454,7 @@ impl Formula {
         }))
     }
     pub fn apply(children: [Formula; 2]) -> Formula {
-        Formula(Arc::new({
+        Formula(HashCapsule::new({
             if let [Some(a), Some(b)] = children.each_ref().map(Formula::already_rwm) {
                 let rawness = rawness_of_rwm_formulas(&[a, b]);
                 FormulaWithMetadata {
@@ -460,7 +464,7 @@ impl Formula {
             } else {
                 let raw_children = children.each_ref().map(|c| c.to_rwm());
                 let raw_rawness = rawness_of_rwm_formulas(&raw_children);
-                let raw_form = RWMFormula(Formula(Arc::new(FormulaWithMetadata {
+                let raw_form = RWMFormula(Formula(HashCapsule::new(FormulaWithMetadata {
                     value: FormulaValue::Apply(raw_children.each_ref().map(Formula::from)),
                     rawness: raw_rawness,
                 })));
@@ -478,20 +482,48 @@ impl Formula {
     ) -> Formula {
         let raw_children = children.each_ref().map(|c| c.to_rwm());
         let raw_rawness = rawness_of_rwm_formulas(&raw_children);
-        let raw_form = RWMFormula(Formula(Arc::new(FormulaWithMetadata {
+        let raw_form = RWMFormula(Formula(HashCapsule::new(FormulaWithMetadata {
             value: combine_raw(raw_children).to_rwm().value.clone(),
             rawness: raw_rawness,
         })));
 
-        Formula(Arc::new(FormulaWithMetadata {
+        Formula(HashCapsule::new(FormulaWithMetadata {
             value: combine(children),
             rawness: FormulaRawness::Pretty { raw_form },
         }))
     }
-    pub fn and(children: [Formula; 2]) -> Formula {
-        Formula::combine_pretty(children, FormulaValue::And, |[a, b]| {
-            ic!((True, True) = (a, b))
+    pub fn try_combine_pretty(
+        children: [Formula; 2],
+        combine: impl FnOnce([Formula; 2]) -> FormulaValue,
+        combine_raw: impl FnOnce([RWMFormula; 2]) -> Result<Formula, String>,
+    ) -> Result<Formula, String> {
+        let raw_children = children.each_ref().map(|c| c.to_rwm());
+        let raw_rawness = rawness_of_rwm_formulas(&raw_children);
+        let raw_form = RWMFormula(Formula(HashCapsule::new(FormulaWithMetadata {
+            value: combine_raw(raw_children)?.to_rwm().value.clone(),
+            rawness: raw_rawness,
+        })));
+
+        Ok(Formula(HashCapsule::new(FormulaWithMetadata {
+            value: combine(children),
+            rawness: FormulaRawness::Pretty { raw_form },
+        })))
+    }
+    pub fn and(children: [Formula; 2]) -> Result<Formula, String> {
+        Formula::try_combine_pretty(children, FormulaValue::And, |ab| {
+            let [[al, ar], [bl, br]] = ab.try_map(|f| {
+                f.as_eq_sides()
+                    .ok_or_else(|| "can't join non-equality formula `{f}` with `&`")
+            })?;
+            Ok(ic!((al, bl) = (ar, br)))
         })
+    }
+    pub fn true_and_and(children: &[Formula]) -> Result<Formula, String> {
+        let mut result = Formula::prop_true();
+        for c in children {
+            result = Formula::and([result, c.clone()])?;
+        }
+        Ok(result)
     }
     pub fn equals(children: [Formula; 2]) -> Formula {
         Formula::combine_pretty(children, FormulaValue::Equals, |[a, b]| ic!((equals a)b))
@@ -509,14 +541,14 @@ impl Formula {
             raw_form = ic!((fuse raw_form) (const c)).to_rwm();
         }
 
-        Formula(Arc::new(FormulaWithMetadata {
+        Formula(HashCapsule::new(FormulaWithMetadata {
             value: FormulaValue::Tuple(children),
             rawness: FormulaRawness::Pretty { raw_form },
         }))
     }
     pub fn name_abstraction(kind: AbstractionKind, name: String, body: Formula) -> Formula {
         let raw_abstracted_body = body.to_rwm().with_metavariable_abstracted(&name);
-        Formula(Arc::new(FormulaWithMetadata {
+        Formula(HashCapsule::new(FormulaWithMetadata {
             value: FormulaValue::NameAbstraction(kind, name, body),
             rawness: FormulaRawness::Pretty {
                 raw_form: match kind {
@@ -525,10 +557,6 @@ impl Formula {
                 },
             },
         }))
-    }
-    pub fn hard_coded_globals() -> BTreeMap<&'static str, Arc<Formula>> {
-        // Formula::Id => ic!((fuse const) const),
-        [].into_iter().collect()
     }
     pub fn as_eq_sides(&self) -> Option<[Formula; 2]> {
         match_ic!(self, {
@@ -549,6 +577,9 @@ impl FormulaWithMetadata {
             self.rawness,
             FormulaRawness::Raw | FormulaRawness::RawWithMetavariables
         )
+    }
+    pub fn is_raw(&self) -> bool {
+        matches!(self.rawness, FormulaRawness::Raw)
     }
 
     pub fn children(&self) -> Vec<&Formula> {
@@ -738,7 +769,7 @@ impl Formula {
     pub fn map_children(&self, mut map: impl FnMut(&Formula) -> Formula) -> Formula {
         match &self.value {
             FormulaValue::Atom(_) | FormulaValue::Metavariable(_) => self.clone(),
-            FormulaValue::And(f) => Formula::and(f.each_ref().map(map)),
+            FormulaValue::And(f) => Formula::and(f.each_ref().map(map)).unwrap(),
             FormulaValue::Equals(f) => Formula::equals(f.each_ref().map(map)),
             FormulaValue::Implies(f) => Formula::implies(f.each_ref().map(map)),
             FormulaValue::Tuple(f) => Formula::tuple(f.iter().map(map).collect()),

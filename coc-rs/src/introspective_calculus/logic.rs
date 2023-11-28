@@ -5,11 +5,10 @@ use crate::introspective_calculus::{Formula, RawFormula, PROP_TRUE};
 mod proof_verifier {
     use crate::ic;
     use crate::introspective_calculus::RawFormula;
-    use serde::{Deserialize, Serialize};
     use std::collections::HashSet;
     use std::ops::Deref;
 
-    #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+    #[derive(Clone, PartialEq, Eq, Debug)]
     pub struct TrueFormula {
         formula: RawFormula,
         used_axioms: HashSet<RawFormula>,
