@@ -74,7 +74,8 @@ FormulaIndivisible: Formula = {
 pub Formula: Formula = {
   <ApplyChain> "&" <ApplyChain> =>? Formula::and([<>])
     .map_err(|error| ParseError::User { error }),
-  <ApplyChain> "->" <ApplyChain> => Formula::implies([<>]),
+  <ApplyChain> "->" <ApplyChain> =>? Formula::implies([<>])
+    .map_err(|error| ParseError::User { error }),
   <ApplyChain> "=" <ApplyChain> => Formula::equals([<>]),
   ApplyChain,
   //ApplyChain2,

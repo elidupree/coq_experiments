@@ -7,9 +7,11 @@ pub mod derivers;
 pub mod inference;
 pub mod proof_hierarchy;
 pub mod raw_proofs;
+pub mod raw_proofs_ext;
 pub mod rules;
 pub mod specialization;
 pub mod tuple_equality_tree;
+pub mod uncurried_function;
 pub mod unfolding;
 
 #[allow(clippy::all)]
@@ -192,8 +194,8 @@ impl Default for FormulaValue {
     Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize,
 )]
 pub enum Atom {
-    #[default]
     Equals,
+    #[default]
     Const,
     Fuse,
 }
@@ -528,12 +530,10 @@ impl Formula {
     pub fn equals(children: [Formula; 2]) -> Formula {
         Formula::combine_pretty(children, FormulaValue::Equals, |[a, b]| ic!((equals a)b))
     }
-    pub fn implies(children: [Formula; 2]) -> Formula {
-        Formula::combine_pretty(
-            children,
-            FormulaValue::Implies,
-            |[a, b]| ic!((equals a)(a & b)),
-        )
+    pub fn implies(children: [Formula; 2]) -> Result<Formula, String> {
+        Formula::try_combine_pretty(children, FormulaValue::Implies, |[a, b]| {
+            Ok(ic!(a = { Formula::and([a.to_formula(), b.to_formula()])? }))
+        })
     }
     pub fn tuple(children: Vec<Formula>) -> Formula {
         let mut raw_form = ID.to_rwm();
@@ -771,7 +771,7 @@ impl Formula {
             FormulaValue::Atom(_) | FormulaValue::Metavariable(_) => self.clone(),
             FormulaValue::And(f) => Formula::and(f.each_ref().map(map)).unwrap(),
             FormulaValue::Equals(f) => Formula::equals(f.each_ref().map(map)),
-            FormulaValue::Implies(f) => Formula::implies(f.each_ref().map(map)),
+            FormulaValue::Implies(f) => Formula::implies(f.each_ref().map(map)).unwrap(),
             FormulaValue::Tuple(f) => Formula::tuple(f.iter().map(map).collect()),
             FormulaValue::Apply(f) => Formula::apply(f.each_ref().map(map)),
             FormulaValue::NamedGlobal { .. } => {

@@ -101,10 +101,10 @@ pub static ALL_EXTERNAL_RULES: LazyLock<BTreeMap<String, ExternalRule>> = LazyLo
         .map(|(key, value)| (key.clone(), value.0.clone()))
         .collect();
     result.insert(
-        "conclusion equivalence".to_string(),
+        "strengthen: successor".to_string(),
         ExternalRule(Inference::new(
-            vec![ic!("A" = "B").to_rwm(), ic!("A").to_rwm()],
-            ic!("B").to_rwm(),
+            vec![ic!(True = ("A" = "B")).to_rwm()],
+            ic!("A" = "B").to_rwm(),
         )),
     );
     result
@@ -141,6 +141,17 @@ impl ExternalRuleInstance {
             "assumed non-raw instance was raw"
         );
         ExternalRuleRawInstance(self)
+    }
+
+    pub fn further_specialize(&self, substitutions: &Substitutions) -> ExternalRuleInstance {
+        ExternalRuleInstance {
+            rule: self.rule.clone(),
+            substitutions: self
+                .substitutions
+                .iter()
+                .map(|(k, v)| (k.clone(), v.with_metavariables_replaced_rwm(substitutions)))
+                .collect(),
+        }
     }
 }
 

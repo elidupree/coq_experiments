@@ -1,3 +1,5 @@
+# equality:
+"transitivity" := (A=B), (B=C) |- (A=C)
 
 # unfolding:
 "definition of const" := |- (const A B) = A
