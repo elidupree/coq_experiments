@@ -1,6 +1,6 @@
 use crate::ic;
 use crate::introspective_calculus::inference::{Inference, ProvenInference};
-use crate::introspective_calculus::{InferenceParser, RWMFormula};
+use crate::introspective_calculus::{NamedInferenceParser, RWMFormula};
 use itertools::Itertools;
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -18,11 +18,11 @@ fn lines(file: &mut impl BufRead) -> impl Iterator<Item = String> + '_ {
         .filter(|l| !l.chars().all(char::is_whitespace) && !l.starts_with('#'))
 }
 pub static RULES: LazyLock<BTreeMap<String, Rule>> = LazyLock::new(|| {
-    let parser = InferenceParser::new();
+    let parser = NamedInferenceParser::new();
     let mut file = BufReader::new(File::open("./data/ic_intrinsic_rules.ic").unwrap());
     lines(&mut file)
         .map(|l| match parser.parse(&l) {
-            Ok(a) => (a.name.clone(), Rule::new(a.to_rwm())),
+            Ok(a) => (a.name.clone(), Rule::new(a.inference.to_rwm())),
             Err(e) => panic!("Got error `{e}` while parsing rule `{l}`"),
         })
         .collect()

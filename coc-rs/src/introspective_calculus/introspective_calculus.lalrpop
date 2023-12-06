@@ -1,5 +1,5 @@
 use crate::introspective_calculus::{Formula, Atom, ExplicitRule, AbstractionKind, ArrowChain};
-use crate::introspective_calculus::inference::{ProofLine, PrettyInference, PrettyInferenceInner};
+use crate::introspective_calculus::inference::{ProofLine, NamedPrettyInference, PrettyInference, PrettyInferenceInner};
 use lalrpop_util::ParseError;
 
 grammar;
@@ -18,9 +18,13 @@ pub ProofLine: ProofLine = {
   <name:Name> "." <formula:Formula> "[" <referents:(<Name> ",")*> "by" <deriver_name: Name?> "]" => ProofLine{name, formula, referents: referents.into_iter().collect(), deriver_name},
 }
 
+pub NamedInference: NamedPrettyInference = {
+  <name:Name> ":=" <inference:Inference> => NamedPrettyInference {<>}.into(),
+}
+
 pub Inference: PrettyInference = {
-  //<name:Name> ":=" "|-" <conclusion:Formula> => PrettyInferenceInner {premises: Vec::new(), <>}.into(),
-  <name:Name> ":=" <premises:CommaSeparated<Formula>> "|-" <conclusion:Formula> => PrettyInferenceInner {<>}.into(),
+  //"|-" <conclusion:Formula> => PrettyInferenceInner {premises: Vec::new(), <>}.into(),
+  <premises:CommaSeparated<Formula>> "|-" <conclusion:Formula> => PrettyInferenceInner {<>}.into(),
 }
 
 CommaSeparated<T>: Vec<T> = {

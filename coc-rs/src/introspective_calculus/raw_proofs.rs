@@ -1,7 +1,7 @@
-use crate::ic;
+use crate::inf;
 use crate::introspective_calculus::inference::Inference;
 use crate::introspective_calculus::uncurried_function::UncurriedFunctionEquivalence;
-use crate::introspective_calculus::{InferenceParser, RWMFormula, RawFormula, Substitutions};
+use crate::introspective_calculus::{ExplicitRuleParser, RWMFormula, RawFormula, Substitutions};
 use itertools::Itertools;
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
@@ -27,7 +27,7 @@ impl Deref for RawProof {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub enum CleanExternalRule {
     EqSym,
     EqTrans,
@@ -36,32 +36,32 @@ pub enum CleanExternalRule {
     SubstituteInLhs,
     SubstituteInRhs,
 }
-#[derive(Clone)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub struct Axiom {
     pub specified_formula: RWMFormula,
     pub internal_form: UncurriedFunctionEquivalence,
 }
-#[derive(Clone)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub enum StrengtheningRule {
     StrengthenSuccessor,
 }
-#[derive(Clone)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub enum CleanRule {
     External(CleanExternalRule),
     Axiom(Axiom),
 }
-#[derive(Clone)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub enum Rule {
     Clean(CleanRule),
     Strengthening(StrengtheningRule),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub struct RuleInstance {
     pub rule: Rule,
     pub substitutions: Substitutions,
 }
-#[derive(Clone)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub struct RuleRawInstance(RuleInstance);
 
 impl Deref for RuleRawInstance {
@@ -170,7 +170,7 @@ impl Axiom {
             })
             .unwrap();
         Axiom {
-            specified_formula: specified_formula,
+            specified_formula,
             internal_form,
         }
     }
@@ -207,7 +207,7 @@ pub static EXTENSIONALITY_AXIOMS: LazyLock<BTreeMap<String, Axiom>> = LazyLock::
     let mut file = BufReader::new(File::open("./data/ic_axioms.ic").unwrap());
     lines(&mut file)
         .map(|l| match parser.parse(&l) {
-            Ok(a) => (a.name.clone(), Axiom::new(a.to_rwm())),
+            Ok(a) => (a.name.clone(), Axiom::new(a.formula.to_rwm())),
             Err(e) => panic!("Got error `{e}` while parsing rule `{l}`"),
         })
         .collect()
@@ -239,7 +239,8 @@ impl RuleInstance {
         self.rule
             .inference()
             .premises
-            .iter()
+            .clone()
+            .into_iter()
             .map(|premise| premise.with_metavariables_replaced_rwm(&self.substitutions))
     }
     pub fn conclusion(&self) -> RWMFormula {
@@ -258,6 +259,9 @@ impl RuleRawInstance {
     }
     pub fn conclusion(&self) -> RawFormula {
         self.0.conclusion().already_raw().unwrap()
+    }
+    pub fn with_zero_variables(&self) -> RuleInstance {
+        self.0.clone()
     }
 }
 impl RawProof {

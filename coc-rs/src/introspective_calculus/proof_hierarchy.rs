@@ -1,14 +1,10 @@
 use crate::introspective_calculus::raw_proofs::{
     CleanExternalRule, CleanRule, RawProof, Rule, RuleInstance, StrengtheningRule,
 };
-use crate::introspective_calculus::uncurried_function::{
-    UncurriedFunction, UncurriedFunctionEquivalence, UncurriedFunctionValue,
-};
+use crate::introspective_calculus::uncurried_function::UncurriedFunctionEquivalence;
 use crate::introspective_calculus::{Formula, RWMFormula, RawFormula, Substitutions, ToFormula};
 use crate::utils::todo;
-use crate::{ic, substitutions};
-use hash_capsule::HashCapsule;
-use std::cmp::max;
+use crate::{formula, ic, inf, substitutions};
 use std::collections::BTreeSet;
 use std::iter::zip;
 use std::ops::Deref;
@@ -107,7 +103,7 @@ impl ProofWithVariables {
             self.premises
                 .iter()
                 .map(|p| p.use_externally(arguments))
-                .collect(),
+                .collect::<Result<_, _>>()?,
         )
     }
     pub fn internal_conclusion(&self, argument_order: &[String]) -> UncurriedFunctionEquivalence {
@@ -128,7 +124,7 @@ impl ProofWithVariables {
             .collect();
         let result = match &self.rule_instance.rule {
             Rule::Clean(CleanRule::External(c)) => match c {
-                CleanExternalRule::EqSym => premise_proofs[0].eq_sym(),
+                CleanExternalRule::EqSym => premise_proofs[0].flip_conclusion(),
                 CleanExternalRule::EqTrans => RawProof::eq_trans_chain(&premise_proofs),
                 CleanExternalRule::DefinitionOfConst | CleanExternalRule::DefinitionOfFuse => {
                     conclusion.prove_by_partially_specializing_axiom()
@@ -168,7 +164,16 @@ impl ProofWithVariables {
     }
 
     pub fn eq_refl(a: RWMFormula) -> ProofWithVariables {
-        ic!(a = a).prove_by_script_named("eq_refl")
+        ic!(a = a).prove_by_script_named("eq_refl").unwrap()
+    }
+
+    pub fn flip_conclusion(&self) -> ProofWithVariables {
+        let [a, b] = self.conclusion().as_eq_sides().unwrap();
+        ProofWithVariables::new(
+            Rule::from(CleanExternalRule::EqSym).specialize(substitutions! {A:a,B:b}),
+            vec![self.clone()],
+        )
+        .unwrap()
     }
 
     pub fn eq_trans_chain(components: &[ProofWithVariables]) -> Result<ProofWithVariables, String> {
@@ -455,16 +460,28 @@ impl RWMFormula {
         todo((self, name))
     }
     pub fn prove_by_specializing_axiom(&self) -> Result<ProofWithVariables, String> {
-        todo((self))
+        todo(self)
     }
     pub fn prove_by_partially_specializing_axiom(&self) -> Result<ProofWithVariables, String> {
-        todo((self))
+        todo(self)
     }
 }
 
 impl Formula {
+    pub fn prove_by_substituting_with(
+        &self,
+        equivalences: &[ProofWithVariables],
+    ) -> Result<ProofWithVariables, String> {
+        self.to_rwm().prove_by_substituting_with(equivalences)
+    }
     pub fn prove_by_script_named(&self, name: &str) -> Result<ProofWithVariables, String> {
         self.to_rwm().prove_by_script_named(name)
+    }
+    pub fn prove_by_specializing_axiom(&self) -> Result<ProofWithVariables, String> {
+        self.to_rwm().prove_by_specializing_axiom()
+    }
+    pub fn prove_by_partially_specializing_axiom(&self) -> Result<ProofWithVariables, String> {
+        self.to_rwm().prove_by_partially_specializing_axiom()
     }
 }
 
@@ -607,14 +624,10 @@ impl ProofWithPremises {
             // }
             ProofWithPremisesDerivation::WithoutPremises(p) => p.use_externally(arguments),
             ProofWithPremisesDerivation::Rule(p) => {
-                let instance = proof
-                    .rule_instance
-                    .further_specialize(arguments)
-                    .assume_raw();
+                let instance = p.rule_instance.further_specialize(arguments).assume_raw();
                 RawProof::new(
                     instance,
-                    proof
-                        .premises
+                    p.premises
                         .iter()
                         .map(|p| p.use_externally(arguments, premise_proofs))
                         .collect::<Result<_, _>>()?,

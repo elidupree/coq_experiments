@@ -22,7 +22,7 @@ mod lalrpop_wrapper {
 }
 
 pub use self::lalrpop_wrapper::introspective_calculus::{
-    ExplicitRuleParser, FormulaParser, InferenceParser, ProofLineParser,
+    ExplicitRuleParser, FormulaParser, InferenceParser, NamedInferenceParser, ProofLineParser,
 };
 use std::collections::{btree_map, BTreeMap};
 use std::fmt::Debug;
@@ -393,10 +393,20 @@ macro_rules! match_ic {
 #[macro_export]
 macro_rules! formula {
     ($f: literal) => {{
-        $crate::ad_hoc_lazy_static!(Formula)(|| $crate::introspective_calculus::FormulaParser::new().parse($f).unwrap()).into()
+        $crate::ad_hoc_lazy_static!($crate::introspective_calculus::Formula)(|| $crate::introspective_calculus::FormulaParser::new().parse($f).unwrap())
     }};
     ($f: literal, {$($substitutions:tt)*}) => {{
-        formula!($f).with_metavariables_replaced($crate::substitutions!{$($substitutions)*})
+        $crate::formula!($f).to_rwm().with_metavariables_replaced_rwm(&$crate::substitutions!{$($substitutions)*})
+    }};
+}
+
+#[macro_export]
+macro_rules! inf {
+    ($f: literal) => {{
+        $crate::ad_hoc_lazy_static!($crate::introspective_calculus::inference::PrettyInference)(|| $crate::introspective_calculus::InferenceParser::new().parse($f).unwrap())
+    }};
+    ($f: literal, {$($substitutions:tt)*}) => {{
+        $crate::inf!($f).to_rwm().with_metavariables_replaced(&$crate::substitutions!{$($substitutions)*})
     }};
 }
 
@@ -757,7 +767,7 @@ macro_rules! substitutions {
         [$($sofar)*].into_iter().collect::<$crate::introspective_calculus::Substitutions>()
     }};
     (@ [$($sofar:tt)*] $var:ident := $val:expr, $($rest:tt)*) => {{
-        $crate::substitutions!(@ [$($sofar)* (std::stringify!($var), <_ as Into<$crate::introspective_calculus::RWMFormula>>::into($val)),] $($rest)*)
+        $crate::substitutions!(@ [$($sofar)* (std::stringify!($var).to_string(), <_ as Into<$crate::introspective_calculus::RWMFormula>>::into($val)),] $($rest)*)
     }};
     (@ [$($sofar:tt)*] $var:ident : $val:expr, $($rest:tt)*) => {{
         $crate::substitutions!(@ [$($sofar)*] $var := $val, $($rest)*)

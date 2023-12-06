@@ -1,7 +1,6 @@
 use crate::display::{
     DisplayItem, DisplayItemSequence, WithUnsplittablePrefix, WithUnsplittableSuffix,
 };
-use crate::ic;
 use crate::introspective_calculus::uncurried_function::{
     UncurriedFunction, UncurriedFunctionValue,
 };
@@ -188,16 +187,13 @@ impl UncurriedFunction {
             }),
             UncurriedFunctionValue::PopIn(child) => Box::new(DisplayItemSequence {
                 always_parens: true,
-                items: vec![Box::new("!".to_string()), f.to_display_item()],
+                items: vec![Box::new("^".to_string()), child.to_display_item(true)],
             }),
             UncurriedFunctionValue::Top => Box::new("[0]".to_string()),
             UncurriedFunctionValue::Apply(children) => {
-                if self.to_rwm() == ID.to_rwm() {
-                    return ID.to_display_item(parenthesize_abstractions);
-                }
                 let mut chain_members = vec![&children[1]];
                 let mut walker = &children[0];
-                while let FormulaValue::Apply(cx) = &walker.value {
+                while let UncurriedFunctionValue::Apply(cx) = walker.value() {
                     chain_members.push(&cx[1]);
                     walker = &cx[0];
                 }

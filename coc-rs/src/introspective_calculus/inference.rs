@@ -44,11 +44,16 @@ pub struct InferenceInner {
     pub conclusion: RWMFormula,
 }
 
+#[derive(Debug)]
+pub struct NamedPrettyInference {
+    pub name: String,
+    pub inference: PrettyInference,
+}
+
 #[derive(Clone, Debug)]
 pub struct PrettyInference(Arc<PrettyInferenceInner>);
 #[derive(Debug)]
 pub struct PrettyInferenceInner {
-    pub name: String,
     pub premises: Vec<Formula>,
     pub conclusion: Formula,
 }
@@ -146,14 +151,14 @@ impl From<ProvenInferenceInner> for ProvenInference {
 }
 
 impl PrettyInference {
-    pub fn new(name: String, premises: Vec<Formula>, conclusion: Formula) -> PrettyInference {
-        PrettyInferenceInner {
-            name,
-            premises,
-            conclusion,
-        }
-        .into()
-    }
+    // pub fn new(name: String, premises: Vec<Formula>, conclusion: Formula) -> PrettyInference {
+    //     PrettyInferenceInner {
+    //         name,
+    //         premises,
+    //         conclusion,
+    //     }
+    //     .into()
+    // }
 
     pub fn to_rwm(&self) -> Inference {
         InferenceInner {
@@ -191,7 +196,6 @@ impl PrettyInference {
         };
 
         PrettyInferenceInner {
-            name: self.name.clone(),
             premises: self.premises.iter().map(fix).collect(),
             conclusion: fix(&self.conclusion),
         }
@@ -207,21 +211,18 @@ impl Inference {
         }
         .into()
     }
-    pub fn to_pretty_nameless(&self) -> PrettyInference {
+    pub fn to_pretty(&self) -> PrettyInference {
         PrettyInferenceInner {
-            name: Default::default(),
             premises: self.premises.iter().map(Formula::from).collect(),
             conclusion: self.conclusion.to_formula(),
         }
         .into()
     }
     pub fn tuple_equality_form(&self) -> [TupleEqualityTree<RWMFormula>; 2] {
-        self.to_pretty_nameless()
-            .tuple_equality_form()
-            .map(|t| t.to_rwm())
+        self.to_pretty().tuple_equality_form().map(|t| t.to_rwm())
     }
     pub fn metavariables_to_arguments(&self, arguments: &[String]) -> Inference {
-        self.to_pretty_nameless()
+        self.to_pretty()
             .metavariables_to_arguments(arguments)
             .to_rwm()
     }

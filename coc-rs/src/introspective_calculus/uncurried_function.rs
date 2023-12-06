@@ -1,18 +1,12 @@
-use crate::introspective_calculus::proof_hierarchy::{
-    ProofWithPremises, ProofWithVariables, Proven,
-};
+use crate::introspective_calculus::proof_hierarchy::{ProofWithVariables, Proven};
 use crate::introspective_calculus::{
-    Atom, Formula, FormulaValue, RWMFormula, RWMFormulaValue, RawFormula, RawFormulaValue,
-    ToFormula,
+    RWMFormula, RWMFormulaValue, RawFormula, RawFormulaValue, ToFormula,
 };
-use crate::utils::todo;
 use crate::{formula, ic};
-use clap::arg;
 use hash_capsule::HashCapsule;
 use itertools::Itertools;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
-use std::io::ErrorKind::ArgumentListTooLong;
 use std::iter::zip;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -82,6 +76,7 @@ impl UncurriedFunctionEquivalence {
         let [a, b] = self.sides.each_ref().map(|s| s.formula());
         ic!(a = b).already_raw().unwrap()
     }
+    pub fn prove_by(by: impl FnOnce(RWMFormula) -> ProofWithVariables) {}
 }
 
 impl Proven<UncurriedFunctionEquivalence> {
@@ -134,6 +129,18 @@ impl UncurriedFunction {
             value,
             formula_cache,
         }))
+    }
+    pub fn constant(f: RawFormula) -> UncurriedFunction {
+        UncurriedFunctionValue::Constant(f).into()
+    }
+    pub fn apply(children: [UncurriedFunction; 2]) -> UncurriedFunction {
+        UncurriedFunctionValue::Apply(children).into()
+    }
+    pub fn pop_in(child: UncurriedFunction) -> UncurriedFunction {
+        UncurriedFunctionValue::PopIn(child).into()
+    }
+    pub fn top() -> UncurriedFunction {
+        UncurriedFunctionValue::Top.into()
     }
 
     pub fn args_to_return(&self, goal: &RawFormula) -> Result<ArgumentList, String> {
@@ -227,7 +234,7 @@ impl UncurriedFunction {
                 let ArgumentList::Cons(head, tail) = arguments else {
                     panic!("insufficient arguments passed to call")
                 };
-                formula!("(const,)(head, tail) = head", {p, head, tail}).prove_by_unfolding()
+                formula!("(const,)(head, tail) = head", {head, tail}).prove_by_unfolding()
             }
         }
     }
@@ -294,44 +301,49 @@ impl UncurriedFunction {
         &self,
         arguments: &GeneralizedArgumentList,
     ) -> Proven<UncurriedFunctionEquivalence> {
+        let lhs = UncurriedFunction::apply([
+            UncurriedFunction::constant(self.formula()),
+            arguments.uncurried_function(),
+        ]);
         let args = arguments.uncurried_function().formula();
         match self.value() {
             UncurriedFunctionValue::Constant(f) => {
                 // goal: fuse (const (const f)) args = (const f)
+                let rhs = UncurriedFunction::constant(self.formula());
                 formula!("(fuse (const (const f)) args) = (const f)", {f, args})
                     .prove_by_specializing_axiom()
+                    .unwrap()
             }
             UncurriedFunctionValue::Apply(children) => {
                 // subgoal: fuse (const (fuse A B)) args = fuse (fuse (const A) args) (fuse (const B) args)
                 let [a, b] = children.each_ref().map(|child| child.formula());
-                let f = formula!("fuse (const (fuse a b)) args = fuse (fuse (const a) args) (fuse (const b) args)", {a, b, args}).prove_by_specializing_axiom();
+                let f = formula!("fuse (const (fuse a b)) args = fuse (fuse (const a) args) (fuse (const b) args)", {a, b, args}).prove_by_specializing_axiom().unwrap();
                 // subgoals: fuse (const A) args = A', fuse (const B) args = B'
                 let child_proofs = children
                     .each_ref()
                     .map(|child| child.generalized_call(arguments));
                 // goal: fuse (const (fuse A B)) args = fuse A' B'
-                let combined: UncurriedFunction = UncurriedFunctionValue::Apply(
-                    child_proofs.each_ref().map(|c| c.sides[1].clone()),
-                )
-                .into();
+                let combined =
+                    UncurriedFunction::apply(child_proofs.each_ref().map(|c| c.sides[1].clone()));
                 let g = formula!("(fuse a b) args = apbp", {a, b, args, apbp: combined.formula()})
-                    .prove_by_substitution_with(&child_proofs);
+                    .prove_by_substitution_with(&child_proofs)
+                    .unwrap();
                 // canonicalize if children are both PopIn or both Constant
                 let e = combined.canonicalize_locally();
 
                 Proven::<UncurriedFunctionEquivalence>::trans_chain(&[g, e]).unwrap()
             }
             UncurriedFunctionValue::PopIn(child) => {
-                // subgoal: fuse (const (const P,)) (l => (head l, tail l)) = fuse (const P) tail
-                let p = child.formula();
                 let GeneralizedArgumentList::Cons(head, tail) = arguments else {
                     panic!("insufficient arguments passed to call")
                 };
-                let head = head.formula();
-                let a = formula!("fuse (const (const p,)) (l => (head l, tail l)) = fuse (const p) tail", {p, head, tail: tail.uncurried_function().formula()})
-                    .prove_by_specializing_axiom();
                 // subgoal: fuse (const P) tail = P'
                 let b = child.generalized_call(tail);
+                // subgoal: fuse (const (const P,)) (l => (head l, tail l)) = fuse (const P) tail
+                let p = child.formula();
+                let head = head.formula();
+                let a = formula!("fuse (const (const p,)) (l => (head l, tail l)) = fuse (const p) tail", {p, head, tail: tail.uncurried_function().formula()})
+                    .prove_by_specializing_axiom().unwrap();
                 // goal: fuse (const (const P,)) (l => (head l, tail l)) = P'
                 Proven::<UncurriedFunctionEquivalence>::trans_chain(&[a, b]).unwrap()
             }
@@ -340,8 +352,14 @@ impl UncurriedFunction {
                 let GeneralizedArgumentList::Cons(head, tail) = arguments else {
                     panic!("insufficient arguments passed to call")
                 };
-                formula!("fuse (const (const,)) (l => (head l, tail l)) = head", {head, tail})
-                    .prove_by_specializing_axiom()
+                Proven::new(
+                    UncurriedFunctionEquivalence {
+                        sides: [lhs, head.clone()],
+                    },
+                    ic!({ lhs.formula() } = { head.formula() })
+                        .prove_by_specializing_axiom()
+                        .unwrap(),
+                )
             }
         }
     }
@@ -359,7 +377,8 @@ impl UncurriedFunction {
                         },
                         // goal: fuse (const a) (const b) = const (a b)
                         formula!("fuse (const a) (const b) = const (a b)", {a, b})
-                            .prove_by_specializing_axiom(),
+                            .prove_by_specializing_axiom()
+                            .unwrap(),
                     );
                 }
                 // (UncurriedFunctionValue::PopIn(a), UncurriedFunctionValue::PopIn(b)) => {
