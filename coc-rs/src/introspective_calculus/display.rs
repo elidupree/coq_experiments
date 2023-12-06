@@ -1,6 +1,10 @@
 use crate::display::{
     DisplayItem, DisplayItemSequence, WithUnsplittablePrefix, WithUnsplittableSuffix,
 };
+use crate::ic;
+use crate::introspective_calculus::uncurried_function::{
+    UncurriedFunction, UncurriedFunctionValue,
+};
 use crate::introspective_calculus::{
     AbstractionKind, Atom, Formula, FormulaValue, RWMFormula, RawFormula, Substitutions, ID,
 };
@@ -61,7 +65,7 @@ impl Display for FormulaAsShorthand<'_> {
 }
 
 impl Formula {
-    pub(super) fn to_display_item(&self, parenthesize_abstractions: bool) -> Box<dyn DisplayItem> {
+    pub fn to_display_item(&self, parenthesize_abstractions: bool) -> Box<dyn DisplayItem> {
         match &self.value {
             FormulaValue::Atom(a) => Box::new(a.to_string()),
             FormulaValue::Metavariable(name) => Box::new(name.clone()),
@@ -175,7 +179,49 @@ impl Formula {
     }
 }
 
+impl UncurriedFunction {
+    pub fn to_display_item(&self, parenthesize_abstractions: bool) -> Box<dyn DisplayItem> {
+        match &self.value() {
+            UncurriedFunctionValue::Constant(f) => Box::new(DisplayItemSequence {
+                always_parens: true,
+                items: vec![Box::new("const".to_string()), f.to_display_item(true)],
+            }),
+            UncurriedFunctionValue::PopIn(child) => Box::new(DisplayItemSequence {
+                always_parens: true,
+                items: vec![Box::new("!".to_string()), f.to_display_item()],
+            }),
+            UncurriedFunctionValue::Top => Box::new("[0]".to_string()),
+            UncurriedFunctionValue::Apply(children) => {
+                if self.to_rwm() == ID.to_rwm() {
+                    return ID.to_display_item(parenthesize_abstractions);
+                }
+                let mut chain_members = vec![&children[1]];
+                let mut walker = &children[0];
+                while let FormulaValue::Apply(cx) = &walker.value {
+                    chain_members.push(&cx[1]);
+                    walker = &cx[0];
+                }
+                chain_members.push(walker);
+                Box::new(DisplayItemSequence {
+                    always_parens: true,
+                    items: chain_members
+                        .into_iter()
+                        .rev()
+                        .map(|f| f.to_display_item(true))
+                        .collect(),
+                })
+            }
+        }
+    }
+}
+
 impl Display for Formula {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.to_display_item(false).display().fmt(f)
+    }
+}
+
+impl Display for UncurriedFunction {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         self.to_display_item(false).display().fmt(f)
     }

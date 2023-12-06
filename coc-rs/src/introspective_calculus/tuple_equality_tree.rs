@@ -136,7 +136,7 @@ impl<F: FormulaTrait> TupleEqualityTree<F> {
         ];
         let [a0, a1] = a;
         let a_to_b = ProvenInference::compatibility_left()
-            .specialize(&substitutions! {"A":=a0,"B":=a1, "C":=extractor});
+            .specialize(&substitutions! {A: a0, B: a1, C: extractor});
         let [b_eq_c_0, b_eq_c_1] = b_eq_c;
         Some(ProvenInference::eq_trans_chain(&[b_eq_c_0, a_to_b, b_eq_c_1]).unwrap())
     }

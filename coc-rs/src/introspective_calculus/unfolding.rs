@@ -16,12 +16,12 @@ impl RWMFormula {
         match_ic!(self, {
             ((const a) b) => {
                 Some(ProvenInference::definition_of_const().specialize (
-                    &substitutions!("A" := a, "B" := b)
+                    &substitutions!(A: a, B: b)
                 ))
             },
             (((fuse a) b) c) => {
                 Some(ProvenInference::definition_of_fuse().specialize (
-                    &substitutions!("A" := a, "B" := b, "C" := c)
+                    &substitutions!(A: a, B: b, C: c)
                 ))
             },
             _ => None,
@@ -40,7 +40,7 @@ impl RWMFormula {
                         vec![],
                         vec![subresult.clone()],
                         ProvenInference::compatibility_left()
-                            .specialize(&substitutions!("A" := a, "B" := b, "C" := r)),
+                            .specialize(&substitutions!(A: a, B: b, C: r)),
                     )
                     .unwrap(),
                 );
@@ -52,7 +52,7 @@ impl RWMFormula {
                         vec![],
                         vec![subresult.clone()],
                         ProvenInference::compatibility_right()
-                            .specialize(&substitutions!("A" := a, "B" := b, "C" := l)),
+                            .specialize(&substitutions!(A: a, B: b, C: l)),
                     )
                     .unwrap(),
                 );

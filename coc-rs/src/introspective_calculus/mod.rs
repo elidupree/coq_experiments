@@ -4,6 +4,7 @@ pub mod display;
 pub mod logic;
 // pub mod prolog;
 pub mod derivers;
+pub mod formula_types;
 pub mod inference;
 pub mod proof_hierarchy;
 pub mod raw_proofs;
@@ -108,6 +109,18 @@ impl From<&RWMFormula> for RWMFormula {
     }
 }
 
+impl From<RawFormula> for RWMFormula {
+    fn from(value: RawFormula) -> Self {
+        value.0.already_rwm().unwrap()
+    }
+}
+
+impl From<&RawFormula> for RWMFormula {
+    fn from(value: &RawFormula) -> Self {
+        value.0.already_rwm().unwrap()
+    }
+}
+
 impl From<RWMFormula> for Formula {
     fn from(value: RWMFormula) -> Self {
         value.0
@@ -116,6 +129,18 @@ impl From<RWMFormula> for Formula {
 
 impl From<&RWMFormula> for Formula {
     fn from(value: &RWMFormula) -> Self {
+        value.0.clone()
+    }
+}
+
+impl From<RawFormula> for Formula {
+    fn from(value: RawFormula) -> Self {
+        value.0
+    }
+}
+
+impl From<&RawFormula> for Formula {
+    fn from(value: &RawFormula) -> Self {
         value.0.clone()
     }
 }
@@ -182,6 +207,11 @@ pub enum RWMFormulaValue {
     Atom(Atom),
     Apply([RWMFormula; 2]),
     Metavariable(String),
+}
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug)]
+pub enum RawFormulaValue {
+    Atom(Atom),
+    Apply([RawFormula; 2]),
 }
 
 impl Default for FormulaValue {
@@ -360,6 +390,16 @@ macro_rules! match_ic {
     }};
 }
 
+#[macro_export]
+macro_rules! formula {
+    ($f: literal) => {{
+        $crate::ad_hoc_lazy_static!(Formula)(|| $crate::introspective_calculus::FormulaParser::new().parse($f).unwrap()).into()
+    }};
+    ($f: literal, {$($substitutions:tt)*}) => {{
+        formula!($f).with_metavariables_replaced($crate::substitutions!{$($substitutions)*})
+    }};
+}
+
 // pub struct InductiveTypeConstructor {
 //     pub constructors: Vec<InductiveTypeConstructor>,
 // }
@@ -520,10 +560,10 @@ impl Formula {
             Ok(ic!((al, bl) = (ar, br)))
         })
     }
-    pub fn true_and_and(children: &[Formula]) -> Result<Formula, String> {
+    pub fn and_and_true(children: &[Formula]) -> Result<Formula, String> {
         let mut result = Formula::prop_true();
-        for c in children {
-            result = Formula::and([result, c.clone()])?;
+        for c in children.iter().rev() {
+            result = Formula::and([c.clone(), result])?;
         }
         Ok(result)
     }
@@ -685,6 +725,15 @@ impl RWMFormula {
     }
 }
 impl RawFormula {
+    pub fn value(&self) -> RawFormulaValue {
+        match &self.0.value {
+            FormulaValue::Atom(a) => RawFormulaValue::Atom(*a),
+            FormulaValue::Apply(children) => {
+                RawFormulaValue::Apply(children.each_ref().map(|f| f.already_raw().unwrap()))
+            }
+            _ => unreachable!("RWMFormula had non-RWM value {}", self),
+        }
+    }
     pub fn as_eq_sides(&self) -> Option<[RawFormula; 2]> {
         match_ic!(self, {
             ((equals a) b) => Some([a.already_raw().unwrap(), b.already_raw().unwrap()]),
@@ -704,8 +753,29 @@ impl RawFormula {
 
 #[macro_export]
 macro_rules! substitutions {
-    ($($var:tt := $val:expr),*$(,)?) => {{
-        [$(($var.to_string(), <_ as Into<$crate::introspective_calculus::RWMFormula>>::into($val))),*].into_iter().collect::<$crate::introspective_calculus::Substitutions>()
+    (@ [$($sofar:tt)*]) => {{
+        [$($sofar)*].into_iter().collect::<$crate::introspective_calculus::Substitutions>()
+    }};
+    (@ [$($sofar:tt)*] $var:ident := $val:expr, $($rest:tt)*) => {{
+        $crate::substitutions!(@ [$($sofar)* (std::stringify!($var), <_ as Into<$crate::introspective_calculus::RWMFormula>>::into($val)),] $($rest)*)
+    }};
+    (@ [$($sofar:tt)*] $var:ident : $val:expr, $($rest:tt)*) => {{
+        $crate::substitutions!(@ [$($sofar)*] $var := $val, $($rest)*)
+    }};
+    (@ [$($sofar:tt)*] $val:ident, $($rest:tt)*) => {{
+        $crate::substitutions!(@ [$($sofar)*] $val := $val, $($rest)*)
+    }};
+    (@ [$($sofar:tt)*] $var:ident := $val:expr) => {{
+        $crate::substitutions!(@ [$($sofar)*] $var := $val,)
+    }};
+    (@ [$($sofar:tt)*] $var:ident : $val:expr) => {{
+        $crate::substitutions!(@ [$($sofar)*] $var : $val,)
+    }};
+    (@ [$($sofar:tt)*] $val:ident) => {{
+        $crate::substitutions!(@ [$($sofar)*] $val,)
+    }};
+    ($first:ident $($rest:tt)*) => {{
+        $crate::substitutions!(@ [] $first $($rest)*)
     }};
 }
 

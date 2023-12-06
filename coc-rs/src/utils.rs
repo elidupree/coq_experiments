@@ -18,3 +18,11 @@ pub fn write_json_file<P: AsRef<Path>, T: Serialize>(path: P, value: &T) -> anyh
 pub fn todo<T, U>(_arg: U) -> T {
     todo!()
 }
+
+#[macro_export]
+macro_rules! ad_hoc_lazy_static {
+    ($T: ty) => {{
+        static AD_HOC_LAZY_STATIC: std::sync::OnceLock<$T> = std::sync::OnceLock::<$T>::new();
+        (|f| AD_HOC_LAZY_STATIC.get_or_init(f))
+    }};
+}

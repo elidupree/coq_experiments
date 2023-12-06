@@ -409,7 +409,7 @@ impl ProvenInference {
                         self.premises.clone(),
                         vec![apply_chains_equal],
                         ProvenInference::compatibility_left()
-                            .specialize(&substitutions! {"A":=a,"B":=b,"C":=value}),
+                            .specialize(&substitutions! {A: a, B: b, C: value}),
                     )
                     .unwrap();
                 }
@@ -513,7 +513,7 @@ impl ProvenInference {
             vec![self.clone()],
             Rule::by_name("symmetry")
                 .internal_proof()
-                .specialize(&substitutions! {"A":=a,"B":=b}),
+                .specialize(&substitutions! {A: a, B: b}),
         )
         .unwrap()
     }
@@ -544,7 +544,7 @@ impl ProvenInference {
                 vec![result, inference.clone()],
                 Rule::by_name("transitivity")
                     .internal_proof()
-                    .specialize(&substitutions! {"A":=a,"B":=b1,"C":=c}),
+                    .specialize(&substitutions! {A: a, B: b1, C: c}),
             )
             .unwrap();
         }

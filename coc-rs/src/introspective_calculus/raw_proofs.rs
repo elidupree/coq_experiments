@@ -1,6 +1,8 @@
 use crate::ic;
 use crate::introspective_calculus::inference::Inference;
+use crate::introspective_calculus::uncurried_function::UncurriedFunctionEquivalence;
 use crate::introspective_calculus::{InferenceParser, RWMFormula, RawFormula, Substitutions};
+use itertools::Itertools;
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
@@ -13,28 +15,8 @@ use std::sync::{Arc, LazyLock};
 pub struct RawProof(Arc<RawProofInner>);
 
 pub struct RawProofInner {
-    pub rule_instance: ExternalRuleRawInstance,
+    pub rule_instance: RuleRawInstance,
     pub premises: Vec<RawProof>,
-}
-
-#[derive(Clone)]
-pub struct ExternalRule(Inference);
-#[derive(Clone)]
-pub struct ExternalRuleInstance {
-    pub rule: ExternalRule,
-    pub substitutions: Substitutions,
-}
-#[derive(Clone)]
-pub struct ExternalRuleRawInstance(ExternalRuleInstance);
-#[derive(Clone)]
-pub struct CleanExternalRule(ExternalRule);
-#[derive(Clone)]
-pub struct CleanExternalRuleInstance(ExternalRuleInstance);
-
-impl Display for ExternalRule {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
 }
 
 impl Deref for RawProof {
@@ -45,35 +27,172 @@ impl Deref for RawProof {
     }
 }
 
-impl Deref for ExternalRule {
-    type Target = Inference;
+#[derive(Clone)]
+pub enum CleanExternalRule {
+    EqSym,
+    EqTrans,
+    DefinitionOfConst,
+    DefinitionOfFuse,
+    SubstituteInLhs,
+    SubstituteInRhs,
+}
+#[derive(Clone)]
+pub struct Axiom {
+    pub specified_formula: RWMFormula,
+    pub internal_form: UncurriedFunctionEquivalence,
+}
+#[derive(Clone)]
+pub enum StrengtheningRule {
+    StrengthenSuccessor,
+}
+#[derive(Clone)]
+pub enum CleanRule {
+    External(CleanExternalRule),
+    Axiom(Axiom),
+}
+#[derive(Clone)]
+pub enum Rule {
+    Clean(CleanRule),
+    Strengthening(StrengtheningRule),
+}
+
+#[derive(Clone)]
+pub struct RuleInstance {
+    pub rule: Rule,
+    pub substitutions: Substitutions,
+}
+#[derive(Clone)]
+pub struct RuleRawInstance(RuleInstance);
+
+impl Deref for RuleRawInstance {
+    type Target = RuleInstance;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl Deref for CleanExternalRule {
-    type Target = ExternalRule;
+pub trait RuleTrait {
+    fn inference(&self) -> Inference;
+}
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl RuleTrait for CleanExternalRule {
+    fn inference(&self) -> Inference {
+        match self {
+            CleanExternalRule::EqSym => {
+                inf!("A = B |- B = A")
+            }
+            CleanExternalRule::EqTrans => {
+                inf!("A = B, B = C |- A = C")
+            }
+            CleanExternalRule::DefinitionOfConst => {
+                inf!("|- const A B = A")
+            }
+            CleanExternalRule::DefinitionOfFuse => {
+                inf!("|- fuse A B C = (A C) (B C)")
+            }
+            CleanExternalRule::SubstituteInLhs => {
+                inf!("A = B |- (A C) = (B C)")
+            }
+            CleanExternalRule::SubstituteInRhs => {
+                inf!("A = B |- (C A) = (C B)")
+            }
+        }
     }
 }
 
-impl Deref for ExternalRuleRawInstance {
-    type Target = ExternalRuleInstance;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl RuleTrait for StrengtheningRule {
+    fn inference(&self) -> Inference {
+        match self {
+            StrengtheningRule::StrengthenSuccessor => {
+                inf!("const True = fuse (const equals) A B |- A = B")
+            }
+        }
     }
 }
 
-impl Deref for CleanExternalRuleInstance {
-    type Target = ExternalRuleInstance;
+impl RuleTrait for Axiom {
+    fn inference(&self) -> Inference {
+        Inference::new(vec![], self.internal_form.formula().into())
+    }
+}
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl RuleTrait for CleanRule {
+    fn inference(&self) -> Inference {
+        match self {
+            CleanRule::External(r) => r.inference(),
+            CleanRule::Axiom(r) => r.inference(),
+        }
+    }
+}
+
+impl RuleTrait for Rule {
+    fn inference(&self) -> Inference {
+        match self {
+            Rule::Clean(r) => r.inference(),
+            Rule::Strengthening(r) => r.inference(),
+        }
+    }
+}
+
+macro_rules! rule_types {
+    ($($Rule:ident),*) => {
+        $(
+impl Display for $Rule {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.inference().fmt(f)
+    }
+}
+        )*
+    }
+}
+
+rule_types!(Rule, CleanRule, CleanExternalRule, StrengtheningRule, Axiom);
+
+impl Axiom {
+    pub fn new(specified_formula: RWMFormula) -> Axiom {
+        let sides = specified_formula.as_eq_sides().unwrap();
+        let free_variables = specified_formula.free_metavariables();
+        let num_variables = free_variables.len();
+        let versions = free_variables
+            .into_iter()
+            .cloned()
+            .permutations(num_variables)
+            .map(|argument_order| UncurriedFunctionEquivalence {
+                sides: sides.map(|s| s.to_uncurried_function_of(&argument_order)),
+            });
+        let internal_form = versions
+            .min_by_key(|r| {
+                r.sides
+                    .map(|side| side.formula().naive_size())
+                    .iter()
+                    .sum::<usize>()
+            })
+            .unwrap();
+        Axiom {
+            specified_formula: specified_formula,
+            internal_form,
+        }
+    }
+}
+
+impl From<CleanExternalRule> for Rule {
+    fn from(value: CleanExternalRule) -> Self {
+        Rule::Clean(CleanRule::External(value))
+    }
+}
+
+impl Rule {
+    pub fn specialize(&self, substitutions: Substitutions) -> RuleInstance {
+        for variable in self.inference().free_metavariables() {
+            if !substitutions.contains_key(&variable) {
+                panic!("Tried to specialize rule {self} without specifying variable {variable}")
+            }
+        }
+        RuleInstance {
+            rule: self.clone(),
+            substitutions,
+        }
     }
 }
 
@@ -83,68 +202,30 @@ fn lines(file: &mut impl BufRead) -> impl Iterator<Item = String> + '_ {
         .filter(|l| !l.chars().all(char::is_whitespace) && !l.starts_with('#'))
 }
 
-pub static CLEAN_EXTERNAL_RULES: LazyLock<BTreeMap<String, CleanExternalRule>> =
-    LazyLock::new(|| {
-        let parser = InferenceParser::new();
-        let mut file = BufReader::new(File::open("./data/ic_clean_external_rules.ic").unwrap());
-        lines(&mut file)
-            .map(|l| match parser.parse(&l) {
-                Ok(a) => (a.name.clone(), CleanExternalRule(ExternalRule(a.to_rwm()))),
-                Err(e) => panic!("Got error `{e}` while parsing rule `{l}`"),
-            })
-            .collect()
-    });
-
-pub static ALL_EXTERNAL_RULES: LazyLock<BTreeMap<String, ExternalRule>> = LazyLock::new(|| {
-    let mut result: BTreeMap<String, ExternalRule> = CLEAN_EXTERNAL_RULES
-        .iter()
-        .map(|(key, value)| (key.clone(), value.0.clone()))
-        .collect();
-    result.insert(
-        "strengthen: successor".to_string(),
-        ExternalRule(Inference::new(
-            vec![ic!(True = ("A" = "B")).to_rwm()],
-            ic!("A" = "B").to_rwm(),
-        )),
-    );
-    result
+pub static EXTENSIONALITY_AXIOMS: LazyLock<BTreeMap<String, Axiom>> = LazyLock::new(|| {
+    let parser = ExplicitRuleParser::new();
+    let mut file = BufReader::new(File::open("./data/ic_axioms.ic").unwrap());
+    lines(&mut file)
+        .map(|l| match parser.parse(&l) {
+            Ok(a) => (a.name.clone(), Axiom::new(a.to_rwm())),
+            Err(e) => panic!("Got error `{e}` while parsing rule `{l}`"),
+        })
+        .collect()
 });
 
-impl ExternalRule {
-    pub fn specialize(&self, substitutions: Substitutions) -> ExternalRuleInstance {
-        for variable in self.free_metavariables() {
-            if !substitutions.contains_key(&variable) {
-                panic!(
-                        "Tried to specialize external rule {self} without specifying variable {variable}"
-                    )
-            }
-        }
-        ExternalRuleInstance {
-            rule: self.clone(),
-            substitutions,
-        }
-    }
-}
-
-impl CleanExternalRule {
-    pub fn specialize(&self, substitutions: Substitutions) -> CleanExternalRuleInstance {
-        CleanExternalRuleInstance(self.0.specialize(substitutions))
-    }
-}
-
-impl ExternalRuleInstance {
-    pub fn assume_raw(self) -> ExternalRuleRawInstance {
+impl RuleInstance {
+    pub fn assume_raw(self) -> RuleRawInstance {
         assert!(
             self.premises()
                 .chain(once(self.conclusion()))
                 .all(|f| f.is_raw()),
             "assumed non-raw instance was raw"
         );
-        ExternalRuleRawInstance(self)
+        RuleRawInstance(self)
     }
 
-    pub fn further_specialize(&self, substitutions: &Substitutions) -> ExternalRuleInstance {
-        ExternalRuleInstance {
+    pub fn further_specialize(&self, substitutions: &Substitutions) -> RuleInstance {
+        RuleInstance {
             rule: self.rule.clone(),
             substitutions: self
                 .substitutions
@@ -153,42 +234,35 @@ impl ExternalRuleInstance {
                 .collect(),
         }
     }
-}
 
-impl ExternalRuleInstance {
     pub fn premises(&self) -> impl Iterator<Item = RWMFormula> + '_ {
         self.rule
+            .inference()
             .premises
             .iter()
             .map(|premise| premise.with_metavariables_replaced_rwm(&self.substitutions))
     }
     pub fn conclusion(&self) -> RWMFormula {
         self.rule
+            .inference()
             .conclusion
             .with_metavariables_replaced_rwm(&self.substitutions)
     }
 }
 
-impl ExternalRuleRawInstance {
+impl RuleRawInstance {
     pub fn premises(&self) -> impl Iterator<Item = RawFormula> + '_ {
-        self.rule.premises.iter().map(|premise| {
-            premise
-                .with_metavariables_replaced_rwm(&self.substitutions)
-                .already_raw()
-                .unwrap()
-        })
+        self.0
+            .premises()
+            .map(|premise| premise.already_raw().unwrap())
     }
     pub fn conclusion(&self) -> RawFormula {
-        self.rule
-            .conclusion
-            .with_metavariables_replaced_rwm(&self.substitutions)
-            .already_raw()
-            .unwrap()
+        self.0.conclusion().already_raw().unwrap()
     }
 }
 impl RawProof {
     pub fn new(
-        rule_instance: ExternalRuleRawInstance,
+        rule_instance: RuleRawInstance,
         premises: Vec<RawProof>,
     ) -> Result<RawProof, String> {
         let required_premises: Vec<RawFormula> = rule_instance.premises().collect();
