@@ -79,24 +79,12 @@ pub trait RuleTrait {
 impl RuleTrait for CleanExternalRule {
     fn inference(&self) -> Inference {
         match self {
-            CleanExternalRule::EqSym => {
-                inf!("A = B |- B = A")
-            }
-            CleanExternalRule::EqTrans => {
-                inf!("A = B, B = C |- A = C")
-            }
-            CleanExternalRule::DefinitionOfConst => {
-                inf!("|- const A B = A")
-            }
-            CleanExternalRule::DefinitionOfFuse => {
-                inf!("|- fuse A B C = (A C) (B C)")
-            }
-            CleanExternalRule::SubstituteInLhs => {
-                inf!("A = B |- (A C) = (B C)")
-            }
-            CleanExternalRule::SubstituteInRhs => {
-                inf!("A = B |- (C A) = (C B)")
-            }
+            CleanExternalRule::EqSym => inf!("A = B |- B = A").to_rwm(),
+            CleanExternalRule::EqTrans => inf!("A = B, B = C |- A = C").to_rwm(),
+            CleanExternalRule::DefinitionOfConst => inf!("|- const A B = A").to_rwm(),
+            CleanExternalRule::DefinitionOfFuse => inf!("|- fuse A B C = (A C) (B C)").to_rwm(),
+            CleanExternalRule::SubstituteInLhs => inf!("A = B |- (A C) = (B C)").to_rwm(),
+            CleanExternalRule::SubstituteInRhs => inf!("A = B |- (C A) = (C B)").to_rwm(),
         }
     }
 }
@@ -105,7 +93,7 @@ impl RuleTrait for StrengtheningRule {
     fn inference(&self) -> Inference {
         match self {
             StrengtheningRule::StrengthenSuccessor => {
-                inf!("const True = fuse (const equals) A B |- A = B")
+                inf!("const True = fuse (const equals) A B |- A = B").to_rwm()
             }
         }
     }

@@ -1,5 +1,5 @@
 use crate::introspective_calculus::proof_hierarchy::ProofWithVariables;
-use crate::introspective_calculus::raw_proofs::{CleanExternalRule, RawProof, Rule};
+use crate::introspective_calculus::raw_proofs::RawProof;
 use crate::introspective_calculus::RawFormula;
 use itertools::Itertools;
 

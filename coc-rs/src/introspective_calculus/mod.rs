@@ -7,6 +7,7 @@ pub mod derivers;
 pub mod formula_types;
 pub mod inference;
 pub mod proof_hierarchy;
+pub mod provers;
 pub mod raw_proofs;
 pub mod raw_proofs_ext;
 pub mod rules;

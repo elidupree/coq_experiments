@@ -1,3 +1,6 @@
+use crate::introspective_calculus::provers::{
+    ByPartiallySpecializingAxiom, ByScriptNamed, BySubstitutingWith,
+};
 use crate::introspective_calculus::raw_proofs::{
     CleanExternalRule, CleanRule, RawProof, Rule, RuleInstance, StrengtheningRule,
 };
@@ -5,6 +8,7 @@ use crate::introspective_calculus::uncurried_function::UncurriedFunctionEquivale
 use crate::introspective_calculus::{Formula, RWMFormula, RawFormula, Substitutions, ToFormula};
 use crate::utils::todo;
 use crate::{formula, ic, inf, substitutions};
+use itertools::Itertools;
 use std::collections::BTreeSet;
 use std::iter::zip;
 use std::ops::Deref;
@@ -116,7 +120,7 @@ impl ProofWithVariables {
         }
     }
     pub fn internalize(&self, argument_order: &[String]) -> RawProof {
-        let conclusion = self.internal_conclusion(argument_order);
+        let conclusion = self.internal_conclusion(argument_order).formula();
         let premise_proofs: Vec<RawProof> = self
             .premises
             .iter()
@@ -125,14 +129,19 @@ impl ProofWithVariables {
         let result = match &self.rule_instance.rule {
             Rule::Clean(CleanRule::External(c)) => match c {
                 CleanExternalRule::EqSym => premise_proofs[0].flip_conclusion(),
-                CleanExternalRule::EqTrans => RawProof::eq_trans_chain(&premise_proofs),
+                CleanExternalRule::EqTrans => RawProof::eq_trans_chain(&premise_proofs).unwrap(),
                 CleanExternalRule::DefinitionOfConst | CleanExternalRule::DefinitionOfFuse => {
-                    conclusion.prove_by_partially_specializing_axiom()
+                    conclusion.prove(ByPartiallySpecializingAxiom).to_raw()
                 }
                 CleanExternalRule::SubstituteInLhs | CleanExternalRule::SubstituteInRhs => {
                     conclusion
-                        .formula()
-                        .prove_by_substituting_with(&premise_proofs)
+                        .prove(BySubstitutingWith(
+                            &premise_proofs
+                                .iter()
+                                .map(|p| p.with_zero_variables())
+                                .collect_vec(),
+                        ))
+                        .to_raw()
                 }
             },
             Rule::Clean(CleanRule::Axiom(axiom)) => {
@@ -140,8 +149,8 @@ impl ProofWithVariables {
                 // since these are raw formulas, only one value of `conclusion` is possible: const a = const b
                 //assert_eq!(todo(()),todo(()));
                 conclusion
-                    .formula()
-                    .prove_by_substituting_with(&[axiom.proof()])
+                    .prove(BySubstitutingWith(&[axiom.proof()]))
+                    .to_raw()
             }
             Rule::Strengthening(s) => match s {
                 StrengtheningRule::StrengthenSuccessor => {
@@ -154,17 +163,17 @@ impl ProofWithVariables {
                     // and the conclusion we need is
                     // l => Al = Bl
                     conclusion
-                        .formula()
-                        .prove_by_script_named("generalize_strengthen_successor")
+                        .prove(ByScriptNamed("generalize_strengthen_successor"))
+                        .to_raw()
                 }
             },
         };
-        assert_eq!(result.conclusion(), conclusion.formula());
+        assert_eq!(result.conclusion(), conclusion);
         result
     }
 
     pub fn eq_refl(a: RWMFormula) -> ProofWithVariables {
-        ic!(a = a).prove_by_script_named("eq_refl").unwrap()
+        ic!(a = a).prove(ByScriptNamed("eq_refl"))
     }
 
     pub fn flip_conclusion(&self) -> ProofWithVariables {
@@ -441,47 +450,10 @@ impl WeaknessLevel {
                 let q = ic!(wa & wb);
                 let last_step = ic!(p = q)
                     .to_rwm()
-                    .prove_by_script_named("distribute_trueeq_over_and")
-                    .unwrap();
+                    .prove(ByScriptNamed("distribute_trueeq_over_and"));
                 ProofWithVariables::eq_trans_chain(&[pred, last_step]).unwrap()
             }
         }
-    }
-}
-
-impl RWMFormula {
-    pub fn prove_by_substituting_with(
-        &self,
-        equivalences: &[ProofWithVariables],
-    ) -> Result<ProofWithVariables, String> {
-        todo((self, equivalences))
-    }
-    pub fn prove_by_script_named(&self, name: &str) -> Result<ProofWithVariables, String> {
-        todo((self, name))
-    }
-    pub fn prove_by_specializing_axiom(&self) -> Result<ProofWithVariables, String> {
-        todo(self)
-    }
-    pub fn prove_by_partially_specializing_axiom(&self) -> Result<ProofWithVariables, String> {
-        todo(self)
-    }
-}
-
-impl Formula {
-    pub fn prove_by_substituting_with(
-        &self,
-        equivalences: &[ProofWithVariables],
-    ) -> Result<ProofWithVariables, String> {
-        self.to_rwm().prove_by_substituting_with(equivalences)
-    }
-    pub fn prove_by_script_named(&self, name: &str) -> Result<ProofWithVariables, String> {
-        self.to_rwm().prove_by_script_named(name)
-    }
-    pub fn prove_by_specializing_axiom(&self) -> Result<ProofWithVariables, String> {
-        self.to_rwm().prove_by_specializing_axiom()
-    }
-    pub fn prove_by_partially_specializing_axiom(&self) -> Result<ProofWithVariables, String> {
-        self.to_rwm().prove_by_partially_specializing_axiom()
     }
 }
 
@@ -670,7 +642,7 @@ impl ProofWithPremises {
                             .into_iter()
                             .collect(),
                     );
-                inf!("a |- b", {a, b}).prove_by_script_named("no_premises_to_zero_premises")
+                inf!("a |- b", {a, b}).prove(ByScriptNamed("no_premises_to_zero_premises"))
             }
             ProofWithPremisesDerivation::Rule(proof) => proof.internalize(inference),
         };
