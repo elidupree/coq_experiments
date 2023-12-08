@@ -1,9 +1,10 @@
 use crate::introspective_calculus::inference::Inference;
 use crate::introspective_calculus::proof_hierarchy::ProofWithVariables;
-use crate::introspective_calculus::raw_proofs::{RuleTrait, ALL_AXIOMS};
+use crate::introspective_calculus::raw_proofs::{CleanExternalRule, Rule, RuleTrait, ALL_AXIOMS};
 use crate::introspective_calculus::raw_proofs_ext::ALL_AXIOM_SCHEMAS;
-use crate::introspective_calculus::{Formula, RWMFormula, RawFormula};
+use crate::introspective_calculus::{Formula, RWMFormula, RWMFormulaValue, RawFormula};
 use crate::utils::todo;
+use crate::{ic, substitutions};
 
 pub trait FormulaProver {
     fn try_prove(&self, formula: RWMFormula) -> Result<ProofWithVariables, String>;
@@ -39,11 +40,17 @@ impl RawFormula {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct ByAxiomSchema;
+#[derive(Copy, Clone)]
 pub struct BySpecializingAxiom;
+#[derive(Copy, Clone)]
 pub struct ByPartiallySpecializingAxiom;
+#[derive(Copy, Clone)]
 pub struct ByUnfolding;
+#[derive(Copy, Clone)]
 pub struct BySubstitutingWith<'a>(pub &'a [ProofWithVariables]);
+#[derive(Copy, Clone)]
 pub struct ByScriptNamed<'a>(pub &'a str);
 
 impl FormulaProver for ByAxiomSchema {
@@ -59,10 +66,10 @@ impl FormulaProver for ByAxiomSchema {
 
 impl FormulaProver for BySpecializingAxiom {
     fn try_prove(&self, formula: RWMFormula) -> Result<ProofWithVariables, String> {
-        let Some(formula) = formula.to_raw() else {
-            return Err("Can't specialize axiom to non-raw formula".to_string());
-        };
-        for axiom in ALL_AXIOMS.values() {
+        // let Some(formula) = formula.to_raw() else {
+        //     return Err("Can't specialize axiom to non-raw formula".to_string());
+        // };
+        for axiom in ALL_AXIOMS.iter() {
             if let Ok(args) = axiom.internal_form.args_to_return(&formula) {
                 return Ok(axiom.proof().specialize(&args));
             }
@@ -76,7 +83,7 @@ impl FormulaProver for ByPartiallySpecializingAxiom {
         let Some(formula) = formula.already_uncurried_function_equivalence() else {
             return Err("Can't specialize axiom to non-raw formula".to_string());
         };
-        for axiom in ALL_AXIOMS.values() {
+        for axiom in ALL_AXIOMS.iter() {
             if let Ok(args) = axiom.internal_form.generalized_args_to_return(&formula) {
                 return Ok(axiom.proof().partially_specialize(&args).proof().clone());
             }
@@ -87,13 +94,68 @@ impl FormulaProver for ByPartiallySpecializingAxiom {
 
 impl FormulaProver for ByUnfolding {
     fn try_prove(&self, formula: RWMFormula) -> Result<ProofWithVariables, String> {
-        todo(formula)
+        // TODO: be more efficient I guess?
+        let [a, b] = formula
+            .as_eq_sides()
+            .unwrap()
+            .map(|s| s.unfold_up_to_n_subformulas_proof(100));
+        ProofWithVariables::eq_trans_chain(&[a, b.flip_conclusion()])
     }
 }
 
 impl FormulaProver for BySubstitutingWith<'_> {
     fn try_prove(&self, formula: RWMFormula) -> Result<ProofWithVariables, String> {
-        todo(formula)
+        let equivalences = self.0;
+        for equivalence in equivalences {
+            if equivalence.conclusion() == formula {
+                return Ok(equivalence.clone());
+            }
+            let e2 = equivalence.flip_conclusion();
+            if e2.conclusion() == formula {
+                return Ok(e2);
+            }
+        }
+        let [a, b] = formula.as_eq_sides().unwrap();
+        let [[af, ax], [bf, bx]] = [&a, &b]
+            .try_map(|s| match s.value() {
+                RWMFormulaValue::Apply(children) => Some(children),
+                _ => None,
+            })
+            .ok_or_else(|| format!("could not equate `{a}` with `{b}`"))?;
+        let fp = if af != bf {
+            Some(
+                ProofWithVariables::new(
+                    Rule::from(CleanExternalRule::SubstituteInLhs)
+                        .specialize(substitutions! {A: &af, B: &bf, C: &ax}),
+                    vec![self.try_prove(ic!(af = bf).into())?],
+                )
+                .unwrap(),
+            )
+        } else {
+            None
+        };
+        let xp = if ax != bx {
+            Some(
+                ProofWithVariables::new(
+                    Rule::from(CleanExternalRule::SubstituteInLhs)
+                        .specialize(substitutions! {A: &ax, B: &bx, C: &bf}),
+                    vec![self.try_prove(ic!(ax = bx).into())?],
+                )
+                .unwrap(),
+            )
+        } else {
+            None
+        };
+        match (fp, xp) {
+            (None, None) => {
+                Err("don't use BySubstitutionWith for eq_refl (this arbitrary restriction could be removed if there was a reason)".to_string())
+            }
+            (Some(p), None) | (None, Some(p)) => Ok(p),
+            (Some(fp), Some(xp)) => {
+                // af ax = bf ax ... bf ax = bf bx
+                Ok(ProofWithVariables::eq_trans_chain(&[fp, xp]).unwrap())
+            }
+        }
     }
 }
 

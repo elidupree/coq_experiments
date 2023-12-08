@@ -1,7 +1,7 @@
-use crate::inf;
 use crate::introspective_calculus::inference::Inference;
 use crate::introspective_calculus::uncurried_function::UncurriedFunctionEquivalence;
-use crate::introspective_calculus::{ExplicitRuleParser, RWMFormula, RawFormula, Substitutions};
+use crate::introspective_calculus::{FormulaParser, RWMFormula, RawFormula, Substitutions};
+use crate::{formula, inf};
 use itertools::Itertools;
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
@@ -193,29 +193,40 @@ impl Rule {
     }
 }
 
+fn test_extensionality_axiom(axiom: &UncurriedFunctionEquivalence) {
+    let mut sides = axiom
+        .sides
+        .each_ref()
+        .map(|s| formula!("s A B C D E", {s: s.formula()}).to_rwm());
+    for s in &mut sides {
+        s.unfold_until(100);
+    }
+    assert_eq!(sides[0], sides[1]);
+}
+
 fn lines(file: &mut impl BufRead) -> impl Iterator<Item = String> + '_ {
     file.lines()
         .map(Result::unwrap)
         .filter(|l| !l.chars().all(char::is_whitespace) && !l.starts_with('#'))
 }
 
-pub static EXTENSIONALITY_AXIOMS: LazyLock<BTreeMap<String, Axiom>> = LazyLock::new(|| {
-    let parser = ExplicitRuleParser::new();
-    let mut file = BufReader::new(File::open("./data/ic_axioms.ic").unwrap());
+pub static EXTENSIONALITY_AXIOMS: LazyLock<Vec<Axiom>> = LazyLock::new(|| {
+    let parser = FormulaParser::new();
+    let mut file = BufReader::new(File::open("./data/ic_extensionality_axioms.ic").unwrap());
     lines(&mut file)
         .map(|l| match parser.parse(&l) {
-            Ok(a) => (a.name.clone(), Axiom::new(a.formula.to_rwm())),
+            Ok(a) => {
+                let axiom = Axiom::new(a.to_rwm());
+                test_extensionality_axiom(&axiom.internal_form);
+                axiom
+            }
             Err(e) => panic!("Got error `{e}` while parsing rule `{l}`"),
         })
         .collect()
 });
 
-pub static ALL_AXIOMS: LazyLock<BTreeMap<String, Axiom>> = LazyLock::new(|| {
-    EXTENSIONALITY_AXIOMS
-        .iter()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect()
-});
+pub static ALL_AXIOMS: LazyLock<Vec<Axiom>> =
+    LazyLock::new(|| EXTENSIONALITY_AXIOMS.iter().cloned().collect());
 
 impl RuleInstance {
     pub fn assume_raw(self) -> RuleRawInstance {

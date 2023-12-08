@@ -1,5 +1,5 @@
 use crate::introspective_calculus::provers::{
-    ByPartiallySpecializingAxiom, ByScriptNamed, BySubstitutingWith,
+    ByAxiomSchema, ByPartiallySpecializingAxiom, ByScriptNamed, BySubstitutingWith,
 };
 use crate::introspective_calculus::raw_proofs::{
     CleanExternalRule, CleanRule, RawProof, Rule, RuleInstance, StrengtheningRule,
@@ -96,61 +96,88 @@ impl ProofWithVariables {
             self.conclusion().is_raw(),
             "can only use ProofWithVariables::to_raw() when there's no variables"
         );
-        self.use_externally(&Substitutions::new()).unwrap()
-    }
-
-    pub fn use_externally(&self, arguments: &Substitutions) -> Result<RawProof, String> {
         RawProof::new(
-            self.rule_instance
-                .further_specialize(arguments)
-                .assume_raw(),
+            self.rule_instance.clone().assume_raw(),
             self.premises
                 .iter()
-                .map(|p| p.use_externally(arguments))
-                .collect::<Result<_, _>>()?,
+                .map(ProofWithVariables::to_raw)
+                .collect(),
         )
+        .unwrap()
     }
-    pub fn internal_conclusion(&self, argument_order: &[String]) -> UncurriedFunctionEquivalence {
-        UncurriedFunctionEquivalence {
+
+    pub fn specialize(&self, arguments: &Substitutions) -> ProofWithVariables {
+        ProofWithVariables::new(
+            self.rule_instance.further_specialize(arguments),
+            self.premises
+                .iter()
+                .map(|p| p.specialize(arguments))
+                .collect(),
+        )
+        .unwrap()
+    }
+    pub fn use_externally(&self, arguments: &Substitutions) -> RawProof {
+        // RawProof::new(
+        //     self.rule_instance
+        //         .further_specialize(arguments)
+        //         .assume_raw(),
+        //     self.premises
+        //         .iter()
+        //         .map(|p| p.use_externally(arguments))
+        //         .collect::<Result<_, _>>()?,
+        // )
+        self.specialize(arguments).to_raw()
+    }
+    // fn internal_conclusion(&self, argument_order: &[String]) -> UncurriedFunctionEquivalence {
+    //     UncurriedFunctionEquivalence {
+    //         sides: self
+    //             .conclusion()
+    //             .as_eq_sides()
+    //             .unwrap()
+    //             .map(|s| s.to_uncurried_function_of(argument_order)),
+    //     }
+    // }
+
+    // result will be raw, also
+    pub fn to_uncurried_function_equivalence(
+        &self,
+        argument_order: &[String],
+    ) -> Proven<UncurriedFunctionEquivalence> {
+        let conclusion = UncurriedFunctionEquivalence {
             sides: self
                 .conclusion()
                 .as_eq_sides()
                 .unwrap()
                 .map(|s| s.to_uncurried_function_of(argument_order)),
-        }
-    }
-    pub fn internalize(&self, argument_order: &[String]) -> RawProof {
-        let conclusion = self.internal_conclusion(argument_order).formula();
-        let premise_proofs: Vec<RawProof> = self
+        };
+        let premise_proofs: Vec<Proven<UncurriedFunctionEquivalence>> = self
             .premises
             .iter()
-            .map(|p| p.internalize(argument_order))
+            .map(|p| p.to_uncurried_function_equivalence(argument_order))
             .collect();
         let result = match &self.rule_instance.rule {
             Rule::Clean(CleanRule::External(c)) => match c {
-                CleanExternalRule::EqSym => premise_proofs[0].flip_conclusion(),
-                CleanExternalRule::EqTrans => RawProof::eq_trans_chain(&premise_proofs).unwrap(),
+                CleanExternalRule::EqSym => premise_proofs[0].flip(),
+                CleanExternalRule::EqTrans => {
+                    Proven::<UncurriedFunctionEquivalence>::trans_chain(&premise_proofs).unwrap()
+                }
                 CleanExternalRule::DefinitionOfConst | CleanExternalRule::DefinitionOfFuse => {
-                    conclusion.prove(ByPartiallySpecializingAxiom).to_raw()
+                    conclusion.prove(ByPartiallySpecializingAxiom)
                 }
                 CleanExternalRule::SubstituteInLhs | CleanExternalRule::SubstituteInRhs => {
-                    conclusion
-                        .prove(BySubstitutingWith(
-                            &premise_proofs
-                                .iter()
-                                .map(|p| p.with_zero_variables())
-                                .collect_vec(),
-                        ))
-                        .to_raw()
+                    conclusion.prove(BySubstitutingWith(
+                        &premise_proofs
+                            .iter()
+                            .map(|p| p.proof().clone())
+                            .collect_vec(),
+                    ))
                 }
             },
             Rule::Clean(CleanRule::Axiom(axiom)) => {
                 // The axiom guarantees a=b, and
                 // since these are raw formulas, only one value of `conclusion` is possible: const a = const b
                 //assert_eq!(todo(()),todo(()));
-                conclusion
-                    .prove(BySubstitutingWith(&[axiom.proof().proof().clone()]))
-                    .to_raw()
+                conclusion.prove(BySubstitutingWith(&[axiom.proof().proof().clone()]))
             }
             Rule::Strengthening(s) => match s {
                 StrengtheningRule::StrengthenSuccessor => {
@@ -162,18 +189,21 @@ impl ProofWithVariables {
                     // const (const True) = (l => m => (Alm = Blm))
                     // and the conclusion we need is
                     // l => Al = Bl
-                    conclusion
-                        .prove(ByScriptNamed("generalize_strengthen_successor"))
-                        .to_raw()
+                    // conclusion
+                    //     .prove(ByScriptNamed("generalize_strengthen_successor"))
+                    todo(())
                 }
             },
         };
-        assert_eq!(result.conclusion(), conclusion);
+        assert_eq!(*result, conclusion);
+        assert_eq!(result.proof().conclusion(), conclusion.formula().to_rwm());
         result
     }
 
     pub fn eq_refl(a: RWMFormula) -> ProofWithVariables {
-        ic!(a = a).prove(ByScriptNamed("eq_refl"))
+        //ic!(a = a).prove(ByScriptNamed("eq_refl"))
+        let p = formula!("const a const = a", { a }).prove(ByAxiomSchema);
+        ProofWithVariables::eq_trans_chain(&[p.flip_conclusion(), p]).unwrap()
     }
 
     pub fn flip_conclusion(&self) -> ProofWithVariables {

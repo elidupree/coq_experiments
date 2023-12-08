@@ -1,0 +1,8 @@
+fuse (const A) (const B) = const (A B)
+
+fuse (const (const A)) B = (const A)
+fuse (const (fuse A B)) args = fuse (fuse (const A) args) (fuse (const B) args)
+
+fuse (const (const,)) (l => (head l, tail l)) = head
+fuse (const (const A,)) (l => (head l, tail l)) = fuse (const A) tail
+

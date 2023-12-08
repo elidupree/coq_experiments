@@ -1,4 +1,7 @@
 use crate::introspective_calculus::inference::ProvenInference;
+use crate::introspective_calculus::proof_hierarchy::ProofWithVariables;
+use crate::introspective_calculus::provers::BySubstitutingWith;
+use crate::introspective_calculus::raw_proofs::{CleanExternalRule, Rule};
 use crate::introspective_calculus::{RWMFormula, RWMFormulaValue};
 use crate::{ic, match_ic, substitutions};
 use live_prop_test::live_prop_test;
@@ -10,6 +13,25 @@ impl RWMFormula {
             ((const a) _b) => {*self = a.to_rwm(); true },
             (((fuse a) b) c) => {*self = ic!((a c)(b c)).to_rwm(); true },
             _ => false,
+        })
+    }
+    pub fn unfold_here_proof(&self) -> Option<ProofWithVariables> {
+        match_ic!(self, {
+            ((const a) b) => {
+                Some(ProofWithVariables::new(
+                    Rule::from(CleanExternalRule::DefinitionOfConst).specialize (
+                    substitutions!(A: a, B: b)
+                ), vec![]
+                ).unwrap())
+            },
+            (((fuse a) b) c) => {
+                Some(ProofWithVariables::new(
+                    Rule::from(CleanExternalRule::DefinitionOfFuse).specialize (
+                    substitutions!(A: a, B: b, C: c)
+                ), vec![]
+                ).unwrap())
+            },
+            _ => None,
         })
     }
     pub fn unfold_here_equality_inference(&self) -> Option<ProvenInference> {
@@ -27,7 +49,25 @@ impl RWMFormula {
             _ => None,
         })
     }
-    #[live_prop_test(precondition = "self.is_raw_with_metavariables()")]
+
+    pub fn unfold_any_one_subformula_proof(&self) -> Option<ProofWithVariables> {
+        if let Some(result) = self.unfold_here_proof() {
+            return Some(result);
+        }
+        if let RWMFormulaValue::Apply([l, r]) = self.value() {
+            if let Some(subresult) = l.unfold_any_one_subformula_proof() {
+                let [a, b] = subresult.conclusion().as_eq_sides().unwrap();
+                return Some(ic!((a r) = (b r)).prove(BySubstitutingWith(&[subresult])));
+            }
+            if let Some(subresult) = r.unfold_any_one_subformula_proof() {
+                let [a, b] = subresult.conclusion().as_eq_sides().unwrap();
+                return Some(ic!((l a) = (l b)).prove(BySubstitutingWith(&[subresult])));
+            }
+        }
+
+        None
+    }
+
     pub fn unfold_any_one_subformula_equality_inference(&self) -> Option<ProvenInference> {
         if let Some(result) = self.unfold_here_equality_inference() {
             return Some(result);
@@ -60,6 +100,19 @@ impl RWMFormula {
         }
 
         None
+    }
+
+    pub fn unfold_up_to_n_subformulas_proof(&self, n: usize) -> ProofWithVariables {
+        let mut proof = ProofWithVariables::eq_refl(self.clone());
+        for _ in 0..n {
+            let Some(new_proof) =
+                proof.conclusion().as_eq_sides().unwrap()[1].unfold_any_one_subformula_proof()
+            else {
+                return proof;
+            };
+            proof = ProofWithVariables::eq_trans_chain(&[proof, new_proof]).unwrap();
+        }
+        proof
     }
 
     pub fn unfold_up_to_n_subformulas_equality_inference(&self, n: usize) -> ProvenInference {

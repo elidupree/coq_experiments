@@ -77,7 +77,7 @@ pub struct UncurriedFunctionEquivalence {
 impl UncurriedFunctionEquivalence {
     pub fn formula(&self) -> RawFormula {
         let [a, b] = self.sides.each_ref().map(|s| s.formula());
-        ic!(a = b).already_raw().unwrap()
+        ic!(a = b).to_raw().unwrap()
     }
     pub fn prove(&self, prover: impl FormulaProver) -> Proven<Self> {
         Proven::new(self.clone(), self.formula().prove(prover))
@@ -173,9 +173,9 @@ impl UncurriedFunction {
                 ic!((fuse a) b).already_raw().unwrap()
             }
             UncurriedFunctionValue::PopIn(child) => {
-                ic!(((const { child.formula() }),)).already_raw().unwrap()
+                ic!(((const { child.formula() }),)).to_raw().unwrap()
             }
-            UncurriedFunctionValue::Top => ic!((const,)).already_raw().unwrap(),
+            UncurriedFunctionValue::Top => ic!((const,)).to_raw().unwrap(),
         };
         UncurriedFunction(HashCapsule::new(UncurriedFunctionInner {
             value,

@@ -22,7 +22,7 @@ impl Axiom {
 
 pub static ALL_AXIOM_SCHEMAS: LazyLock<Vec<Rule>> = LazyLock::new(|| {
     ALL_AXIOMS
-        .values()
+        .iter()
         .map(|a| Rule::from(a.clone()))
         .chain([
             Rule::from(CleanExternalRule::DefinitionOfConst),
