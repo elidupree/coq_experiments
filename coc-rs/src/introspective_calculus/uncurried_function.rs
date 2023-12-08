@@ -1,6 +1,6 @@
 use crate::introspective_calculus::proof_hierarchy::{ProofWithVariables, Proven};
 use crate::introspective_calculus::provers::{
-    ByRule, BySpecializingAxiom, BySubstitutingWith, ByUnfolding, FormulaProver,
+    ByAxiomSchema, BySpecializingAxiom, BySubstitutingWith, ByUnfolding, FormulaProver,
 };
 use crate::introspective_calculus::{
     Formula, RWMFormula, RWMFormulaValue, RawFormula, RawFormulaValue, ToFormula,
@@ -82,6 +82,25 @@ impl UncurriedFunctionEquivalence {
     pub fn prove(&self, prover: impl FormulaProver) -> Proven<Self> {
         Proven::new(self.clone(), self.formula().prove(prover))
     }
+    pub fn args_to_return(&self, goal: &RawFormula) -> Result<ArgumentList, String> {
+        let [a, b] = goal.as_eq_sides().unwrap();
+        let mut args = Vec::new();
+        self.sides[0].add_args_to_return(&a, 0, &mut args)?;
+        self.sides[1].add_args_to_return(&b, 0, &mut args)?;
+        self.sides[0].finish_args_to_return(goal, args.clone());
+        Ok(self.sides[1].finish_args_to_return(goal, args))
+    }
+    pub fn generalized_args_to_return(
+        &self,
+        goal: &UncurriedFunctionEquivalence,
+    ) -> Result<GeneralizedArgumentList, String> {
+        let [a, b] = goal.sides.clone();
+        let mut args = Vec::new();
+        self.sides[0].add_generalized_args_to_return(&a, 0, &mut args)?;
+        self.sides[1].add_generalized_args_to_return(&b, 0, &mut args)?;
+        self.sides[0].finish_generalized_args_to_return(&a, args.clone());
+        Ok(self.sides[1].finish_generalized_args_to_return(&b, args))
+    }
 }
 
 impl Proven<UncurriedFunctionEquivalence> {
@@ -91,6 +110,14 @@ impl Proven<UncurriedFunctionEquivalence> {
                 sides: [value.clone(), value.clone()],
             },
             ProofWithVariables::eq_refl(value.formula().into()),
+        )
+    }
+    pub fn flip(&self) -> Self {
+        Proven::new(
+            UncurriedFunctionEquivalence {
+                sides: [self.sides[1].clone(), self.sides[0].clone()],
+            },
+            self.proof().flip_conclusion(),
         )
     }
     pub fn trans_chain(
@@ -107,6 +134,26 @@ impl Proven<UncurriedFunctionEquivalence> {
                 &steps.iter().map(|step| step.proof().clone()).collect_vec(),
             )?,
         ))
+    }
+    pub fn specialize(&self, args: &ArgumentList) -> ProofWithVariables {
+        let [pl, pr] = self.sides.each_ref().map(|s| s.call(args));
+        let pm = ic!(
+            ({self.sides[0].formula()} {args.formula()}) =
+            ({self.sides[1].formula()} {args.formula()})
+        )
+        .prove(BySubstitutingWith(&[self.proof().clone()]));
+        ProofWithVariables::eq_trans_chain(&[pl.flip_conclusion(), pm, pr]).unwrap()
+    }
+    pub fn partially_specialize(
+        &self,
+        args: &GeneralizedArgumentList,
+    ) -> Proven<UncurriedFunctionEquivalence> {
+        let [pl, pr] = self.sides.each_ref().map(|s| s.generalized_call(args));
+        let pm = UncurriedFunctionEquivalence {
+            sides: [pl.sides[0].clone(), pr.sides[0].clone()],
+        }
+        .prove(BySubstitutingWith(&[self.proof().clone()]));
+        Self::trans_chain(&[pl.flip(), pm, pr]).unwrap()
     }
 }
 
@@ -151,6 +198,13 @@ impl UncurriedFunction {
     pub fn args_to_return(&self, goal: &RawFormula) -> Result<ArgumentList, String> {
         let mut args = Vec::new();
         self.add_args_to_return(goal, 0, &mut args)?;
+        Ok(self.finish_args_to_return(goal, args))
+    }
+    pub fn finish_args_to_return(
+        &self,
+        goal: &RawFormula,
+        args: Vec<Option<RawFormula>>,
+    ) -> ArgumentList {
         let mut result = ArgumentList::Nil;
         for argument in args.into_iter().rev() {
             result = ArgumentList::Cons(argument.unwrap_or_default(), Arc::new(result));
@@ -160,7 +214,7 @@ impl UncurriedFunction {
             test_call.conclusion().as_eq_sides().unwrap()[1],
             goal.to_rwm()
         );
-        Ok(result)
+        result
     }
     pub fn add_args_to_return(
         &self,
@@ -211,13 +265,11 @@ impl UncurriedFunction {
         match self.value() {
             UncurriedFunctionValue::Constant(f) => {
                 // goal: (const f) args = f
-                ic!(lhs = f).prove(ByRule)
+                ic!(lhs = f).prove(ByAxiomSchema)
             }
             UncurriedFunctionValue::Apply(children) => {
                 // subgoals: A args = A', B args = B'
-                let child_proofs = children
-                    .each_ref()
-                    .map(|child| child.call(arguments.clone()));
+                let child_proofs = children.each_ref().map(|child| child.call(arguments));
                 let children_lhs = Formula::apply(
                     child_proofs
                         .each_ref()
@@ -231,12 +283,12 @@ impl UncurriedFunction {
                 let combined_child_result =
                     ic!(children_lhs = children_rhs).prove(BySubstitutingWith(&child_proofs));
                 // subgoal: (fuse A B) args = (A args) (B args)
-                let local_result = ic!(lhs = children_lhs).prove(ByRule);
+                let local_result = ic!(lhs = children_lhs).prove(ByAxiomSchema);
                 // goal: (fuse A B) args = A' B'
                 ProofWithVariables::eq_trans_chain(&[local_result, combined_child_result]).unwrap()
             }
             UncurriedFunctionValue::PopIn(child) => {
-                let ArgumentList::Cons(head, tail) = arguments else {
+                let ArgumentList::Cons(_head, tail) = arguments else {
                     panic!("insufficient arguments passed to call")
                 };
                 // subgoal: P tail = P'
@@ -263,13 +315,20 @@ impl UncurriedFunction {
     ) -> Result<GeneralizedArgumentList, String> {
         let mut args = Vec::new();
         self.add_generalized_args_to_return(goal, 0, &mut args)?;
+        Ok(self.finish_generalized_args_to_return(goal, args))
+    }
+    pub fn finish_generalized_args_to_return(
+        &self,
+        goal: &UncurriedFunction,
+        args: Vec<Option<UncurriedFunction>>,
+    ) -> GeneralizedArgumentList {
         let mut result = GeneralizedArgumentList::Nil;
         for argument in args.into_iter().rev() {
             result = GeneralizedArgumentList::Cons(argument.unwrap_or_default(), Arc::new(result));
         }
         let test_call = self.generalized_call(&result);
         assert_eq!(test_call.sides[1], *goal);
-        Ok(result)
+        result
     }
     pub fn add_generalized_args_to_return(
         &self,
@@ -290,7 +349,7 @@ impl UncurriedFunction {
                 UncurriedFunctionValue::Apply(goal_children),
             ) => {
                 for (child, goal_child) in zip(children, goal_children) {
-                    child.add_generalized_args_to_return(&goal_child, skipped, collector)?;
+                    child.add_generalized_args_to_return(goal_child, skipped, collector)?;
                 }
             }
             (UncurriedFunctionValue::PopIn(child), _) => {
@@ -323,11 +382,11 @@ impl UncurriedFunction {
             UncurriedFunction::constant(self.formula()),
             arguments.uncurried_function(),
         ]);
-        let args = arguments.uncurried_function().formula();
+        // let args = arguments.uncurried_function().formula();
         match self.value() {
             UncurriedFunctionValue::Constant(f) => {
                 // goal: fuse (const (const f)) args = (const f)
-                let rhs = UncurriedFunction::constant(self.formula());
+                let rhs = UncurriedFunction::constant(f.clone());
                 UncurriedFunctionEquivalence { sides: [lhs, rhs] }.prove(BySpecializingAxiom)
             }
             UncurriedFunctionValue::Apply(children) => {
@@ -340,7 +399,7 @@ impl UncurriedFunction {
                 let children_rhs =
                     UncurriedFunction::apply(child_proofs.each_ref().map(|c| c.sides[1].clone()));
                 let combined_child_results = UncurriedFunctionEquivalence {
-                    sides: [children_lhs, children_rhs],
+                    sides: [children_lhs.clone(), children_rhs],
                 }
                 .prove(BySubstitutingWith(
                     &child_proofs.each_ref().map(|c| c.proof().clone()),
@@ -362,7 +421,7 @@ impl UncurriedFunction {
                 .unwrap()
             }
             UncurriedFunctionValue::PopIn(child) => {
-                let GeneralizedArgumentList::Cons(head, tail) = arguments else {
+                let GeneralizedArgumentList::Cons(_head, tail) = arguments else {
                     panic!("insufficient arguments passed to call")
                 };
                 // subgoal: fuse (const P) tail = P'
@@ -378,7 +437,7 @@ impl UncurriedFunction {
             }
             UncurriedFunctionValue::Top => {
                 // goal: fuse (const (const,)) (l => (head l, tail l)) = head
-                let GeneralizedArgumentList::Cons(head, tail) = arguments else {
+                let GeneralizedArgumentList::Cons(head, _tail) = arguments else {
                     panic!("insufficient arguments passed to call")
                 };
                 UncurriedFunctionEquivalence {
@@ -390,6 +449,7 @@ impl UncurriedFunction {
     }
     pub fn canonicalize_locally(&self) -> Proven<UncurriedFunctionEquivalence> {
         if let UncurriedFunctionValue::Apply([a, b]) = self.value() {
+            #[allow(clippy::single_match)]
             match (a.value(), b.value()) {
                 (UncurriedFunctionValue::Constant(a), UncurriedFunctionValue::Constant(b)) => {
                     let combined = ic!(a b).already_raw().unwrap();
@@ -512,5 +572,42 @@ impl RWMFormula {
                 }
             }
         }
+    }
+    pub fn already_uncurried_function(&self) -> Option<UncurriedFunction> {
+        let result = if let Ok([a]) = ic!(const "a").matches::<[RWMFormula; 1]>(self) {
+            Some(UncurriedFunction::constant(a.to_raw()?))
+        } else if let Ok([a, b]) = ic!((fuse "a") "b").matches::<[RWMFormula; 2]>(self) {
+            Some(UncurriedFunction::apply([
+                a.already_uncurried_function()?,
+                b.already_uncurried_function()?,
+            ]))
+        } else if let Ok([a]) = ic!(((const "a"),)).matches::<[RWMFormula; 1]>(self) {
+            Some(UncurriedFunction::pop_in(a.already_uncurried_function()?))
+        } else if self == &ic!(const,).to_rwm() {
+            Some(UncurriedFunction::top())
+        } else {
+            None
+        };
+        if let Some(result) = &result {
+            assert_eq!(self, &result.formula().to_rwm())
+        }
+        result
+    }
+    pub fn already_uncurried_function_equivalence(&self) -> Option<UncurriedFunctionEquivalence> {
+        Some(UncurriedFunctionEquivalence {
+            sides: self
+                .as_eq_sides()?
+                .try_map(|s| s.already_uncurried_function())?,
+        })
+    }
+}
+impl ProofWithVariables {
+    pub fn already_uncurried_function_equivalence(
+        &self,
+    ) -> Option<Proven<UncurriedFunctionEquivalence>> {
+        Some(Proven::new(
+            self.conclusion().already_uncurried_function_equivalence()?,
+            self.clone(),
+        ))
     }
 }

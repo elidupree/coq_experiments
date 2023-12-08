@@ -566,7 +566,7 @@ impl Formula {
         Formula::try_combine_pretty(children, FormulaValue::And, |ab| {
             let [[al, ar], [bl, br]] = ab.try_map(|f| {
                 f.as_eq_sides()
-                    .ok_or_else(|| "can't join non-equality formula `{f}` with `&`")
+                    .ok_or_else(|| format!("can't join non-equality formula `{f}` with `&`"))
             })?;
             Ok(ic!((al, bl) = (ar, br)))
         })

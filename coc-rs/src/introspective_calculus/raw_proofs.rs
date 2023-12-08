@@ -147,11 +147,14 @@ impl Axiom {
             .cloned()
             .permutations(num_variables)
             .map(|argument_order| UncurriedFunctionEquivalence {
-                sides: sides.map(|s| s.to_uncurried_function_of(&argument_order)),
+                sides: sides
+                    .each_ref()
+                    .map(|s| s.to_uncurried_function_of(&argument_order)),
             });
         let internal_form = versions
             .min_by_key(|r| {
                 r.sides
+                    .each_ref()
                     .map(|side| side.formula().naive_size())
                     .iter()
                     .sum::<usize>()
@@ -167,6 +170,12 @@ impl Axiom {
 impl From<CleanExternalRule> for Rule {
     fn from(value: CleanExternalRule) -> Self {
         Rule::Clean(CleanRule::External(value))
+    }
+}
+
+impl From<Axiom> for Rule {
+    fn from(value: Axiom) -> Self {
+        Rule::Clean(CleanRule::Axiom(value))
     }
 }
 
@@ -198,6 +207,13 @@ pub static EXTENSIONALITY_AXIOMS: LazyLock<BTreeMap<String, Axiom>> = LazyLock::
             Ok(a) => (a.name.clone(), Axiom::new(a.formula.to_rwm())),
             Err(e) => panic!("Got error `{e}` while parsing rule `{l}`"),
         })
+        .collect()
+});
+
+pub static ALL_AXIOMS: LazyLock<BTreeMap<String, Axiom>> = LazyLock::new(|| {
+    EXTENSIONALITY_AXIOMS
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
         .collect()
 });
 

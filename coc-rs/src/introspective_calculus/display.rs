@@ -179,7 +179,7 @@ impl Formula {
 }
 
 impl UncurriedFunction {
-    pub fn to_display_item(&self, parenthesize_abstractions: bool) -> Box<dyn DisplayItem> {
+    pub fn to_display_item(&self, _parenthesize_abstractions: bool) -> Box<dyn DisplayItem> {
         match &self.value() {
             UncurriedFunctionValue::Constant(f) => Box::new(DisplayItemSequence {
                 always_parens: true,

@@ -1,7 +1,35 @@
-use crate::introspective_calculus::proof_hierarchy::ProofWithVariables;
-use crate::introspective_calculus::raw_proofs::RawProof;
-use crate::introspective_calculus::RawFormula;
+use crate::introspective_calculus::proof_hierarchy::{ProofWithVariables, Proven};
+use crate::introspective_calculus::raw_proofs::{
+    Axiom, CleanExternalRule, RawProof, Rule, ALL_AXIOMS,
+};
+use crate::introspective_calculus::uncurried_function::UncurriedFunctionEquivalence;
+use crate::introspective_calculus::{RawFormula, Substitutions};
 use itertools::Itertools;
+use std::sync::LazyLock;
+
+impl Axiom {
+    pub fn proof(&self) -> Proven<UncurriedFunctionEquivalence> {
+        Proven::new(
+            self.internal_form.clone(),
+            ProofWithVariables::new(
+                Rule::from(self.clone()).specialize(Substitutions::new()),
+                Vec::new(),
+            )
+            .unwrap(),
+        )
+    }
+}
+
+pub static ALL_AXIOM_SCHEMAS: LazyLock<Vec<Rule>> = LazyLock::new(|| {
+    ALL_AXIOMS
+        .values()
+        .map(|a| Rule::from(a.clone()))
+        .chain([
+            Rule::from(CleanExternalRule::DefinitionOfConst),
+            Rule::from(CleanExternalRule::DefinitionOfFuse),
+        ])
+        .collect()
+});
 
 impl RawProof {
     // pub fn substitute_in_conclusion(&self, equivalence: RawProof) -> Option<RawProof> {
