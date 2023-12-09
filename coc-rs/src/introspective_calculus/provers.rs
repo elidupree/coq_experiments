@@ -2,6 +2,7 @@ use crate::introspective_calculus::inference::Inference;
 use crate::introspective_calculus::proof_hierarchy::ProofWithVariables;
 use crate::introspective_calculus::raw_proofs::{CleanExternalRule, Rule, RuleTrait, ALL_AXIOMS};
 use crate::introspective_calculus::raw_proofs_ext::ALL_AXIOM_SCHEMAS;
+use crate::introspective_calculus::uncurried_function::UncurriedFunctionEquivalence;
 use crate::introspective_calculus::{Formula, RWMFormula, RWMFormulaValue, RawFormula};
 use crate::utils::todo;
 use crate::{ic, substitutions};
@@ -60,7 +61,7 @@ impl FormulaProver for ByAxiomSchema {
                 return Ok(ProofWithVariables::new(a.specialize(s), Vec::new()).unwrap());
             }
         }
-        Err("No axiom schema matched".to_string())
+        Err(format!("No axiom schema matched {formula}"))
     }
 }
 
@@ -74,21 +75,24 @@ impl FormulaProver for BySpecializingAxiom {
                 return Ok(axiom.proof().specialize(&args));
             }
         }
-        Err("No axiom matched".to_string())
+        Err(format!("No axiom matched {formula}"))
     }
 }
 
 impl FormulaProver for ByPartiallySpecializingAxiom {
     fn try_prove(&self, formula: RWMFormula) -> Result<ProofWithVariables, String> {
-        let Some(formula) = formula.already_uncurried_function_equivalence() else {
-            return Err("Can't specialize axiom to non-raw formula".to_string());
-        };
+        let formula = formula
+            .already_uncurried_function_equivalence()
+            .map_err(|e| {
+                format!("Can't specialize axiom to non-UCF: {e} \n\n(formula was {formula}")
+            })?;
         for axiom in ALL_AXIOMS.iter() {
+            //eprintln!("{}", axiom.internal_form);
             if let Ok(args) = axiom.internal_form.generalized_args_to_return(&formula) {
                 return Ok(axiom.proof().partially_specialize(&args).proof().clone());
             }
         }
-        Err("No axiom matched".to_string())
+        Err(format!("No axiom matched {}", formula.formula()))
     }
 }
 
@@ -137,7 +141,7 @@ impl FormulaProver for BySubstitutingWith<'_> {
         let xp = if ax != bx {
             Some(
                 ProofWithVariables::new(
-                    Rule::from(CleanExternalRule::SubstituteInLhs)
+                    Rule::from(CleanExternalRule::SubstituteInRhs)
                         .specialize(substitutions! {A: &ax, B: &bx, C: &bf}),
                     vec![self.try_prove(ic!(ax = bx).into())?],
                 )

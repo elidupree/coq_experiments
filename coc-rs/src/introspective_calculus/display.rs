@@ -2,7 +2,7 @@ use crate::display::{
     DisplayItem, DisplayItemSequence, WithUnsplittablePrefix, WithUnsplittableSuffix,
 };
 use crate::introspective_calculus::uncurried_function::{
-    UncurriedFunction, UncurriedFunctionValue,
+    UncurriedFunction, UncurriedFunctionEquivalence, UncurriedFunctionValue,
 };
 use crate::introspective_calculus::{
     AbstractionKind, Atom, Formula, FormulaValue, RWMFormula, RawFormula, Substitutions, ID,
@@ -185,10 +185,22 @@ impl UncurriedFunction {
                 always_parens: true,
                 items: vec![Box::new("const".to_string()), f.to_display_item(true)],
             }),
-            UncurriedFunctionValue::PopIn(child) => Box::new(DisplayItemSequence {
-                always_parens: true,
-                items: vec![Box::new("^".to_string()), child.to_display_item(true)],
-            }),
+            UncurriedFunctionValue::PopIn(child) => {
+                let mut pops = 1;
+                let mut walker = child;
+                while let UncurriedFunctionValue::PopIn(c2) = walker.value() {
+                    walker = c2;
+                    pops += 1;
+                }
+                if *walker == UncurriedFunction::top() {
+                    Box::new(format!("[{pops}]"))
+                } else {
+                    Box::new(DisplayItemSequence {
+                        always_parens: true,
+                        items: vec![Box::new("^{pops}".to_string()), child.to_display_item(true)],
+                    })
+                }
+            }
             UncurriedFunctionValue::Top => Box::new("[0]".to_string()),
             UncurriedFunctionValue::Apply(children) => {
                 let mut chain_members = vec![&children[1]];
@@ -210,6 +222,20 @@ impl UncurriedFunction {
         }
     }
 }
+impl UncurriedFunctionEquivalence {
+    pub fn to_display_item(&self, _parenthesize_abstractions: bool) -> Box<dyn DisplayItem> {
+        Box::new(DisplayItemSequence {
+            always_parens: true,
+            items: vec![
+                self.sides[0].to_display_item(true),
+                Box::new(WithUnsplittablePrefix::new(
+                    "= ",
+                    self.sides[1].to_display_item(true),
+                )),
+            ],
+        })
+    }
+}
 
 impl Display for Formula {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -218,6 +244,12 @@ impl Display for Formula {
 }
 
 impl Display for UncurriedFunction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.to_display_item(false).display().fmt(f)
+    }
+}
+
+impl Display for UncurriedFunctionEquivalence {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         self.to_display_item(false).display().fmt(f)
     }

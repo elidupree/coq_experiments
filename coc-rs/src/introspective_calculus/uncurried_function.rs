@@ -8,6 +8,7 @@ use crate::introspective_calculus::{
 use crate::{formula, ic};
 use hash_capsule::HashCapsule;
 use itertools::Itertools;
+use live_prop_test::live_prop_test;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::iter::zip;
@@ -15,9 +16,20 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 // convenient form of: pair-chain
+#[derive(Debug)]
 pub enum ArgumentList {
     Nil,
-    Cons(RawFormula, Arc<ArgumentList>),
+    Cons(RWMFormula, Arc<ArgumentList>),
+}
+
+impl FromIterator<RWMFormula> for ArgumentList {
+    fn from_iter<T: IntoIterator<Item = RWMFormula>>(iter: T) -> Self {
+        let mut iter = iter.into_iter();
+        match iter.next() {
+            None => ArgumentList::Nil,
+            Some(f) => ArgumentList::Cons(f, Arc::new(iter.collect())),
+        }
+    }
 }
 
 // impl ArgumentList {
@@ -26,6 +38,7 @@ pub enum ArgumentList {
 // }
 
 // convenient form of: UncurriedFunction that returns a pair-chain
+#[derive(Debug)]
 pub enum GeneralizedArgumentList {
     Nil,
     Cons(UncurriedFunction, Arc<GeneralizedArgumentList>),
@@ -82,13 +95,13 @@ impl UncurriedFunctionEquivalence {
     pub fn prove(&self, prover: impl FormulaProver) -> Proven<Self> {
         Proven::new(self.clone(), self.formula().prove(prover))
     }
-    pub fn args_to_return(&self, goal: &RawFormula) -> Result<ArgumentList, String> {
+    pub fn args_to_return(&self, goal: &RWMFormula) -> Result<ArgumentList, String> {
         let [a, b] = goal.as_eq_sides().unwrap();
         let mut args = Vec::new();
         self.sides[0].add_args_to_return(&a, 0, &mut args)?;
         self.sides[1].add_args_to_return(&b, 0, &mut args)?;
-        self.sides[0].finish_args_to_return(goal, args.clone());
-        Ok(self.sides[1].finish_args_to_return(goal, args))
+        self.sides[0].finish_args_to_return(&a, args.clone());
+        Ok(self.sides[1].finish_args_to_return(&b, args))
     }
     pub fn generalized_args_to_return(
         &self,
@@ -195,15 +208,15 @@ impl UncurriedFunction {
         UncurriedFunctionValue::Top.into()
     }
 
-    pub fn args_to_return(&self, goal: &RawFormula) -> Result<ArgumentList, String> {
+    pub fn args_to_return(&self, goal: &RWMFormula) -> Result<ArgumentList, String> {
         let mut args = Vec::new();
         self.add_args_to_return(goal, 0, &mut args)?;
         Ok(self.finish_args_to_return(goal, args))
     }
     pub fn finish_args_to_return(
         &self,
-        goal: &RawFormula,
-        args: Vec<Option<RawFormula>>,
+        goal: &RWMFormula,
+        args: Vec<Option<RWMFormula>>,
     ) -> ArgumentList {
         let mut result = ArgumentList::Nil;
         for argument in args.into_iter().rev() {
@@ -212,25 +225,28 @@ impl UncurriedFunction {
         let test_call = self.call(&result);
         assert_eq!(
             test_call.conclusion().as_eq_sides().unwrap()[1],
-            goal.to_rwm()
+            goal.to_rwm(),
+            "{} != {}",
+            test_call.conclusion().as_eq_sides().unwrap()[1],
+            goal.to_rwm(),
         );
         result
     }
     pub fn add_args_to_return(
         &self,
-        goal: &RawFormula,
+        goal: &RWMFormula,
         skipped: usize,
-        collector: &mut Vec<Option<RawFormula>>,
+        collector: &mut Vec<Option<RWMFormula>>,
     ) -> Result<(), String> {
         match (self.value(), goal.value()) {
             (UncurriedFunctionValue::Constant(f), _) => {
-                if f != goal {
+                if &f.to_rwm() != goal {
                     return Err(format!(
                         "Tried to unify formulas with conflicting constants: `{f} := {goal}`"
                     ));
                 }
             }
-            (UncurriedFunctionValue::Apply(children), RawFormulaValue::Apply(goal_children)) => {
+            (UncurriedFunctionValue::Apply(children), RWMFormulaValue::Apply(goal_children)) => {
                 for (child, goal_child) in zip(children, goal_children) {
                     child.add_args_to_return(&goal_child, skipped, collector)?;
                 }
@@ -259,9 +275,7 @@ impl UncurriedFunction {
     /// returns a proof of `self.formula (A,(B,(C,*))) = body[0:=A, 1:=B, 2:=C]`
     pub fn call(&self, arguments: &ArgumentList) -> ProofWithVariables {
         let args = arguments.formula();
-        let lhs = Formula::apply([self.formula().into(), args.into()])
-            .already_raw()
-            .unwrap();
+        let lhs = Formula::apply([self.formula().into(), args.into()]);
         match self.value() {
             UncurriedFunctionValue::Constant(f) => {
                 // goal: (const f) args = f
@@ -336,6 +350,7 @@ impl UncurriedFunction {
         skipped: usize,
         collector: &mut Vec<Option<UncurriedFunction>>,
     ) -> Result<(), String> {
+        //eprintln!("{}\n?:=\n{}\n", self, goal);
         match (self.value(), goal.value()) {
             (UncurriedFunctionValue::Constant(f), UncurriedFunctionValue::Constant(g)) => {
                 if f != g {
@@ -440,6 +455,12 @@ impl UncurriedFunction {
                 let GeneralizedArgumentList::Cons(head, _tail) = arguments else {
                     panic!("insufficient arguments passed to call")
                 };
+                assert_eq!(
+                    lhs.formula().to_rwm(),
+                    formula!("fuse (const (const,)) (l => (head l, tail l))", {head:head.formula(), tail:_tail.uncurried_function().formula()}),
+                    "{} !=",
+                    lhs.formula(),
+                );
                 UncurriedFunctionEquivalence {
                     sides: [lhs, head.clone()],
                 }
@@ -480,15 +501,15 @@ impl UncurriedFunction {
 }
 
 impl ArgumentList {
-    pub fn formula(&self) -> RawFormula {
+    pub fn formula(&self) -> RWMFormula {
         match self {
             ArgumentList::Cons(head, tail) => {
                 let tail = tail.formula();
-                ic!((head, tail)).already_raw().unwrap()
+                ic!((head, tail)).to_rwm()
             }
             ArgumentList::Nil => {
                 // anything is fine
-                RawFormula::default()
+                RWMFormula::default()
             }
         }
     }
@@ -503,7 +524,7 @@ impl GeneralizedArgumentList {
                 // = x => y => y (head x) (tail x)
                 // = x => (fuse (fuse id (const (head x))) (const (tail x)))
                 // = fusetree["fuse" ("fuse id" (fuse (const const) head)) (fuse (const const) tail)]
-                formula!("l => (head l, tail l)")
+                formula!("(head, tail)")
                     .to_rwm()
                     .with_metavariables_replaced_with_uncurried_functions(
                         &[
@@ -552,7 +573,7 @@ impl RWMFormula {
         // if !self.contains_free_metavariable(head) {
         //     return UncurriedFunctionValue::PopIn(self.to_uncurried_function_of(tail)).into();
         // }
-        match self.value() {
+        let result: UncurriedFunction = match self.value() {
             RWMFormulaValue::Atom(_) => {
                 unreachable!()
             }
@@ -571,32 +592,62 @@ impl RWMFormula {
                     UncurriedFunctionValue::PopIn(self.to_uncurried_function_of(tail)).into()
                 }
             }
-        }
+        };
+        // didn't work due to bootstrapping issues:
+        // assert_eq!(
+        //     result
+        //         .call(
+        //             &arguments
+        //                 .iter()
+        //                 .map(|arg| arg.to_formula().to_rwm())
+        //                 .collect()
+        //         )
+        //         .conclusion()
+        //         .as_eq_sides()
+        //         .unwrap()[1],
+        //     *self
+        // );
+        let test_args: ArgumentList = arguments
+            .iter()
+            .map(|arg| arg.to_formula().to_rwm())
+            .collect();
+        let mut test = ic!({result.formula()} {test_args.formula()}).to_rwm();
+        test.unfold_until(1000);
+        let mut test2 = self.clone();
+        test2.unfold_until(100);
+        assert_eq!(test, test2, "{test} != {test2}");
+        result
     }
-    pub fn already_uncurried_function(&self) -> Option<UncurriedFunction> {
+    pub fn already_uncurried_function(&self) -> Result<UncurriedFunction, String> {
         let result = if let Ok([a]) = ic!(const "a").matches::<[RWMFormula; 1]>(self) {
-            Some(UncurriedFunction::constant(a.to_raw()?))
+            Ok(UncurriedFunction::constant(
+                a.to_raw()
+                    .ok_or_else(|| format!("Not a UCF (not raw): {a}"))?,
+            ))
+        } else if let Ok([a]) = ic!(((const "a"),)).matches::<[RWMFormula; 1]>(self) {
+            Ok(UncurriedFunction::pop_in(a.already_uncurried_function()?))
+        } else if self == &ic!(const,).to_rwm() {
+            Ok(UncurriedFunction::top())
         } else if let Ok([a, b]) = ic!((fuse "a") "b").matches::<[RWMFormula; 2]>(self) {
-            Some(UncurriedFunction::apply([
+            Ok(UncurriedFunction::apply([
                 a.already_uncurried_function()?,
                 b.already_uncurried_function()?,
             ]))
-        } else if let Ok([a]) = ic!(((const "a"),)).matches::<[RWMFormula; 1]>(self) {
-            Some(UncurriedFunction::pop_in(a.already_uncurried_function()?))
-        } else if self == &ic!(const,).to_rwm() {
-            Some(UncurriedFunction::top())
         } else {
-            None
+            Err(format!("Not an uncurried function: {self}"))
         };
-        if let Some(result) = &result {
+        if let Ok(result) = &result {
             assert_eq!(self, &result.formula().to_rwm())
         }
         result
     }
-    pub fn already_uncurried_function_equivalence(&self) -> Option<UncurriedFunctionEquivalence> {
-        Some(UncurriedFunctionEquivalence {
+    pub fn already_uncurried_function_equivalence(
+        &self,
+    ) -> Result<UncurriedFunctionEquivalence, String> {
+        Ok(UncurriedFunctionEquivalence {
             sides: self
-                .as_eq_sides()?
+                .as_eq_sides()
+                .ok_or_else(|| format!("Not an equivalence: {self}"))?
                 .try_map(|s| s.already_uncurried_function())?,
         })
     }
@@ -604,8 +655,8 @@ impl RWMFormula {
 impl ProofWithVariables {
     pub fn already_uncurried_function_equivalence(
         &self,
-    ) -> Option<Proven<UncurriedFunctionEquivalence>> {
-        Some(Proven::new(
+    ) -> Result<Proven<UncurriedFunctionEquivalence>, String> {
+        Ok(Proven::new(
             self.conclusion().already_uncurried_function_equivalence()?,
             self.clone(),
         ))
