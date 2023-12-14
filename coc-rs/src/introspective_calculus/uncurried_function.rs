@@ -17,17 +17,17 @@ use std::sync::Arc;
 
 // convenient form of: pair-chain
 #[derive(Debug)]
-pub enum ArgumentList {
+pub enum PairChain {
     Nil,
-    Cons(RWMFormula, Arc<ArgumentList>),
+    Cons(RWMFormula, Arc<PairChain>),
 }
 
-impl FromIterator<RWMFormula> for ArgumentList {
+impl FromIterator<RWMFormula> for PairChain {
     fn from_iter<T: IntoIterator<Item = RWMFormula>>(iter: T) -> Self {
         let mut iter = iter.into_iter();
         match iter.next() {
-            None => ArgumentList::Nil,
-            Some(f) => ArgumentList::Cons(f, Arc::new(iter.collect())),
+            None => PairChain::Nil,
+            Some(f) => PairChain::Cons(f, Arc::new(iter.collect())),
         }
     }
 }
@@ -39,9 +39,19 @@ impl FromIterator<RWMFormula> for ArgumentList {
 
 // convenient form of: UncurriedFunction that returns a pair-chain
 #[derive(Debug)]
-pub enum GeneralizedArgumentList {
+pub enum UncurriedPairChain {
     Nil,
-    Cons(UncurriedFunction, Arc<GeneralizedArgumentList>),
+    Cons(UncurriedFunction, Arc<UncurriedPairChain>),
+}
+
+impl FromIterator<UncurriedFunction> for UncurriedPairChain {
+    fn from_iter<T: IntoIterator<Item = UncurriedFunction>>(iter: T) -> Self {
+        let mut iter = iter.into_iter();
+        match iter.next() {
+            None => UncurriedPairChain::Nil,
+            Some(f) => UncurriedPairChain::Cons(f, Arc::new(iter.collect())),
+        }
+    }
 }
 
 // impl GeneralizedArgumentList {
@@ -87,6 +97,12 @@ pub struct UncurriedFunctionEquivalence {
     pub sides: [UncurriedFunction; 2],
 }
 
+impl ToFormula for UncurriedFunctionEquivalence {
+    fn to_formula(&self) -> Formula {
+        self.formula().to_formula()
+    }
+}
+
 impl UncurriedFunctionEquivalence {
     pub fn formula(&self) -> RawFormula {
         let [a, b] = self.sides.each_ref().map(|s| s.formula());
@@ -95,7 +111,7 @@ impl UncurriedFunctionEquivalence {
     pub fn prove(&self, prover: impl FormulaProver) -> Proven<Self> {
         Proven::new(self.clone(), self.formula().prove(prover))
     }
-    pub fn args_to_return(&self, goal: &RWMFormula) -> Result<ArgumentList, String> {
+    pub fn args_to_return(&self, goal: &RWMFormula) -> Result<PairChain, String> {
         let [a, b] = goal.as_eq_sides().unwrap();
         let mut args = Vec::new();
         self.sides[0].add_args_to_return(&a, 0, &mut args)?;
@@ -106,7 +122,7 @@ impl UncurriedFunctionEquivalence {
     pub fn generalized_args_to_return(
         &self,
         goal: &UncurriedFunctionEquivalence,
-    ) -> Result<GeneralizedArgumentList, String> {
+    ) -> Result<UncurriedPairChain, String> {
         let [a, b] = goal.sides.clone();
         let mut args = Vec::new();
         self.sides[0].add_generalized_args_to_return(&a, 0, &mut args)?;
@@ -148,7 +164,7 @@ impl Proven<UncurriedFunctionEquivalence> {
             )?,
         ))
     }
-    pub fn specialize(&self, args: &ArgumentList) -> ProofWithVariables {
+    pub fn specialize(&self, args: &PairChain) -> ProofWithVariables {
         let [pl, pr] = self.sides.each_ref().map(|s| s.call(args));
         let pm = ic!(
             ({self.sides[0].formula()} {args.formula()}) =
@@ -159,7 +175,7 @@ impl Proven<UncurriedFunctionEquivalence> {
     }
     pub fn partially_specialize(
         &self,
-        args: &GeneralizedArgumentList,
+        args: &UncurriedPairChain,
     ) -> Proven<UncurriedFunctionEquivalence> {
         let [pl, pr] = self.sides.each_ref().map(|s| s.generalized_call(args));
         let pm = UncurriedFunctionEquivalence {
@@ -208,7 +224,7 @@ impl UncurriedFunction {
         UncurriedFunctionValue::Top.into()
     }
 
-    pub fn args_to_return(&self, goal: &RWMFormula) -> Result<ArgumentList, String> {
+    pub fn args_to_return(&self, goal: &RWMFormula) -> Result<PairChain, String> {
         let mut args = Vec::new();
         self.add_args_to_return(goal, 0, &mut args)?;
         Ok(self.finish_args_to_return(goal, args))
@@ -217,10 +233,10 @@ impl UncurriedFunction {
         &self,
         goal: &RWMFormula,
         args: Vec<Option<RWMFormula>>,
-    ) -> ArgumentList {
-        let mut result = ArgumentList::Nil;
+    ) -> PairChain {
+        let mut result = PairChain::Nil;
         for argument in args.into_iter().rev() {
-            result = ArgumentList::Cons(argument.unwrap_or_default(), Arc::new(result));
+            result = PairChain::Cons(argument.unwrap_or_default(), Arc::new(result));
         }
         let test_call = self.call(&result);
         assert_eq!(
@@ -273,7 +289,7 @@ impl UncurriedFunction {
     }
 
     /// returns a proof of `self.formula (A,(B,(C,*))) = body[0:=A, 1:=B, 2:=C]`
-    pub fn call(&self, arguments: &ArgumentList) -> ProofWithVariables {
+    pub fn call(&self, arguments: &PairChain) -> ProofWithVariables {
         let args = arguments.formula();
         let lhs = Formula::apply([self.formula().into(), args.into()]);
         match self.value() {
@@ -302,7 +318,7 @@ impl UncurriedFunction {
                 ProofWithVariables::eq_trans_chain(&[local_result, combined_child_result]).unwrap()
             }
             UncurriedFunctionValue::PopIn(child) => {
-                let ArgumentList::Cons(_head, tail) = arguments else {
+                let PairChain::Cons(_head, tail) = arguments else {
                     panic!("insufficient arguments passed to call")
                 };
                 // subgoal: P tail = P'
@@ -315,7 +331,7 @@ impl UncurriedFunction {
             }
             UncurriedFunctionValue::Top => {
                 // goal: (const,)(head, tail) = head
-                let ArgumentList::Cons(head, _tail) = arguments else {
+                let PairChain::Cons(head, _tail) = arguments else {
                     panic!("insufficient arguments passed to call")
                 };
                 ic!(lhs = head).prove(ByUnfolding)
@@ -326,7 +342,7 @@ impl UncurriedFunction {
     pub fn generalized_args_to_return(
         &self,
         goal: &UncurriedFunction,
-    ) -> Result<GeneralizedArgumentList, String> {
+    ) -> Result<UncurriedPairChain, String> {
         let mut args = Vec::new();
         self.add_generalized_args_to_return(goal, 0, &mut args)?;
         Ok(self.finish_generalized_args_to_return(goal, args))
@@ -335,10 +351,10 @@ impl UncurriedFunction {
         &self,
         goal: &UncurriedFunction,
         args: Vec<Option<UncurriedFunction>>,
-    ) -> GeneralizedArgumentList {
-        let mut result = GeneralizedArgumentList::Nil;
+    ) -> UncurriedPairChain {
+        let mut result = UncurriedPairChain::Nil;
         for argument in args.into_iter().rev() {
-            result = GeneralizedArgumentList::Cons(argument.unwrap_or_default(), Arc::new(result));
+            result = UncurriedPairChain::Cons(argument.unwrap_or_default(), Arc::new(result));
         }
         let test_call = self.generalized_call(&result);
         assert_eq!(test_call.sides[1], *goal);
@@ -391,7 +407,7 @@ impl UncurriedFunction {
     /// returns a proof of `(fuse (const self.formula) args.formula) = self[0:=A, 1:=B, 2:=C]`
     pub fn generalized_call(
         &self,
-        arguments: &GeneralizedArgumentList,
+        arguments: &UncurriedPairChain,
     ) -> Proven<UncurriedFunctionEquivalence> {
         let lhs = UncurriedFunction::apply([
             UncurriedFunction::constant(self.formula()),
@@ -436,7 +452,7 @@ impl UncurriedFunction {
                 .unwrap()
             }
             UncurriedFunctionValue::PopIn(child) => {
-                let GeneralizedArgumentList::Cons(_head, tail) = arguments else {
+                let UncurriedPairChain::Cons(_head, tail) = arguments else {
                     panic!("insufficient arguments passed to call")
                 };
                 // subgoal: fuse (const P) tail = P'
@@ -452,7 +468,7 @@ impl UncurriedFunction {
             }
             UncurriedFunctionValue::Top => {
                 // goal: fuse (const (const,)) (l => (head l, tail l)) = head
-                let GeneralizedArgumentList::Cons(head, _tail) = arguments else {
+                let UncurriedPairChain::Cons(head, _tail) = arguments else {
                     panic!("insufficient arguments passed to call")
                 };
                 assert_eq!(
@@ -500,14 +516,14 @@ impl UncurriedFunction {
     }
 }
 
-impl ArgumentList {
+impl PairChain {
     pub fn formula(&self) -> RWMFormula {
         match self {
-            ArgumentList::Cons(head, tail) => {
+            PairChain::Cons(head, tail) => {
                 let tail = tail.formula();
                 ic!((head, tail)).to_rwm()
             }
-            ArgumentList::Nil => {
+            PairChain::Nil => {
                 // anything is fine
                 RWMFormula::default()
             }
@@ -515,10 +531,10 @@ impl ArgumentList {
     }
 }
 
-impl GeneralizedArgumentList {
+impl UncurriedPairChain {
     pub fn uncurried_function(&self) -> UncurriedFunction {
         match self {
-            GeneralizedArgumentList::Cons(head, tail) => {
+            UncurriedPairChain::Cons(head, tail) => {
                 let tail = tail.uncurried_function();
                 // x => (head x, tail x)
                 // = x => y => y (head x) (tail x)
@@ -535,7 +551,7 @@ impl GeneralizedArgumentList {
                         .collect(),
                     )
             }
-            GeneralizedArgumentList::Nil => {
+            UncurriedPairChain::Nil => {
                 // anything is fine
                 UncurriedFunction::default()
             }
@@ -607,7 +623,7 @@ impl RWMFormula {
         //         .unwrap()[1],
         //     *self
         // );
-        let test_args: ArgumentList = arguments
+        let test_args: PairChain = arguments
             .iter()
             .map(|arg| arg.to_formula().to_rwm())
             .collect();
@@ -640,6 +656,17 @@ impl RWMFormula {
             assert_eq!(self, &result.formula().to_rwm())
         }
         result
+    }
+    pub fn to_uncurried_function_equivalence(
+        &self,
+        arguments: &[String],
+    ) -> Result<UncurriedFunctionEquivalence, String> {
+        Ok(UncurriedFunctionEquivalence {
+            sides: self
+                .as_eq_sides()
+                .ok_or_else(|| format!("Not an equivalence: {self}"))?
+                .try_map(|s| s.to_uncurried_function_of(arguments))?,
+        })
     }
     pub fn already_uncurried_function_equivalence(
         &self,

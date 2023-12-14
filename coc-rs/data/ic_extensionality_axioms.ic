@@ -1,3 +1,6 @@
+const A B = A
+fuse A B C = (A C) (B C)
+
 fuse (const A) (const B) = const (A B)
 
 fuse (const (const A)) B = (const A)
@@ -6,8 +9,7 @@ fuse (const (fuse A B)) C = fuse (fuse (const A) C) (fuse (const B) C)
 fuse (const (const,)) (l => (head l, tail l)) = head
 fuse (const (const A,)) (l => (head l, tail l)) = fuse (const A) tail
 
-const A B = A
-fuse A B C = (A C) (B C)
+
 #fuse (fuse (const const) A) (const const) = A
 #(fuse (fuse (const const) A) B) = A
 #(fuse (fuse (fuse (const fuse) A) B) C) = fuse (fuse A C) (fuse B C)

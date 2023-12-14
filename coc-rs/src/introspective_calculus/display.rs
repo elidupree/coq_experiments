@@ -183,7 +183,9 @@ impl UncurriedFunction {
         match &self.value() {
             UncurriedFunctionValue::Constant(f) => Box::new(DisplayItemSequence {
                 always_parens: true,
-                items: vec![Box::new("const".to_string()), f.to_display_item(true)],
+                items: vec![
+                    /*Box::new("const".to_string()), */ f.to_display_item(true),
+                ],
             }),
             UncurriedFunctionValue::PopIn(child) => {
                 let mut pops = 1;
@@ -193,7 +195,7 @@ impl UncurriedFunction {
                     pops += 1;
                 }
                 if *walker == UncurriedFunction::top() {
-                    Box::new(format!("[{pops}]"))
+                    Box::new(format!("{pops}"))
                 } else {
                     Box::new(DisplayItemSequence {
                         always_parens: true,
@@ -201,7 +203,7 @@ impl UncurriedFunction {
                     })
                 }
             }
-            UncurriedFunctionValue::Top => Box::new("[0]".to_string()),
+            UncurriedFunctionValue::Top => Box::new("0".to_string()),
             UncurriedFunctionValue::Apply(children) => {
                 let mut chain_members = vec![&children[1]];
                 let mut walker = &children[0];
