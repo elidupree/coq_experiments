@@ -81,70 +81,66 @@
   
   Section \ref{fundamentals} (\textit{\nameref{fundamentals}}) gives a formal definition of IC.   \fi
    
-  \section{First steps}\label{firststeps}
+  \section{The introspection principle}\label{firststeps}
   
-  [everything is guided by] [this principle], which I call the \textbf{introspection principle}:
-  
+  For a proof system to be fully general, it needs to be able to analyze everything – including itself. Our design will be guided by this principle, which I call the \textbf{introspection principle}:
   
   \begin{center}
-    For any concept we use in the metatheory, there should be formulas that represent it within the theory.
+    For anything we define in the metatheory, there should be formulas that represent\footnote{"But," you say, "how do you know that the theoretic definition 'represents' the metatheoretic definition?" Well, you verify it by a metatheorem saying that the two definitions have an exact correspondence. More on this later.} it within the theory.
   \end{center}
- 
-  IC is a system of \emph{formulas}; some formulas represent \emph{propositions}, which may be true or false;
-
   
-  \subsection{[Motivation: The paradox / What is truth?]}
+  Like many proof systems, we will define a grammar of formulas, and a collection of inference rules that can be used to pronounce some of those formulas "true". Therefore, by the introspection principle, we need to define formulas that \emph{represent} inference rules and truth judgments.
   
-  We will want to be able to express the following:
-  \begin{itemize}
-    \item that some formulas are \emph{true};
-    \item that some formulas are \emph{logically equivalent} to each other, $A \equiv B$ (read as "A equals B");
-    \item universal quantification, saying that all formulas have some property.
-  \end{itemize}
+  As it turns out, once we are done doing this, we will have essentially completed the system! However, getting there will take some careful design.
   
-  The introspection principle says we should be able to write \emph{formulas} that express these concepts.
-  With these tools, we can immediately define absurdity and negation: $\bot$ (read as "false") is a formula that says "all formulas are true".
+  \subsection{The liar paradox}
+  
+  First, let's be precise about what the introspection principle requires, by showing a temptation we need to avoid.
+  
+  Suppose we define $(A \vdash B)$ as "if $A$ is a true formula of IC, then you can derive $B$ according to the rules of IC." By the introspection principle, $(A \vdash B)$ must be representable as a formula; and clearly, if you have proven the formulas $A$ and $(A \vdash B)$, then $B$ had better be provable.
+  
+  \newcommand{\strongmp}{(A\ \mathrm{and}\ (A \vdash B)) \vdash B}
+  All of that is fine; but at this point, it may be tempting to say that $\strongmp$ is, itself, a \emph{rule of IC}. However, if we do this, IC will succumb to the liar paradox and be unsound!
+  
+  Here's how:
+  
+  First, we define absurdity: $\bot$ (read as "false") is a formula that says "all formulas are true".
   (Clearly we don't want this to be true.)
-  And we can express "not P" as the formula $P \equiv \bot$. 
-  
-  If we can do this, then we can construct a version of the liar paradox, where:
+  Then, we can construct a version of the liar paradox, where:
   
   \newcommand{\name}[1]{\operatorname{\texttt{#1}}}
   \begin{equation*}
-    \name{liar}_0 \equiv (\name{liar}_0 \equiv \bot)\\
+    \name{liar} \equiv (\name{liar} \vdash \bot)\\
   \end{equation*}
   
   (It may not be obvious that this should be possible; but we assert that it is.
   We will later show how self-referential formulas arise naturally from how we define computation.
   For now, simply assume that they are just as legitimate as other formulas.)
   
-  What shall we say of this formula?
-  If it were true, we could argue as follows: $\name{liar}_0$ is true; therefore the equivalent statement, $(\name{liar}_0 \equiv \bot)$, is true; therefore $\name{liar}_0$ and $\bot$ are equivalent, so since $\name{liar}_0$ is true, $\bot$ is also true.
-  
-  Naïvely, the above argument suggests that $\name{liar}_0$ is equivalent to $\bot$.
-  But that's the same as saying $\name{liar}_0$ is true.
-  So we must say they are \emph{not} equivalent, or we immediately succumb to the paradox.
-  On the other hand, the above argument does say \emph{something}, so the introspection principal asks us to be able to express that: We will say $\name{liar}_0 \leadsto \bot$ (read as "liar zero \emph{leads to} false") to express the notion: "\emph{if} $\name{liar}_0$ were true, then we could reach $\bot$ by argument".
-  
-  This immediately allows us to construct a second version of the paradox:
+  We now apply our rule, with $(A := \name{liar})$ and $(B := \bot)$, to obtain 
   
   \begin{equation*}
-    \name{liar}_1 \equiv (\name{liar}_1 \leadsto \bot)\\
+    (\name{liar}\ \mathrm{and}\ (\name{liar} \vdash \bot)) \vdash \bot
   \end{equation*}
   
-  At this point, it is tempting to argue: "Suppose $\name{liar}_1$ is true; then $(\name{liar}_1 \leadsto \bot)$ is true; this means there exists an argument taking $\name{liar}_1$ to $\bot$, so simply apply that argument and obtain $\bot$."
-  But this argument can't be valid, or it would prove $\name{liar}_1$.
-   We must say that you can't automatically apply an argument just because of a hypothetical belief that one exists – because that belief might not be true.
-   
-  "But," you say, "if it were \emph{actually true}, and it concluded that an argument existed, then that argument \emph{would} exist, and you could use it!"
-  We will capture this in a notion of "arguments that are allowed to apply $\leadsto$ arguments", which we will express as $\stackrel{1}{\leadsto}$ (read as "A leads to B at level 1"), to hint at the endlessness of the task.
-  We can now construct a third liar paradox, $\name{liar}_2 \equiv (\name{liar}_2 \stackrel{1}{\leadsto} \bot)$, which only leads to $\bot$ at level 2 (expressed as $\stackrel{2}{\leadsto}$, an argument that is allowed to apply $\stackrel{1}{\leadsto}$ arguments).
-  This will go on forever; in fact, we may construct an "argument level" for every ordinal number, not just the natural numbers.
+  But $(\name{liar}\ \mathrm{and}\ (\name{liar} \vdash \bot))$ is the same thing as just $\name{liar}$, so this reduces to $(\name{liar} \vdash \bot)$ – which reduces to $\name{liar}$! And since $\name{liar}$ is now proven, we can derive $\bot$, which makes the system unsound.
   
-  "But," whispers the introspection principle, "surely we still believe that it's impossible for any of these paradoxical formulas to be true. We should be able to express the property of impossibility, $\stackrel{\infty}{\leadsto})$"
+  I've glossed over some details here, but there's no clean way to fix it by fiddling with the details. The conclusion is this: The rule $\strongmp$ cannot be a rule of any system where $\name{liar}$ is expressible, so it cannot be a rule of IC.
   
-  [well, I haven't solved that, but maybe it isn't coherent in the metatheory either, because all ordinals]
-    
+  "But," you say, "That rule looks just like \emph{modus ponens}, one of the basic rules of countless systems of logic!" Indeed it does! The difference is this: In other systems, the rule isn't as powerful, because those systems aren't capable of representing all of their own rules. The problem here is that we've made this rule generalize over everything you can "derive according to \emph{the rules of IC}" – a set which includes itself. So the problem is not that $\name{liar}$ is a self-referential formula – the problem is that $\strongmp$ is a self-referential \emph{rule}!
+  
+  What do we do about this?
+  
+  In IC, we will have two kinds of rules:
+  \begin{itemize}
+    \item The \textbf{core rules}, a complete set of rules which define the basics of how inference works, and do not include anything like $\strongmp$. To do basic logic, we will instead use the more limited rule of transitivity.
+    \item Optionally, a set of \textbf{extension rules}, an open-ended hierarchy of rules much like $\strongmp$, except that each one only generalizes over the earlier rules in the hierarchy, rather than all of IC.
+  \end{itemize}
+  
+  Here's some intuition for why $\strongmp$ isn't among the core rules: It isn't inherent to how inference works! It essentially says "anything that's been proven in the theory, is also true in the metatheory" – which is, of course, a desirable property for proof systems to have, but isn't a requirement for \emph{being a proof system in the first place}, only for being a \emph{sound} proof system. The core rules are for describing \emph{all} proof systems, not just sound ones.
+  
+  \section{The core rules of IC}
+ 
   \subsection{Formulas and inference}
   
   \newcommand{\id}{\name{id}}
@@ -170,11 +166,11 @@
   \newcommand{\concludes}{\leadsto}
   \newcommand{\infrule}{\vdash}
   
-  Whenever you're defining a formal system, you have to explain it using statements that aren't part of the system (because it's not defined yet).
-  Even though the introspection principle will ask us to make internal representations of those external statements, we still find it useful to be explicit about which things are external.
-  If we want to implement IC as a computer system, the external part is the part which we'd have to implement in the host language, rather than implementing with IC itself.
+  % Whenever you're defining a formal system, you have to explain it using statements that aren't part of the system (because it's not defined yet).
+  % Even though the introspection principle will ask us to make internal representations of those external statements, we still find it useful to be explicit about which things are external.
+  % If we want to implement IC as a computer system, the external part is the part which we'd have to implement in the host language, rather than implementing with IC itself.
   
-  At the top level, we will define two things: A grammar of raw formulas, and a system of inference which allows us to conclude that some of these formulas are \textbf{true}.
+  % At the top level, we will define two things: A grammar of raw formulas, and a system of inference which allows us to conclude that some of these formulas are \textbf{true}.
   
   The raw grammar of IC is:
   
@@ -184,7 +180,7 @@
   
   Adjacency means function application: The formula $AB$ is the function $A$ applied to the input $B$. We sometimes use parentheses to specify the order of operations; when we don't, it is left-associative ($ABC$ means $(AB)C$).
   
-  All propositions will be represented by nested applications ($F$ above) of these elementary functions.
+  All propositions will be represented by nested applications ($FF$ above) of these elementary functions.
   
   That said, we would \emph{like} to write propositions using mathematical notation instead.
   (This paper would be hard to read otherwise.)
@@ -237,15 +233,29 @@
   $\atomequals$ is the relation of definitional equality. Informally, if $A \equals B$, then $A$ and $B$ are distinct formulas that refer to the same mathematical object. Equal formulas can be substituted for each other at any position within a larger formula:
   
   \begin{align*}
-    \label{subst}\tag{substitute whole formula}
-    \globalrule{A \equals B \presep A}{B} \\
+    \tag{symmetry}
+    \globalrule{A \equals B}{B \equals A} \\
+    \tag{transitivity}
+    \globalrule{A \equals B \presep B \equals C}{A \equals C} \\
     \tag{compatibility, left}
     \globalrule{A \equals B}{AC \equals BC} \\
     \tag{compatibility, right}
     \globalrule{A \equals B}{CA \equals CB}
   \end{align*}
   
-  We're going to be much more ambitious with this relation than usual: By the end of our definitions, all logically-equivalent formulas will be definitionally equal (in particular, all true formulas are equal to each other), and extensionally equal functions will also be equal.
+  Here's some intuition on what things "count as equal":
+  
+  Equality is the only kind of proposition in IC. Loosely speaking, there are two kinds of formulas: Propositions (of the form $(A \equals B)$), and functions (which take one formula and return another). Propositions are not functions; technically, you can apply any formula to any other, but formulas like $(A \equals B)C$ are nonsense, though they are technically permitted.
+  
+  We want the following things to be equal:
+  
+  \begin{itemize}
+    \item Function applications $(FX)$ should be equal to their outputs (the result of applying $F$ to $X$).
+    \item The point of functions is to express input-output mappings, so functions should be equal to other functions when they give the same outputs for every input: if $FX = GX$ for all $X$, then $F = G$. This is called "function extensionality", because the input-output mappings are the "extensional properties" of the function (as opposed to its "intensional properties", which are the details of how you define it).
+    \item The point of propositions is to express logical truths, so propositions should be equal to other propositions when they are logically equivalent – that is, when a judge couldn't possibly believe one of them without also believing the other, even if the judge may hold hypothetical beliefs. This turns out to mean that $(A \equals B) \equals (C \equals D)$ should be true exactly when $(A \equals B)$ and $(C \equals D)$ can be derived from each other by the core rules only. This incidentally means that all true propositions are equal to each other.
+  \end{itemize}
+  
+  The above descriptions are informal; we will succeed in formalizing them, but it will be more complex than just asserting it.
   
   \subsection{Functions}
 
@@ -264,12 +274,33 @@
 
   Of course, usually, we don't want to write functions as giant piles of $\const$ and $\fuse$ – we want to write them with named arguments. For this, we define a notation $\nameabst{x} B$ (read as "x goes to B" or "lambda x, B"\footnote{Although many systems write this as "$\lambda$" (lambda), after the lambda calculus, we do not. One of my eventual goals is to introduce proof systems to a more general audience of programmers; the notation \texttt{=>} will be familiar to users of JavaScript, at least, and it hints at the meaning of transforming one value to another, while "$\lambda$" is meaningless. [TODO: citation for the meaninglessness of $\lambda$]}), where $B$ is a formula except that it may contain usages of the name $x$, as if they are subformulas. This expands to a bunch of combinators where $(\nameabst{x} B) C$ returns "$B$ except the usages of $x$ are replaced with $C$". (How do you do the conversion? It's called "abstraction elimination" and it's a well-known technique of the SKI combinator calculus; TODO put a full explanation here.)
   
+  Next, we want to define universal statements. Since all propositions are equalities, all universal statements would be of the form $\forall x, P(x) = Q(x)$. In IC, we express this as an equality between functions: it's as simple as $(P \equals Q)$!
+  
+  However, there's some complexity when we want to represent statements with multiple variables. One \emph{can} do this using functions with multiple arguments, which is straightforward; but it turns out to make the metatheorems harder, because then you have to generalize over the number of arguments. To simplify the metatheorems, we want to work with functions that take a single argument, which is a list.
+  
+  So what's a list?
+  
+  A list is a chain of pairs. So what's a pair?
+  
+  In functional programming, there's no built-in way to return multiple values from a function, but there \emph{is} a built-in way to \emph{pass} multiple values. So to return multiple values, you return a single function which \emph{will} pass multiple values into \emph{another} function, which will be specified later. That is:
+  
+  \begin{align*}
+    (A, B) &:= (\nameabst{f} f A B)\\
+  \end{align*}
+  
+  or equivalently:
+  
+  \begin{align*}
+    (A, B) &:= (\fuse\, (\fuse \id\, (\const A))\, (\const B))\\
+  \end{align*}
+  
+  ($\id$ is the identity function, which can be implemented as $(\fuse\const\const)$.)
+
+  
   Next, we want to define universal statements, with a notation $\forall x, B$ (read as "for all x, B") – which is much like ($\nameabst{x} B$), but instead of being a function, it is the proposition that all outputs of that function are true formulas. We'll build this in several steps:
    
   \begin{itemize}
     \item First, we define $\top$ (read as "true"), the canonical true formula. Since all true formulas will be equal, any of them will do. We arbitrarily choose $(\atomequals \equals \atomequals)$.
-    \item Next, we define $\name{All}$, the function where $\name{All} P$ means $\forall x, Px$. This can be implemented as $(\atomequals (\const \top))$, because $(\const \top))$ is the canonical "function that always returns a true proposition".
-    \item Now, the general case of $\forall x, B$ can be defined as $\name{All} (\nameabst{x} B)$.
   \end{itemize}
   
   \subsection{[Axioms / Internalization]}
