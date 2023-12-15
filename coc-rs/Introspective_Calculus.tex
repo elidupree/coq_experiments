@@ -35,21 +35,22 @@
   %I plan to later develop it into a full, polished explanation, once I'm more confident in its soundness.
   
   In type theory, the source of paradoxes (like Russell's paradox and Girard's paradox) is this: First you construct a self-referential claim, then you prove that claim using (rules analogous to) the following axiom of propositional logic, which is unsound for self-referential claims:
-  \begin{equation}
+  \begin{equation*}
     \label{unsoundaxiom}
     %\tag{implication within hypotheticals, traditional}
     (C \to (A \to B)) \to ((C \to A) \to (C \to B))
     \vspace{0.8em}
-  \end{equation}
+  \end{equation*}
   
   Type theories typically avoid this problem by preventing the construction of self-referential claims.
   However, general-purpose computation is intrinsically capable of constructing self-referential claims.
   Thus, any such rules must forbid many programs that would otherwise be valid.
 
   The present work's innovation is to \emph{allow} self-referential claims, but instead weaken the above axiom.
-  We regard the axiom as \emph{improperly mixing metatheory levels}, for reasons we will explain in Section \ref{firststeps}.
-  By giving explicit, principled definitions of the relationships between metatheory levels, we can prevent a self-referential claim from being elevated into a self-referential \emph{proof}.
-  We call our system the Introspective Calculus (IC), because every rule of IC can be represented as an object within IC; it comes as close as possible to acting as its own metatheory.
+  % We regard the axiom as \emph{improperly mixing metatheory levels}, for reasons we will explain in Section \ref{firststeps}.
+  By using more-limited rules, we can prevent a self-referential claim from being elevated into a self-referential \emph{proof}.
+  This allows us to have simple core rules, and a very powerful concept of definitional equality.
+  We call our system the Introspective Calculus (IC), because every rule of IC can be cleanly represented as an object within IC; it comes as close as possible to acting as its own metatheory.
   
   \iffalse
   For the following reason:
@@ -75,11 +76,10 @@
   
   This protection allows us to remove the other limitations of type theories.
   In particular, the source of the name "Introspective Calculus" is that every rule of IC can be abstracted over within IC.
-
-
-
   
-  Section \ref{fundamentals} (\textit{\nameref{fundamentals}}) gives a formal definition of IC.   \fi
+  Section \ref{fundamentals} (\textit{\nameref{fundamentals}}) gives a formal definition of IC.
+  
+  \fi
    
   \section{The introspection principle}\label{firststeps}
   
@@ -89,15 +89,15 @@
     For anything we define in the metatheory, there should be formulas that represent\footnote{"But," you say, "how do you know that the theoretic definition 'represents' the metatheoretic definition?" Well, you verify it by a metatheorem saying that the two definitions have an exact correspondence. More on this later.} it within the theory.
   \end{center}
   
-  Like many proof systems, we will define a grammar of formulas, and a collection of inference rules that can be used to pronounce some of those formulas "true". Therefore, by the introspection principle, we need to define formulas that \emph{represent} inference rules and truth judgments.
+  Like many proof systems, we will define a grammar of formulas, and a collection of inference rules that can be used to judge some of those formulas "true". Therefore, by the introspection principle, we need to define formulas that \emph{represent} inference rules and truth judgments.
   
-  As it turns out, once we are done doing this, we will have essentially completed the system! However, getting there will take some careful design.
+  As it turns out, once we have done this, we will have essentially completed the system! However, getting there will take some careful design.
   
   \subsection{The liar paradox}
   
   First, let's be precise about what the introspection principle requires, by showing a temptation we need to avoid.
   
-  Suppose we define $(A \vdash B)$ as "if $A$ is a true formula of IC, then you can derive $B$ according to the rules of IC." By the introspection principle, $(A \vdash B)$ must be representable as a formula; and clearly, if you have proven the formulas $A$ and $(A \vdash B)$, then $B$ had better be provable.
+  Suppose we define $(A \vdash B)$ as "if you assume $A$, then you can derive $B$ according to the rules of IC." By the introspection principle, $(A \vdash B)$ must be representable as a formula; and clearly, if you have proven the formulas $A$ and $(A \vdash B)$, then $B$ had better be provable.
   
   \newcommand{\strongmp}{(A\ \mathrm{and}\ (A \vdash B)) \vdash B}
   All of that is fine; but at this point, it may be tempting to say that $\strongmp$ is, itself, a \emph{rule of IC}. However, if we do this, IC will succumb to the liar paradox and be unsound!
@@ -127,7 +127,7 @@
   
   I've glossed over some details here, but there's no clean way to fix it by fiddling with the details. The conclusion is this: The rule $\strongmp$ cannot be a rule of any system where $\name{liar}$ is expressible, so it cannot be a rule of IC.
   
-  "But," you say, "That rule looks just like \emph{modus ponens}, one of the basic rules of countless systems of logic!" Indeed it does! The difference is this: In other systems, the rule isn't as powerful, because those systems aren't capable of representing all of their own rules. The problem here is that we've made this rule generalize over everything you can "derive according to \emph{the rules of IC}" – a set which includes itself. So the problem is not that $\name{liar}$ is a self-referential formula – the problem is that $\strongmp$ is a self-referential \emph{rule}!
+  "But," you say, "That rule looks just like \emph{modus ponens}, one of the basic rules of countless systems of logic!" Indeed it does! The problem here is that we've made this rule generalize over everything you can "derive according to \emph{the rules of IC}" – a set which includes itself. Other systems get away with this, because even if a rule is infinitely recursive, it won't "pull falsehoods from infinity" unless you use it on an infinitely recursive formula. But in IC, we allow infinitely recursive formulas – so we must forbid infinitely recursive rules!
   
   What do we do about this?
   
@@ -137,7 +137,7 @@
     \item Optionally, a set of \textbf{extension rules}, an open-ended hierarchy of rules much like $\strongmp$, except that each one only generalizes over the earlier rules in the hierarchy, rather than all of IC.
   \end{itemize}
   
-  Here's some intuition for why $\strongmp$ isn't among the core rules: It isn't inherent to how inference works! It essentially says "anything that's been proven in the theory, is also true in the metatheory" – which is, of course, a desirable property for proof systems to have, but isn't a requirement for \emph{being a proof system in the first place}, only for being a \emph{sound} proof system. The core rules are for describing \emph{all} proof systems, not just sound ones.
+  Here's some intuition for why $\strongmp$ isn't among the core rules: It isn't inherent to how inference works! It essentially says "anything that's been proven in the theory, is also true in the metatheory" – which is, of course, a desirable property for proof systems to have, but isn't a requirement for \emph{being a proof system in the first place}, only for being a \emph{sound} proof system. The core rules are for describing \emph{all} proof systems, not just sound ones. The core rules (we believe) are sound, so they do have this property, but we will confirm that with a metatheorem about the core rules, rather than asserting it as a rule of the core rules.
   
   \section{The core rules of IC}
  
@@ -145,6 +145,7 @@
   
   \newcommand{\id}{\name{id}}
   \newcommand{\const}{\name{const}}
+  \newcommand{\default}{\name{default}}
   \newcommand{\fuse}{\name{fuse}}
   
   \newcommand{\atomemptyset}{\name{empty\_set}}
@@ -180,20 +181,20 @@
   
   Adjacency means function application: The formula $AB$ is the function $A$ applied to the input $B$. We sometimes use parentheses to specify the order of operations; when we don't, it is left-associative ($ABC$ means $(AB)C$).
   
-  All propositions will be represented by nested applications ($FF$ above) of these elementary functions.
+  All propositions will be represented by nested applications of these elementary functions.
   
   That said, we would \emph{like} to write propositions using mathematical notation instead.
   (This paper would be hard to read otherwise.)
   So, for the human reader's benefit, we will often write formulas using fancier "notations", which are convenient shorthands which expand to raw formulas of IC.
-  To start with, we'll define these notations, and what they expand to:
+  To start with, we'll define a notation for equality statements:
   
   \begin{align*}
     (A \equals B) &:= (\atomequals A\, B)\\
   \end{align*}
   
-  But as far as the internal logic is concerned, only the raw formulas exist.\footnote{"But," you say, "doesn't be introspection principle ask that if you're discussing notations in the metatheory, you should define a representation of them within the theory?" Well, yes – but they don't need to be part of the \emph{core calculus}, which is the main job of \emph{this paper}. A full programming language, which I plan to build around this core calculus, would naturally be able to implement functions that convert text into token-trees and token-trees into formulas of IC, and others such inconveniences of interfacing between raw mathematical objects and the human reader.}  
+  But as far as the internal logic is concerned, only the raw formulas exist.\footnote{"But," you say, "doesn't be introspection principle ask that if you're defining notations in the metatheory, you should define a representation of them within the theory?" Well, yes – but it's not needed for explaining the \emph{core calculus}, which is the main job of \emph{this paper}. A full programming language, which I plan to build around this core calculus, would naturally be able to implement functions that convert text into token-trees and token-trees into formulas of IC, and others such inconveniences of interfacing between raw mathematical objects and the human reader.}  
   
-  Having defined the raw grammar, we need only define our explicit list of inference rules. 
+  Having defined the grammar, we need only define our explicit list of inference rules. 
   All external inference rules (which are \emph{not} formulas, although we will later make formulas to represent them) will be written in the usual form:
   
   %\newcommand{\presep}{\hspace{1.8em}}
@@ -233,15 +234,17 @@
   $\atomequals$ is the relation of definitional equality. Informally, if $A \equals B$, then $A$ and $B$ are distinct formulas that refer to the same mathematical object. Equal formulas can be substituted for each other at any position within a larger formula:
   
   \begin{align*}
-    \tag{symmetry}
+    \tag{symmetry}\label{eq_sym}
     \globalrule{A \equals B}{B \equals A} \\
-    \tag{transitivity}
+    \tag{transitivity}\label{eq_trans}
     \globalrule{A \equals B \presep B \equals C}{A \equals C} \\
-    \tag{compatibility, left}
+    \tag{substitute in left}\label{subst_l}
     \globalrule{A \equals B}{AC \equals BC} \\
-    \tag{compatibility, right}
+    \tag{substitute in right}\label{subst_r}
     \globalrule{A \equals B}{CA \equals CB}
   \end{align*}
+  
+  (Reflexivity ($A \equals A$) is also true, but it will be derivable from the other rules.)
   
   Here's some intuition on what things "count as equal":
   
@@ -252,19 +255,21 @@
   \begin{itemize}
     \item Function applications $(FX)$ should be equal to their outputs (the result of applying $F$ to $X$).
     \item The point of functions is to express input-output mappings, so functions should be equal to other functions when they give the same outputs for every input: if $FX = GX$ for all $X$, then $F = G$. This is called "function extensionality", because the input-output mappings are the "extensional properties" of the function (as opposed to its "intensional properties", which are the details of how you define it).
-    \item The point of propositions is to express logical truths, so propositions should be equal to other propositions when they are logically equivalent – that is, when a judge couldn't possibly believe one of them without also believing the other, even if the judge may hold hypothetical beliefs. This turns out to mean that $(A \equals B) \equals (C \equals D)$ should be true exactly when $(A \equals B)$ and $(C \equals D)$ can be derived from each other by the core rules only. This incidentally means that all true propositions are equal to each other.
+    \item The point of propositions is to express logical truths, so propositions should be equal to other propositions when they are logically equivalent – that is, when a judge couldn't possibly believe one of them without also believing the other, even if the judge may hold hypothetical beliefs. This turns out to mean that $(A \equals B) \equals (C \equals D)$ should be true exactly when $(A \equals B)$ and $(C \equals D)$ can be derived from each other by the core rules only.
   \end{itemize}
   
   The above descriptions are informal; we will succeed in formalizing them, but it will be more complex than just asserting it.
+  
+  Incidentally, that last point means that all true propositions are equal to each other. This means we can define $\top$ (read as "true"), a canonical true proposition, which is equal to all other true propositions. We can pick a "default formula" and implement $\top$ as $(\default\equals\default)$; we arbitrarily choose for $\default$ to equal $\const$, but write it as $\default$ to emphasize that it doesn't really matter what it is.
   
   \subsection{Functions}
 
   To internalize the concept of metavariables, we will implement arbitrary functions. To do this, we define two fundamental functions, or "combinators", that can be composed to construct any other function.\footnote{Readers may recognize this as the SKI combinator calculus. My "const" is the K combinator, and my "fuse" is the S combinator. These names have about the same meanings as the German words (K)onstanzfunktion and Ver(s)chmelzungsfunktion, for which K and S are named in Schönfinkel's original paper. Before I learned of SKI, I had to reinvent it for myself; but after learning of it, I renamed my "fuse" combinator to be more aligned with its naming scheme, because my original name, "apply", was no less confusing.} $\const$ takes two arguments and returns the first (or, equivalently, takes one value and returns a function which ignores its argument and returns that value); $\fuse$ takes two functions and a value, passes that value to \emph{both} functions, then applies the first output to the second output. We can write inference rules to describe this behavior:
   
   \begin{align*}
-    \tag{definition of const}
+    \tag{definition of const}\label{def_const}
     \globalrule{}{\const A\, B \equals A} \\
-    \tag{definition of fuse}
+    \tag{definition of fuse}\label{def_fuse}
     \globalrule{}{\fuse A\, B\, C \equals (AC)(BC)}
   \end{align*}
   
@@ -280,6 +285,8 @@
   
   So what's a list?
   
+  \subsection{Argument lists}
+  
   A list is a chain of pairs. So what's a pair?
   
   In functional programming, there's no built-in way to return multiple values from a function, but there \emph{is} a built-in way to \emph{pass} multiple values. So to return multiple values, you return a single function which \emph{will} pass multiple values into \emph{another} function, which will be specified later. That is:
@@ -294,236 +301,138 @@
     (A, B) &:= (\fuse\, (\fuse \id\, (\const A))\, (\const B))\\
   \end{align*}
   
-  ($\id$ is the identity function, which can be implemented as $(\fuse\const\const)$.)
-
+  ($\id$ is the identity function, which can be implemented as $(\fuse\const\default)$.)
   
-  Next, we want to define universal statements, with a notation $\forall x, B$ (read as "for all x, B") – which is much like ($\nameabst{x} B$), but instead of being a function, it is the proposition that all outputs of that function are true formulas. We'll build this in several steps:
-   
+  If you have a pair $p$, and you want to extract just the first element, you can write $p(\nameabst{a} \nameabst{b} a)$, also known as $(p \const)$. If you want to extract just the second element, you can write $p(\nameabst{a} \nameabst{b} b)$, also known as $(p (\const \id))$.
+  
+  In general, we'll be working with pair-chains of the form $(A, (B, (C, \dots (K, \default) \dots)))$. We need to be able to select the $n$th element of such a chain. This can be accomplished with these two functions:
+  
   \begin{itemize}
-    \item First, we define $\top$ (read as "true"), the canonical true formula. Since all true formulas will be equal, any of them will do. We arbitrarily choose $(\atomequals \equals \atomequals)$.
+    \item $\name{top} := \nameabst{l} l \const$, which selects the first element of $l$ (the head of the chain).
+    \item $\name{pop\_in} := \nameabst{f} \nameabst{l} l (\const f)$, which applies a continuation $f$ to the tail of the chain $l$.
   \end{itemize}
   
-  \subsection{[Axioms / Internalization]}
+  So, for example, to select the third element, you apply $(\name{pop\_in}\, (\name{pop\_in} \name{top}))$. We also define a shorthand notation: $l[0]$ means $(\name{top} l)$, $l[1]$ means $(\name{pop\_in} \name{top}) l$, and so forth.
+
+  We can now give the full method of internalizing a "proposition that contains metavariables".
   
-  With these pieces, the remaining [main] rules can be expressed as \textbf{axioms} – inference rules where the conclusion is just a raw formula, with no premises and no metavariables. This makes it possible to reason about them using internal logic. We'll start by internalizing the definitions of the combinators, which is a straightforward conversion:
+  \begin{itemize}
+    \item First, you pick an order for the variables. This order is essentially an arbitrary implementation detail; in my code, I automatically choose whichever order gives the smallest resulting formula.
+    \item Then, you wrap each side in $(\nameabst{l})$, and replace each usage-site with the appropriate selection function applied to $l$.
+  \end{itemize}
+  
+  For example, $(\const A\, B \equals A)$ becomes $(\nameabst{l} \const l[0]\, l[1]) \equals (\nameabst{l} l[0])$.
+  
+  
+  \subsection{Specialization}
+  
+  Let's talk about how to \emph{use} one of these list-based propositions.
+  
+  Suppose you know that the proposition $(\nameabst{l} \const l[0]\, l[1]) \equals (\nameabst{l} l[0])$ is true, but you have \emph{concrete} formulas $x$ and $y$, and you want to know that $(\const x\, y \equals x)$ is true. This is called "specialization", and it's already possible with the rules we have already defined. First, you use \eqref{subst_l} to obtain $(\nameabst{l} \const l[0]\, l[1])(x,(y,\default)) \equals (\nameabst{l} l[0])(x,(y,\default))$. Then all you need is to unfold in each side, until you get $(\const x\, y \equals x)$.
+  
+  This means it can already do everything that our external rule, \eqref{def_const}, can do – and more, because it makes the universal statement available to internal logic. We will not need to assert any more core rules that contain metavariables, because we can now assert them as raw formulas, using lists. (Although we can't throw out the rules we already have, because they're needed for performing specialization in the first place.)
+  
+  So, what else might we want to do using axioms?
+  
+  We may also want to specialize an axiom with values that \emph{themselves contain metavariables}. For example, if $(\const A\, B \equals A)$ is true for all values of $A$ and $B$, then we should also be able to prove that $(\const (\fuse A B)\, (\const C) \equals (\fuse A B))$ is true for all values of $A$, $B$ and $C$. I call this "partial specialization", and it is \emph{not} possible using just the rules we have already defined; we must assert some new axioms to make it possible.
+  
+  The following axioms do the job. These probably aren't the minimal axioms, but they are the ones that make my metatheorems the simplest, and a computer can trivially verify that each of them is a true extensional equality. We assert the list-form of each of these axioms:
   
   \begin{align*}
-    \tag{definition of const, internal}
-    \globalrule{}{\forall a, \forall b, \const a\, b \equals a} \\
-    \tag{definition of fuse, internal}
-    \globalrule{}{\forall a, \forall b, \forall c, \fuse a\, b\, c \equals (ac)(bc)}
-  \end{align*}
+  \const A B &\equals A\\
+\fuse A B C &\equals (A C) (B C)\\
+\fuse (\const A) (\const B) &\equals \const (A B)\\
+\fuse (\const (\const A)) B &\equals \const A\\
+\fuse (\const (\fuse A B)) C &\equals \fuse (\fuse (\const A) C) (\fuse (\const B) C)\\
+\fuse (\const (\nameabst{l} l \const)) (\nameabst{l} (Hl, Tl)) &\equals H\\
+\fuse (\const (\nameabst{l} l (\const A))) (\nameabst{l} (Hl, Tl)) &\equals \fuse (\const A) T\\
+   \end{align*}
+   
+  (My metatheorems are currently only implemented in code, not here in this paper.)
+ 
+  \subsection{Implication}
   
-  By specializing these rules with concrete values of $a$ and $b$, we can do anything the external rules can\footnote{Though this doesn't make the external rules redundant, because you have to use the external rules in order to specialize the internal rules.}. But this also makes the universal statement available as a true formula, while the external rules could \emph{only} produce true formulas with concrete values of $A$ and $B$.
+  One thing remains to internalize: the concept of premises.
   
-  For the compatibility rules, we use an even more powerful generalization.
+  Let's start by defining the logical connective, $\and$ (read as "and"). This can only be applied to propositions, so the operands must syntactically contain $\equals$:
   
   \begin{align*}
-    \tag{equality is extensionality}
-    \globalrule{}{\forall a, \forall b, (a \equals b) \equals (\forall c, ac \equals bc)} \\
-    \tag{equality is indistinguishability}
-    \globalrule{}{\forall a, \forall b, (a \equals b)  \equals (\forall c, ca \equals cb)}
+    ((A \equals B) \and (C \equals D)):= ((A,C) \equals (B,D)) 
   \end{align*}
   
-  For the reader familiar with type theory, the immediate question is "how can we get away with this"? [It looks like things that are unsound]
+  Intuitively, "if two pairs are the same, then their corresponding members are the same". Let's also show this rigorously. For this to be a good definition, we should be able to prove these inferences:
   
-  The answer comes in the much weaker way we internalize the last of our 5 external rules, \eqref{subst}.
-  
-  First of all, that axiom has \emph{two} premises, and we haven't defined "and" yet. So let's define that:
   \begin{align*}
-    A \and B := \forall c, cAB \equals c\top\top
+    \globalrule{(A \equals B) \presep (C \equals D)}{((A \equals B) \and (C \equals D))} \\
+    \globalrule{(A \equals B) \and (C \equals D)}{(A \equals B)} \\
+    \globalrule{(A \equals B) \and (C \equals D)}{(C \equals D)} \\
   \end{align*}
   
+  To prove the first, suppose we know $(A \equals B), (C \equals D)$. We can start with $((A,C) \equals (A,C))$ by reflexivity. By \eqref{subst_l} and unfolding, we can convert $(A \equals B)$ into $((A,C) \equals (B,C))$, and convert $(C \equals D)$ into $((B,C) \equals (B,D))$. These can be joined together by \eqref{eq_trans} to obtain $((A,C) \equals (B,D))$, which is the goal.
   
-  Now, a naive internalization of \eqref{subst} would look like this:
+  The other two are solved by using \eqref{subst_r} with the functions that select the first or second element of the pair.
+  
+  We can now define implication with one premise, $\to$ (read as "implies"):
+  
   \begin{align*}
-    \globalrule{}{\forall a, \forall b, ((a \equals b) \and a) \equals ((a \equals b) \and b)} \\
+    (A \to B) := (A \equals (A \and B))
   \end{align*}
   
-  This may seem true; in fact, it is true whenever $(a \equals b)$ is \emph{either true or false}. However, $(a \equals b)$ may be neither true nor false, and this rule immediately succumbs to the liar paradox! (You specialize it with $a := \name{liar}_0$ and $b := \bot$ to get $(\name{liar}_0 \and \name{liar}_0) \equals (\name{liar}_0 \and \bot)$).
+  (Assume here that "$A$" and "$B$" represent formulas that have $\equals$ in them. The full, less-readable form, is $((A \equals B) \to (C \equals D)):= ((A \equals B) \equals ((A \equals B) \and (C \equals D)))$.)
   
-  Fortunately, the introspection principle doesn't require us to accept \emph{this} rule. It only asks us to give \emph{some} representation of
+  Again, let's show why this is a good definition of implication.
   
-  \subsection{Sets}
+  We've claimed that equality should mean "mutual derivability by the core rules"; if it does, then $\to$ now means one-directional derivability by the core rules.
+  After all, if $A$ lets you derive $B$, then it also lets you derive $(A \and B)$; and if you know $(A \and B)$, you can derive $A$; so $A$ is mutually derivable with $(A \and B)$.
+  Conversely, if you first know that $A$ and $(A \and B)$ are mutually derivable, you can reason from $A$ to $(A \and B)$ and then to $B$.
   
-  In order to discuss \emph{sets} of inferences or statements, we need to define the behavior of sets. To represent a set as a formula, we will express it as a union of singleton elements: The formula $(A \to B) \union (C \to D)$ represents the set that contains two inference rules, $(A \to B)$ and $(C \to D)$.\footnote{It may look improper to take a union of a \emph{rule} with another \emph{rule}, rather than wrapping them in singleton-set constructors; but in fact we never have a reason to refer to them individually rather than as members of a set, so we can just view the formula $(A \to B)$ as being a singleton set in all cases.} To use these sets, we'll need inference rules to define the set membership relation, $\in$ (read as "in"):
+  What remains to show is that equality is "mutual derivability by the core rules". This is not yet established by the rules we've asserted so far. Again, I've established it by a metatheorem [note: I haven't actually rigorously completed this yet; these axioms might get tweaked], which makes use of the following additional axioms. Again, one can verify that these axioms are valid equalities, in that they only make propositions equal if they're already mutually derivable. And again, we assert the list form of each:
+  
   \begin{align*}
-    \tag{reflexivity}
-    A &\to A\\
-    \tag{union-left}
-    (A \union B) &\to A\\
-    \tag{union-right}
-    (A \union B) &\to B\\
-    \tag{union introduction}
-    (A \to B) &\to (A \to (A \union B))\\
+    (A \equals B) &\to (AC \equals BC)\\
+    (A \and B) &\equals (B \and A)\\
+    ((A \to B) \and (B \to C)) &\to (A \to C)\\
+    ((P \to (A \equals B)) \and (P \to (B \equals C))) &\to (P \to (A \equals C))\\
   \end{align*}
+  
+  And with that, the core rules of IC are finished!
+  
+  \section{Extensions of IC}
+  
+  We say that the statement is "true" if-and-only-if it is provable by the core rules. Thus, we will not add any more rules that \emph{make new statements true}. However, this doesn't mean we are done adding rules! Consider the following:
+  
+  \begin{align*}
+    \globalrule{(A \equals B) \presep A}{B} \\
+  \end{align*}
+  
+  I have proved by metatheorem that if there are proofs of $(A \equals B)$ and $A$, then there is a proof of $B$. However, this isn't an inference that is allowed by the core rules: my metatheorem works by induction on the structure of the proofs, rather than by \emph{deriving} the conclusion from the premises. Indeed, we're not allowed to make this derivable in the core rules: if we assert $(((A \equals B) \and A) \to B)$, then IC succumbs to the liar paradox. (We can even prove so within IC!)
+  
+  However, there's nothing stopping us from adding it as a rule of inference. Formally, the rule we will assert is this, which is equivalent to the above by transitivity:
+  
+  \begin{align*}
+    \tag{strengthen by 1}\label{strengthening_1}
+    \globalrule{(\top \equals (A \equals B))}{(A \equals B)} \\
+  \end{align*}
+  
+  (Note that $(A \equals B) \to (\top \equals (A \equals B))$ was already a true statement, but the converse is not.)
+  
+  Of course, the introspection principle immediately says: We must now make an internal representation of "derivability by the core rules \emph{plus \eqref{strengthening_1}}".
+  
+  [There's a whole ordinal hierarchy here, but this is where this paper stops for now, because I need to finish the core metatheorems before I'll be ready to write up this part]
+  
+  % first step of small hierarchy:
+  %\begin{align*}
+  %  (A \leadsto B) := (A \to (\top \equals B)) \\
+  %\end{align*}
+  
+  
+  
   \iffalse
-  \begin{align*}
-    \globalrule{}{X \in \singleton{X}} &&
-    \globalrule{X \in A}{X \in (A \union B)} &&
-    \globalrule{X \in B}{X \in (A \union B)}
-  \end{align*}
-
-
-  , the relation between things that we see fit to make indistinguishable. Informally, if $A \equals B$, then $A$ and $B$ are two different formulas that refer to the same mathematical object. Equal formulas can be substituted for each other at any position within a larger formula:
+  
   % fold-equivalence\footnote{The literature calls this concept "beta-equivalence"; I personally call it "fold-equivalence", because I use the term "unfolding" rather than "beta-reduction" for the steps, since "beta" is meaningless to the uninitiated, and "reduction" misleading (unfolding can make formulas larger and more complicated). }, the relationship between a function-application and its output.
-  \begin{align*}
-    A \equals B &\vdash CA \equals CB\\
-    A \equals B &\vdash AC \equals BC\\
-    A \equals B, A &\vdash B\\
-  \end{align*}
-
-  We can also define the "subset" relation, as a simple notation:
-
-  \begin{align*}
-    (S \subseteq T) := (T \equals (T \union S))\\
-  \end{align*}
-  \fi
-
   
   
-  
-
-  We can now give the internalization of metavariables. We define two things:
-
-  First, the formula $\all F$ (read as "all of $F$" or "big union of $F$") is a potentially-infinite set, containing all possible \emph{outputs} of $F$:
-
-  \begin{align*}
-    \tag{specialization}
-    \all A &\to AB\\
-    \tag{partial specialization}
-    \all A &\to \all (\fuse (\const A) B) && (\forall x, Ax) \to (\forall x, A(Bx))\\
-    \tag{partial specialization}
-    \all A &\to \all (\fuse (\const \atomall) A) && (\forall x, Ax) \to (\forall x, \forall y, Axy)\\
-    \tag{partial specialization}
-    \all A &\to \all (\fuse (\const \atomall) A) && (\forall x, Ax) \to (\forall x, \forall y, A(xy))\\
-  \end{align*}
-
-  Second, we define the notation $\forall x, B$, which expands to $\all (\nameabst{x} B)$, thus expressing the union of $B$ over all possible values of the metavariable $x$.
-
-  Thus, we can now restate our inference rules as raw formulas, rather than using metavariables. For example, to represent this latest rule, we can now write the \emph{formula}:
-
-  \begin{align*}
-    %(\forall x, \singleton{\emptyset \vdash \singleton{x \in \singleton{x}}})\\
-    (\forall x, \forall a, \forall b, \singleton{\singleton{x \in ab} \infrule (x \in \all a)})\\
-  \end{align*}
-
-  \iffalse
-  We also define some equivalences of infinite sets. Here are two rules, each stated in two different ways (with combinators, and with named arguments):
-  \begin{align*}
-    &\vdash A \equals \all (\const A) & &\vdash A \equals (\forall b, A) \\
-    &\vdash (\all A) \equals \all (\fuse (\const \atomall) A) & &\vdash (\forall b, Ab) \equals (\forall b, \forall c, A(bc))\\
-  \end{align*}
-  \fi
-
-
-
-  \subsection{Internal inference}
-
-  [IC has only one kind of proposition: set membership. But we also want to express the proposition that a particular set of inference rules allows you to draw a particular set of conclusions. So, we say that compound inferences are also members of the set.
-  We write this as $(A \infrule B) \in R$ (read as ""), where $R$ is a set of rules, and $A,B$ sets of propositions.]
-
-  \begin{align*}
-    \tag{transitivity}
-    ((A \to B) \union (B \to C)) &\to (A \to C)\\
-    \tag{infinite union application}
-    (\forall x, (Ax \to Bx)) &\to ((\forall x, Ax) \to (\forall x, Bx))\\
-    %\globalrule{}{(\emptyset \infrule \emptyset) \in R} &&
-%    \globalrule{(A \infrule B) \in R \presep (B \infrule C) \in R}{(A \infrule C) \in R} &&
-%    \globalrule{external.\forall x, ((Ax \infrule Bx) \in R)}{((\forall x, Ax) \infrule (\forall x, Bx)) \in R}
-  \end{align*}
-
-%  \begin{align*}
-%    \globalrule{(A \infrule B) \in R \presep }{(A \union B) \in R} &&
-%    \globalrule{\forall x, (Ax \in R)}{(\forall x, Ax) \in R}
-%  \end{align*}
-%
-%  \begin{align*}
-%    \globalrule{A \in R \presep B \in R}{(A \union B) \in R} &&
-%    \globalrule{\forall x, (Ax \in R)}{(\forall x, Ax) \in R}
-%  \end{align*}
-
-
-  And the convention is that $R \to (\emptyset \to A) \in R$ means "$R$ believes/concludes $A$"
-%
-%  \begin{align*}
-%    \globalrule{}{R \concludes \emptyset} &&
-%    \globalrule{R \concludes A \presep (A \infrule B) \in R}{R \concludes \singleton{B}} &&
-%    %\globalrule{R \concludes A \presep X \in A}{R \concludes \singleton{X}} &&
-%    \globalrule{R \concludes A \presep R \concludes B}{R \concludes (A \union B)} &&
-%    \globalrule{ext.\forall b, (R \concludes Ab)}{R \concludes \forall b, Ab}
-%  \end{align*}
-
-  \iffalse
-  \begin{align*}
-    \tag{base case}
-    &\vdash (R \concludes \emptyset) \\
-    %\tag{weakening}
-    %(R \concludes A) &\vdash ((R \union S) \concludes A) \\
-    %\tag{drop}
-    %(R \concludes (A \union B)) &\vdash (R \concludes A) \\
-    \tag{select}
-    (R \concludes A), (B \in A) &\vdash (R \concludes \singleton{B}) \\
-    \tag{union introduction}
-    (R \concludes A), (R \concludes B) &\vdash (R \concludes (A \union B)) \\
-    %\tag{infinite union introduction}
-    %(\forall b, (R \concludes Ab)) &\vdash (R \concludes \forall b, Ab) \\
-    % &\vdash ((\emptyset \infrule B) \concludes B) \\
-    \tag{rules do what they say}
-    ((A \infrule B) \in R), (R \concludes A) &\vdash (R \concludes B) \\
-    % (R \concludes A), ((R \union (\emptyset \infrule A)) \concludes B) &\vdash (R \concludes B) \\
-  \end{align*}
-  \fi  
-    \newcommand{\deduction}{\mathbb{D}}
-  
-  With just the rules we've stated so far, you can technically express and prove all interesting mathematical statements. Maybe not in a satisfying way, though: The reason this works is that you can construct any \emph{other} formal system you want, and prove that the other formal system proves something. Intuitively, we would rather be able to prove things "natively in IC". For that, we're going to define some more rules. But not yet, because you are currently reading an incomplete version of this paper, and this is a good logical stopping point.
-  
-  \subsection{Example usage so far}
-  
-  [start by proving the fairly simple statement $\forall b, (((\emptyset \to \emptyset) \union b) \to (\emptyset \to \emptyset))$
-
-  Observe that union-left is the true statement $\forall a, \forall b, ((a \union b) \to a)$
-
-  Apply the rule specialization with $A := (\nameabst{a} \forall b, ((a \union b) \to a)), B := (\emptyset \to \emptyset)$ to get $(\nameabst{a} \forall b, ((a \union b) \to a))(\emptyset \to \emptyset)$
-
-  Apply the unfolding rules to get the goal.
-
-  [now, the slightly more difficult $\forall a, ((a \union (\emptyset \to \emptyset)) \to (\emptyset \to \emptyset))$
-
-  Observe that union-right is the true statement $\forall a, \forall b, ((a \union b) \to b)$
-
-  Now we need to leave the outer forall alone, and specialize the inner one.
-
-  We're going to apply "infinite union application" to convert the interior, by first proving $\forall a, ((\forall b, ((a \union b) \to b)) \to ((a \union (\emptyset \to \emptyset)) \to (\emptyset \to \emptyset)))$. (And then m.p. to execute that)
-
-  That inner formula is just an instance of specialization ($\forall a, \forall b, ((\forall x, ax) \to ab)$). Partially-specialize specialization with $(\nameabst{a} \nameabst{x} ((a \union x) \to x))$ to get $\forall a, \forall b, ((\forall x, ((a \union x) \to x)) \to ((a \union b) \to b))$
-
-
-  
-  Apply singleton to get $(\emptyset \infrule \emptyset) \in \singleton{\emptyset \infrule \emptyset}$
-  
-  then apply union-left to get $(\emptyset \infrule \emptyset) \in (\singleton{\emptyset \infrule \emptyset} \union a)$
-  
-  now, let's prove that statement again, but prove that it is a conclusion of $\deduction $ instead of just true. Recall that "being a conclusion of" means: So we need to apply the above proof steps internally, and So we are trying to prove
-  
-  $\forall a, (\emptyset \infrule ((\emptyset \infrule \emptyset) \in (\singleton{\emptyset \infrule \emptyset} \union a))) \in \deduction$
-  
-  first we must show that the first rule above, $R1 := (\emptyset \infrule \singleton{(\emptyset \infrule \emptyset) \in \singleton{\emptyset \infrule \emptyset}}) $, is present in $\deduction$.
-  
-  By singleton, $R1 \in \singleton{R1}$
-  
-  by several applications of unfolding and specialization, $R1 \in \forall x, \singleton{\emptyset \infrule (x \in \singleton{x})}$
-  
-  by several applications of the union rules get $R1 \in \deduction$.
-  
-  Now, the second step incorporates a metavariable. The second step is $R2 := \singleton{(\emptyset \infrule \emptyset) \in \singleton{\emptyset \infrule \emptyset})} \infrule \forall a, \singleton{(\emptyset \infrule \emptyset) \in (\singleton{\emptyset \infrule \emptyset} \union a))} $  
-  
-  by infinite union application, we can reach $R2 \in \deduction $ if we first reach $ R2' := external.\forall a, ((\singleton{(\emptyset \infrule \emptyset) \in \singleton{\emptyset \infrule \emptyset})} \infrule \singleton{(\emptyset \infrule \emptyset) \in (\singleton{\emptyset \infrule \emptyset} \union a))}) \in \deduction) $
-  
-  By singleton, $R2 \in \singleton{R2}$
-
-  
-  
+    
   \section{Derivable/admissible rules}
 
   [the rest of this paper will be guided by the following belief: "the provable statements are exactly the ones that can be concluded by $\deduction$" / "the rules we've written so far are sufficient to conclude any true statement, and conclude only true statements." $\deduction$ ]
@@ -532,19 +441,7 @@
   
   [first, the very fact that all provable statements are provable to be concluded by $\deduction$, and vice versa:]
   
-  \begin{align*}
-    \globalrule{\deduction \concludes A \presep X \in A}{X} && 
-    \globalrule{X}{\deduction \concludes \singleton{X}}
-  \end{align*}
-  
   [important to note that adding these rules doesn't add any \emph{conclusions} that weren't possible already]
-  
-  [of course, this leaves yet more unimplemented inferences: $\deduction_2 \equiv \deduction \union \singleton{\deduction \concludes A \vdash A} \union \singleton{A \vdash \deduction \concludes A}$ would also have the same conclusions as just $\deduction$, so we should also be able to say:]
-  
-  \begin{align*}
-    \globalrule{\deduction_2 \concludes A \presep X \in A}{X} && 
-    \globalrule{X}{\deduction_2 \concludes \singleton{X}}
-  \end{align*}
    
   [this suggests an infinite hierarchy of inference rules – in fact, it will grow into an ordinal hierarchy – but we'll come back to that]
   
@@ -577,119 +474,15 @@
    
   [Therefore, IC's take on the liar paradox is: self-referential statements are fine, and any system that chokes on them is improperly, implicitly using self-referential \emph{rules of inference}!]
   
-  \subsection{Induction}
   
-  [back to making a more principled way to describe what kinds of rules are valid]
-  
-  [one big thing we haven't postulated is the fact that our rules are exhaustive: you can only conclude what is promoted by the rules, not anything else out of thin air. The way to define this formally is through the concept of induction. [Other interpretation: that all proofs are finite]. That $\concludes$ is the minimal relation that obeys its 3 rules, and $\in$ the minimal relation that obeys its 6 rules.]
-  
-  [State the induction rules explicitly]
-  
-  [it will be illustrative to go through an example of how to use induction to prove one of our rules, as there are many steps and they will illustrate a bunch of things about how to do deduction within IC]
-  
-  \begin{align*}
-    A \in {B}, PB &\vdash P{A}\\
-    (\emptyset \to (A \in (B \union C))), ((A \in B) \to D), ((A \in C) \to D) &\vdash (\emptyset \to D) \\
-    A \in B,
-    (\emptyset \to (A \in (B \union C))), 
-     &\vdash P{A}\\
-  \end{align*}
-  
-  
-  \iffalse
   
   [we believe that the above rules allow you to prove all interesting mathematical statements, but maybe that's not very satisfying, because you do it by constructing other formal systems within this one. We would like to make some more rules so that you can do more stuff more intrinsically
-  Also:
-  \begin{align*}
-    ((R \union (\emptyset \infrule A)) \concludes B), ((R \union (A \infrule B)) \concludes C) &\vdash (R \concludes C) \\
-    ((\mathbb{D} (\concludes)) \concludes (R \concludes A)) &\vdash ((\mathbb{D} C) \concludes (C R A)) \\
-  \end{align*}
+  
+  
+    
+  In particular, even if $(A \equals B)$ is true, $A \to B$ is not required to be true – and indeed, unlike the usual propositional logic, our system does not require that $A \to A$ be true! (What does this mean? Well, $A \to A$ is traditionally equivalent to $(\neg A \vee A)$; and some paradoxical statements are neither true nor false. $A \to A$ can't be false, but if $A$ is neither true nor false, $A \to A$ is also neither true nor false.)
   
 
-  It may seem self-defeating to write "$\forall$" in this definition, but it is not: The outer $\forall$ is the external meaning, understood by the reader, while the inner $\all$ represents a raw formula.
-  
-  
-    
-  $\to$ (read as "implies") is logical implication. Note that the first 2 of these 3 rules put the forall-implies in the conclusion of the rule, meaning that the universal statement must be true; but the third rule puts the forall \emph{around} the $\vdash$, meaning that the \emph{rule} exists for all possible values of $A$ and $B$, but that there isn't a universal statement that's required to be a \emph{true proposition}. In particular, even if $(A \equals B)$ is true, $A \to B$ is not required to be true – and indeed, unlike the usual propositional logic, our system does not require that $A \to A$ be true! (What does this mean? Well, $A \to A$ is traditionally equivalent to $(\neg A \vee A)$; and some paradoxical statements are neither true nor false. $A \to A$ can't be false, but if $A$ is neither true nor false, $A \to A$ is also neither true nor false.)
-  
-  $\to$ can be used according to the traditional rule, \emph{modus ponens}:
-  
-  \begin{align*}
-    &\forall A,B, ((A \to B), A \vdash B)\\
-  \end{align*}
-  
-    
-  \subsection{More rules}
-  
-  We need some rules for \emph{introducing} universal statements. Many systems do this by proving things about opaque variables, but we can't take that approach, because variables don't exist. Instead, we have rules about combinators. To start with, $\const A$ will always return $A$, so if $A$ is true, then $\const A$ is true for all inputs:
-  
-  \begin{align*}
-    &\vdash \forall A, (A \to \all \const A)\\
-  \end{align*}
-  
-  Besides this, the only way to get a new universal statement is by specializing an existing universal statement, like the ones provided by the inference rules. We already have a rule to specialize a universal statement with a concrete formula; but we don't yet have a way to create a new universal statement that specializes an existing one differently based on the new one's input. We create this rule now:
-  
-  \begin{align*}
-    &\vdash \forall A, B, ((\all A) \to \all \fuse\,(\const A)\,B)\\
-  \end{align*}
-  
-    
-  \subsection{Uhh}
-  Elementary propositions external usage:
-  \begin{align*}
-    (A \to B), A &\vdash B\\
-    (\all A) &\to AB\\
-  \end{align*}
-  Elementary propositions internalization:
-  \begin{align*}
-    (A \to B)\mathbb{T} &\equiv (\mathbb{T}A \to \mathbb{T}B)\\
-    (\all A)\mathbb{T} &\equiv (\forall B, \mathbb{T}(AB))\\
-  \end{align*}
-  \begin{align*}
-    \mathrm{ReasonableEquality}\,E := \nameabst{\mathbb{T}}\ &\forall A, \forall B, \forall C,\\
-      &\ (EAB \to (\mathbb{T}A \to \mathbb{T}B))\\
-      &\wedge (EAB \to E(CA)(CB))\\
-      &\wedge (EAB \to E(AC)(AB))\\
-    \mathrm{Equal}\,A\,B := \nameabst{\mathbb{T}}\ &\exists E, \mathrm{ReasonableEquality}\,E \wedge EAB
-  \end{align*}
-  
-  Axioms:
-  
-  \begin{align*}
-    \name{SelfDescribing} &:= \nameabst{\mathbb{T}} \mathbb{T}A \to A\mathbb{T}\\
-    \name{Deductive} &:= \nameabst{\mathbb{T}} (\forall \mathbb{U}, (\forall A, \mathbb{T}A \to A\mathbb{U}) \to B\mathbb{U}) \to \mathbb{T}B\\
-    \name{Theorems} &:= \nameabst{\name{Axioms}} \nameabst{A} (\forall \mathbb{T}, \name{Axioms} \mathbb{T} \to \mathbb{T}A) \\ 
-    \name{FullyInternally} &:= \nameabst{A} \nameabst{\mathbb{T}} \mathbb{T} (A \wedge \name{FullyInternally} A)\\
-    A \wedge B &:= \nameabst{\mathbb{T}} \forall C, (\mathbb{T}A \to \mathbb{T}B \to C) \to C\\
-    IC_0 &:= \name{FullyInternally}(\name{SelfDescribing} \wedge \name{Deductive})\\
-    IC_1 &:= \name{FullyInternally}(\nameabst{\mathbb{T}} (\forall A, \forall \mathbb{U}, (IC_0)\mathbb{U} \to \mathbb{U}{A}) \to \mathbb{T}A)\\
-    IC_2 &:= \name{FullyInternally}(IC_1 \wedge \name{Theorems} IC_1)\\
-    \dots \\
-    IC_\omega &:= \name{FullyInternally}(\forall n, \name{Natural} n \to (IC_n \wedge \name{Theorems} IC_n))\\
-    \dots \\
-    \name{Ordinal} o \to IC_o &:= \name{FullyInternally}(\forall n, n \stackrel{ordinal}{<} o \to (IC_n \wedge \name{Theorems} IC_n))\\
-  \end{align*}
-  
-  Externalization:
-  \begin{align*}
-    \name{Ordinal} o &\to \name{Theorems} IC_o\\
-    \name{Equal} A\,B &\to A \equiv B\\
-  \end{align*}
-  
-  
-  \subsection{Inference rules}
-  
-  IC is a \emph{proof system}; some formulas are \emph{true statements}, and we must describe \emph{inference rules} that can be used to derive one true statement from others. For example, this rule states that
-  
-  \begin{equation*}
-    \tag{cut}
-    ((A \to B) \wedge ((B \wedge C) \to D)) \to ((A \wedge C) \to D)\\
-  \end{equation*}
-  , like the familiar \emph{modus ponens}:
-  
-  \begin{equation*}
-    \inferrule{A \to B\\\\A}{B}
-  \end{equation*}
   
   The introspection principle asks that we define formulas to represent inference rules.
   In some sense, this is the \emph{only} thing we need to do – by the time we're done representing inference rules, the theory will be powerful enough to represent everything else.
@@ -699,86 +492,10 @@
     \item \textbf{Variables} (the A and B above), which express that you can inject arbitrary formulas into particular locations within the inference rule, and say that the rule exists for all such values.
     \item Finally, the fact that you can combine multiple inference rules to draw further conclusions.
   \end{itemize}
-  
-  As our way of defining how inference rules work \emph{inside} IC, we need to describe inference rules \emph{of} IC. This will look like a self-referential definition, where everything has to be defined before anything works. So we begin with intuitive definitions, then formalize them as we go.
     
-  \subsection{Basics}
   
-  $\top$ (read as "true") is the trivially true proposition.
+  This continues infinitely, and the same rules must exist on every level.\footnote{Propositional logic avoids this by making all later relations the same as the second one, but accepting that they will have different rules than the first.}
   
-  $A \wedge B$ (read as "A and B") is logical conjunction, with the usual meaning: $A \wedge B$ is true \emph{iff} $A$ and $B$ are both true.
-
-  \newcommand{\objto}{\hookrightarrow}
-  $\forall x, B$ (read as "for all x, B") is universal quantification. Here, $B$ is a formula that may contain usages of the name $x$. When we state a rule with unbound variables, they are implicitly quantified this way. (For example, a rule stated as $A \wedge B \vdash A$ is implicitly $\forall A, \forall B, A \wedge B \vdash A$.)
-  
-  Both $A \vdash B$ (read as "A proves B") and $A \objto B$ (read as "A implies B") are representations of inference rules or logical implication, saying that if A is true, then B is true. However, this needs more explanation.
-  
-  The usual propositional logic – \emph{unlike} IC – postulates \emph{modus ponens}, an inference rule which states:
-  
-  \begin{equation*}
-    \tag{modus ponens}
-    A \wedge (A \objto B) \vdash B\\
-  \end{equation*}
-  
-  thus saying that if $(A \objto B)$ and $A$ are both \emph{true}, then $B$ is \emph{true}. IC only says that if $(A \objto B)$ is an \emph{inference rule of a system}, and $A$ is true in that system, then $B$ is true in that system. IC's basic rule of implication is the following, which keeps metatheory levels separate by having the \emph{same} number of levels of "$\objto$" in each premise and conclusion:
-  
-  \begin{equation*}
-    \tag{chain rule}
-    (A \objto B) \wedge (B \wedge C \objto D) \vdash (A \wedge C \objto D)\\
-  \end{equation*}
-  
-  This can be read as modifying the rule $(B \wedge C \objto D)$, satisfying the need for $B$ by plugging the output of $(A \objto B)$ into it. It's a generalization of transitivity – by setting $C$ to $\top$, you get $(A \objto B) \wedge (B \objto D) \vdash (A \objto D)$. And if we set both $A$ and $C$ to $\top$, we get:
-  
-  \begin{equation*}
-    (\top \objto A) \wedge (A \objto B) \vdash (\top \objto B)\\
-  \end{equation*}
-  
-  which reveals the relation to \emph{modus ponens}: It's the same except with the trivial-looking "$\top \objto$" keeping everything at the same implication level.
-  
-  So, what's the relationship between $\vdash$ and $\objto$? They are the exact same concept, just at different metatheory levels. At first glance, $\vdash$ defines an inference rule of IC itself, while $\objto$ is an internal object that represents an inference rule. But it's more subtle than that: if $\vdash$-rules have $\objto$ on both sides, and $\objto$-rules are supposed to represent $\vdash$-rules, then $\objto$-rules must have some third relation (call it $\looparrowright$) on both sides. This continues infinitely, and the same rules must exist on every level.\footnote{Propositional logic avoids this by making all later relations the same as the second one, but accepting that they will have different rules than the first.}
-  
-  Ultimately, we want to write all the levels using the same symbol. We can't make that rigorous yet. For now, assume that each rule does exist on every level, and the symbols $\vdash$ and $\objto$ are \emph{variables} which can be filled in with any inference-level and its corresponding object-level.
-  
-  \subsection{Variables}
-  
-  I say \emph{variables}, but what we really need to define is \emph{functions}. Variables are just the convenient way of expressing them to the reader. A rule $A \wedge B \vdash A$ needs a function that takes two arguments, injects the first at the locations we labeled $A$, and injects the second at the locations we labeled $B$.
-  
-  
-  \subsection{All rules of deduction}
-
-  \begin{align*}
-    \tag{and}
-    (A \wedge B) &\vdash A\\
-    \tag{symmetry}
-    A \wedge B &\equiv B \wedge A\\
-    \tag{associativity}
-    (A \wedge B) \wedge C &\equiv A \wedge (B \wedge C)\\
-    \tag{embed and}
-    ((A \objto B) \wedge (A \objto C)) &\vdash (A \objto B \wedge C)\\
-    \tag{embed And}
-    (\forall X, A \objto B X) &\vdash (A \objto \bigwedge B)\\
-    \tag{chain rule}
-    (A \objto B) \wedge (B \wedge C \objto D) &\vdash (A \wedge C \objto D)\\
-    A &\vdash \bigwedge \const A\\
-    \bigwedge A &\vdash \bigwedge \fuse A\,B\\
-    \tag{specialization}
-    \bigwedge A &\vdash AB\\
-    \const A\,B &\equiv A\\
-    \fuse A\,B\,C &\equiv (AC)(BC)\\
-    (A \equiv B) &\vdash (CA \equiv CB)\\
-    (A \equiv B) &\vdash (AC \equiv BC)\\
-  \end{align*}
-  \newcommand{\deduction}{\operatorname{\mathrm{Deduction}}}
-  Now, assemble all of these rules into one giant conjunction, which takes the relations $\vdash$ and $\objto$ as parameters. We will call this $\deduction$; the full definition goes like
-  \begin{align*}
-    \deduction& :=\\
-    \nameabst{(\vdash)}&\ \nameabst{(\objto)}\\
-    &\forall A, \forall B, (A \wedge B) \vdash A\\
-    \wedge\ &\forall A, \forall B, A \wedge B \equiv B \wedge A\\
-    \wedge\ &\dots\\
-  \end{align*}
-  
-  And now we can define the \emph{single} symbol $(\to)$, which represents both inference rules of IC and internal representations of them.
   \\
   
   \textbf{Definition.} IC has $(\deduction\ (\to)\ (\to))$ as inference rules.
@@ -918,189 +635,15 @@
   \end{align*}
 
 
-  The introspection principle asks us to be able to discuss \emph{functions}, not just notations for functions. The meaning of \emph{functions} is how they map inputs to outputs – their \emph{extensional} behavior.
-  \begin{align*}
-    \tag{extensionality}
-    %(A \equiv B) \equiv \forall R, (\forall A,\forall B,) \to (A \equiv B)
-    \forall R, (\varnothing \to R A B) \cup (\forall C,\forall D,(\forall X,R (C X) (D X)) \to R C D) \to (A \equiv B)\\
-  \end{align*}
 
-  \begin{align*}
-    A pred1 &\to \bigwedge A \to AB\\
-    A prop \wedge B prop &\to A \wedge B \to B \wedge A\\
-    \tag{and}
-    A prop \wedge B prop &\to (A \wedge B) \to A\\
-    \tag{associativity}
-    A prop \wedge B prop \wedge C prop &\to (A \wedge B) \wedge C \leftrightarrow A \wedge (B \wedge C)\\
-    \tag{map and}
-    A prop \wedge B prop \wedge C prop &\to ((A \to B) \wedge (A \to C)) \to (A \to (B \wedge C))\\
-    \tag{map And}
-    A pred1 &\to (\forall X, A \to B X) \to (A \to \bigwedge B)\\
-    \tag{cut}
-    ((A \to B) \cup ((B \wedge C) \to D)) &\to ((A \wedge C) \to (D))\\
-    A &\to \bigwedge \const A\\
-    \bigwedge A &\to \bigwedge \fuse A\,B\\
-    \const A\,B &\leftrightarrow A
-  \end{align*}
-  \begin{align*}
-    \bigwedge A &\to AB\\
-    AB &\to \bigvee A\\
-    A \wedge B &\to B \wedge A\\
-    A \vee B &\to B \vee A\\
-    \tag{and}
-    (A \wedge B) &\to A\\
-    \tag{or}
-    A &\to (A \vee B)\\
-    \tag{associativity}
-    (A \wedge B) \wedge C &\leftrightarrow A \wedge (B \wedge C)\\
-    \tag{associativity}
-    (A \vee B) \vee C &\leftrightarrow A \vee (B \vee C)\\
-    \tag{map and}
-    ((A \to B) \wedge (A \to C)) &\to (A \to (B \wedge C))\\
-    \tag{map And}
-    (\forall X, A \to B X) &\to (A \to \bigwedge B)\\
-    \tag{map or}
-    ((A \vee B) \to C) &\to ((A \to C) \vee (B \to C))\\
-    \tag{map Or}
-    (\bigvee A \to B) &\to (\exists X, A X \to B)\\
-    \tag{cut}
-    ((A \to B \vee J) \wedge ((B \wedge C) \to D)) &\to ((A \wedge C) \to (D \vee J))\\
-    \tag{cut}
-    \neg ((\neg A \vee B \vee J) \wedge (\neg (B \wedge C) \vee D)) &\vee (\neg (A \wedge C) \vee (D \vee J))\\
-    \tag{cut}
-    (\neg (\neg A \vee B \vee J) \vee \neg (\neg (B \wedge C) \vee D)) &\vee (\neg (A \wedge C) \vee (D \vee J))\\
-    \tag{cut}
-    ((A \wedge \neg B \wedge \neg J) \vee ((B \wedge C) \wedge \neg D)) &\vee ((\neg A \vee \neg C) \vee (D \vee J))\\
-    \tag{cut}
-    (A \wedge \neg B \wedge \neg J) \vee (B \wedge C \wedge \neg D) &\vee \neg A \vee \neg C \vee D \vee J\\
-    \tag{cut}
-    \neg((\neg(A \to B) \to J) \to \neg (\neg (B \to \neg C) \to D)) &\to (\neg (A \to \neg C) \to (\neg D \to J))\\
-    \bigvee \const A &\to A\\
-    \bigvee \fuse A\, B &\to \bigvee A\\
-    A &\to \bigwedge \const A\\
-    \bigwedge A &\to \bigwedge \fuse A\,B\\
-    \const A\,B &\leftrightarrow A
-  \end{align*}
-  \begin{align*}
-    \const A\,B &\equiv A\\
-    \fuse A\,B\,C &\equiv (AC)(BC)\\
-    \tag{identity}
-    A &\equiv A \cup \varnothing\\
-    \tag{symmetry}
-    A \cup B &\equiv B \cup A\\
-    \tag{associativity}
-    (A \cup B) \cup C &\equiv A \cup (B \cup C)\\
-    \tag{specialization}
-    \bigcup A &\to A B\\
-    \tag{specialization}
-    \bigcup \const A &\equiv A\\
-    \tag{specialization}
-    \bigcup A &\to \bigcup \fuse A B\\
-    \tag{specialization}
-    \bigcup A &\equiv \forall B, \bigcup \fuse A B\\
-    \tag{uhh}
-    (A \to B) &\equiv (A \to (A \cup B))\\
-    \tag{uhh}
-    (A \cup B) &\to A\\
-    \tag{uhh}
-    (A \equiv B) &\equiv ((A \to B) \cup (B \to A))\\
-    \tag{uhh}
-    (A \equiv B) &\to (A \to B)\\
-    \tag{indistinguishability}
-    (A \equiv B) &\to (CA \equiv CB)\\
-    \tag{extensionality}
-    (A \equiv B) &\to (AC \equiv BC)\\
-    \tag{unioning}
-    ((A \to B) \cup (A \to C)) &\to (A \to (B \cup C))\\
-    \tag{univ. unioning}
-    ((\forall X, A \to B X) &\to (A \to \bigcup B)\\
-    \tag{chaining}
-    ((A \to B) \cup ((B \cup C) \to D)) &\to ((A \cup C) \to D)\\
-  \end{align*}
-
-  
-  
-  \section{Fundamentals}\label{fundamentals}
-
-  \subsection{Syntax}
-  \begin{align*}
-     Atom :=&\ \mathrm{level\_zero} \mid \mathrm{level\_successor} \mid \mathrm{implies} \mid \mathrm{equals} \mid \mathrm{const} \mid \mathrm{fuse} \mid \mathrm{induction\_on\_proofs}\\
-     F :=&\ Atom \mid (F F)
-  \end{align*}
-
-  \subsection{Notations}
-
-  % give examples first????
-  % pronunciations of the symbols
-  % AB is application
-  % abstractions can be viewed as forall, lambda, function, predicates
-  % substution better notation?
-  % implication not subscript?
-  % clean up explanation of metavariable levels WRT named abstractions
-%  \[ A\ B\ C \dots Y\ Z := ((\dots ((A B) C) \dots Y) Z) \]
 
   \newcommand{\ic}[1]{#1}
-%  \newcommand{\abst}[2]{{#1} \langle \overline{\underline{ #2}}]}
-  
-  
 
-  \begin{align*}
-    (A \equals B) &:= ((\mathrm{equals}\ A) B)\\
-    \id &:= \fuse \const \const\\
-  \end{align*}
-
-  Finally, we define the \emph{named form} of abstractions, $(\nameabst{A}B),\ \operatorname{right-associative}$, where $A$ is a variable-name, and $B$ may contain instances of that name. (Perhaps we should say \emph{metavariable-name} rather than \emph{variable-name}, as these names only exist for this notation, and are not part of the formal language of IC).
-  
-  This is defined as in the SKI combinator calculus.
-
-  \subsection{Internal Axioms}
-
-  We now define \emph{internal} representations of the above axioms.
 
   From the internal perspective of the calculus, the above axioms provide truth for any \emph{specific} values of the variables $A, B\dots$, but cannot prove abstractions over those variables.
-  So, for each axiom, we also create an internal form, by representing the metavariables using abstractions, and the premises using implication.
-  For example, (modus ponens) is represented as:
 
-  \begin{equation*}
-    \mathrm{``modus\ ponens"} := \nameabst{A} \nameabst{B} \nameabst{n} (A \implies{n} B) \to A \to B
-  \end{equation*}
-  
-  The above is merely a notation, saying that the right-hand side \emph{is} the statement of "modus ponens". Rather than postulate each of these generalized axioms individually, we make the following comprehensive rule:
+\fi
 
-
-  (We would like the definition of proof induction to be a notation like the other axioms, but that would make it a self-containing formula. IC can actually permit self containing formulas, but we understand that the reader may be skeptical of a self containing axiom! Thus, we choose to represent it as an atom with a definitional-equality.)
-  
-  Observe that this rule immediately proves any of the individual generalized axioms. For example, "modus ponens" is proved by specializing this rule with $P := \mathrm{``modus\ ponens"}$, because the premise $R\mathrm{``modus\ ponens"}$ proves the conclusion $RP$.
-  
-  But the more interesting feature of this rule is the other direction of implication: If $P$, then $P$ is reachable by induction from the listed axioms. This essentially says that our list of axioms is \emph{exhaustive} – there are no other axioms – and the rule makes that fact visible to internal logic.
-  
-With such a powerful rule, one should immediately worry if it proves a contradiction. After all, the generalized axioms are not strictly the same objects as the external axioms, and the axiom \eqref{indd} is not in the list at all. However, any statement you can prove using an external axiom is a specialization of the generalized form, and thus reachable by induction from the generalized axioms. And because definitionally-equal formulas are indistinguishable to the internal logic, \eqref{indd} is just a specialization of \eqref{eq_refl}.
-
-  \section{Examples}\label{structure}
-
-  We can define the conventional logical connectives in terms of the above rules:
-
-  \setlength{\jot}{0.4em}
-  \begin{align*}
-    \tag{false/absurdity}
-    \bot &:= (\nameabst{P}{P})\\
-    \tag{negation}
-    \neg_{n} P &:= ({P \implies{n} \bot})\\
-    \mathrm{not} &:= (\nameabst{P} \neg P)\\
-%    \tag{conjunction}
-%    P \land Q &:= (\nameabst{R} (P \implies{\wfz} Q \implies{\wfz} R) \implies{\wfz} R)\\
-%    \mathrm{and} &:= (\nameabst{P}\nameabst{Q} P \land Q)\\
-%    \tag{disjunction}
-%    P \lor Q &:= (\nameabst{R} (P \implies R) \implies (Q \implies R) \implies R)\\
-%    \mathrm{or} &:= (\nameabst{P}\nameabst{Q} P \lor Q)\\
-%    \tag{existential quantification}
-%    \exists x, P(x) &:= (\nameabst{R} (\nameabst{x} P(x) \implies R) \implies R)\\
-  \end{align*}
-
-%  And we can prove some tautologies:
-%  \begin{align*}
-%  (P \land Q)
-%  \end{align*}
 \iffalse
   \subsection{Well-founded sets}
 
@@ -1133,46 +676,6 @@ With such a powerful rule, one should immediately worry if it proves a contradic
 %
 %  }
 
-  \section{Consistency}\label{consistency}
-  
-  We regard a proposition $P$ as "proven" if it is \emph{eventually true} within IC, i.e.
-  
-  \newcommand{\eventually}{\operatorname{\mathrm{Eventually}}}
-  
-  \[ \eventually P := \exists n, \clocksub{+n} P \]
-  
-  This is a meta-theoretical definition; if we use our internal definition of $\exists$, which contains 2 nested abstractions, then you can never prove $(\eventually P)$, only $\clocksub{+2}(\eventually P)$.
-  
-  That said, since every axiom of IC can be applied within clocks, we could view the inside of $\clocksub{+n}$ as being another instance of the calculus – call it IC$_{+n}$ – which adds the axiom "if $\clocksub{+n} P$ is true in IC, then $P$ is true in IC$_{+n}$". If we move to IC$_{+2}$, we \emph{can} be comfortable with an internal definition of $\eventually$. Thus, IC can function as its own metatheory, just with a clock offset.
-  
-  By the axiom \eqref{lne}, anything that's eventually true is also eternally true, in the sense that you can "wait" for an IC$_{+n}$ where P is as old as you want:
-  
-%  \[ \nameabst{n} \wellfounded n \implies \eventually P \implies \eventually \clocksub{-n} P \]
-  
-  One might ask: What if you can't prove $(\eventually P)$, but only $\eventually (\eventually P)$? One might hope that $\eventually (\eventually P)$ implies $(\eventually P)$, but it does not – it only implies $\clocksub{+constant}(\eventually P)$. But could we also regard that as "proving $P$"? Unfortunately, if we did, we would then want to extend it to $\eventually (\eventually (\eventually P))$, and so forth. For the sake of having a single definition, the answer must be \emph{no}. But the purpose of including the entire well-founded hierarchy is that you don't \emph{need} to.
-  
-  Intuitively, the only way to prove $(\eventually P)$ is to exhibit a \emph{specific} $n$ where you can prove $\clocksub{+n} P$. Assuming this is true, you can simply take that value of $n$ Unfortunately, you can't prove this within IC, because the internal logic of IC doesn't know that there aren't extra axioms that could make $\eventually P$ true for other reasons. However, what you \emph{can} do is to define a predicate
-  
-  \newcommand{\provable}{\operatorname{\mathrm{Provable}}}
-  
-  \[\provable P := \dots\]
-  
-  which is true for anything that can be proved from the actual axioms of IC. (You define this as an induction predicate, with the axioms of IC as cases; we omit the definition because it is long.)
-  
-  A digression on the properties of $\provable$: Meta-theoretically, we don't think you can prove anything that's not $\eventually \provable$. But this is impossible to prove inside IC, for the same reasons as above. In fact, the proposition $(P \implies \eventually (\provable P))$ is \emph{false} within IC, because it is self-contradictory. (If true, it would be a statement that was true but not provable from the axioms!)
-  
-%  We also cannot prove $(\provable P) \implies P$, even though we believe that all provable statements are true; but fortunately, $(\provable P) \implies (\eventually P)$ is a trivial corollary.
-  
-  (All of the following is conjecture, but I expect it to be true, at least once I have cleaned up any definitional mistakes:)
-  
-  With the provability predicate, we can prove:
-  
-%  \[ \nameabst{P} \eventually (\provable (\eventually P)) \implies \eventually  P \]
-  
-  This theorem has an immediate corollary that is very significant:
-  
-%  \[ \nameabst{P} \eventually (\provable (\eventually \bot)) \implies \eventually \bot \]
-\fi
 
   \fi
 
