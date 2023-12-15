@@ -95,7 +95,7 @@
   
   \subsection{The liar paradox}
   
-  First, let's be precise about what the introspection principle requires, by showing a temptation we need to avoid.
+  First, let's be precise about the limits of the introspection principle, by showing a temptation we need to avoid.
   
   Suppose we define $(A \vdash B)$ as "if you assume $A$, then you can derive $B$ according to the rules of IC." By the introspection principle, $(A \vdash B)$ must be representable as a formula; and clearly, if you have proven the formulas $A$ and $(A \vdash B)$, then $B$ had better be provable.
   
@@ -272,6 +272,8 @@
     \tag{definition of fuse}\label{def_fuse}
     \globalrule{}{\fuse A\, B\, C \equals (AC)(BC)}
   \end{align*}
+  
+  We call these the "unfolding" rules; the left-hand side is a function application, which you can "unfold"\footnote{Existing literature calls this process "reduction" ("beta-reduction", in the case of the lambda calculus); I personally call it "unfolding", since "beta" is meaningless to the uninitiated, and "reduction" misleading (unfolding can make formulas larger and more complicated). } to the right-hand side, which is what the function returns. By using the substitution rules, you can unfold function-applications that are in the subformulas. By using transitivity (and symmetry), you can perform multiple unfolding steps, or unfold within the left- or right-hand side of a proposition. Combined, these allow you to do arbitrary computation.
   
   (Readers may note that, by allowing arbitrary computation here, we've made equality undecidable. This is fine and expected.)
 
