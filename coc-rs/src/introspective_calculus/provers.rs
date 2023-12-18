@@ -42,6 +42,8 @@ impl RawFormula {
 }
 
 #[derive(Copy, Clone)]
+pub struct ByUnaryRule<'a>(pub &'a ProofWithVariables);
+#[derive(Copy, Clone)]
 pub struct ByAxiomSchema;
 #[derive(Copy, Clone)]
 pub struct BySpecializingAxiom;
@@ -50,9 +52,13 @@ pub struct ByPartiallySpecializingAxiom;
 #[derive(Copy, Clone)]
 pub struct ByUnfolding;
 #[derive(Copy, Clone)]
+pub struct ByGeneralizedUnfolding;
+#[derive(Copy, Clone)]
 pub struct BySubstitutingWith<'a>(pub &'a [ProofWithVariables]);
 #[derive(Copy, Clone)]
 pub struct ByScriptNamed<'a>(pub &'a str);
+#[derive(Copy, Clone)]
+pub struct ByConvertingBothSides<'a, B>(pub &'a ProofWithVariables, B);
 
 impl FormulaProver for ByAxiomSchema {
     fn try_prove(&self, formula: RWMFormula) -> Result<ProofWithVariables, String> {
@@ -99,11 +105,35 @@ impl FormulaProver for ByPartiallySpecializingAxiom {
 impl FormulaProver for ByUnfolding {
     fn try_prove(&self, formula: RWMFormula) -> Result<ProofWithVariables, String> {
         // TODO: be more efficient I guess?
+        // TODO fix duplicate code ID 39483029345
         let [a, b] = formula
             .as_eq_sides()
             .unwrap()
             .map(|s| s.unfold_up_to_n_subformulas_proof(100));
         ProofWithVariables::eq_trans_chain(&[a, b.flip_conclusion()])
+    }
+}
+
+impl FormulaProver for ByGeneralizedUnfolding {
+    fn try_prove(&self, formula: RWMFormula) -> Result<ProofWithVariables, String> {
+        // TODO: be more efficient I guess?
+        // TODO fix duplicate code ID 39483029345
+        let [a, b] = formula
+            .as_eq_sides()
+            .unwrap()
+            .map(|s| s.generalized_unfold_up_to_n_subformulas_proof(100));
+        ProofWithVariables::eq_trans_chain(&[a, b.flip_conclusion()])
+    }
+}
+
+impl<B: FormulaProver> FormulaProver for ByConvertingBothSides<B> {
+    fn try_prove(&self, formula: RWMFormula) -> Result<ProofWithVariables, String> {
+        let ByConvertingBothSides(premise, how) = self;
+        let [a, b] = premise.conclusion().as_eq_sides().unwrap();
+        let [c, d] = formula.as_eq_sides().unwrap();
+        let l = how.try_prove(ic!(a = c).to_rwm())?;
+        let r = how.try_prove(ic!(b = d).to_rwm())?;
+        Ok(ProofWithVariables::eq_trans_chain(&[l.flip_conclusion(), premise.clone(), r]).unwrap())
     }
 }
 

@@ -35,6 +35,7 @@ pub enum CleanExternalRule {
     DefinitionOfFuse,
     SubstituteInLhs,
     SubstituteInRhs,
+    SubstituteInConjunction,
 }
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub struct Axiom {
@@ -85,6 +86,9 @@ impl RuleTrait for CleanExternalRule {
             CleanExternalRule::DefinitionOfFuse => inf!("|- fuse A B C = (A C) (B C)").to_rwm(),
             CleanExternalRule::SubstituteInLhs => inf!("A = B |- (A C) = (B C)").to_rwm(),
             CleanExternalRule::SubstituteInRhs => inf!("A = B |- (C A) = (C B)").to_rwm(),
+            CleanExternalRule::SubstituteInConjunction => {
+                inf!("(l=>(A l = B l)) = (l=>(C l = D l)) |- l=>((A l,E l)=(B l,F l)) = l=>((C l,E l)=(D l,F l))").to_rwm()
+            }
         }
     }
 }

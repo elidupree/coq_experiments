@@ -665,7 +665,7 @@ impl RWMFormula {
             sides: self
                 .as_eq_sides()
                 .ok_or_else(|| format!("Not an equivalence: {self}"))?
-                .try_map(|s| s.to_uncurried_function_of(arguments))?,
+                .map(|s| s.to_uncurried_function_of(arguments)),
         })
     }
     pub fn already_uncurried_function_equivalence(
