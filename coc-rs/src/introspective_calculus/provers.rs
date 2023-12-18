@@ -58,7 +58,7 @@ pub struct BySubstitutingWith<'a>(pub &'a [ProofWithVariables]);
 #[derive(Copy, Clone)]
 pub struct ByScriptNamed<'a>(pub &'a str);
 #[derive(Copy, Clone)]
-pub struct ByConvertingBothSides<'a, B>(pub &'a ProofWithVariables, B);
+pub struct ByConvertingBothSides<'a, B>(pub &'a ProofWithVariables, pub B);
 
 impl FormulaProver for ByAxiomSchema {
     fn try_prove(&self, formula: RWMFormula) -> Result<ProofWithVariables, String> {
@@ -126,14 +126,17 @@ impl FormulaProver for ByGeneralizedUnfolding {
     }
 }
 
-impl<B: FormulaProver> FormulaProver for ByConvertingBothSides<B> {
+impl<B: FormulaProver> FormulaProver for ByConvertingBothSides<'_, B> {
     fn try_prove(&self, formula: RWMFormula) -> Result<ProofWithVariables, String> {
         let ByConvertingBothSides(premise, how) = self;
         let [a, b] = premise.conclusion().as_eq_sides().unwrap();
         let [c, d] = formula.as_eq_sides().unwrap();
         let l = how.try_prove(ic!(a = c).to_rwm())?;
         let r = how.try_prove(ic!(b = d).to_rwm())?;
-        Ok(ProofWithVariables::eq_trans_chain(&[l.flip_conclusion(), premise.clone(), r]).unwrap())
+        Ok(
+            ProofWithVariables::eq_trans_chain(&[l.flip_conclusion(), (*premise).clone(), r])
+                .unwrap(),
+        )
     }
 }
 

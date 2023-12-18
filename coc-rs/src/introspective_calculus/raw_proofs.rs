@@ -1,4 +1,5 @@
 use crate::introspective_calculus::inference::Inference;
+use crate::introspective_calculus::proof_hierarchy::InferenceAsEquivalence;
 use crate::introspective_calculus::uncurried_function::UncurriedFunctionEquivalence;
 use crate::introspective_calculus::{FormulaParser, RWMFormula, RawFormula, Substitutions};
 use crate::{formula, inf};
@@ -229,8 +230,31 @@ pub static EXTENSIONALITY_AXIOMS: LazyLock<Vec<Axiom>> = LazyLock::new(|| {
         .collect()
 });
 
-pub static ALL_AXIOMS: LazyLock<Vec<Axiom>> =
-    LazyLock::new(|| EXTENSIONALITY_AXIOMS.iter().cloned().collect());
+pub static ALL_AXIOMS: LazyLock<Vec<Axiom>> = LazyLock::new(|| {
+    EXTENSIONALITY_AXIOMS
+        .iter()
+        .cloned()
+        .chain(once(Axiom::new(
+            formula!("((A=B) & (C=D)) = ((C=D) & (A=B))").to_rwm(),
+        )))
+        .chain(
+            [
+                CleanExternalRule::EqTrans,
+                CleanExternalRule::SubstituteInRhs,
+                CleanExternalRule::SubstituteInConjunction,
+            ]
+            .into_iter()
+            .map(|rule| {
+                {}
+                Axiom::new(
+                    InferenceAsEquivalence::from_inference(rule.inference())
+                        .formula()
+                        .clone(),
+                )
+            }),
+        )
+        .collect()
+});
 
 impl RuleInstance {
     pub fn assume_raw(self) -> RuleRawInstance {

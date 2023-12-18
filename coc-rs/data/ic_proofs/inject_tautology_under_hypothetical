@@ -1,0 +1,5 @@
+P1. A=B
+
+1. (P=Q) = ((x=>(x,A))P)=((x=>(x,A))Q)  [by internal_indistinguishability]
+2. (P=Q) -> (A=A)                       [1, by unfolding]
+3. (P=Q) -> (A=B)                       [2, P1, by subst]

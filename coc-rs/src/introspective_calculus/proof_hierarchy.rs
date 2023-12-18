@@ -1,3 +1,4 @@
+use crate::introspective_calculus::inference::Inference;
 use crate::introspective_calculus::provers::{
     ByAxiomSchema, ByConvertingBothSides, ByGeneralizedUnfolding, ByPartiallySpecializingAxiom,
     ByScriptNamed, BySpecializingAxiom, BySubstitutingWith, ByUnfolding,
@@ -184,7 +185,7 @@ impl ProofWithVariables {
                             .formula()
                     };
                     let unbatch = |f: RawFormula| {
-                        ic!("a" => "b" => (f ("a", ("b", {Formula::default()})))).to_rwm()
+                        ic!("a" => ("b" => (f ("a", ("b", {Formula::default()}))))).to_rwm()
                     };
                     let pairify = |eq: &UncurriedFunctionEquivalence| {
                         eq.sides.each_ref().map(|s| batch(s.formula()))
@@ -205,7 +206,8 @@ impl ProofWithVariables {
                                             value
                                                 .to_uncurried_function_of(argument_order)
                                                 .formula(),
-                                        ),
+                                        )
+                                        .to_rwm(),
                                     )
                                 })
                                 .collect(),
@@ -473,7 +475,7 @@ impl InferenceAsEquivalence {
         // let to_fn = |f: &Formula| f.to_rwm().to_uncurried_function_of(&argument_order);
         let p = Formula::and_and_true(&premises.iter().map(|f| f.to_formula()).collect::<Vec<_>>())
             .unwrap();
-        let pc = Formula::and([p, conclusion.formula().to_formula()]).unwrap();
+        let pc = Formula::and([p, conclusion.to_formula()]).unwrap();
         let formula_cache = ic!(p = pc).to_rwm();
         InferenceAsEquivalence {
             premises,
@@ -481,6 +483,9 @@ impl InferenceAsEquivalence {
             // argument_order,
             formula_cache,
         }
+    }
+    pub fn from_inference(inference: Inference) -> InferenceAsEquivalence {
+        InferenceAsEquivalence::new(inference.premises.clone(), inference.conclusion.clone())
     }
     // pub fn forget_disambiguation(&self) -> WhatWasProved {
     //     WhatWasProved {
@@ -555,10 +560,11 @@ impl Deref for ProofWithPremisesInner {
 
 impl HowToInternalizeInference {
     pub fn internalize(&self, what: &WhatWasProved) -> InferenceAsEquivalence {
-        assert!(what
-            .premises
-            .iter()
-            .all(|required| { self.premises.iter().any(|provided| provided == required) }));
+        assert!(what.premises.iter().all(|required| {
+            self.premise_order
+                .iter()
+                .any(|provided| provided == required)
+        }));
         // assert!(self.weakness_level >= what.conclusion.weakness_level());
         let premises = self
             .premise_order
@@ -751,7 +757,7 @@ impl ProofWithPremises {
                 );
                 goal.prove(ByIndistinguishability {
                     equivalence: gl,
-                    extractor: extract,
+                    extractor,
                 })
             }
             // ProofWithPremisesDerivation::CleanRule(proof) => proof.internalize(inference),

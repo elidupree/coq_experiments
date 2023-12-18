@@ -1,5 +1,5 @@
 use crate::introspective_calculus::{Formula, Atom, ExplicitRule, AbstractionKind, ArrowChain};
-use crate::introspective_calculus::inference::{ProofLine, NamedPrettyInference, PrettyInference, PrettyInferenceInner};
+use crate::introspective_calculus::inference::{ProofLine, NamedPrettyInference, PrettyInference, PrettyInferenceInner, FormulaOrImplicitEquality};
 use lalrpop_util::ParseError;
 
 grammar;
@@ -13,9 +13,14 @@ pub ExplicitRule: ExplicitRule = {
 }
 
 pub ProofLine: ProofLine = {
-  <name:Name> "." <formula:Formula> => ProofLine{<>, ..ProofLine::default()},
-  <name:Name> "." <formula:Formula> "[" <referents:CommaSeparated<Name>> "]" => ProofLine{name, formula, referents: referents.into_iter().collect(), ..ProofLine::default()},
-  <name:Name> "." <formula:Formula> "[" <referents:(<Name> ",")*> "by" <deriver_name: Name?> "]" => ProofLine{name, formula, referents: referents.into_iter().collect(), deriver_name},
+  <name:Name> "." <formula:FormulaOrImplicitEquality> => ProofLine{<>, ..ProofLine::default()},
+  <name:Name> "." <formula:FormulaOrImplicitEquality> "[" <referents:CommaSeparated<Name>> "]" => ProofLine{name, formula, referents: referents.into_iter().collect(), ..ProofLine::default()},
+  <name:Name> "." <formula:FormulaOrImplicitEquality> "[" <referents:(<Name> ",")*> "by" <deriver_name: Name?> "]" => ProofLine{name, formula, referents: referents.into_iter().collect(), deriver_name},
+}
+
+FormulaOrImplicitEquality: FormulaOrImplicitEquality = {
+  Formula => FormulaOrImplicitEquality::Formula(<>),
+  "=" <Formula> => FormulaOrImplicitEquality::ImplicitEquality(<>),
 }
 
 pub NamedInference: NamedPrettyInference = {

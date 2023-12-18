@@ -1,0 +1,3 @@
+(A=B)
+= (A=B) & ((x=>xC)A = (x=>xC)B)   [by internal_indistinguishability]
+= (A=B) & (AC = BC)   [by unfolding]

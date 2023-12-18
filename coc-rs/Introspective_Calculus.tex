@@ -376,19 +376,42 @@
   
   We can now define implication with one premise, $\to$ (read as "implies"):
   
+  \newcommand{\prop}[1]{\mathbf{#1}}
+  
   \begin{align*}
-    (A \to B) := (A \equals (A \and B))
+    (\prop{A} \to \prop{B}) := (\prop{A} \equals (\prop{A} \and \prop{B}))
   \end{align*}
   
-  (Assume here that "$A$" and "$B$" represent formulas that have $\equals$ in them. The full, less-readable form, is $((A \equals B) \to (C \equals D)):= ((A \equals B) \equals ((A \equals B) \and (C \equals D)))$.)
+  Assume here that "$\prop{A}$" and "$\prop{B}$" represent propositions: formulas of the form $X \equals Y$, for some $X$ and $Y$. The full, less-readable form, is $((A \equals B) \to (C \equals D)):= ((A \equals B) \equals ((A \equals B) \and (C \equals D)))$.
   
   Again, let's show why this is a good definition of implication.
   
   We've claimed that equality should mean "mutual derivability by the core rules"; if it does, then $\to$ now means one-directional derivability by the core rules.
-  After all, if $A$ lets you derive $B$, then it also lets you derive $(A \and B)$; and if you know $(A \and B)$, you can derive $A$; so $A$ is mutually derivable with $(A \and B)$.
-  Conversely, if you first know that $A$ and $(A \and B)$ are mutually derivable, you can reason from $A$ to $(A \and B)$ and then to $B$.
+  After all, if $\prop{A}$ lets you derive $\prop{B}$, then it also lets you derive $(\prop{A} \and \prop{B})$; and if you know $(\prop{A} \and \prop{B})$, you can derive $\prop{A}$; so $\prop{A}$ is mutually derivable with $(\prop{A} \and \prop{B})$.
+  Conversely, if you first know that $\prop{A}$ and $(\prop{A} \and \prop{B})$ are mutually derivable, you can reason from $\prop{A}$ to $(\prop{A} \and \prop{B})$ and then to $\prop{B}$.
   
-  What remains to show is that equality is "mutual derivability by the core rules". This is not yet established by the rules we've asserted so far. Again, I've established it by a metatheorem [note: I haven't actually rigorously completed this yet; these axioms might get tweaked], which makes use of the following additional axioms. Again, one can verify that these axioms are valid equalities, in that they only make propositions equal if they're already mutually derivable. And again, we assert the list form of each:
+  What remains to show is that equality is "mutual derivability by the core rules". This is not yet established by the rules we've asserted so far. We need to add one additional unary rule, and several axioms. We would like for the rule to be:
+  
+  \begin{align*}
+    \tag{substitute in conjunction}\label{subst_c1}
+    \globalrule{\prop{A} \equals \prop{B}}{(\prop{A} \and \prop{C}) \equals (\prop{B} \and \prop{C})} \\
+  \end{align*}
+  
+  However, this doesn't automatically generalize. We need to assert the generalized form, something like this:
+  
+  \begin{align*}
+    \tag{substitute in conjunction}\label{subst_c}
+    \globalrule{(\nameabst{l} \prop{A}l) \equals (\nameabst{l} \prop{B}l)}{(\nameabst{l} \prop{A}l \and \prop{C}l) \equals (\nameabst{l} \prop{B}l \and \prop{C}l)} \\
+  \end{align*}
+  
+  This is slightly questionable notation; if $\prop{A}$ denotes a formula $A_0 \equals A_1$, then $\prop{A}l$ denotes $A_0l \equals A_1l$, rather than the nonsensical $(A_0 \equals A_1)l$ as you might expect. The full rule, if we must, is:
+      
+  \begin{align*}
+    \tag{substitute in conjunction}\label{subst_c3}
+    \frac{(\nameabst{l} Al \equals Bl) \equals (\nameabst{l} Cl \equals Dl)}{(\nameabst{l} (Al,El) \equals (Bl,Fl)) \equals (\nameabst{l} (Cl,El) \equals (Dl,Fl)))} \\
+  \end{align*}
+  
+  Again, I've established it by a metatheorem [note: I haven't actually rigorously completed this yet; these axioms might get tweaked], which makes use of the following additional axioms. Again, one can verify that these axioms are valid equalities, in that they only make propositions equal if they're already mutually derivable. And again, we assert the list form of each:
   
   \begin{align*}
     (A \equals B) &\to (AC \equals BC)\\

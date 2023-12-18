@@ -16,10 +16,22 @@ use std::ops::Deref;
 use std::path::Path;
 use std::sync::{Arc, LazyLock};
 
+#[derive(Debug)]
+pub enum FormulaOrImplicitEquality {
+    Formula(Formula),
+    ImplicitEquality(Formula),
+}
+
+impl Default for FormulaOrImplicitEquality {
+    fn default() -> Self {
+        FormulaOrImplicitEquality::Formula(Default::default())
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct ProofLine {
     pub name: String,
-    pub formula: Formula,
+    pub formula: FormulaOrImplicitEquality,
     pub referents: ArrayVec<String, 2>,
     pub deriver_name: Option<String>,
 }

@@ -50,20 +50,22 @@ impl RWMFormula {
         })
     }
     pub fn generalized_unfold_here_proof(&self) -> Option<ProofWithVariables> {
-        let become = |result| {
-            Some(ic!(self = result).prove(BySpecializingAxiom))
-        };
-        if let Some([a, _b]) = formula!("x => const (A x) (B x)").matches(self) {
-            become(a)
-        }
-        else if let Some([a, b, c]) = formula!("x => fuse (A x) (B x) (C x)").matches(self) {
-            become(formula!("x => ((A x) (C x)) ((B x) (C x))", {A:a, B:b, C:c}))
+        let unfold_to = |result: RWMFormula| Some(ic!(self = result).prove(BySpecializingAxiom));
+        if let Ok([a, _b]) = formula!("x => const (A x) (B x)").matches::<[RWMFormula; 2]>(self) {
+            unfold_to(a)
+        } else if let Ok([a, b, c]) =
+            formula!("x => fuse (A x) (B x) (C x)").matches::<[RWMFormula; 3]>(self)
+        {
+            unfold_to(formula!("x => ((A x) (C x)) ((B x) (C x))", {A:a, B:b, C:c}).to_rwm())
         } else {
             None
         }
     }
 
-    pub fn convert_any_one_subformula_proof(&self, convert_here: impl Copy + Fn(&Self) -> Option<ProofWithVariables>) -> Option<ProofWithVariables> {
+    pub fn convert_any_one_subformula_proof(
+        &self,
+        convert_here: impl Copy + Fn(&Self) -> Option<ProofWithVariables>,
+    ) -> Option<ProofWithVariables> {
         if let Some(result) = convert_here(self) {
             return Some(result);
         }
@@ -119,14 +121,18 @@ impl RWMFormula {
         None
     }
 
-    pub fn convert_up_to_n_subformulas_proof(&self, convert_here: impl Copy + Fn(&Self) -> Option<ProofWithVariables>, n: usize) -> ProofWithVariables {
+    pub fn convert_up_to_n_subformulas_proof(
+        &self,
+        convert_here: impl Copy + Fn(&Self) -> Option<ProofWithVariables>,
+        n: usize,
+    ) -> ProofWithVariables {
         let mut proof = ProofWithVariables::eq_refl(self.clone());
         for _ in 0..n {
-            let Some(new_proof) =
-                proof.conclusion().as_eq_sides().unwrap()[1].convert_any_one_subformula_proof(convert_here)
-                else {
-                    return proof;
-                };
+            let Some(new_proof) = proof.conclusion().as_eq_sides().unwrap()[1]
+                .convert_any_one_subformula_proof(convert_here)
+            else {
+                return proof;
+            };
             proof = ProofWithVariables::eq_trans_chain(&[proof, new_proof]).unwrap();
         }
         proof

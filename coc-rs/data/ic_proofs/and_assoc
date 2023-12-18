@@ -1,3 +1,7 @@
+1. ((A & B) & C) =
+
+
+
 A1. ((A, B) = (C, D)) = ((A = C) & (B = D))
 A2. ((A, B) = (C, D)) = ((B, A) = (D, C))
 
@@ -6,10 +10,10 @@ let rotate2 = (a => ce => ce(c => e => ((a, c), e))
 ((A=B) & (C=D)) & (E=F)
 = ((A,C) = (B,D)) & (E=F)
 = ((A,C),E) = ((B,D),F)
-= (((A,C),E) = ((B,D),F)) & (((A,C),E)rotate1 = ((B,D),F)rotate1)
+= (((A,C),E) = ((B,D),F)) & (((A,C),E)rotate1 = ((B,D),F)rotate1)   [by internal_specialization]
 = (((A,C),E) = ((B,D),F)) & ((A,(C,E)) = (B,(D,F)))  [by unfolding]
 = ((A,(C,E)) = (B,(D,F))) & (((A,C),E) = ((B,D),F))  [by and_sym]
 = ((A,(C,E)) = (B,(D,F))) & ((A,(C,E))rotate2 = (B,(D,F))rotate2)  [by folding]
-= ((A,(C,E)) = (B,(D,F)))
+= ((A,(C,E)) = (B,(D,F)))   [by internal_specialization]
 = (A=B) & ((C,E) = (D,F))
 = (A=B) & ((C=D) & (E=F))
