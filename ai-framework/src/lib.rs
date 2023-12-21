@@ -1,5 +1,3 @@
-#![feature(string_leak)]
-
 pub mod api_1;
 pub mod differentiable_operations;
 pub mod layered_sparse_model;
@@ -9,3 +7,4 @@ pub mod model_shared;
 pub mod optimizers_1;
 pub mod optimizers_2;
 pub mod soup;
+pub mod time_sharing;

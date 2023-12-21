@@ -11,6 +11,7 @@ pub mod provers;
 pub mod raw_proofs;
 pub mod raw_proofs_ext;
 pub mod rules;
+pub mod solver_pool;
 pub mod specialization;
 pub mod tuple_equality_tree;
 pub mod uncurried_function;

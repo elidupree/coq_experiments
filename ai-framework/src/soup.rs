@@ -1,3 +1,7 @@
+//TODO remove these:
+#![allow(unused_variables)]
+#![allow(dead_code)]
+
 use crate::model_shared::{id_type, Array, InputOutputSampleBatch};
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
@@ -129,7 +133,7 @@ struct QueryResult {
     askers: HashSet<OptimizerId>,
 }
 
-struct Soup {
+pub struct Soup {
     question_families: HashMap<QuestionFamilyId, QuestionFamily>,
     query_cache: HashMap<CachedQuery, QueryResult>,
     optimizers: HashMap<OptimizerId, TrackedOptimizer>,
@@ -137,7 +141,7 @@ struct Soup {
 
 /// The interface an Optimizer uses to access and modify the soup.
 ///
-/// Optimizers are allowed to make arbitrary changes to strategies and ensembles, but they aren't allowed to touch the query cache or optimizers, and the cache needs to remember whichstay strategies were changed. So optimizers need to access the soup through an interface, instead of just taking an `&mut Soup`.
+/// Optimizers are allowed to make arbitrary changes to strategies and ensembles, but they aren't allowed to touch the query cache or optimizers, and the cache needs to remember which strategies were changed. So optimizers need to access the soup through an interface, instead of just taking an `&mut Soup`.
 pub struct SoupOptimizationStepContext<'a> {
     soup: &'a mut Soup,
 
@@ -164,7 +168,7 @@ impl Soup {
             .iter()
             .min_by_key(|(_, o)| OrderedFloat(o.expenditures))
             .unwrap();
-        let chosen_id = chosen_id.clone();
+        let chosen_id = *chosen_id;
         let chosen_behavior = chosen_optimizer.behavior.clone();
         let start = Instant::now();
         let mut context = SoupOptimizationStepContext {
