@@ -156,7 +156,7 @@ impl Proof {
     }
 
     pub fn specialize(&self, arguments: &Substitutions) -> Proof {
-        match self.derivation {
+        match &self.derivation {
             ProofDerivation::Premise(premise) => {
                 Proof::by_premise(premise.with_metavariables_replaced_rwm(arguments))
             }
@@ -551,7 +551,7 @@ impl InferenceAsEquivalence {
         // let to_fn = |f: &Formula| f.to_rwm().to_uncurried_function_of(&argument_order);
         let p = Formula::and_and_true(&premises.iter().map(|f| f.to_formula()).collect::<Vec<_>>())
             .unwrap();
-        let pc = Formula::and([p, conclusion.to_formula()]).unwrap();
+        let pc = Formula::and([p.clone(), conclusion.to_formula()]).unwrap();
         let formula_cache = ic!(p = pc).to_rwm();
         InferenceAsEquivalence {
             premises,

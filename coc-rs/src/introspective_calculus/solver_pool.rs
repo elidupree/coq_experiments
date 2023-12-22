@@ -2,12 +2,12 @@ mod discover_unfoldings;
 mod try_specializing_proven_inferences;
 mod try_substitutions;
 
-use crate::introspective_calculus::inference::Inference;
 use crate::introspective_calculus::proof_hierarchy::Proof;
 use crate::introspective_calculus::RWMFormula;
+use ai_framework::time_sharing;
 use ai_framework::time_sharing::{TimeSharer, WorkResult};
 use hash_capsule::BuildHasherForHashCapsules;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 enum FormulaTransitiveEqualitiesEntry {
     RepresentativeOfClass,
@@ -39,8 +39,6 @@ pub struct Goals {
 pub struct SolverPoolInner {
     truths: KnownTruths,
     goals: Goals,
-
-    unfolding_queue: VecDeque<(RWMFormula, usize)>,
     unfolding_visited: HashSet<RWMFormula, BuildHasherForHashCapsules>,
 }
 
@@ -51,21 +49,47 @@ pub enum GlobalSolverId {
     TrySubstitutions,
 }
 
+trait SolverWorker: Send + Sync + 'static {
+    fn do_some_work(&mut self, pool: &mut SolverPoolInner) -> WorkResult<Proof>;
+
+    fn consider_unfolding(&mut self, _formula: RWMFormula) {}
+}
+
+impl time_sharing::Worker for Box<dyn SolverWorker> {
+    type Key = GlobalSolverId;
+    type Workpiece = SolverPoolInner;
+    type Output = Proof;
+
+    fn do_some_work(
+        &mut self,
+        workpiece: &mut Self::Workpiece,
+        _context: &mut time_sharing::WorkContext,
+    ) -> WorkResult<Self::Output> {
+        SolverWorker::do_some_work(&mut **self, workpiece)
+    }
+}
+
 pub struct SolverPool {
     inner: SolverPoolInner,
-    sharer: TimeSharer<GlobalSolverId, SolverPoolInner, Option<Proof>>,
+    sharer: TimeSharer<Box<dyn SolverWorker>>,
 }
 
 impl Default for SolverPool {
     fn default() -> Self {
-        let mut sharer = TimeSharer::default();
+        let mut sharer: TimeSharer<Box<dyn SolverWorker>> = TimeSharer::default();
         use GlobalSolverId::*;
-        sharer.add_worker(DiscoverUnfoldings, self::discover_unfoldings::worker);
+        sharer.add_worker(
+            DiscoverUnfoldings,
+            Box::new(self::discover_unfoldings::Worker::default()),
+        );
         sharer.add_worker(
             TrySpecializingProvenInferences,
-            self::try_specializing_proven_inferences::worker,
+            Box::new(self::try_specializing_proven_inferences::Worker::default()),
         );
-        sharer.add_worker(TrySubstitutions, self::try_substitutions::worker);
+        sharer.add_worker(
+            TrySubstitutions,
+            Box::new(self::try_substitutions::Worker::default()),
+        );
         SolverPool {
             inner: SolverPoolInner::default(),
             sharer,
@@ -73,7 +97,7 @@ impl Default for SolverPool {
     }
 }
 impl SolverPool {
-    pub fn do_some_work(&mut self) -> WorkResult<Option<Proof>> {
+    pub fn do_some_work(&mut self) -> WorkResult<Proof> {
         self.sharer.do_some_work(&mut self.inner)
     }
 
@@ -81,16 +105,16 @@ impl SolverPool {
         self.sharer.wake_all();
     }
 
-    pub fn try_prove(&mut self, goal: Inference) -> Result<Proof, String> {
-        while let WorkResult::StillWorking(result) = self.do_some_work() {
-            if let Some(new_proof) = result {
-                if new_proof_proves_goal {
-                    return Ok(new_proof);
-                }
-            }
-        }
-        Err(format!("finished searching without proving {goal}"))
-    }
+    // pub fn try_prove(&mut self, goal: Inference) -> Result<Proof, String> {
+    //     while let WorkResult::DidSomeWork(result) = self.do_some_work() {
+    //         if let Some(new_proof) = result {
+    //             if new_proof_proves_goal {
+    //                 return Ok(new_proof);
+    //             }
+    //         }
+    //     }
+    //     Err(format!("finished searching without proving {goal}"))
+    // }
 }
 
 impl KnownTruths {
@@ -129,7 +153,7 @@ impl KnownTruthsForPremises {
         ) = self.transitive_equalities.get(&running_formula)
         {
             let further_formula = running_formula;
-            let closer_formula = further_formula.other_eq_side(&running_formula).unwrap();
+            let closer_formula = proof.conclusion().other_eq_side(&further_formula).unwrap();
             running_formula = closer_formula.clone();
             links.push(PathToEquivalenceClassRepresentativeLink {
                 proof: proof.clone(),

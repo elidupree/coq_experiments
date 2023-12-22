@@ -1,5 +1,12 @@
 use crate::introspective_calculus::proof_hierarchy::Proof;
-use crate::introspective_calculus::solver_pool::SolverPoolInner;
+use crate::introspective_calculus::solver_pool::{SolverPoolInner, SolverWorker};
 use ai_framework::time_sharing::WorkResult;
 
-pub fn worker(pool: &mut SolverPoolInner) -> WorkResult<Option<Proof>> {}
+#[derive(Default)]
+pub struct Worker {}
+
+impl SolverWorker for Worker {
+    fn do_some_work(&mut self, pool: &mut SolverPoolInner) -> WorkResult<Proof> {
+        todo!()
+    }
+}
