@@ -1,5 +1,5 @@
 use crate::introspective_calculus::inference::ProvenInference;
-use crate::introspective_calculus::proof_hierarchy::ProofWithVariables;
+use crate::introspective_calculus::proof_hierarchy::Proof;
 use crate::introspective_calculus::provers::{BySpecializingAxiom, BySubstitutingWith};
 use crate::introspective_calculus::raw_proofs::{CleanExternalRule, Rule};
 use crate::introspective_calculus::{RWMFormula, RWMFormulaValue};
@@ -15,17 +15,17 @@ impl RWMFormula {
             _ => false,
         })
     }
-    pub fn unfold_here_proof(&self) -> Option<ProofWithVariables> {
+    pub fn unfold_here_proof(&self) -> Option<Proof> {
         match_ic!(self, {
             ((const a) b) => {
-                Some(ProofWithVariables::new(
+                Some(Proof::by_rule(
                     Rule::from(CleanExternalRule::DefinitionOfConst).specialize (
                     substitutions!(A: a, B: b)
                 ), vec![]
                 ).unwrap())
             },
             (((fuse a) b) c) => {
-                Some(ProofWithVariables::new(
+                Some(Proof::by_rule(
                     Rule::from(CleanExternalRule::DefinitionOfFuse).specialize (
                     substitutions!(A: a, B: b, C: c)
                 ), vec![]
@@ -49,7 +49,7 @@ impl RWMFormula {
             _ => None,
         })
     }
-    pub fn generalized_unfold_here_proof(&self) -> Option<ProofWithVariables> {
+    pub fn generalized_unfold_here_proof(&self) -> Option<Proof> {
         let unfold_to = |result: RWMFormula| Some(ic!(self = result).prove(BySpecializingAxiom));
         if let Ok([a, _b]) = formula!("x => const (A x) (B x)").matches::<[RWMFormula; 2]>(self) {
             unfold_to(a)
@@ -64,8 +64,8 @@ impl RWMFormula {
 
     pub fn convert_any_one_subformula_proof(
         &self,
-        convert_here: impl Copy + Fn(&Self) -> Option<ProofWithVariables>,
-    ) -> Option<ProofWithVariables> {
+        convert_here: impl Copy + Fn(&Self) -> Option<Proof>,
+    ) -> Option<Proof> {
         if let Some(result) = convert_here(self) {
             return Some(result);
         }
@@ -83,7 +83,7 @@ impl RWMFormula {
         None
     }
 
-    pub fn unfold_any_one_subformula_proof(&self) -> Option<ProofWithVariables> {
+    pub fn unfold_any_one_subformula_proof(&self) -> Option<Proof> {
         self.convert_any_one_subformula_proof(Self::unfold_here_proof)
     }
 
@@ -123,24 +123,24 @@ impl RWMFormula {
 
     pub fn convert_up_to_n_subformulas_proof(
         &self,
-        convert_here: impl Copy + Fn(&Self) -> Option<ProofWithVariables>,
+        convert_here: impl Copy + Fn(&Self) -> Option<Proof>,
         n: usize,
-    ) -> ProofWithVariables {
-        let mut proof = ProofWithVariables::eq_refl(self.clone());
+    ) -> Proof {
+        let mut proof = Proof::eq_refl(self.clone());
         for _ in 0..n {
             let Some(new_proof) = proof.conclusion().as_eq_sides().unwrap()[1]
                 .convert_any_one_subformula_proof(convert_here)
             else {
                 return proof;
             };
-            proof = ProofWithVariables::eq_trans_chain(&[proof, new_proof]).unwrap();
+            proof = Proof::eq_trans_chain(&[proof, new_proof]).unwrap();
         }
         proof
     }
-    pub fn unfold_up_to_n_subformulas_proof(&self, n: usize) -> ProofWithVariables {
+    pub fn unfold_up_to_n_subformulas_proof(&self, n: usize) -> Proof {
         self.convert_up_to_n_subformulas_proof(Self::unfold_here_proof, n)
     }
-    pub fn generalized_unfold_up_to_n_subformulas_proof(&self, n: usize) -> ProofWithVariables {
+    pub fn generalized_unfold_up_to_n_subformulas_proof(&self, n: usize) -> Proof {
         self.convert_up_to_n_subformulas_proof(Self::unfold_here_proof, n)
     }
 

@@ -4,7 +4,6 @@ use crate::introspective_calculus::uncurried_function::UncurriedFunctionEquivale
 use crate::introspective_calculus::{FormulaParser, RWMFormula, RawFormula, Substitutions};
 use crate::{formula, inf};
 use itertools::Itertools;
-use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{BufRead, BufReader};

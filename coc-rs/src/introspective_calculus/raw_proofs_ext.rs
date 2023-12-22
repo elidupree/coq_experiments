@@ -1,4 +1,4 @@
-use crate::introspective_calculus::proof_hierarchy::{ProofWithVariables, Proven};
+use crate::introspective_calculus::proof_hierarchy::{Proof, Proven};
 use crate::introspective_calculus::raw_proofs::{
     Axiom, CleanExternalRule, RawProof, Rule, ALL_AXIOMS,
 };
@@ -11,7 +11,7 @@ impl Axiom {
     pub fn proof(&self) -> Proven<UncurriedFunctionEquivalence> {
         Proven::new(
             self.internal_form.clone(),
-            ProofWithVariables::new(
+            Proof::by_rule(
                 Rule::from(self.clone()).specialize(Substitutions::new()),
                 Vec::new(),
             )
@@ -38,30 +38,24 @@ impl RawProof {
     //         Some(RawProof::new())
     //     }
     // }
-    pub fn with_zero_variables(&self) -> ProofWithVariables {
-        ProofWithVariables::new(
+    pub fn to_fancy_proof(&self) -> Proof {
+        Proof::by_rule(
             self.rule_instance.with_zero_variables(),
-            self.premises
-                .iter()
-                .map(|c| c.with_zero_variables())
-                .collect(),
+            self.premises.iter().map(|c| c.to_fancy_proof()).collect(),
         )
         .unwrap()
     }
     pub fn eq_refl(formula: RawFormula) -> RawProof {
-        ProofWithVariables::eq_refl(formula.into()).to_raw()
+        Proof::eq_refl(formula.into()).to_raw()
     }
     pub fn flip_conclusion(&self) -> RawProof {
-        self.with_zero_variables().flip_conclusion().to_raw()
+        self.to_fancy_proof().flip_conclusion().to_raw()
     }
 
     pub fn eq_trans_chain(components: &[RawProof]) -> Result<RawProof, String> {
-        Ok(ProofWithVariables::eq_trans_chain(
-            &components
-                .iter()
-                .map(|c| c.with_zero_variables())
-                .collect_vec(),
-        )?
-        .to_raw())
+        Ok(
+            Proof::eq_trans_chain(&components.iter().map(|c| c.to_fancy_proof()).collect_vec())?
+                .to_raw(),
+        )
     }
 }

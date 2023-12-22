@@ -87,10 +87,11 @@ impl<Key: Hash + Eq + Clone, Context, R> TimeSharer<Key, Context, R> {
         }
     }
 
-    pub fn wake_all<Q: Eq + Hash>(&mut self) {
+    pub fn wake_all(&mut self) {
+        let time_used = self.now_time();
         for (key, task) in self.idle_workers.drain() {
             self.active_workers.push(ActiveWorker {
-                time_used: self.now_time(),
+                time_used,
                 key,
                 task,
             });

@@ -1,14 +1,11 @@
-use crate::introspective_calculus::proof_hierarchy::{ProofWithVariables, Proven};
+use crate::introspective_calculus::proof_hierarchy::{Proof, Proven};
 use crate::introspective_calculus::provers::{
     ByAxiomSchema, BySpecializingAxiom, BySubstitutingWith, ByUnfolding, FormulaProver,
 };
-use crate::introspective_calculus::{
-    Formula, RWMFormula, RWMFormulaValue, RawFormula, RawFormulaValue, ToFormula,
-};
+use crate::introspective_calculus::{Formula, RWMFormula, RWMFormulaValue, RawFormula, ToFormula};
 use crate::{formula, ic};
 use hash_capsule::HashCapsule;
 use itertools::Itertools;
-use live_prop_test::live_prop_test;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::iter::zip;
@@ -138,7 +135,7 @@ impl Proven<UncurriedFunctionEquivalence> {
             UncurriedFunctionEquivalence {
                 sides: [value.clone(), value.clone()],
             },
-            ProofWithVariables::eq_refl(value.formula().into()),
+            Proof::eq_refl(value.formula().into()),
         )
     }
     pub fn flip(&self) -> Self {
@@ -159,19 +156,17 @@ impl Proven<UncurriedFunctionEquivalence> {
                     steps.last().unwrap().formula().sides[1].clone(),
                 ],
             },
-            ProofWithVariables::eq_trans_chain(
-                &steps.iter().map(|step| step.proof().clone()).collect_vec(),
-            )?,
+            Proof::eq_trans_chain(&steps.iter().map(|step| step.proof().clone()).collect_vec())?,
         ))
     }
-    pub fn specialize(&self, args: &PairChain) -> ProofWithVariables {
+    pub fn specialize(&self, args: &PairChain) -> Proof {
         let [pl, pr] = self.sides.each_ref().map(|s| s.call(args));
         let pm = ic!(
             ({self.sides[0].formula()} {args.formula()}) =
             ({self.sides[1].formula()} {args.formula()})
         )
         .prove(BySubstitutingWith(&[self.proof().clone()]));
-        ProofWithVariables::eq_trans_chain(&[pl.flip_conclusion(), pm, pr]).unwrap()
+        Proof::eq_trans_chain(&[pl.flip_conclusion(), pm, pr]).unwrap()
     }
     pub fn partially_specialize(
         &self,
@@ -222,6 +217,12 @@ impl UncurriedFunction {
     }
     pub fn top() -> UncurriedFunction {
         UncurriedFunctionValue::Top.into()
+    }
+    pub fn nth_argument(n: usize) -> UncurriedFunction {
+        match n.checked_sub(1) {
+            None => UncurriedFunction::top(),
+            Some(pred) => UncurriedFunction::pop_in(UncurriedFunction::nth_argument(pred)),
+        }
     }
 
     pub fn args_to_return(&self, goal: &RWMFormula) -> Result<PairChain, String> {
@@ -289,7 +290,7 @@ impl UncurriedFunction {
     }
 
     /// returns a proof of `self.formula (A,(B,(C,*))) = body[0:=A, 1:=B, 2:=C]`
-    pub fn call(&self, arguments: &PairChain) -> ProofWithVariables {
+    pub fn call(&self, arguments: &PairChain) -> Proof {
         let args = arguments.formula();
         let lhs = Formula::apply([self.formula().into(), args.into()]);
         match self.value() {
@@ -315,7 +316,7 @@ impl UncurriedFunction {
                 // subgoal: (fuse A B) args = (A args) (B args)
                 let local_result = ic!(lhs = children_lhs).prove(ByAxiomSchema);
                 // goal: (fuse A B) args = A' B'
-                ProofWithVariables::eq_trans_chain(&[local_result, combined_child_result]).unwrap()
+                Proof::eq_trans_chain(&[local_result, combined_child_result]).unwrap()
             }
             UncurriedFunctionValue::PopIn(child) => {
                 let PairChain::Cons(_head, tail) = arguments else {
@@ -327,7 +328,7 @@ impl UncurriedFunction {
                 let intermediate = child_result.conclusion().as_eq_sides().unwrap()[0].clone();
                 let local_result = ic!(lhs = intermediate).prove(ByUnfolding);
                 // goal: (const P,)(head, tail) = P'
-                ProofWithVariables::eq_trans_chain(&[local_result, child_result]).unwrap()
+                Proof::eq_trans_chain(&[local_result, child_result]).unwrap()
             }
             UncurriedFunctionValue::Top => {
                 // goal: (const,)(head, tail) = head
@@ -679,7 +680,7 @@ impl RWMFormula {
         })
     }
 }
-impl ProofWithVariables {
+impl Proof {
     pub fn already_uncurried_function_equivalence(
         &self,
     ) -> Result<Proven<UncurriedFunctionEquivalence>, String> {

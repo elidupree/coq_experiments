@@ -10,7 +10,9 @@ fn main() {
     eprintln!("b");
     let f = formula!("fuse A B C D = (A C) (B C) D")
         .prove(ByUnfolding)
-        .to_uncurried_function_equivalence(&"ABCD".chars().map(|c| c.to_string()).collect_vec());
+        .variables_to_internalized_argument_list(
+            &"ABCD".chars().map(|c| c.to_string()).collect_vec(),
+        );
     //eprintln!("{}", f.formula().formula());
     eprintln!("{}", f.formula().sides[0]);
     eprintln!("{}", f.formula().sides[1]);

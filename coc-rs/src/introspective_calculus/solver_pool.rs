@@ -3,25 +3,25 @@ mod try_specializing_proven_inferences;
 mod try_substitutions;
 
 use crate::introspective_calculus::inference::Inference;
-use crate::introspective_calculus::proof_hierarchy::{ProofWithPremises, ProofWithVariables};
+use crate::introspective_calculus::proof_hierarchy::Proof;
 use crate::introspective_calculus::RWMFormula;
-use ai_framework::time_sharing::{TimeSharer, TimeSharerOwned, WorkResult};
+use ai_framework::time_sharing::{TimeSharer, WorkResult};
 use hash_capsule::BuildHasherForHashCapsules;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
 enum FormulaTransitiveEqualitiesEntry {
     RepresentativeOfClass,
-    ProvenEqualToOtherFormulaCloserToRepresentativeBy(ProofWithPremises),
+    ProvenEqualToOtherFormulaCloserToRepresentativeBy(Proof),
 }
 #[derive(Default)]
 pub struct KnownTruthsForPremises {
-    proofs: Vec<ProofWithPremises>,
+    proofs: Vec<Proof>,
     transitive_equalities:
         HashMap<RWMFormula, FormulaTransitiveEqualitiesEntry, BuildHasherForHashCapsules>,
 }
 #[derive(Default)]
 pub struct KnownTruths {
-    proofs: Vec<ProofWithPremises>,
+    proofs: Vec<Proof>,
     by_premises: BTreeMap<BTreeSet<RWMFormula>, KnownTruthsForPremises>,
 }
 
@@ -53,7 +53,7 @@ pub enum GlobalSolverId {
 
 pub struct SolverPool {
     inner: SolverPoolInner,
-    sharer: TimeSharer<GlobalSolverId, SolverPoolInner, Option<ProofWithPremises>>,
+    sharer: TimeSharer<GlobalSolverId, SolverPoolInner, Option<Proof>>,
 }
 
 impl Default for SolverPool {
@@ -73,7 +73,7 @@ impl Default for SolverPool {
     }
 }
 impl SolverPool {
-    pub fn do_some_work(&mut self) -> WorkResult<Option<ProofWithPremises>> {
+    pub fn do_some_work(&mut self) -> WorkResult<Option<Proof>> {
         self.sharer.do_some_work(&mut self.inner)
     }
 
@@ -81,7 +81,7 @@ impl SolverPool {
         self.sharer.wake_all();
     }
 
-    pub fn try_prove(&mut self, goal: Inference) -> Result<ProofWithPremises, String> {
+    pub fn try_prove(&mut self, goal: Inference) -> Result<Proof, String> {
         while let WorkResult::StillWorking(result) = self.do_some_work() {
             if let Some(new_proof) = result {
                 if new_proof_proves_goal {
@@ -94,17 +94,17 @@ impl SolverPool {
 }
 
 impl KnownTruths {
-    pub fn discover(&mut self, proof: ProofWithPremises) {
+    pub fn discover(&mut self, proof: Proof) {
         self.proofs.push(proof.clone());
         self.by_premises
-            .entry(proof.premises.clone())
+            .entry(proof.premises().clone())
             .or_insert_with(Default::default)
             .discover(proof);
     }
 }
 
 struct PathToEquivalenceClassRepresentativeLink {
-    proof: ProofWithPremises,
+    proof: Proof,
     closer_formula: RWMFormula,
     further_formula: RWMFormula,
 }
@@ -142,11 +142,10 @@ impl KnownTruthsForPremises {
             links,
         }
     }
-    pub fn discover(&mut self, proof: ProofWithPremises) {
+    pub fn discover(&mut self, proof: Proof) {
         self.proofs.push(proof.clone());
 
-        self.truths.push(proof.clone());
-        let sides = proof.conclusion.as_eq_sides().unwrap();
+        let sides = proof.conclusion().as_eq_sides().unwrap();
 
         let paths = sides
             .clone()
