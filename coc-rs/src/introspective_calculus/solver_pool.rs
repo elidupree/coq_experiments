@@ -1,6 +1,6 @@
 mod discover_unfoldings;
 mod try_specializing_proven_inferences;
-mod try_substitutions;
+mod try_substituting_with_transitive_equalities;
 
 use crate::introspective_calculus::proof_hierarchy::Proof;
 use crate::introspective_calculus::RWMFormula;
@@ -8,6 +8,7 @@ use ai_framework::time_sharing;
 use ai_framework::time_sharing::{TimeSharer, WorkResult};
 use hash_capsule::BuildHasherForHashCapsules;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::iter;
 
 enum FormulaTransitiveEqualitiesEntry {
     RepresentativeOfClass,
@@ -46,13 +47,16 @@ pub struct SolverPoolInner {
 pub enum GlobalSolverId {
     DiscoverUnfoldings,
     TrySpecializingProvenInferences,
-    TrySubstitutions,
+    TrySubstitutingWithTransitiveEqualities,
 }
 
 trait SolverWorker: Send + Sync + 'static {
     fn do_some_work(&mut self, pool: &mut SolverPoolInner) -> WorkResult<Proof>;
 
     fn consider_unfolding(&mut self, _formula: RWMFormula) {}
+    fn goal_added(&mut self, _premises: BTreeSet<RWMFormula>, _conclusion: RWMFormula) {}
+    fn proof_discovered(&mut self, _proof: Proof) {}
+    fn new_transitive_equality_discovered(&mut self) {}
 }
 
 impl time_sharing::Worker for Box<dyn SolverWorker> {
@@ -80,15 +84,15 @@ impl Default for SolverPool {
         use GlobalSolverId::*;
         sharer.add_worker(
             DiscoverUnfoldings,
-            Box::new(self::discover_unfoldings::Worker::default()),
+            Box::<discover_unfoldings::Worker>::default(),
         );
         sharer.add_worker(
             TrySpecializingProvenInferences,
-            Box::new(self::try_specializing_proven_inferences::Worker::default()),
+            Box::<try_specializing_proven_inferences::Worker>::default(),
         );
         sharer.add_worker(
-            TrySubstitutions,
-            Box::new(self::try_substitutions::Worker::default()),
+            TrySubstitutingWithTransitiveEqualities,
+            Box::<try_substituting_with_transitive_equalities::Worker>::default(),
         );
         SolverPool {
             inner: SolverPoolInner::default(),
@@ -96,13 +100,36 @@ impl Default for SolverPool {
         }
     }
 }
+#[derive(Default)]
+struct DiscoverResult {
+    new_transitive_equalities: bool,
+}
+
 impl SolverPool {
     pub fn do_some_work(&mut self) -> WorkResult<Proof> {
-        self.sharer.do_some_work(&mut self.inner)
+        let result = self.sharer.do_some_work(&mut self.inner);
+        if let WorkResult::ProducedOutput(proof) = &result {
+            let discover_result = self.inner.truths.discover(proof.clone());
+            if discover_result.new_transitive_equalities {
+                self.sharer
+                    .get_mut(&GlobalSolverId::TrySubstitutingWithTransitiveEqualities)
+                    .unwrap()
+                    .new_transitive_equality_discovered();
+            }
+        }
+        result
     }
 
     pub fn add_goal(&mut self, premises: BTreeSet<RWMFormula>, conclusion: RWMFormula) {
         self.sharer.wake_all();
+        for worker in self.sharer.workers_mut() {
+            worker.goal_added(premises.clone(), conclusion.clone())
+        }
+        for proposition in premises.iter().chain(iter::once(&conclusion)) {
+            for side in proposition.as_eq_sides().unwrap() {
+                self.consider_unfolding(side);
+            }
+        }
     }
 
     // pub fn try_prove(&mut self, goal: Inference) -> Result<Proof, String> {
@@ -118,12 +145,12 @@ impl SolverPool {
 }
 
 impl KnownTruths {
-    pub fn discover(&mut self, proof: Proof) {
+    fn discover(&mut self, proof: Proof) -> DiscoverResult {
         self.proofs.push(proof.clone());
         self.by_premises
             .entry(proof.premises().clone())
-            .or_insert_with(Default::default)
-            .discover(proof);
+            .or_default()
+            .discover(proof)
     }
 }
 
@@ -136,7 +163,22 @@ struct PathToEquivalenceClassRepresentative {
     representative: RWMFormula,
     links: Vec<PathToEquivalenceClassRepresentativeLink>,
 }
-
+impl PathToEquivalenceClassRepresentativeLink {
+    pub fn closer_equals_further_proof(&self) -> Proof {
+        if self.proof.conclusion().as_eq_sides().unwrap()[0] == self.closer_formula {
+            self.proof.clone()
+        } else {
+            self.proof.flip_conclusion()
+        }
+    }
+    pub fn further_equals_closer_proof(&self) -> Proof {
+        if self.proof.conclusion().as_eq_sides().unwrap()[0] == self.further_formula {
+            self.proof.clone()
+        } else {
+            self.proof.flip_conclusion()
+        }
+    }
+}
 impl KnownTruthsForPremises {
     // path of formulas (containing `formula`) and path of inferences that is 1 shorter
     fn path_to_equivalence_class_representative(
@@ -166,17 +208,21 @@ impl KnownTruthsForPremises {
             links,
         }
     }
-    pub fn discover(&mut self, proof: Proof) {
+    fn discover(&mut self, proof: Proof) -> DiscoverResult {
         self.proofs.push(proof.clone());
+        let mut result = DiscoverResult::default();
 
         let sides = proof.conclusion().as_eq_sides().unwrap();
 
         let paths = sides
             .clone()
             .map(|f| self.path_to_equivalence_class_representative(f));
+
         if paths[0].representative == paths[1].representative {
-            return;
+            return result;
         }
+
+        result.new_transitive_equalities = true;
 
         let [a, b] = sides;
         // leave B as-is and make the whole A tree flow towards it:
@@ -200,5 +246,6 @@ impl KnownTruthsForPremises {
                     link.proof,
                 );
         }
+        result
     }
 }

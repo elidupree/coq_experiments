@@ -202,7 +202,7 @@ impl Proof {
         self.specialize(arguments)
             .satisfy_premises_with(
                 &premise_proofs
-                    .into_iter()
+                    .iter()
                     .map(RawProof::to_fancy_proof)
                     .collect_vec(),
             )
@@ -659,9 +659,7 @@ impl CleanRule {
                     goal.prove(ByScriptNamed("internal_specialization"))
                 }
             },
-            CleanRule::Axiom(axiom) => {
-                goal.prove(ByScriptNamed("inject_tautology_under_hypothetical"))
-            }
+            CleanRule::Axiom(_) => goal.prove(ByScriptNamed("inject_tautology_under_hypothetical")),
         }
     }
 }
@@ -700,7 +698,7 @@ impl Proof {
             assert!(premise_order.contains(premise));
         }
         let goal = InferenceAsEquivalence::new(premise_order.to_owned(), self.conclusion());
-        let [gl, gr] = goal.formula().as_eq_sides().unwrap();
+        let [gl, _gr] = goal.formula().as_eq_sides().unwrap();
         let result: Proven<InferenceAsEquivalence> = match &self.derivation {
             ProofDerivation::Premise(conclusion) => {
                 // let [gll,glr]=gl.as_eq_sides().unwrap();

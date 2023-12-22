@@ -4,7 +4,7 @@ use crate::introspective_calculus::solver_pool::{
 };
 use crate::introspective_calculus::RWMFormula;
 use ai_framework::time_sharing;
-use ai_framework::time_sharing::{TimeSharerOwned, WorkResult};
+use ai_framework::time_sharing::{TimeSharer, WorkResult};
 
 impl SolverPool {
     pub fn consider_unfolding(&mut self, formula: RWMFormula) {
@@ -52,12 +52,12 @@ impl time_sharing::Worker for SingleFormulaWorker {
 
 #[derive(Default)]
 pub struct Worker {
-    unfolding_formulas: TimeSharerOwned<SingleFormulaWorker>,
+    unfolding_formulas: TimeSharer<SingleFormulaWorker>,
 }
 
 impl SolverWorker for Worker {
     fn do_some_work(&mut self, pool: &mut SolverPoolInner) -> WorkResult<Proof> {
-        self.unfolding_formulas.do_some_work()
+        self.unfolding_formulas.do_some_work(pool)
     }
 
     fn consider_unfolding(&mut self, formula: RWMFormula) {

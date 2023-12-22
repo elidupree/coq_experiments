@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::hash::Hash;
+use std::ops::{Deref, DerefMut};
 use std::time::Instant;
 
 pub trait Worker: Send + Sync {
@@ -112,6 +113,14 @@ impl<W: Worker> TimeSharer<W> {
         self.workers.get_mut(key)
     }
 
+    pub fn workers(&self) -> impl Iterator<Item = &W> + '_ {
+        self.workers.values()
+    }
+
+    pub fn workers_mut(&mut self) -> impl Iterator<Item = &mut W> + '_ {
+        self.workers.values_mut()
+    }
+
     pub fn wake<Q: Eq + Hash>(&mut self, key: &Q)
     where
         W::Key: Borrow<Q>,
@@ -178,6 +187,39 @@ impl<W: Worker> TimeSharer<W> {
     }
 }
 
+pub struct TimeSharerKeyless<W: Worker> {
+    sharer: TimeSharer<W>,
+    next_id: usize,
+}
+
+impl<W: Worker> Deref for TimeSharerKeyless<W> {
+    type Target = TimeSharer<W>;
+    fn deref(&self) -> &Self::Target {
+        &self.sharer
+    }
+}
+impl<W: Worker> DerefMut for TimeSharerKeyless<W> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.sharer
+    }
+}
+
+impl<W: Worker> Default for TimeSharerKeyless<W> {
+    fn default() -> Self {
+        TimeSharerKeyless {
+            sharer: Default::default(),
+            next_id: 0,
+        }
+    }
+}
+
+impl<W: Worker<Key = usize>> TimeSharerKeyless<W> {
+    pub fn add_worker(&mut self, worker: W) {
+        self.sharer.add_worker(self.next_id, worker);
+        self.next_id += 1;
+    }
+}
+
 pub struct TimeSharerOwned<W: Worker> {
     workpiece: W::Workpiece,
     sharer: TimeSharer<W>,
@@ -215,6 +257,14 @@ impl<W: Worker> TimeSharerOwned<W> {
         W::Key: Borrow<Q>,
     {
         self.sharer.get_mut(key)
+    }
+
+    pub fn workers(&self) -> impl Iterator<Item = &W> + '_ {
+        self.sharer.workers()
+    }
+
+    pub fn workers_mut(&mut self) -> impl Iterator<Item = &mut W> + '_ {
+        self.sharer.workers_mut()
     }
 
     pub fn inner(&self) -> &W::Workpiece {
