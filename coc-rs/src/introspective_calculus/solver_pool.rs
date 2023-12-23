@@ -5,7 +5,7 @@ mod try_substituting_with_transitive_equalities;
 use crate::introspective_calculus::proof_hierarchy::Proof;
 use crate::introspective_calculus::RWMFormula;
 use ai_framework::time_sharing;
-use ai_framework::time_sharing::{TimeSharer, WorkResult};
+use ai_framework::time_sharing::{TimeSharer, TimeSharerKeyless, WorkResult, WorkerFn};
 use hash_capsule::BuildHasherForHashCapsules;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::iter;
@@ -26,10 +26,16 @@ pub struct KnownTruths {
     by_premises: BTreeMap<BTreeSet<RWMFormula>, KnownTruthsForPremises>,
 }
 
-pub struct Goal {}
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct Goal {
+    pub premises: BTreeSet<RWMFormula>,
+    pub conclusion: RWMFormula,
+}
+
+pub struct GoalInfo {}
 
 pub struct GoalConclusion {
-    by_premises: BTreeMap<BTreeSet<RWMFormula>, Goal>,
+    by_premises: BTreeMap<BTreeSet<RWMFormula>, GoalInfo>,
 }
 #[derive(Default)]
 pub struct Goals {
@@ -54,10 +60,13 @@ trait SolverWorker: Send + Sync + 'static {
     fn do_some_work(&mut self, pool: &mut SolverPoolInner) -> WorkResult<Proof>;
 
     fn consider_unfolding(&mut self, _formula: RWMFormula) {}
-    fn goal_added(&mut self, _premises: BTreeSet<RWMFormula>, _conclusion: RWMFormula) {}
+    fn goal_added(&mut self, _goal: Goal) {}
     fn proof_discovered(&mut self, _proof: Proof) {}
     fn new_transitive_equality_discovered(&mut self) {}
 }
+
+type SolverWorkerFn = WorkerFn<SolverPoolInner, Proof>;
+type SimpleSolverTimeSharer = TimeSharerKeyless<SolverWorkerFn>;
 
 impl time_sharing::Worker for Box<dyn SolverWorker> {
     type Key = GlobalSolverId;
@@ -120,12 +129,12 @@ impl SolverPool {
         result
     }
 
-    pub fn add_goal(&mut self, premises: BTreeSet<RWMFormula>, conclusion: RWMFormula) {
+    pub fn add_goal(&mut self, goal: Goal) {
         self.sharer.wake_all();
         for worker in self.sharer.workers_mut() {
-            worker.goal_added(premises.clone(), conclusion.clone())
+            worker.goal_added(goal.clone())
         }
-        for proposition in premises.iter().chain(iter::once(&conclusion)) {
+        for proposition in goal.premises.iter().chain(iter::once(&goal.conclusion)) {
             for side in proposition.as_eq_sides().unwrap() {
                 self.consider_unfolding(side);
             }
@@ -247,5 +256,14 @@ impl KnownTruthsForPremises {
                 );
         }
         result
+    }
+}
+
+impl SolverPoolInner {
+    fn get_goal(&self, goal: &Goal) -> Option<&GoalInfo> {
+        self.goals
+            .by_conclusion
+            .get(&goal.conclusion)
+            .and_then(|g| g.by_premises.get(&goal.premises))
     }
 }

@@ -1,13 +1,12 @@
 use crate::introspective_calculus::proof_hierarchy::Proof;
-use crate::introspective_calculus::solver_pool::{SolverPoolInner, SolverWorker};
+use crate::introspective_calculus::solver_pool::{Goal, SolverPoolInner, SolverWorker};
 use crate::introspective_calculus::RWMFormula;
 use ai_framework::time_sharing;
 use ai_framework::time_sharing::{TimeSharerKeyless, WorkResult};
 use std::collections::BTreeSet;
 
 struct GoalWorker {
-    premises: BTreeSet<RWMFormula>,
-    conclusion: RWMFormula,
+    goal: Goal,
 }
 
 impl time_sharing::Worker for GoalWorker {
@@ -18,11 +17,16 @@ impl time_sharing::Worker for GoalWorker {
     fn do_some_work(
         &mut self,
         pool: &mut Self::Workpiece,
-        _context: &mut time_sharing::WorkContext,
+        context: &mut time_sharing::WorkContext,
     ) -> WorkResult<Self::Output> {
+        if pool.get_goal(&self.goal).is_none() {
+            context.completely_done();
+            return WorkResult::Idle;
+        }
+
         match pool.prove_by_substituting_with_transitive_equalities(
-            &self.premises,
-            self.conclusion.clone(),
+            &self.goal.premises,
+            self.goal.conclusion.clone(),
         ) {
             None => WorkResult::Idle,
             Some(proof) => WorkResult::ProducedOutput(proof),
@@ -40,11 +44,8 @@ impl SolverWorker for Worker {
         self.goal_workers.do_some_work(pool)
     }
 
-    fn goal_added(&mut self, premises: BTreeSet<RWMFormula>, conclusion: RWMFormula) {
-        self.goal_workers.add_worker(GoalWorker {
-            premises,
-            conclusion,
-        })
+    fn goal_added(&mut self, goal: Goal) {
+        self.goal_workers.add_worker(GoalWorker { goal })
     }
 
     fn new_transitive_equality_discovered(&mut self) {
@@ -96,53 +97,3 @@ impl SolverPoolInner {
         Some(running_proof)
     }
 }
-//
-// pub fn worker(pool: &mut SolverPoolInner) -> WorkResult<Option<Proof>> {
-//     for (goal, goal_info) in &mut self.unsolved_goals {
-//         if let Some(truth) = self
-//             .known_truths
-//             .truths
-//             .get(goal_info.truths.len())
-//             .cloned()
-//         {
-//             match self.known_truths.try_pair(truth.clone(), goal.clone()) {
-//                 Ok(inference) => {
-//                     return IncrementalDeriverWorkResult::DiscoveredInference(inference)
-//                 }
-//                 Err(info) => goal_info.truths.push(info),
-//             }
-//             return IncrementalDeriverWorkResult::StillWorking;
-//         } else if goal_info.num_known_equalities_last_time_finished
-//             < self.known_truths.equalities.len()
-//             || goal_info.num_known_truths_last_time_finished < self.known_truths.truths.len()
-//         {
-//             let min = zip(
-//                 self.known_truths.truths.iter().cloned(),
-//                 &mut goal_info.truths,
-//             )
-//             .filter_map(|(t, g)| match g {
-//                 GoalTruthPairInfo::CannotBeEqual => None,
-//                 GoalTruthPairInfo::WasntEqualLastTimeWeChecked {
-//                     num_known_equalities_that_time,
-//                 } => {
-//                     let n = *num_known_equalities_that_time;
-//                     Some((t, g, n))
-//                 }
-//             })
-//             .min_by_key(|(_t, _g, i)| *i);
-//             if let Some((t, g, i)) = min {
-//                 if i < self.known_truths.equalities.len() {
-//                     match self.known_truths.try_pair(t.clone(), goal.clone()) {
-//                         Ok(inference) => {
-//                             return IncrementalDeriverWorkResult::DiscoveredInference(inference)
-//                         }
-//                         Err(info) => *g = info,
-//                     }
-//                     return IncrementalDeriverWorkResult::StillWorking;
-//                 }
-//             }
-//             goal_info.num_known_equalities_last_time_finished = self.known_truths.equalities.len();
-//             goal_info.num_known_truths_last_time_finished = self.known_truths.truths.len();
-//         }
-//     }
-// }

@@ -16,6 +16,22 @@ pub trait Worker: Send + Sync {
         context: &mut WorkContext,
     ) -> WorkResult<Self::Output>;
 }
+pub type WorkerFn<Workpiece, Output> =
+    Box<dyn (FnMut(&mut Workpiece, &mut WorkContext) -> WorkResult<Output>) + Send + Sync>;
+
+impl<Workpiece, Output> Worker for WorkerFn<Workpiece, Output> {
+    type Key = usize;
+    type Workpiece = Workpiece;
+    type Output = Output;
+
+    fn do_some_work(
+        &mut self,
+        workpiece: &mut Self::Workpiece,
+        context: &mut WorkContext,
+    ) -> WorkResult<Self::Output> {
+        (self)(workpiece, context)
+    }
+}
 
 struct ActiveWorker<W: Worker> {
     time_used: f64,
@@ -113,6 +129,13 @@ impl<W: Worker> TimeSharer<W> {
         self.workers.get_mut(key)
     }
 
+    pub fn remove<Q: Eq + Hash>(&mut self, key: &Q) -> Option<(W::Key, W)>
+    where
+        W::Key: Borrow<Q>,
+    {
+        self.workers.remove_entry(key)
+    }
+
     pub fn workers(&self) -> impl Iterator<Item = &W> + '_ {
         self.workers.values()
     }
@@ -154,7 +177,9 @@ impl<W: Worker> TimeSharer<W> {
                     panic!("Task should have been woken!")
                 }
             }
-            self.idle_worker_test_queue.push_back(k);
+            if self.workers.contains_key(&k) {
+                self.idle_worker_test_queue.push_back(k);
+            }
         }
 
         if let Some(mut worker) = self.active_workers.pop() {

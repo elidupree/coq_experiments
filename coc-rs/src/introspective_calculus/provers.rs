@@ -41,8 +41,8 @@ impl RawFormula {
 
 #[derive(Copy, Clone)]
 pub struct ByAssumingIt;
-#[derive(Copy, Clone)]
-pub struct ByUnaryRule<'a>(pub &'a Proof);
+// #[derive(Copy, Clone)]
+// pub struct BySpecializing<'a>(pub &'a Proof);
 #[derive(Copy, Clone)]
 pub struct ByAxiomSchema;
 #[derive(Copy, Clone)]
