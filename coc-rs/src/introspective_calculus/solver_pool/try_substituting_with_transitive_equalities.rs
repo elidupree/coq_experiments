@@ -29,7 +29,10 @@ impl time_sharing::Worker for GoalWorker {
             self.goal.conclusion.clone(),
         ) {
             None => WorkResult::Idle,
-            Some(proof) => WorkResult::ProducedOutput(proof),
+            Some(proof) => {
+                // dbg!(&self.goal.conclusion, &self.goal.premises);
+                WorkResult::ProducedOutput(proof)
+            }
         }
     }
 }
@@ -94,6 +97,8 @@ impl SolverPoolInner {
                 }
             }
         }
+        assert_eq!(running_proof.conclusion(), conclusion);
+        assert!(running_proof.premises().is_subset(premises));
         Some(running_proof)
     }
 }

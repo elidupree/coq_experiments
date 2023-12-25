@@ -149,7 +149,8 @@ impl SolverPool {
             .get_mut(&proof.conclusion())
             .expect("solved a goal that didn't exist")
             .by_premises
-            .remove(proof.premises());
+            .retain(|premises, _info| !proof.premises().is_subset(premises));
+        // dbg!(proof.conclusion(), proof.premises());
         self.sharer
             .wake(&GlobalSolverId::TrySpecializingProvenInferences);
         for worker in self.sharer.workers_mut() {
