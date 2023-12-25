@@ -1,12 +1,13 @@
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
 use std::time::Instant;
 
 pub trait Worker: Send + Sync {
-    type Key: Eq + Hash + Clone;
+    type Key: Eq + Hash + Clone + Debug;
     type Workpiece;
     type Output;
 
@@ -77,6 +78,7 @@ impl<W: Worker> Default for TimeSharer<W> {
     }
 }
 
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub enum WorkResult<R> {
     Idle,
     StillWorking,
@@ -167,14 +169,14 @@ impl<W: Worker> TimeSharer<W> {
         if let Some(k) = self.idle_worker_test_queue.pop_front() {
             if self.idle_workers.contains(&k) {
                 let mut context = WorkContext::default();
-                if matches!(
+                if !matches!(
                     self.workers
                         .get_mut(&k)
                         .unwrap()
                         .do_some_work(workpiece, &mut context),
                     WorkResult::Idle
                 ) {
-                    panic!("Task should have been woken!")
+                    panic!("Task `{k:?}` should have been woken!")
                 }
             }
             if self.workers.contains_key(&k) {

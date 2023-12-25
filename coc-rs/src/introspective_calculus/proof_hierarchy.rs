@@ -15,6 +15,7 @@ use crate::{formula, ic, substitutions};
 use hash_capsule::HashCapsule;
 use itertools::Itertools;
 use std::collections::BTreeSet;
+use std::fmt::{Display, Formatter};
 use std::iter::zip;
 use std::ops::Deref;
 
@@ -44,6 +45,12 @@ impl Deref for Proof {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl Display for Proof {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Inference::new(self.premises().iter().cloned().collect(), self.conclusion()).fmt(f)
     }
 }
 

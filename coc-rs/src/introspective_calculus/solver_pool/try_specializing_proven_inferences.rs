@@ -1,7 +1,9 @@
 use crate::introspective_calculus::proof_hierarchy::Proof;
 use crate::introspective_calculus::solver_pool::{Goal, SolverPoolInner, SolverWorker};
+use crate::introspective_calculus::Substitutions;
 use ai_framework::time_sharing;
 use ai_framework::time_sharing::{TimeSharerKeyless, WorkResult};
+use std::collections::HashSet;
 
 struct GoalWorker {
     goal: Goal,
@@ -42,7 +44,8 @@ impl time_sharing::Worker for GoalWorker {
             return WorkResult::StillWorking;
         };
 
-        let mut possible_substitutions = vec![conclusion_substitutions];
+        let mut possible_substitutions: HashSet<Substitutions> =
+            [conclusion_substitutions].into_iter().collect();
         for premise in proof_to_specialize.premises() {
             possible_substitutions = possible_substitutions
                 .into_iter()
@@ -62,7 +65,7 @@ impl time_sharing::Worker for GoalWorker {
         }
 
         WorkResult::ProducedOutput(
-            proof_to_specialize.specialize(&possible_substitutions.pop().unwrap()),
+            proof_to_specialize.specialize(possible_substitutions.iter().next().unwrap()),
         )
     }
 }
@@ -84,7 +87,7 @@ impl SolverWorker for Worker {
         })
     }
 
-    fn new_transitive_equality_discovered(&mut self) {
+    fn proof_discovered(&mut self, _proof: Proof) {
         self.goal_workers.wake_all()
     }
 }

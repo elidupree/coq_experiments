@@ -60,13 +60,13 @@ pub enum AbstractionKind {
     ForAll,
 }
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Default)]
 pub struct Formula(HashCapsule<FormulaWithMetadata>);
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Default)]
 pub struct RWMFormula(Formula);
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Default)]
 pub struct RawFormula(Formula);
 
 impl Deref for Formula {
@@ -426,7 +426,7 @@ macro_rules! inf {
 
 static ID: LazyLock<Formula> = LazyLock::new(|| ic!("id" @ ((fuse const) const)));
 static PROP_TRUE: LazyLock<Formula> =
-    LazyLock::new(|| ic!("True" @ (({Formula::default()} equals) {Formula::default()})));
+    LazyLock::new(|| ic!("True" @ ({Formula::default()} = {Formula::default()})));
 static ALL: LazyLock<Formula> =
     LazyLock::new(|| ic!("all" @ (equals (const {Formula::prop_true()}))));
 // static AND: LazyLock<Formula> = LazyLock::new(|| ic!("And" @ (P => (((P A) B) = ((P True) True)))));

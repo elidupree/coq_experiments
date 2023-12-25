@@ -1,9 +1,13 @@
 use crate::introspective_calculus::proof_hierarchy::Proof;
 use crate::introspective_calculus::raw_proofs::{CleanExternalRule, Rule, RuleTrait, ALL_AXIOMS};
 use crate::introspective_calculus::raw_proofs_ext::ALL_AXIOM_SCHEMAS;
-use crate::introspective_calculus::{Formula, RWMFormula, RWMFormulaValue, RawFormula};
-use crate::utils::todo;
+use crate::introspective_calculus::solver_pool::{Goal, ALL_PROOF_SCRIPTS, GLOBAL_SOLVER};
+use crate::introspective_calculus::{
+    Formula, RWMFormula, RWMFormulaValue, RawFormula, Substitutions,
+};
 use crate::{formula, ic, substitutions};
+use itertools::Itertools;
+use std::collections::HashSet;
 
 pub trait FormulaProver {
     fn try_prove(&self, formula: RWMFormula) -> Result<Proof, String>;
@@ -41,8 +45,13 @@ impl RawFormula {
 
 #[derive(Copy, Clone)]
 pub struct ByAssumingIt;
-// #[derive(Copy, Clone)]
-// pub struct BySpecializing<'a>(pub &'a Proof);
+#[derive(Copy, Clone)]
+pub struct BySpecializing<'a>(pub &'a Proof);
+#[derive(Copy, Clone)]
+pub struct BySpecializingWithPremises<'a> {
+    pub proof_to_specialize: &'a Proof,
+    pub premise_proofs: &'a [Proof],
+}
 #[derive(Copy, Clone)]
 pub struct ByAxiomSchema;
 #[derive(Copy, Clone)]
@@ -84,6 +93,58 @@ impl FormulaProver for ByAxiomSchema {
             }
         }
         Err(format!("No axiom schema matched {formula}"))
+    }
+}
+
+impl FormulaProver for BySpecializing<'_> {
+    fn try_prove(&self, formula: RWMFormula) -> Result<Proof, String> {
+        BySpecializingWithPremises {
+            proof_to_specialize: self.0,
+            premise_proofs: &[],
+        }
+        .try_prove(formula)
+    }
+}
+
+impl FormulaProver for BySpecializingWithPremises<'_> {
+    fn try_prove(&self, formula: RWMFormula) -> Result<Proof, String> {
+        let mut substitutions = Substitutions::new();
+        self.proof_to_specialize
+            .conclusion()
+            .add_substitutions_to_become(&formula, &mut substitutions)?;
+
+        let mut possible_substitutions: HashSet<Substitutions> =
+            [substitutions].into_iter().collect();
+        for premise in self.proof_to_specialize.premises() {
+            possible_substitutions = possible_substitutions
+                .into_iter()
+                .flat_map(move |possible_substitutions| {
+                    self.premise_proofs.iter().filter_map(move |premise_proof| {
+                        let mut result = possible_substitutions.clone();
+                        premise
+                            .add_substitutions_to_become(&premise_proof.conclusion(), &mut result)
+                            .ok()?;
+                        Some(result)
+                    })
+                })
+                .collect();
+            if possible_substitutions.is_empty() {
+                return Err(
+                    "could not find specialization where all premises were provided".to_string(),
+                );
+            }
+        }
+        let substitutions = possible_substitutions.into_iter().next().unwrap();
+        Ok(self
+            .proof_to_specialize
+            .specialize(&substitutions)
+            .satisfy_premises_with(
+                &self
+                    .premise_proofs
+                    .iter()
+                    .map(|premise_proof| premise_proof.specialize(&substitutions))
+                    .collect_vec(),
+            ))
     }
 }
 
@@ -233,11 +294,24 @@ impl FormulaProver for ByInternalIndistinguishability {
 
 impl FormulaProver for ByScriptNamed<'_> {
     fn try_prove(&self, formula: RWMFormula) -> Result<Proof, String> {
-        todo(formula)
+        formula.try_prove(ByScriptWithPremises(self.0, &[]))
     }
 }
 impl FormulaProver for ByScriptWithPremises<'_> {
     fn try_prove(&self, formula: RWMFormula) -> Result<Proof, String> {
-        todo(formula)
+        let script = ALL_PROOF_SCRIPTS
+            .get(self.0)
+            .ok_or_else(|| format!("no script named `{}`", self.0))?;
+        let script_conclusion = GLOBAL_SOLVER
+            .try_lock()
+            .map_err(|_| "reentrant proof!".to_string())?
+            .solve(&Goal {
+                premises: script.premises.iter().map(Formula::to_rwm).collect(),
+                conclusion: script.conclusions.last().unwrap().to_rwm(),
+            });
+        formula.try_prove(BySpecializingWithPremises {
+            proof_to_specialize: &script_conclusion,
+            premise_proofs: self.1,
+        })
     }
 }

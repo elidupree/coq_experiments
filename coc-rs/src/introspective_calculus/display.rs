@@ -269,6 +269,24 @@ impl Display for RawFormula {
     }
 }
 
+impl std::fmt::Debug for Formula {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
+impl std::fmt::Debug for RWMFormula {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
+impl std::fmt::Debug for RawFormula {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
 pub fn format_substitutions(substitutions: &Substitutions) -> String {
     format!(
         "{{ {} }}",

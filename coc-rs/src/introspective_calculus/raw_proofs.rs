@@ -87,7 +87,7 @@ impl RuleTrait for CleanExternalRule {
             CleanExternalRule::SubstituteInLhs => inf!("A = B |- (A C) = (B C)").to_rwm(),
             CleanExternalRule::SubstituteInRhs => inf!("A = B |- (C A) = (C B)").to_rwm(),
             CleanExternalRule::SubstituteInConjunction => {
-                inf!("(l=>(A l = B l)) = (l=>(C l = D l)) |- l=>((A l,E l)=(B l,F l)) = l=>((C l,E l)=(D l,F l))").to_rwm()
+                inf!("(l=>(A l = B l)) = (l=>(C l = D l)) |- (l=>((A l,E l)=(B l,F l))) = (l=>((C l,E l)=(D l,F l)))").to_rwm()
             }
         }
     }
@@ -150,6 +150,7 @@ impl Axiom {
             .into_iter()
             .cloned()
             .permutations(num_variables)
+            .take(24)
             .map(|argument_order| UncurriedFunctionEquivalence {
                 sides: sides
                     .each_ref()

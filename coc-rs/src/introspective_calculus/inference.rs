@@ -573,7 +573,13 @@ pub fn load_proof(path: impl AsRef<Path>) -> Result<Vec<ProofLine>, anyhow::Erro
                 parser
                     .parse(&l)
                     .map_err(|e| anyhow!(e.to_string()))
-                    .with_context(|| format!("Error while parsing proof line `{l}`"))
+                    .and_then(|l| match l.formula {
+                        FormulaOrImplicitEquality::Formula(f) if f.as_eq_sides().is_none() => {
+                            Err(anyhow!("Not a proposition: {}", f))
+                        }
+                        _ => Ok(l),
+                    })
+                    .map_err(|e| anyhow!("Error while parsing proof line `{l}`: {e}"))
             }),
             Err(e) => Some(Err(e.into())),
         })

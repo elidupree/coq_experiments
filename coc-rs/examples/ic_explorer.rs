@@ -1,18 +1,20 @@
 #![feature(lazy_cell)]
 
 use clap::{arg, Parser};
-use coc_rs::introspective_calculus::derivers::{
-    IncrementalDeriverWorkResult, PrettyLine, SearchManyEnvironment,
-};
-use coc_rs::introspective_calculus::inference::load_proof;
+// use coc_rs::introspective_calculus::derivers::{
+//     IncrementalDeriverWorkResult, PrettyLine, SearchManyEnvironment,
+// };
+use coc_rs::introspective_calculus::inference::{load_proof, ProofScript};
 use coc_rs::introspective_calculus::{
-    all_axioms, derivers, AbstractionKind, Formula, FormulaParser, FormulaValue,
+    all_axioms, AbstractionKind, Formula, FormulaParser, FormulaValue, RWMFormula,
 };
 // use coc_rs::utils::{read_json_file, write_json_file};
+use ai_framework::time_sharing::WorkResult;
+use coc_rs::introspective_calculus::solver_pool::{Goal, ALL_PROOF_SCRIPTS, GLOBAL_SOLVER};
 use html_node::{html, text, Node};
 use quick_and_dirty_web_gui::{callback, callback_with};
 use serde::de::DeserializeOwned;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
@@ -22,7 +24,6 @@ struct Interface {
     focus: Option<usize>,
     sandbox_text: String,
     sandbox_message: String,
-    partial_proofs: SearchManyEnvironment<String, PrettyLine>,
     proof_order: Vec<String>,
 }
 
@@ -67,11 +68,17 @@ impl Interface {
                 let r = self.formula_html(&children[1], AllCompounds);
                 html! {<span class="implies">{l}{text!{" → "}}{r}</span>}
             }
-            FormulaValue::Pair(children) => {
+            FormulaValue::Tuple(children) => {
                 parenthesize = parenthesis_needs != Nothing;
-                let l = self.formula_html(&children[0], AllCompounds);
-                let r = self.formula_html(&children[1], AllCompounds);
-                html! {<span class="pair">{l}{text!{", "}}{r}</span>}
+                let mut results: Vec<Node> = Vec::new();
+                if let Some((first, rest)) = children.split_first() {
+                    results.push(self.formula_html(first, AllCompounds));
+                    for f in rest {
+                        results.push(text! {", "});
+                        results.push(self.formula_html(f, AllCompounds));
+                    }
+                }
+                html! {<span class="tuple">{results}</span>}
             }
             FormulaValue::NamedGlobal { name, .. } => {
                 html! {<span class="named_global">{text!("{name}")}</span>}
@@ -219,29 +226,38 @@ impl Interface {
         }
     }
 
-    fn partial_proof_html(&self, name: &str, lines: &[PrettyLine]) -> Node {
-        let lines = lines.iter().map(|line| {
-            let classes = if line.proof.is_some() {
+    fn proof_script_html(&self, name: &str, script: &ProofScript) -> Node {
+        let premises: BTreeSet<RWMFormula> = script.premises.iter().map(Formula::to_rwm).collect();
+        let lines = script.conclusions.iter().map(|line| {
+            let classes = if GLOBAL_SOLVER
+                .lock()
+                .unwrap()
+                .get_existing_proof(&Goal {
+                    premises: premises.clone(),
+                    conclusion: line.to_rwm(),
+                })
+                .is_some()
+            {
                 "proof_line proven"
             } else {
                 "proof_line"
             };
             html! {
                 <div class={classes}>
-                    <div class="proof_line_name">
-                        {text!("{}", line.name)}
-                    </div>
+                    // <div class="proof_line_name">
+                    //     {text!("{}", line.name)}
+                    // </div>
                     <div class="proof_line_formula">
-                        {self.formula_html(&line.formula, ParenthesisNeeds::Nothing)}
+                        {self.formula_html(line, ParenthesisNeeds::Nothing)}
                     </div>
                     <div class="proof_line_raw_formula">
-                        {self.formula_html(&line.formula.to_rwm().into(), ParenthesisNeeds::Nothing)}
+                        {self.formula_html(&line.to_rwm().into(), ParenthesisNeeds::Nothing)}
                     </div>
                 </div>
             }
         });
         html! {
-            <div class="partial_proof">
+            <div class="proof_script">
                 <div class="partial_proof_name">{text!("{}", name)}</div>
                 {lines}
             </div>
@@ -261,12 +277,11 @@ impl Interface {
             .iter()
             .enumerate()
             .map(|(index, _theorem)| self.theorem_html(index, &existing_theorems, &axioms));
-        let mut searches_lines = self.partial_proofs.searches_lines();
-        let partial_proofs = self
+        let proof_scripts = self
             .proof_order
             .iter()
-            .map(|s| (s, searches_lines.remove(s).unwrap()))
-            .map(|(name, lines)| self.partial_proof_html(name, lines));
+            .map(|s| (s, ALL_PROOF_SCRIPTS.get(s).unwrap()))
+            .map(|(name, script)| self.proof_script_html(name, script));
         html! {
             <div class="page">
                 <div class="theorems">
@@ -274,7 +289,7 @@ impl Interface {
                     <div style="clear: both"></div>
                 </div>
                 {self.sandbox()}
-                {partial_proofs}
+                {proof_scripts}
             </div>
         }
     }
@@ -295,7 +310,6 @@ static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
             theorems.push(axiom);
         }
     }
-    let mut partial_proofs = SearchManyEnvironment::new();
     let mut proof_order = Vec::new();
     for entry in std::fs::read_dir("./data/ic_proofs").unwrap() {
         let path = entry.unwrap().path();
@@ -304,7 +318,6 @@ static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
         match load_proof(&path) {
             Ok(proof) => {
                 println!("loaded {path:?}");
-                partial_proofs.add_search(name.to_string(), derivers::pretty_lines(&proof));
                 proof_order.push((name.to_string(), modified));
             }
             Err(e) => {
@@ -324,7 +337,6 @@ static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
         focus: None,
         sandbox_text: "".to_string(),
         sandbox_message: "".to_string(),
-        partial_proofs,
         proof_order,
     })
 });
@@ -386,20 +398,23 @@ async fn main() {
             with_interface(|interface| {
                 let start = Instant::now();
                 while start.elapsed().as_secs_f64() < 0.1 {
-                    match interface.partial_proofs.do_some_work() {
-                        IncrementalDeriverWorkResult::NothingToDoRightNow => {
+                    match GLOBAL_SOLVER.lock().unwrap().do_some_work() {
+                        WorkResult::Idle => {
                             println!("No more work to do ({steps} steps total)");
                             done = true;
                             return;
                         }
-                        IncrementalDeriverWorkResult::StillWorking => {
+                        WorkResult::StillWorking => {
                             steps += 1;
+                            println!("Did some work");
                         }
-                        IncrementalDeriverWorkResult::DiscoveredInference(inference) => {
-                            println!("Completed {inference}");
+                        WorkResult::ProducedOutput(proof) => {
+                            println!("Completed {proof}");
+                            // println!("Completed proof");
                         }
                     }
                 }
+                println!("spent {:?} working", start.elapsed());
             });
         }
     });
