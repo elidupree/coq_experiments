@@ -655,16 +655,14 @@ impl CleanRule {
             InferenceAsEquivalence::new(instance.premises().collect(), instance.conclusion());
         match self {
             CleanRule::External(rule) => match rule {
-                CleanExternalRule::EqTrans
-                | CleanExternalRule::SubstituteInRhs
-                | CleanExternalRule::SubstituteInConjunction => goal.prove(BySpecializingAxiom),
-                CleanExternalRule::DefinitionOfConst | CleanExternalRule::DefinitionOfFuse => {
-                    goal.prove(ByScriptNamed("inject_tautology_under_hypothetical"))
+                CleanExternalRule::EqSym => goal.prove(ByScriptNamed("intinf_eq_sym")),
+                CleanExternalRule::EqTrans => goal.prove(ByScriptNamed("intinf_eq_trans")),
+                CleanExternalRule::SubstituteInLhs => goal.prove(ByScriptNamed("intinf_subst_lhs")),
+                CleanExternalRule::SubstituteInRhs => goal.prove(ByScriptNamed("intinf_subst_rhs")),
+                CleanExternalRule::SubstituteInConjunction => {
+                    goal.prove(ByScriptNamed("intinf_subst_conj"))
                 }
-                CleanExternalRule::EqSym => goal.prove(ByScriptNamed("eq_sym_inference")),
-                CleanExternalRule::SubstituteInLhs => {
-                    goal.prove(ByScriptNamed("internal_specialization"))
-                }
+                _ => goal.prove(ByScriptNamed("inject_tautology_under_hypothetical")),
             },
             CleanRule::Axiom(_) => goal.prove(ByScriptNamed("inject_tautology_under_hypothetical")),
         }
