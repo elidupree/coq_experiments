@@ -16,6 +16,7 @@ use std::sync::Arc;
 pub enum FormulaOrImplicitEquality {
     Formula(Formula),
     ImplicitEquality(Formula),
+    StartEqChain(Formula),
 }
 
 impl Default for FormulaOrImplicitEquality {
@@ -574,7 +575,9 @@ pub fn load_proof(path: impl AsRef<Path>) -> Result<Vec<ProofLine>, anyhow::Erro
                     .parse(&l)
                     .map_err(|e| anyhow!(e.to_string()))
                     .and_then(|l| match l.formula {
-                        FormulaOrImplicitEquality::Formula(f) if f.as_eq_sides().is_none() => {
+                        FormulaOrImplicitEquality::Formula(f)
+                            if f.to_rwm().as_eq_sides().is_none() =>
+                        {
                             Err(anyhow!("Not a proposition: {}", f))
                         }
                         _ => Ok(l),
@@ -591,34 +594,53 @@ pub struct ProofScript {
 }
 
 impl ProofScript {
-    pub fn new(lines: &[ProofLine]) -> ProofScript {
+    pub fn new(lines: &[ProofLine]) -> Result<ProofScript, String> {
         // inferences from the premises to that specific conclusion
         let mut premises = Vec::new();
         let mut conclusions = Vec::new();
         let mut previous = Formula::default();
+        let mut chain_start = Formula::default();
 
         for line in lines {
-            let formula = match &line.formula {
-                FormulaOrImplicitEquality::Formula(f) => f.clone(),
-                FormulaOrImplicitEquality::ImplicitEquality(f) => {
-                    let [_l, r] = previous.as_eq_sides().unwrap();
-                    ic!(r = f)
-                }
-            };
-            previous = formula.clone();
             match line.name.chars().next().unwrap() {
                 'P' => {
-                    premises.push(formula);
+                    let FormulaOrImplicitEquality::Formula(f) = &line.formula else {
+                        return Err(format!(
+                            "Premise {} has to be a regular formula but was `{:?}`",
+                            line.name, line.formula
+                        ));
+                    };
+                    premises.push(f.clone());
                 }
                 _ => {
-                    conclusions.push(formula);
+                    match &line.formula {
+                        FormulaOrImplicitEquality::Formula(f) => conclusions.push(f.clone()),
+                        FormulaOrImplicitEquality::ImplicitEquality(f) => {
+                            // let [_l, r] = previous.as_eq_sides().ok_or_else(|| {
+                            //     format!(
+                            //         "implicit equality `{}. = {}` must follow a proposition",
+                            //         line.name, f
+                            //     )
+                            // })?;
+                            conclusions.push(ic!(previous = f));
+                            if previous != chain_start {
+                                conclusions.push(ic!(chain_start = f));
+                            }
+                            previous = f.clone();
+                        }
+                        FormulaOrImplicitEquality::StartEqChain(f) => {
+                            previous = f.clone();
+                            chain_start = f.clone();
+                            continue;
+                        }
+                    }
                 }
             };
         }
-        ProofScript {
+        Ok(ProofScript {
             premises,
             conclusions,
-        }
+        })
     }
 }
 //

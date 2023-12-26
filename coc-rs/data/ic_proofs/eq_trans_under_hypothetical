@@ -1,8 +1,8 @@
-P1. P -> (A=B)
-P2. P -> (B=C)
+P1. (P=Q) -> (A=B)
+P2. (P=Q) -> (B=C)
 
-1. P = (P & (A=B)) & (B=C)
-2. P -> (A=B) & (B=C)                 [1, by and_assoc]
-3. P -> ((A=B) & (B=C)) & (A=C)       [2, by eq_trans_internal]
-4. P = (P & ((A=B) & (B=C))) & (A=C)  [3, by and_assoc]
-5. P -> (A=C)                         [4, 2, by subst]
+1. (P=Q) = (((P=Q) & (A=B)) & (B=C))
+2. (P=Q) -> ((A=B) & (B=C))                     [1, by and_assoc]
+3. (P=Q) -> (((A=B) & (B=C)) & (A=C))           [2, by eq_trans_internal]
+4. (P=Q) = (((P=Q) & ((A=B) & (B=C))) & (A=C))  [3, by and_assoc]
+5. (P=Q) -> (A=C)                               [4, 2, by subst]

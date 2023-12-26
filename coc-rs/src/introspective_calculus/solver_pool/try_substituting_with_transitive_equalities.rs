@@ -75,24 +75,36 @@ impl SolverPoolInner {
         let mut iters = paths.map(|path| path.links.into_iter().rev().fuse());
         loop {
             match iters.each_mut().map(Iterator::next) {
-                [Some(a), Some(b)] if a.closer_formula == b.closer_formula => {
-                    running_proof = Proof::eq_refl(a.closer_formula);
+                [Some(a), Some(b)] if a.further_formula == b.further_formula => {
+                    running_proof = Proof::eq_refl(a.further_formula);
                 }
                 [None, None] => break,
                 [a, b] => {
-                    if let Some(a) = a {
+                    if let Some(a) = &a {
                         running_proof = Proof::eq_trans_chain(&[
                             a.further_equals_closer_proof(),
                             running_proof,
                         ])
                         .unwrap();
                     }
-                    if let Some(b) = b {
+                    if let Some(b) = &b {
                         running_proof = Proof::eq_trans_chain(&[
                             running_proof,
                             b.closer_equals_further_proof(),
                         ])
                         .unwrap();
+                    }
+                    if let Some(a) = a {
+                        assert_eq!(
+                            a.further_formula,
+                            running_proof.conclusion().as_eq_sides().unwrap()[0]
+                        )
+                    }
+                    if let Some(b) = b {
+                        assert_eq!(
+                            b.further_formula,
+                            running_proof.conclusion().as_eq_sides().unwrap()[1]
+                        )
                     }
                 }
             }

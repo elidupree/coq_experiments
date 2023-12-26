@@ -21,6 +21,7 @@ pub ProofLine: ProofLine = {
 FormulaOrImplicitEquality: FormulaOrImplicitEquality = {
   Formula => FormulaOrImplicitEquality::Formula(<>),
   "=" <Formula> => FormulaOrImplicitEquality::ImplicitEquality(<>),
+  <Formula> "..." => FormulaOrImplicitEquality::StartEqChain(<>),
 }
 
 pub NamedInference: NamedPrettyInference = {

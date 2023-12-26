@@ -1,9 +1,13 @@
 mod discover_unfoldings;
+mod try_internally_specializing_proven_ucfes;
 mod try_specializing_proven_inferences;
 mod try_substituting_with_transitive_equalities;
 
-use crate::introspective_calculus::inference::{load_proof, ProofScript};
-use crate::introspective_calculus::proof_hierarchy::Proof;
+use crate::introspective_calculus::inference::{load_proof, Inference, ProofScript};
+use crate::introspective_calculus::proof_hierarchy::{Proof, Proven};
+use crate::introspective_calculus::provers::ByAssumingIt;
+use crate::introspective_calculus::raw_proofs::ALL_CORE_RULES;
+use crate::introspective_calculus::uncurried_function::UncurriedFunctionEquivalence;
 use crate::introspective_calculus::{Formula, RWMFormula};
 use ai_framework::time_sharing;
 use ai_framework::time_sharing::{TimeSharer, TimeSharerKeyless, WorkResult, WorkerFn};
@@ -19,6 +23,7 @@ enum FormulaTransitiveEqualitiesEntry {
 #[derive(Default)]
 pub struct KnownTruthsForPremises {
     proofs: Vec<Proof>,
+    proven_ucfes: Vec<Proven<UncurriedFunctionEquivalence>>,
     proofs_by_conclusion: HashMap<RWMFormula, Proof, BuildHasherForHashCapsules>,
     transitive_equalities:
         HashMap<RWMFormula, FormulaTransitiveEqualitiesEntry, BuildHasherForHashCapsules>,
@@ -58,6 +63,7 @@ pub struct SolverPoolInner {
 pub enum GlobalSolverId {
     DiscoverUnfoldings,
     TrySpecializingProvenInferences,
+    TryInternallySpecializingProvenUcfes,
     TrySubstitutingWithTransitiveEqualities,
 }
 
@@ -105,13 +111,21 @@ impl Default for SolverPool {
             Box::<try_specializing_proven_inferences::Worker>::default(),
         );
         sharer.add_worker(
+            TryInternallySpecializingProvenUcfes,
+            Box::<try_internally_specializing_proven_ucfes::Worker>::default(),
+        );
+        sharer.add_worker(
             TrySubstitutingWithTransitiveEqualities,
             Box::<try_substituting_with_transitive_equalities::Worker>::default(),
         );
-        SolverPool {
+        let mut result = SolverPool {
             inner: SolverPoolInner::default(),
             sharer,
+        };
+        for rule in &*ALL_CORE_RULES {
+            result.discover_proof(rule.to_proof());
         }
+        result
     }
 }
 #[derive(Default)]
@@ -143,21 +157,24 @@ impl SolverPool {
 
     pub fn discover_proof(&mut self, proof: Proof) {
         //TODO: update bootstrapped-ness
-        self.inner
-            .goals
-            .by_conclusion
-            .get_mut(&proof.conclusion())
-            .expect("solved a goal that didn't exist")
-            .by_premises
-            .retain(|premises, _info| !proof.premises().is_subset(premises));
+
+        // (it could be None if we're generating unfoldings / making synthetic truths rather than solving goals)
+        if let Some(c) = self.inner.goals.by_conclusion.get_mut(&proof.conclusion()) {
+            c.by_premises
+                .retain(|premises, _info| !proof.premises().is_subset(premises));
+        }
         // dbg!(proof.conclusion(), proof.premises());
         self.sharer
             .wake(&GlobalSolverId::TrySpecializingProvenInferences);
+        self.sharer
+            .wake(&GlobalSolverId::TryInternallySpecializingProvenUcfes);
         for worker in self.sharer.workers_mut() {
             worker.proof_discovered(proof.clone());
         }
         let discover_result = self.inner.truths.discover(proof);
         if discover_result.new_transitive_equalities {
+            self.sharer
+                .wake(&GlobalSolverId::TrySubstitutingWithTransitiveEqualities);
             for worker in self.sharer.workers_mut() {
                 worker.new_transitive_equality_discovered();
             }
@@ -243,7 +260,7 @@ impl KnownTruthsForPremises {
         formula: RWMFormula,
     ) -> PathToEquivalenceClassRepresentative {
         let mut links = Vec::new();
-        let mut running_formula = formula;
+        let mut running_formula = formula.clone();
 
         while let Some(
             FormulaTransitiveEqualitiesEntry::ProvenEqualToOtherFormulaCloserToRepresentativeBy(
@@ -260,6 +277,11 @@ impl KnownTruthsForPremises {
                 further_formula,
             });
         }
+        if let Some(first) = links.first() {
+            assert_eq!(first.further_formula, formula)
+        } else {
+            assert_eq!(running_formula, formula)
+        }
         PathToEquivalenceClassRepresentative {
             representative: running_formula,
             links,
@@ -267,6 +289,9 @@ impl KnownTruthsForPremises {
     }
     fn discover(&mut self, proof: Proof) -> DiscoverResult {
         self.proofs.push(proof.clone());
+        if let Ok(f) = proof.conclusion().already_uncurried_function_equivalence() {
+            self.proven_ucfes.push(Proven::new(f, proof.clone()));
+        }
         self.proofs_by_conclusion
             .insert(proof.conclusion(), proof.clone());
         let mut result = DiscoverResult::default();
@@ -319,6 +344,12 @@ impl FromIterator<Proof> for KnownTruthsForPremises {
     }
 }
 
+impl SolverPool {
+    pub fn has_goal(&self, goal: &Goal) -> bool {
+        self.inner.get_goal(goal).is_some()
+    }
+}
+
 impl SolverPoolInner {
     fn get_goal(&self, goal: &Goal) -> Option<&GoalInfo> {
         self.goals
@@ -339,13 +370,27 @@ impl SolverPoolInner {
             .by_premises
             .entry(goal.premises.clone())
             .or_insert_with(|| {
-                self.truths
-                    .proofs
+                goal.premises
                     .iter()
-                    .filter(|proof| proof.premises().is_subset(&goal.premises))
-                    .cloned()
+                    .map(|p| p.prove(ByAssumingIt))
+                    .chain(
+                        self.truths
+                            .proofs
+                            .iter()
+                            .filter(|proof| proof.premises().is_subset(&goal.premises))
+                            .cloned(),
+                    )
                     .collect()
             });
+    }
+}
+
+impl Goal {
+    pub fn in_arbitrary_order(&self) -> Inference {
+        Inference::new(
+            self.premises.iter().cloned().collect(),
+            self.conclusion.clone(),
+        )
     }
 }
 
@@ -359,7 +404,10 @@ pub static ALL_PROOF_SCRIPTS: LazyLock<HashMap<String, ProofScript>> = LazyLock:
         .filter_map(|entry| {
             let path = entry.unwrap().path();
             let name = path.file_name().unwrap().to_str().unwrap();
-            Some((name.to_string(), ProofScript::new(&load_proof(&path).ok()?)))
+            Some((
+                name.to_string(),
+                ProofScript::new(&load_proof(&path).ok()?).ok()?,
+            ))
         })
         .collect()
 });

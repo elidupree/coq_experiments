@@ -1,33 +1,33 @@
+#P1. (A=B) -> (C=D)
+#P2. (C=D) -> (E=F)
+
+#. (A=B) -> ((C=D) & (E=F))
+
+
 P1. (A=B) -> (C=D)
 P2. (C=D) -> (E=F)
 
-. (A=B) -> ((C=D) & (E=F))
-
-
-P1. A -> B
-P2. B -> C
-
-1. A -> (B & C)        [P1, P2, by subst]
-2. A = ((A & B) & C)   [by and_assoc]
-3. A -> C              [2, P1, by subst]
+1. (A=B) -> ((C=D) & (E=F))        [P1, P2, by subst]
+2. (A=B) = (((A=B) & (C=D)) & (E=F))   [by and_assoc]
+3. (A=B) -> (E=F)              [2, P1, by subst]
 
 
 
 
-let augmented = (((A=B) & (C=D)) = ((A=B) & ((C=D) & (E=F))))
-Lemma. ((C=D) -> (E=F)) -> augmented  [by compat left imp]
+#let augmented = (((A=B) & (C=D)) = ((A=B) & ((C=D) & (E=F))))
+#Lemma. ((C=D) -> (E=F)) -> augmented  [by compat left imp]
 
-((A=B) -> (C=D)) & ((C=D) -> (E=F))
+#((A=B) -> (C=D)) & ((C=D) -> (E=F))
 #= (((A=B) -> (C=D)) & ((C=D) = ((C,E)=(D,F)))
-= ((A=B) -> (C=D)) & (((C=D) -> (E=F)) & augmented)  [by Lemma]
-= ((A=B) -> (C=D)) & (augmented & ((C=D) -> (E=F)))  [by and_sym]
-= (((A=B) -> (C=D)) & augmented) & ((C=D) -> (E=F))  [by and_assoc]
-= ((((A=B) -> (C=D)) & augmented) & ((A=B) -> ((C=D) & (E=F)))) & ((C=D) -> (E=F)) [by eq_trans]
-= (((A=B) -> (C=D)) & ((A=B) -> ((C=D) & (E=F)))) & ((C=D) -> (E=F)) [shuffle augmented back to the end and absorb it]
-=
+#= ((A=B) -> (C=D)) & (((C=D) -> (E=F)) & augmented)  [by Lemma]
+#= ((A=B) -> (C=D)) & (augmented & ((C=D) -> (E=F)))  [by and_sym]
+#= (((A=B) -> (C=D)) & augmented) & ((C=D) -> (E=F))  [by and_assoc]
+#= ((((A=B) -> (C=D)) & augmented) & ((A=B) -> ((C=D) & (E=F)))) & ((C=D) -> (E=F)) [by eq_trans]
+#= (((A=B) -> (C=D)) & ((A=B) -> ((C=D) & (E=F)))) & ((C=D) -> (E=F)) [shuffle augmented back to the end and absorb it]
+#=
 
 
 
 
-. (((A=B) = ((A,C)=(B,D)))) & ((C=D) -> (E=F))) -> ((A=B) -> (E=F))
-. (((A=B) -> (C=D)) & ((C=D) -> (E=F))) -> ((A=B) -> (E=F))
+#. (((A=B) = ((A,C)=(B,D)))) & ((C=D) -> (E=F))) -> ((A=B) -> (E=F))
+#. (((A=B) -> (C=D)) & ((C=D) -> (E=F))) -> ((A=B) -> (E=F))

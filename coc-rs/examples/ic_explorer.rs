@@ -4,11 +4,12 @@ use clap::{arg, Parser};
 // use coc_rs::introspective_calculus::derivers::{
 //     IncrementalDeriverWorkResult, PrettyLine, SearchManyEnvironment,
 // };
-use coc_rs::introspective_calculus::inference::{load_proof, ProofScript};
+use coc_rs::introspective_calculus::inference::{load_proof, Inference, ProofScript};
 use coc_rs::introspective_calculus::{
     all_axioms, AbstractionKind, Formula, FormulaParser, FormulaValue, RWMFormula,
 };
 // use coc_rs::utils::{read_json_file, write_json_file};
+use actix_web::rt::time::sleep;
 use ai_framework::time_sharing::WorkResult;
 use coc_rs::introspective_calculus::solver_pool::{Goal, ALL_PROOF_SCRIPTS, GLOBAL_SOLVER};
 use html_node::{html, text, Node};
@@ -25,6 +26,7 @@ struct Interface {
     sandbox_text: String,
     sandbox_message: String,
     proof_order: Vec<String>,
+    proof_errors: HashMap<String, String>,
 }
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
@@ -250,15 +252,15 @@ impl Interface {
                     <div class="proof_line_formula">
                         {self.formula_html(line, ParenthesisNeeds::Nothing)}
                     </div>
-                    <div class="proof_line_raw_formula">
-                        {self.formula_html(&line.to_rwm().into(), ParenthesisNeeds::Nothing)}
-                    </div>
+                    // <div class="proof_line_raw_formula">
+                    //     {self.formula_html(&line.to_rwm().into(), ParenthesisNeeds::Nothing)}
+                    // </div>
                 </div>
             }
         });
         html! {
             <div class="proof_script">
-                <div class="partial_proof_name">{text!("{}", name)}</div>
+                <div class="proof_script_name">{text!("{}", name)}</div>
                 {lines}
             </div>
         }
@@ -280,8 +282,15 @@ impl Interface {
         let proof_scripts = self
             .proof_order
             .iter()
-            .map(|s| (s, ALL_PROOF_SCRIPTS.get(s).unwrap()))
-            .map(|(name, script)| self.proof_script_html(name, script));
+            .map(|script_name| match ALL_PROOF_SCRIPTS.get(script_name){
+                None => {html! {
+                    <div class="proof_script">
+                        <div class="proof_script_name">{text!("{}", script_name)}</div>
+                        <div class="proof_script_error">{text!("{}", self.proof_errors.get(script_name).unwrap())}</div>
+                    </div>
+                }}
+                Some(script) => {self.proof_script_html(script_name, script)}
+            });
         html! {
             <div class="page">
                 <div class="theorems">
@@ -311,17 +320,22 @@ static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
         }
     }
     let mut proof_order = Vec::new();
+    let mut proof_errors = HashMap::new();
     for entry in std::fs::read_dir("./data/ic_proofs").unwrap() {
         let path = entry.unwrap().path();
         let name = path.file_name().unwrap().to_str().unwrap();
         let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
-        match load_proof(&path) {
-            Ok(proof) => {
+        proof_order.push((name.to_string(), modified));
+        match load_proof(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|p| ProofScript::new(&p))
+        {
+            Ok(_proof) => {
                 println!("loaded {path:?}");
-                proof_order.push((name.to_string(), modified));
             }
             Err(e) => {
                 println!("failed to load {path:?}: {e}");
+                proof_errors.insert(name.to_string(), e);
             }
         }
     }
@@ -338,6 +352,7 @@ static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
         sandbox_text: "".to_string(),
         sandbox_message: "".to_string(),
         proof_order,
+        proof_errors,
     })
 });
 
@@ -393,12 +408,13 @@ async fn main() {
     with_interface(|_| {});
     actix_web::rt::spawn(async {
         let mut done = false;
+        let mut steps = 0;
         while !done {
-            let mut steps = 0;
             with_interface(|interface| {
                 let start = Instant::now();
                 while start.elapsed().as_secs_f64() < 0.1 {
-                    match GLOBAL_SOLVER.lock().unwrap().do_some_work() {
+                    let mut pool = GLOBAL_SOLVER.lock().unwrap();
+                    match pool.do_some_work() {
                         WorkResult::Idle => {
                             println!("No more work to do ({steps} steps total)");
                             done = true;
@@ -406,16 +422,28 @@ async fn main() {
                         }
                         WorkResult::StillWorking => {
                             steps += 1;
-                            println!("Did some work");
+                            // println!("Did some work");
                         }
                         WorkResult::ProducedOutput(proof) => {
-                            println!("Completed {proof}");
+                            // println!("Completed {proof}");
                             // println!("Completed proof");
+                            assert!(!pool.has_goal(&Goal {
+                                premises: proof.premises().clone(),
+                                conclusion: proof.conclusion()
+                            }));
+                            println!(
+                                "Completed {}",
+                                Inference::new(
+                                    proof.premises().iter().cloned().collect(),
+                                    proof.conclusion()
+                                )
+                            );
                         }
                     }
                 }
                 println!("spent {:?} working", start.elapsed());
             });
+            sleep(Duration::from_millis(100)).await;
         }
     });
     // actix_web::rt::spawn(async {

@@ -3,7 +3,7 @@ use crate::introspective_calculus::solver_pool::{Goal, SolverPoolInner, SolverWo
 use crate::introspective_calculus::Substitutions;
 use ai_framework::time_sharing;
 use ai_framework::time_sharing::{TimeSharerKeyless, WorkResult};
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 struct GoalWorker {
     goal: Goal,
@@ -31,6 +31,7 @@ impl time_sharing::Worker for GoalWorker {
         }
 
         let truths = pool.truths.by_premises.get(&self.goal.premises).unwrap();
+        // note: include proofs that with different premises than the goal's, because we'll specialize them
         let Some(proof_to_specialize) = pool.truths.proofs.get(self.already_tried_all_before)
         else {
             return WorkResult::Idle;
@@ -44,18 +45,20 @@ impl time_sharing::Worker for GoalWorker {
             return WorkResult::StillWorking;
         };
 
-        let mut possible_substitutions: HashSet<Substitutions> =
-            [conclusion_substitutions].into_iter().collect();
+        let mut possible_substitutions: HashMap<Substitutions, Vec<Proof>> =
+            [(conclusion_substitutions, vec![])].into_iter().collect();
         for premise in proof_to_specialize.premises() {
             possible_substitutions = possible_substitutions
                 .into_iter()
-                .flat_map(move |possible_substitutions| {
+                .flat_map(move |(substitutions, premise_providers)| {
                     truths.proofs.iter().filter_map(move |truth| {
-                        let mut result = possible_substitutions.clone();
+                        let mut substitutions = substitutions.clone();
+                        let mut premise_providers = premise_providers.clone();
                         premise
-                            .add_substitutions_to_become(&truth.conclusion(), &mut result)
+                            .add_substitutions_to_become(&truth.conclusion(), &mut substitutions)
                             .ok()?;
-                        Some(result)
+                        premise_providers.push(truth.clone());
+                        Some((substitutions, premise_providers))
                     })
                 })
                 .collect();
@@ -64,9 +67,13 @@ impl time_sharing::Worker for GoalWorker {
             }
         }
 
-        WorkResult::ProducedOutput(
-            proof_to_specialize.specialize(possible_substitutions.iter().next().unwrap()),
-        )
+        let (substitutions, premise_providers) = possible_substitutions.into_iter().next().unwrap();
+        let result = proof_to_specialize
+            .specialize(&substitutions)
+            .satisfy_premises_with(&premise_providers);
+        assert!(result.premises().is_subset(&self.goal.premises));
+        assert_eq!(result.conclusion(), self.goal.conclusion);
+        WorkResult::ProducedOutput(result)
     }
 }
 

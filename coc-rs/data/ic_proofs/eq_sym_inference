@@ -1,6 +1,6 @@
 1. (A=B) -> (id A = id B)   [by internal_indistinguishability]
 2. (A=B) -> (A=B)           [by unfolding]
 3. (A=B) = (B=A)            [by axiom]
-4. (A=B) = (B=A & A=B)      [2, 3, by substitute_in_conjunction]
-5. (B=A & A=B) = (A=B & B=A) [by and_sym]
+4. (A=B) = ((B=A) & (A=B))      [2, 3, by substitute_in_conjunction]
+5. ((B=A) & (A=B)) = ((A=B) & (B=A)) [by and_sym]
 6. (A=B) -> (B=A)           [4, 5, by subst]

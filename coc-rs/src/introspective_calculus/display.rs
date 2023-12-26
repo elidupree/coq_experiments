@@ -1,6 +1,7 @@
 use crate::display::{
     DisplayItem, DisplayItemSequence, WithUnsplittablePrefix, WithUnsplittableSuffix,
 };
+use crate::introspective_calculus::solver_pool::Goal;
 use crate::introspective_calculus::uncurried_function::{
     UncurriedFunction, UncurriedFunctionEquivalence, UncurriedFunctionValue,
 };
@@ -257,6 +258,12 @@ impl Display for UncurriedFunctionEquivalence {
     }
 }
 
+impl Display for Goal {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.in_arbitrary_order().fmt(f)
+    }
+}
+
 impl Display for RWMFormula {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
@@ -282,6 +289,12 @@ impl std::fmt::Debug for RWMFormula {
 }
 
 impl std::fmt::Debug for RawFormula {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
+impl std::fmt::Debug for Goal {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self}")
     }

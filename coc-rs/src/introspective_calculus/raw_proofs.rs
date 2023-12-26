@@ -234,9 +234,10 @@ pub static ALL_AXIOMS: LazyLock<Vec<Axiom>> = LazyLock::new(|| {
     EXTENSIONALITY_AXIOMS
         .iter()
         .cloned()
-        .chain(once(Axiom::new(
-            formula!("((A=B) & (C=D)) = ((C=D) & (A=B))").to_rwm(),
-        )))
+        .chain([
+            Axiom::new(formula!("((A=B) & (C=D)) = ((C=D) & (A=B))").to_rwm()),
+            Axiom::new(formula!("(((A=B) & (C=D)) & (E=F)) = ((A=B) & ((C=D) & (E=F)))").to_rwm()),
+        ])
         .chain(
             [
                 CleanExternalRule::EqTrans,
@@ -252,6 +253,27 @@ pub static ALL_AXIOMS: LazyLock<Vec<Axiom>> = LazyLock::new(|| {
                         .clone(),
                 )
             }),
+        )
+        .collect()
+});
+
+pub static ALL_CORE_RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
+    use CleanExternalRule::*;
+    ALL_AXIOMS
+        .iter()
+        .cloned()
+        .map(|axiom| Rule::from(axiom))
+        .chain(
+            [
+                EqSym,
+                EqTrans,
+                DefinitionOfConst,
+                DefinitionOfFuse,
+                SubstituteInLhs,
+                SubstituteInRhs,
+                SubstituteInConjunction,
+            ]
+            .map(Rule::from),
         )
         .collect()
 });

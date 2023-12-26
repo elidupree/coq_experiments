@@ -1,9 +1,10 @@
 use crate::introspective_calculus::proof_hierarchy::{Proof, Proven};
+use crate::introspective_calculus::provers::ByAssumingIt;
 use crate::introspective_calculus::raw_proofs::{
-    Axiom, CleanExternalRule, RawProof, Rule, ALL_AXIOMS,
+    Axiom, CleanExternalRule, RawProof, Rule, RuleTrait, ALL_AXIOMS,
 };
 use crate::introspective_calculus::uncurried_function::UncurriedFunctionEquivalence;
-use crate::introspective_calculus::{RawFormula, Substitutions};
+use crate::introspective_calculus::{RawFormula, Substitutions, ToFormula};
 use itertools::Itertools;
 use std::sync::LazyLock;
 
@@ -17,6 +18,26 @@ impl Axiom {
             )
             .unwrap(),
         )
+    }
+}
+
+impl Rule {
+    pub fn to_proof(&self) -> Proof {
+        Proof::by_rule(
+            self.specialize(
+                self.inference()
+                    .free_metavariables()
+                    .iter()
+                    .map(|name| (name.clone(), name.to_formula().to_rwm()))
+                    .collect(),
+            ),
+            self.inference()
+                .premises
+                .iter()
+                .map(|premise| premise.prove(ByAssumingIt))
+                .collect(),
+        )
+        .unwrap()
     }
 }
 
