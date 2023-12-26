@@ -1,11 +1,17 @@
-use coc_rs::formula;
 use coc_rs::introspective_calculus::proof_hierarchy::InferenceAsEquivalence;
-use coc_rs::introspective_calculus::provers::ByUnfolding;
-use coc_rs::introspective_calculus::raw_proofs::{Axiom, CleanExternalRule, RuleTrait};
+use coc_rs::introspective_calculus::provers::{
+    ByAssumingIt, BySpecializingAxiom, BySpecializingWithPremises, ByUnfolding,
+};
+use coc_rs::introspective_calculus::raw_proofs::{Axiom, CleanExternalRule, Rule, RuleTrait};
 use coc_rs::introspective_calculus::raw_proofs_ext::ALL_AXIOM_SCHEMAS;
+use coc_rs::{formula, inf};
 use itertools::Itertools;
 
 fn main() {
+    let a = formula!("(l=>((const A) l = (const B) l)) = (l=>((const C) l = (const D) l))")
+        .prove(ByAssumingIt);
+    formula!("(l=>(((const A) l,(const E) l)=((const B) l,(const F) l))) = (l=>(((const C) l,(const E) l)=((const D) l,(const F) l)))").to_rwm().prove(BySpecializingWithPremises{proof_to_specialize: &Rule::from(CleanExternalRule::SubstituteInConjunction).to_proof(), premise_proofs: &[a] });
+
     let inf = CleanExternalRule::SubstituteInRhs.inference();
     dbg!(&inf);
     let infeq = InferenceAsEquivalence::from_inference(inf);

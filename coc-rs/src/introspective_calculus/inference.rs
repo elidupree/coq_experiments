@@ -1,7 +1,7 @@
 use crate::ic;
 use crate::introspective_calculus::{Formula, ToFormula};
 use crate::introspective_calculus::{ProofLineParser, RWMFormula};
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use arrayvec::ArrayVec;
 use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};

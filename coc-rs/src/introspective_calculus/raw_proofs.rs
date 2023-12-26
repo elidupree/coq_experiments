@@ -1,8 +1,7 @@
 use crate::introspective_calculus::inference::Inference;
-use crate::introspective_calculus::proof_hierarchy::InferenceAsEquivalence;
 use crate::introspective_calculus::uncurried_function::UncurriedFunctionEquivalence;
 use crate::introspective_calculus::{FormulaParser, RWMFormula, RawFormula, Substitutions};
-use crate::{formula, inf};
+use crate::{formula, ic, inf};
 use itertools::Itertools;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
@@ -237,20 +236,22 @@ pub static ALL_AXIOMS: LazyLock<Vec<Axiom>> = LazyLock::new(|| {
         .chain([
             Axiom::new(formula!("((A=B) & (C=D)) = ((C=D) & (A=B))").to_rwm()),
             Axiom::new(formula!("(((A=B) & (C=D)) & (E=F)) = ((A=B) & ((C=D) & (E=F)))").to_rwm()),
+            Axiom::new(formula!("((A=B) & (B=C)) -> (A=C)").to_rwm()),
         ])
         .chain(
             [
-                CleanExternalRule::EqTrans,
+                CleanExternalRule::EqSym,
+                // CleanExternalRule::EqTrans,
                 CleanExternalRule::SubstituteInRhs,
                 CleanExternalRule::SubstituteInConjunction,
             ]
             .into_iter()
             .map(|rule| {
-                {}
+                let inf = rule.inference();
                 Axiom::new(
-                    InferenceAsEquivalence::from_inference(rule.inference())
-                        .formula()
-                        .clone(),
+                    ic!({inf.premises.first().unwrap()} -> {inf.conclusion})
+                        .unwrap()
+                        .to_rwm(),
                 )
             }),
         )
@@ -262,7 +263,7 @@ pub static ALL_CORE_RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
     ALL_AXIOMS
         .iter()
         .cloned()
-        .map(|axiom| Rule::from(axiom))
+        .map(Rule::from)
         .chain(
             [
                 EqSym,

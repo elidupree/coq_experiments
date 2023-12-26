@@ -236,11 +236,11 @@ pub struct ArrowChain((AbstractionKind, String), Option<Box<ArrowChain>>);
 
 impl ArrowChain {
     pub fn to_formula(self, body: Formula) -> Formula {
-        let body = match self.1 {
+        let body = Formula::name_abstraction((self.0).0, (self.0).1, body);
+        match self.1 {
             None => body,
             Some(next) => next.to_formula(body),
-        };
-        Formula::name_abstraction((self.0).0, (self.0).1, body)
+        }
     }
 }
 

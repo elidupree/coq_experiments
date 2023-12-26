@@ -1,0 +1,2 @@
+1a. ((l=>(A l = B l)) = (l=>(C l = D l))) -> ((l=>((A l,E l)=(B l,F l))) = (l=>((C l,E l)=(D l,F l))))
+1. (((l=>(A l = B l)),const) = ((l=>(C l = D l)),const)) -> ((l=>((A l,E l)=(B l,F l))) = (l=>((C l,E l)=(D l,F l))))

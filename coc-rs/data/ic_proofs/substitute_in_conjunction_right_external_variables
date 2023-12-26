@@ -1,0 +1,6 @@
+P1. (A=B) = (C=D)
+
+1. ((E,A)=(F,B))...
+2. = ((A,E)=(B,F))
+3. = ((C,E)=(D,F))           [by substitute_in_conjunction_external_variables]
+4. = ((E,C)=(F,D))

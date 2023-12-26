@@ -1,0 +1,4 @@
+P1. const A = const B
+
+1. ((const A) const) = ((const B) const)
+2. A = B

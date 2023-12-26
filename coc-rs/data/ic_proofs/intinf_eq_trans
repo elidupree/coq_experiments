@@ -1,0 +1,6 @@
+1. ((A,(B,const))=(B,(C,const))) -> ((A,(B,const))(x=>yz=>yz(y=>z=>(x,y)))=(B,(C,const))(x=>yz=>yz(y=>z=>(x,y))))
+2a. ((A,(B,const))(x=>yz=>yz(y=>z=>(x,y)))=(B,(C,const))(x=>yz=>yz(y=>z=>(x,y)))) = ((A,B) = (B,C))
+2b. (((A,(B,const))=(B,(C,const))) & ((A,(B,const))(x=>yz=>yz(y=>z=>(x,y)))=(B,(C,const))(x=>yz=>yz(y=>z=>(x,y))))) = (((A,(B,const))=(B,(C,const))) & ((A,B) = (B,C)))
+2. ((A,(B,const))=(B,(C,const))) -> ((A,B) = (B,C))
+3. ((A,B) = (B,C)) -> (A = C)
+4. ((A,(B,const))=(B,(C,const))) -> (A = C)

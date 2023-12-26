@@ -1,9 +1,11 @@
+use crate::ic;
 use crate::introspective_calculus::proof_hierarchy::Proof;
+use crate::introspective_calculus::provers::BySubstitutingWith;
 use crate::introspective_calculus::solver_pool::{Goal, SolverPoolInner, SolverWorker};
-use crate::introspective_calculus::RWMFormula;
+use crate::introspective_calculus::RWMFormulaValue;
 use ai_framework::time_sharing;
 use ai_framework::time_sharing::{TimeSharerKeyless, WorkResult};
-use std::collections::BTreeSet;
+use arrayvec::ArrayVec;
 
 struct GoalWorker {
     goal: Goal,
@@ -24,10 +26,7 @@ impl time_sharing::Worker for GoalWorker {
             return WorkResult::Idle;
         }
 
-        match pool.prove_by_substituting_with_transitive_equalities(
-            &self.goal.premises,
-            self.goal.conclusion.clone(),
-        ) {
+        match pool.prove_by_substituting_with_transitive_equalities(&self.goal) {
             None => WorkResult::Idle,
             Some(proof) => {
                 // dbg!(&self.goal.conclusion, &self.goal.premises);
@@ -57,15 +56,41 @@ impl SolverWorker for Worker {
 }
 
 impl SolverPoolInner {
-    pub fn prove_by_substituting_with_transitive_equalities(
-        &self,
-        premises: &BTreeSet<RWMFormula>,
-        conclusion: RWMFormula,
-    ) -> Option<Proof> {
-        let sides = conclusion.as_eq_sides().unwrap();
-        let paths = sides
-            .clone()
-            .map(|f| self.truths.by_premises[premises].path_to_equivalence_class_representative(f));
+    pub fn prove_by_substituting_with_transitive_equalities(&self, goal: &Goal) -> Option<Proof> {
+        if let Some(p) = self.prove_by_transitive_equality(goal) {
+            return Some(p);
+        }
+        let [[af, ax], [bf, bx]] =
+            goal.conclusion
+                .as_eq_sides()
+                .unwrap()
+                .try_map(|s| match s.value() {
+                    RWMFormulaValue::Apply(children) => Some(children),
+                    _ => None,
+                })?;
+
+        let mut subproofs = ArrayVec::<_, 2>::new();
+        if af != bf {
+            let subgoal = Goal {
+                premises: goal.premises.clone(),
+                conclusion: ic!(af = bf).to_rwm(),
+            };
+            subproofs.push(self.prove_by_substituting_with_transitive_equalities(&subgoal)?);
+        }
+        if ax != bx {
+            let subgoal = Goal {
+                premises: goal.premises.clone(),
+                conclusion: ic!(ax = bx).to_rwm(),
+            };
+            subproofs.push(self.prove_by_substituting_with_transitive_equalities(&subgoal)?);
+        }
+        Some(goal.conclusion.prove(BySubstitutingWith(&subproofs)))
+    }
+    pub fn prove_by_transitive_equality(&self, goal: &Goal) -> Option<Proof> {
+        let sides = goal.conclusion.as_eq_sides().unwrap();
+        let paths = sides.clone().map(|f| {
+            self.truths.by_premises[&goal.premises].path_to_equivalence_class_representative(f)
+        });
 
         if paths[0].representative != paths[1].representative {
             return None;
@@ -109,8 +134,8 @@ impl SolverPoolInner {
                 }
             }
         }
-        assert_eq!(running_proof.conclusion(), conclusion);
-        assert!(running_proof.premises().is_subset(premises));
+        assert_eq!(running_proof.conclusion(), goal.conclusion);
+        assert!(running_proof.premises().is_subset(&goal.premises));
         Some(running_proof)
     }
 }

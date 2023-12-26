@@ -1,6 +1,5 @@
 use crate::introspective_calculus::proof_hierarchy::Proof;
 use crate::introspective_calculus::solver_pool::{Goal, SolverPoolInner, SolverWorker};
-use crate::introspective_calculus::Substitutions;
 use ai_framework::time_sharing;
 use ai_framework::time_sharing::{TimeSharerKeyless, WorkResult};
 
@@ -31,7 +30,9 @@ impl time_sharing::Worker for GoalWorker {
 
         let truths = pool.truths.by_premises.get(&self.goal.premises).unwrap();
         // note: only try proofs that are already true from the goal's premises
-        let Some(proof_to_specialize) = truths.proven_ucfes.get(self.already_tried_all_before)
+        let Some(proof_to_specialize) = truths
+            .important_proven_ucfes
+            .get(self.already_tried_all_before)
         else {
             return WorkResult::Idle;
         };

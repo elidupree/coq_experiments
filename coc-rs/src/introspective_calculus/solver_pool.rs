@@ -22,15 +22,17 @@ enum FormulaTransitiveEqualitiesEntry {
 }
 #[derive(Default)]
 pub struct KnownTruthsForPremises {
-    proofs: Vec<Proof>,
-    proven_ucfes: Vec<Proven<UncurriedFunctionEquivalence>>,
+    important_proofs: Vec<Proof>,
+    unimportant_proofs: Vec<Proof>,
+    important_proven_ucfes: Vec<Proven<UncurriedFunctionEquivalence>>,
     proofs_by_conclusion: HashMap<RWMFormula, Proof, BuildHasherForHashCapsules>,
     transitive_equalities:
         HashMap<RWMFormula, FormulaTransitiveEqualitiesEntry, BuildHasherForHashCapsules>,
 }
 #[derive(Default)]
 pub struct KnownTruths {
-    proofs: Vec<Proof>,
+    important_proofs: Vec<Proof>,
+    unimportant_proofs: Vec<Proof>,
     by_premises: BTreeMap<BTreeSet<RWMFormula>, KnownTruthsForPremises>,
 }
 
@@ -123,7 +125,7 @@ impl Default for SolverPool {
             sharer,
         };
         for rule in &*ALL_CORE_RULES {
-            result.discover_proof(rule.to_proof());
+            result.discover_proof(rule.to_proof(), true);
         }
         result
     }
@@ -137,7 +139,7 @@ impl SolverPool {
     pub fn do_some_work(&mut self) -> WorkResult<Proof> {
         let result = self.sharer.do_some_work(&mut self.inner);
         if let WorkResult::ProducedOutput(proof) = &result {
-            self.discover_proof(proof.clone());
+            self.discover_proof(proof.clone(), false);
         }
         result
     }
@@ -155,14 +157,20 @@ impl SolverPool {
         self.inner.add_goal(goal);
     }
 
-    pub fn discover_proof(&mut self, proof: Proof) {
+    pub fn discover_proof(&mut self, proof: Proof, known_important: bool) {
         //TODO: update bootstrapped-ness
 
         // (it could be None if we're generating unfoldings / making synthetic truths rather than solving goals)
+        let mut solves_any_goal = false;
         if let Some(c) = self.inner.goals.by_conclusion.get_mut(&proof.conclusion()) {
+            let before = c.by_premises.len();
             c.by_premises
                 .retain(|premises, _info| !proof.premises().is_subset(premises));
+            if c.by_premises.len() < before {
+                solves_any_goal = true;
+            }
         }
+        let is_important = known_important || solves_any_goal;
         // dbg!(proof.conclusion(), proof.premises());
         self.sharer
             .wake(&GlobalSolverId::TrySpecializingProvenInferences);
@@ -171,7 +179,7 @@ impl SolverPool {
         for worker in self.sharer.workers_mut() {
             worker.proof_discovered(proof.clone());
         }
-        let discover_result = self.inner.truths.discover(proof);
+        let discover_result = self.inner.truths.discover(proof, is_important);
         if discover_result.new_transitive_equalities {
             self.sharer
                 .wake(&GlobalSolverId::TrySubstitutingWithTransitiveEqualities);
@@ -213,12 +221,16 @@ impl SolverPool {
 }
 
 impl KnownTruths {
-    fn discover(&mut self, proof: Proof) -> DiscoverResult {
-        self.proofs.push(proof.clone());
+    fn discover(&mut self, proof: Proof, is_important: bool) -> DiscoverResult {
+        if is_important {
+            self.important_proofs.push(proof.clone());
+        } else {
+            self.unimportant_proofs.push(proof.clone());
+        }
         let mut result = DiscoverResult::default();
         for (premises, truths) in &mut self.by_premises {
             if proof.premises().is_subset(premises) {
-                let subresult = truths.discover(proof.clone());
+                let subresult = truths.discover(proof.clone(), is_important);
                 if subresult.new_transitive_equalities {
                     result.new_transitive_equalities = true;
                 }
@@ -287,10 +299,15 @@ impl KnownTruthsForPremises {
             links,
         }
     }
-    fn discover(&mut self, proof: Proof) -> DiscoverResult {
-        self.proofs.push(proof.clone());
-        if let Ok(f) = proof.conclusion().already_uncurried_function_equivalence() {
-            self.proven_ucfes.push(Proven::new(f, proof.clone()));
+    fn discover(&mut self, proof: Proof, is_important: bool) -> DiscoverResult {
+        if is_important {
+            self.important_proofs.push(proof.clone());
+            if let Ok(f) = proof.conclusion().already_uncurried_function_equivalence() {
+                self.important_proven_ucfes
+                    .push(Proven::new(f, proof.clone()));
+            }
+        } else {
+            self.unimportant_proofs.push(proof.clone());
         }
         self.proofs_by_conclusion
             .insert(proof.conclusion(), proof.clone());
@@ -334,15 +351,15 @@ impl KnownTruthsForPremises {
     }
 }
 
-impl FromIterator<Proof> for KnownTruthsForPremises {
-    fn from_iter<T: IntoIterator<Item = Proof>>(iter: T) -> Self {
-        let mut result = Self::default();
-        for proof in iter {
-            result.discover(proof);
-        }
-        result
-    }
-}
+// impl FromIterator<Proof> for KnownTruthsForPremises {
+//     fn from_iter<T: IntoIterator<Item = Proof>>(iter: T) -> Self {
+//         let mut result = Self::default();
+//         for proof in iter {
+//             result.discover(proof, true);
+//         }
+//         result
+//     }
+// }
 
 impl SolverPool {
     pub fn has_goal(&self, goal: &Goal) -> bool {
@@ -370,17 +387,21 @@ impl SolverPoolInner {
             .by_premises
             .entry(goal.premises.clone())
             .or_insert_with(|| {
-                goal.premises
-                    .iter()
-                    .map(|p| p.prove(ByAssumingIt))
-                    .chain(
-                        self.truths
-                            .proofs
-                            .iter()
-                            .filter(|proof| proof.premises().is_subset(&goal.premises))
-                            .cloned(),
-                    )
-                    .collect()
+                let mut result = KnownTruthsForPremises::default();
+                for premise in &goal.premises {
+                    result.discover(premise.prove(ByAssumingIt), true);
+                }
+                for proof in &self.truths.important_proofs {
+                    if proof.premises().is_subset(&goal.premises) {
+                        result.discover(proof.clone(), true);
+                    }
+                }
+                for proof in &self.truths.unimportant_proofs {
+                    if proof.premises().is_subset(&goal.premises) {
+                        result.discover(proof.clone(), false);
+                    }
+                }
+                result
             });
     }
 }

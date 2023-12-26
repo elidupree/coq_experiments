@@ -1,0 +1,7 @@
+P1. (A=B) = (C=D)
+
+1. const (A=B) = const (C=D)             [by subst]
+2. (l=>((const A) l = (const B) l)) = (l=>((const C) l = (const D) l)) [by extensionality]
+3. (l=>(((const A) l,(const E) l)=((const B) l,(const F) l))) = (l=>(((const C) l,(const E) l)=((const D) l,(const F) l))) [by rule]
+4. const ((A,E)=(B,F)) = const ((C,E)=(D,F))           [by extensionality]
+5. ((A,E)=(B,F)) = ((C,E)=(D,F))           [by strip_const]

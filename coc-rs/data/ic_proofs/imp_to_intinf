@@ -1,0 +1,5 @@
+P1. (A=B) -> (C=D)
+
+1. ((A,const) = (B,const)) -> ((A,const)const = (B,const)const)
+2. ((A,const) = (B,const)) -> (A = B)
+3. ((A,const)=(B,const)) -> (C=D)

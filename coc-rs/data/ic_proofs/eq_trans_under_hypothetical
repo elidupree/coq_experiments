@@ -1,8 +1,14 @@
 P1. (P=Q) -> (A=B)
 P2. (P=Q) -> (B=C)
 
-1. (P=Q) = (((P=Q) & (A=B)) & (B=C))
-2. (P=Q) -> ((A=B) & (B=C))                     [1, by and_assoc]
-3. (P=Q) -> (((A=B) & (B=C)) & (A=C))           [2, by eq_trans_internal]
-4. (P=Q) = (((P=Q) & ((A=B) & (B=C))) & (A=C))  [3, by and_assoc]
-5. (P=Q) -> (A=C)                               [4, 2, by subst]
+1. ((P=Q) & (B=C)) = (((P=Q) & (A=B)) & (B=C))
+2. (P=Q) = (((P=Q) & (A=B)) & (B=C))
+3a. (((P=Q) & (A=B)) & (B=C)) = ((P=Q) & ((A=B) & (B=C))) [1, by and_assoc]
+3. (P=Q) -> ((A=B) & (B=C))                     [2, 3a]
+4a. ((A=B) & (B=C)) = (((A=B) & (B=C)) & (A=C)) [by axiom]
+4b. ((P=Q) & ((A=B) & (B=C))) = ((P=Q) & (((A=B) & (B=C)) & (A=C))) [by subst]
+4. (P=Q) -> (((A=B) & (B=C)) & (A=C))           [by eq_trans]
+5a. ((P=Q) & (((A=B) & (B=C)) & (A=C))) = (((P=Q) & ((A=B) & (B=C))) & (A=C)) [4, by and_assoc]
+5. (P=Q) = (((P=Q) & ((A=B) & (B=C))) & (A=C))  [by eq_trans]
+6a. ((P=Q) & (A=C)) = (((P=Q) & ((A=B) & (B=C))) & (A=C)) [5, 3, by subst]
+6. (P=Q) -> (A=C)                               [by eq_trans]

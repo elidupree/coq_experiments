@@ -1,6 +1,6 @@
 use crate::introspective_calculus::proof_hierarchy::Proof;
 use crate::introspective_calculus::provers::{BySpecializingAxiom, BySubstitutingWith};
-use crate::introspective_calculus::raw_proofs::{CleanExternalRule, Rule};
+use crate::introspective_calculus::raw_proofs::{CleanExternalRule, Rule, EXTENSIONALITY_AXIOMS};
 use crate::introspective_calculus::{RWMFormula, RWMFormulaValue};
 use crate::{formula, ic, match_ic, substitutions};
 use live_prop_test::live_prop_test;
@@ -44,6 +44,15 @@ impl RWMFormula {
         } else {
             None
         }
+    }
+
+    pub fn extensional_canonicalization_here_proof(&self) -> Option<Proof> {
+        for axiom in &*EXTENSIONALITY_AXIOMS {
+            if let Ok(args) = axiom.internal_form.sides[0].args_to_return(self) {
+                return Some(axiom.proof().specialize(&args));
+            }
+        }
+        None
     }
 
     pub fn convert_any_one_subformula_proof(

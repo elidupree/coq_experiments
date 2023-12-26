@@ -1,0 +1,1 @@
+1. ((A,const)=(B,const)) -> (C A = C B)
