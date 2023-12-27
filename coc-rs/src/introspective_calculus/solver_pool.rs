@@ -10,7 +10,7 @@ use crate::introspective_calculus::raw_proofs::ALL_CORE_RULES;
 use crate::introspective_calculus::uncurried_function::UncurriedFunctionEquivalence;
 use crate::introspective_calculus::{Formula, RWMFormula};
 use ai_framework::time_sharing;
-use ai_framework::time_sharing::{TimeSharer, TimeSharerKeyless, WorkResult, WorkerFn};
+use ai_framework::time_sharing::{TimeSharer, WorkResult};
 use hash_capsule::BuildHasherForHashCapsules;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::iter;
@@ -78,8 +78,8 @@ trait SolverWorker: Send + Sync + 'static {
     fn new_transitive_equality_discovered(&mut self) {}
 }
 
-type SolverWorkerFn = WorkerFn<SolverPoolInner, Proof>;
-type SimpleSolverTimeSharer = TimeSharerKeyless<SolverWorkerFn>;
+// type SolverWorkerFn = WorkerFn<SolverPoolInner, Proof>;
+// type SimpleSolverTimeSharer = TimeSharerKeyless<SolverWorkerFn>;
 
 impl time_sharing::Worker for Box<dyn SolverWorker> {
     type Key = GlobalSolverId;

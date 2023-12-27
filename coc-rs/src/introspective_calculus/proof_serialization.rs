@@ -3,7 +3,6 @@ use crate::introspective_calculus::proof_hierarchy::{Proof, ProofDerivation};
 use crate::introspective_calculus::provers::{ByAssumingIt, BySpecializingAnyCoreRule};
 use crate::introspective_calculus::solver_pool::Goal;
 use crate::introspective_calculus::InferenceParser;
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
@@ -14,12 +13,7 @@ use std::path::Path;
 
 #[derive(Default)]
 pub struct ProofBucket {
-    pub proofs: HashMap<Goal, ProofInfo>,
-}
-
-pub struct ProofInfo {
-    dependencies: Vec<Goal>,
-    proof: Option<Proof>,
+    pub proofs: HashMap<Goal, Proof>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -61,65 +55,48 @@ impl ProofBucket {
                     goal.to_string(),
                     dependencies.iter().map(ToString::to_string).collect(),
                 );
-                // note: at this point it's theoretically possible that a messy proof used itself as a premise, which would mean there is already an entry. if that's true then we don't want to overwrite it with the current one.
+                // note: at this point it's theoretically possible that a messy proof used itself as a premise, which would mean there is already an entry. if that's true then we don't want to overwrite it with the current one, or write to the savefile.
                 self.proofs.entry(goal).or_insert_with(|| {
                     serde_json::to_writer(writer, &line).unwrap();
-                    ProofInfo {
-                        dependencies,
-                        proof: Some(proof.clone()),
-                    }
+                    proof.clone()
                 });
             }
         }
     }
 
-    pub fn get_proof(&self, goal: &Goal) -> Option<Proof> {
-        if goal.premises.len() == 1 && goal.premises.iter().next().unwrap() == &goal.conclusion {
-            Some(goal.conclusion.prove(ByAssumingIt))
-        } else {
-            self.proofs.get(goal)?.proof.clone()
-        }
+    pub fn get_proof(&self, goal: &Goal) -> Option<&Proof> {
+        self.proofs.get(goal)
     }
 
-    pub fn reconstruct_proof(&mut self, goal: &Goal) -> Option<Proof> {
-        if let Some(proof) = self.get_proof(goal) {
-            return Some(proof);
-        };
-        let dependencies = self.proofs.get(goal)?.dependencies.clone();
-        let mut premise_proofs = Vec::new();
-        for dependency in &dependencies {
-            premise_proofs.push(self.reconstruct_proof(dependency)?);
+    pub fn reconstruct_proof(&self, goal: &Goal, dependencies: &[Goal]) -> Option<Proof> {
+        if goal.premises.len() == 1 && goal.premises.iter().next().unwrap() == &goal.conclusion {
+            return Some(goal.conclusion.prove(ByAssumingIt));
         }
-        let result = goal
-            .conclusion
+
+        let mut premise_proofs = Vec::new();
+        for dependency in dependencies {
+            premise_proofs.push(self.get_proof(dependency)?.clone());
+        }
+        goal.conclusion
             .try_prove(BySpecializingAnyCoreRule {
                 premise_proofs: &premise_proofs,
             })
-            .ok()?;
-        self.proofs.get_mut(goal).unwrap().proof = Some(result.clone());
-        Some(result)
+            .ok()
     }
-    pub fn reconstruct_proofs(&mut self) {
-        for goal in self.proofs.keys().cloned().collect_vec() {
-            self.reconstruct_proof(&goal);
-        }
-    }
+
     pub fn load_line<E: Error + Send + Sync + 'static>(
         &mut self,
         line: Result<String, E>,
     ) -> Option<()> {
         let parser = InferenceParser::new();
         let SavedProofLine(g, d) = serde_json::from_str(&line.ok()?).ok()?;
-        self.proofs.insert(
-            parser.parse(&g).ok()?.to_rwm().to_goal(),
-            ProofInfo {
-                dependencies: d
-                    .iter()
-                    .map(|d| parser.parse(d).ok().map(|p| p.to_rwm().to_goal()))
-                    .collect::<Option<Vec<_>>>()?,
-                proof: None,
-            },
-        );
+        let goal = parser.parse(&g).ok()?.to_rwm().to_goal();
+        let dependencies = d
+            .iter()
+            .map(|d| parser.parse(d).ok().map(|p| p.to_rwm().to_goal()))
+            .collect::<Option<Vec<_>>>()?;
+        let proof = self.reconstruct_proof(&goal, &dependencies)?;
+        self.proofs.insert(goal, proof);
         Some(())
     }
 
@@ -130,7 +107,6 @@ impl ProofBucket {
         for line in lines {
             let _ = result.load_line(line);
         }
-        result.reconstruct_proofs();
         result
     }
 
