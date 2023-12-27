@@ -414,10 +414,9 @@
   Again, I've established it by a metatheorem [note: I haven't actually rigorously completed this yet; these axioms might get tweaked], which makes use of the following additional axioms. Again, one can verify that these axioms are valid equalities, in that they only make propositions equal if they're already mutually derivable. And again, we assert the list form of each:
   
   \begin{align*}
-    (A \equals B) &\to (AC \equals BC)\\
     (A \and B) &\equals (B \and A)\\
-    ((A \to B) \and (B \to C)) &\to (A \to C)\\
-    ((P \to (A \equals B)) \and (P \to (B \equals C))) &\to (P \to (A \equals C))\\
+    ((A \and B) \and C) &\equals (A \and (B \and C))\\
+    ((A \equals B) \and (B \equals C)) &\to (A \equals C)\\
   \end{align*}
   
   And with that, the core rules of IC are finished!

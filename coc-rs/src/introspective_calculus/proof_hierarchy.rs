@@ -2,7 +2,7 @@ use crate::introspective_calculus::inference::Inference;
 use crate::introspective_calculus::provers::{
     ByAssumingIt, ByAxiomSchema, ByConvertingBothSides, ByGeneralizedUnfolding,
     ByInternalIndistinguishability, ByPartiallySpecializingAxiom, ByScriptNamed,
-    ByScriptWithPremises, BySpecializingAxiom, BySubstitutingWith, ByUnfolding, FormulaProver,
+    ByScriptWithPremises, BySubstitutingWith, ByUnfolding, FormulaProver,
 };
 use crate::introspective_calculus::raw_proofs::{
     CleanExternalRule, CleanRule, RawProof, Rule, RuleInstance, StrengtheningRule,
@@ -140,6 +140,10 @@ impl Proof {
 
     pub fn premises(&self) -> &BTreeSet<RWMFormula> {
         &self.premises_cache
+    }
+
+    pub fn derivation(&self) -> &ProofDerivation {
+        &self.derivation
     }
 
     pub fn to_raw(&self) -> RawProof {

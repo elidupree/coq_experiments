@@ -14,6 +14,7 @@ pub mod raw_proofs_ext;
 pub mod solver_pool;
 // pub mod specialization;
 // pub mod tuple_equality_tree;
+pub mod proof_serialization;
 pub mod uncurried_function;
 pub mod unfolding;
 

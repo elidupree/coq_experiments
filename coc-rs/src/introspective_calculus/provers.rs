@@ -1,5 +1,8 @@
+use crate::introspective_calculus::inference::Inference;
 use crate::introspective_calculus::proof_hierarchy::Proof;
-use crate::introspective_calculus::raw_proofs::{CleanExternalRule, Rule, RuleTrait, ALL_AXIOMS};
+use crate::introspective_calculus::raw_proofs::{
+    CleanExternalRule, Rule, RuleTrait, ALL_AXIOMS, ALL_CORE_RULES,
+};
 use crate::introspective_calculus::raw_proofs_ext::ALL_AXIOM_SCHEMAS;
 use crate::introspective_calculus::solver_pool::{Goal, ALL_PROOF_SCRIPTS, GLOBAL_SOLVER};
 use crate::introspective_calculus::{
@@ -53,6 +56,10 @@ pub struct BySpecializingWithPremises<'a> {
     pub premise_proofs: &'a [Proof],
 }
 #[derive(Copy, Clone)]
+pub struct BySpecializingAnyCoreRule<'a> {
+    pub premise_proofs: &'a [Proof],
+}
+#[derive(Copy, Clone)]
 pub struct ByAxiomSchema;
 #[derive(Copy, Clone)]
 pub struct BySpecializingAxiom;
@@ -82,6 +89,24 @@ pub struct ByInternalIndistinguishability {
 impl FormulaProver for ByAssumingIt {
     fn try_prove(&self, formula: RWMFormula) -> Result<Proof, String> {
         Ok(Proof::by_premise(formula))
+    }
+}
+
+impl FormulaProver for BySpecializingAnyCoreRule<'_> {
+    fn try_prove(&self, formula: RWMFormula) -> Result<Proof, String> {
+        for rule in &*ALL_CORE_RULES {
+            if let Ok(proof) = formula.try_prove(BySpecializingWithPremises {
+                proof_to_specialize: &rule.to_proof(),
+                premise_proofs: self.premise_proofs,
+            }) {
+                return Ok(proof);
+            }
+        }
+        let inference = Inference::new(
+            self.premise_proofs.iter().map(|p| p.conclusion()).collect(),
+            formula,
+        );
+        Err(format!("No core rule matched {inference}"))
     }
 }
 
