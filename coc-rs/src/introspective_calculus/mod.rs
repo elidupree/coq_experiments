@@ -37,6 +37,7 @@ use std::fmt::Debug;
 use hash_capsule::HashCapsule;
 use itertools::Itertools;
 use live_prop_test::live_prop_test;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::hash::Hash;
@@ -61,13 +62,13 @@ pub enum AbstractionKind {
     ForAll,
 }
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Default)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub struct Formula(HashCapsule<FormulaWithMetadata>);
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Default)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub struct RWMFormula(Formula);
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Default)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub struct RawFormula(Formula);
 
 impl Deref for Formula {
@@ -161,6 +162,8 @@ pub trait FormulaTrait:
     + Ord
     + Debug
     + Default
+    + Serialize
+    + DeserializeOwned
     + ToFormula
     + TryFrom<Formula>
     + Into<Formula>
@@ -174,7 +177,7 @@ pub trait FormulaTrait:
 impl FormulaTrait for Formula {}
 impl FormulaTrait for RWMFormula {}
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize)]
 pub enum FormulaRawness {
     #[default]
     Raw,
@@ -184,13 +187,13 @@ pub enum FormulaRawness {
     },
 }
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize)]
 pub struct FormulaWithMetadata {
     value: FormulaValue,
     rawness: FormulaRawness,
 }
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub enum FormulaValue {
     Atom(Atom),
     Apply([Formula; 2]),

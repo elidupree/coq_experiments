@@ -1,3 +1,4 @@
+use crate::display::DisplayItem;
 use crate::ic;
 use crate::introspective_calculus::{Formula, ToFormula};
 use crate::introspective_calculus::{ProofLineParser, RWMFormula};
@@ -79,13 +80,17 @@ impl Display for Inference {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if let Some((last, rest)) = self.premises.split_last() {
             for premise in rest {
-                premise.fmt(f)?;
+                premise.to_display_item(false).display_one_liner().fmt(f)?;
                 ", ".fmt(f)?;
             }
-            last.fmt(f)?;
+            last.to_display_item(false).display_one_liner().fmt(f)?;
             " ".fmt(f)?;
         }
-        write!(f, "|- {}", self.conclusion)
+        write!(
+            f,
+            "|- {}",
+            self.conclusion.to_display_item(false).display_one_liner()
+        )
     }
 }
 

@@ -57,7 +57,8 @@ impl ProofBucket {
                 );
                 // note: at this point it's theoretically possible that a messy proof used itself as a premise, which would mean there is already an entry. if that's true then we don't want to overwrite it with the current one, or write to the savefile.
                 self.proofs.entry(goal).or_insert_with(|| {
-                    serde_json::to_writer(writer, &line).unwrap();
+                    serde_json::to_writer(&mut *writer, &line).unwrap();
+                    writeln!(writer).unwrap();
                     proof.clone()
                 });
             }

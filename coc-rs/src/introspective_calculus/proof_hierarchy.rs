@@ -14,27 +14,28 @@ use crate::introspective_calculus::{Formula, RWMFormula, RawFormula, Substitutio
 use crate::{formula, ic, substitutions};
 use hash_capsule::HashCapsule;
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
 use std::iter::zip;
 use std::ops::Deref;
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub struct Proof(HashCapsule<ProofInner>);
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub struct ProofInner {
     derivation: ProofDerivation,
     premises_cache: BTreeSet<RWMFormula>,
 }
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub enum ProofDerivation {
     Premise(RWMFormula),
     Rule(ProofByRule),
 }
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub struct ProofByRule {
     pub rule_instance: RuleInstance,
     pub premise_proofs: Vec<Proof>,
@@ -765,11 +766,10 @@ impl Proof {
                         // let internal_premise_providers = internal_premise_providers
                         //     .map(|p| p.weaken_to(self.what_was_proved().conclusion.weakness_level()));
                         match internal_premise_providers.len() {
-                            0 => {
-                                panic!(
-                                    "this should have been represented as WithoutPremises instead"
-                                )
-                            }
+                            0 => goal.prove(ByScriptWithPremises(
+                                "inject_tautology_under_hypothetical",
+                                &[self.clone()],
+                            )),
                             1 => {
                                 // we have a proof of P -> A (the premise), and another of A -> B (the rule)
                                 let rule_implication =
@@ -783,7 +783,7 @@ impl Proof {
                                 ))
                             }
                             2 => {
-                                // we have a proof of P -> (A = B) and another of P -> (B = C)
+                                // the only binary rule is eq_trans, so we have a proof of P -> (A = B) and another of P -> (B = C)
                                 goal.prove(ByScriptWithPremises(
                                     "eq_trans_under_hypothetical",
                                     &[
@@ -805,7 +805,7 @@ impl Proof {
             }
         };
         // let result = result.weaken_to(inference.conclusion.weakness_level.clone());
-        assert_eq!(result.conclusion(), goal.formula());
+        assert_eq!(*result, goal);
         result
     }
 

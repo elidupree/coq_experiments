@@ -1,3 +1,5 @@
+pub mod serialization;
+
 use internment::ArcIntern;
 use siphasher::sip128::{Hasher128, SipHasher};
 use std::cell::Cell;
@@ -9,8 +11,13 @@ use std::ptr;
 
 /// Like Arc<T> but it's interned and always compares eq/ord/etc by its hash,
 /// especially intended for things that would otherwise get exponential in naive size
-#[derive(Clone)]
 pub struct HashCapsule<T: Eq + Hash + Send + Sync + 'static>(ArcIntern<HashCapsuleInner<T>>);
+
+impl<T: Eq + Hash + Send + Sync + 'static> Clone for HashCapsule<T> {
+    fn clone(&self) -> Self {
+        HashCapsule(self.0.clone())
+    }
+}
 
 pub struct HashCapsuleInner<T> {
     hash: u128,

@@ -11,16 +11,22 @@ use coc_rs::introspective_calculus::{
 // use coc_rs::utils::{read_json_file, write_json_file};
 use actix_web::rt::time::sleep;
 use ai_framework::time_sharing::WorkResult;
+use coc_rs::introspective_calculus::proof_hierarchy::Proof;
 use coc_rs::introspective_calculus::solver_pool::{Goal, ALL_PROOF_SCRIPTS, GLOBAL_SOLVER};
+use hash_capsule::serialization::{deserialize_file_with_hash_capsules, IncrementalSerializer};
 use html_node::{html, text, Node};
 use quick_and_dirty_web_gui::{callback, callback_with};
 use serde::de::DeserializeOwned;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::fs::File;
+use std::io::{BufWriter, Write};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 struct Interface {
     file_path: String,
+    proof_serializer: IncrementalSerializer<Proof>,
+    proof_cache_file: BufWriter<File>,
     theorems: Vec<Formula>,
     focus: Option<usize>,
     sandbox_text: String,
@@ -312,6 +318,15 @@ impl Interface {
 
 static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
     let args = Args::parse();
+
+    // if let Ok(known_proofs_iter) = deserialize_file_with_hash_capsules::<Proof>(&args.file_path) {
+    //     let known_proofs: Vec<Proof> = known_proofs_iter
+    //         // .filter_map(Result::ok)
+    //         .map(Result::unwrap)
+    //         .collect();
+    // }
+    let proof_cache_file = BufWriter::new(File::create(&args.file_path).unwrap());
+
     // let mut theorems = read_json_file::<_, Vec<Formula>>(&args.file_path).unwrap_or_default();
     let mut theorems: Vec<Formula> = Vec::new();
     for axiom in all_axioms() {
@@ -345,9 +360,19 @@ static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
         .rev()
         .map(|(name, _time)| name)
         .collect();
+
+    // {
+    //     let mut s = GLOBAL_SOLVER.lock().unwrap();
+    //     for proof in proof_bucket.proofs.values() {
+    //         s.discover_proof(proof.clone(), true);
+    //     }
+    // }
+
     Mutex::new(Interface {
         file_path: args.file_path,
-        theorems: theorems,
+        proof_serializer: Default::default(),
+        proof_cache_file,
+        theorems,
         focus: None,
         sandbox_text: "".to_string(),
         sandbox_message: "".to_string(),
@@ -358,7 +383,7 @@ static INTERFACE: LazyLock<Mutex<Interface>> = LazyLock::new(|| {
 
 fn with_interface(f: impl FnOnce(&mut Interface)) {
     let mut interface = INTERFACE.lock().unwrap();
-    f(&mut *interface);
+    f(&mut interface);
     //interface.optimize_positions();
     let start = Instant::now();
     interface.update_gui();
@@ -418,26 +443,35 @@ async fn main() {
                         WorkResult::Idle => {
                             println!("No more work to do ({steps} steps total)");
                             done = true;
+                            interface.proof_cache_file.flush().unwrap();
                             return;
                         }
                         WorkResult::StillWorking => {
                             steps += 1;
                             // println!("Did some work");
                         }
-                        WorkResult::ProducedOutput(proof) => {
+                        WorkResult::ProducedOutput(output) => {
                             // println!("Completed {proof}");
                             // println!("Completed proof");
                             assert!(!pool.has_goal(&Goal {
-                                premises: proof.premises().clone(),
-                                conclusion: proof.conclusion()
+                                premises: output.proof.premises().clone(),
+                                conclusion: output.proof.conclusion()
                             }));
-                            println!(
-                                "Completed {}",
-                                Inference::new(
-                                    proof.premises().iter().cloned().collect(),
-                                    proof.conclusion()
-                                )
-                            );
+                            if output.is_important {
+                                println!(
+                                    "Completed {}",
+                                    Inference::new(
+                                        output.proof.premises().iter().cloned().collect(),
+                                        output.proof.conclusion()
+                                    )
+                                );
+                                interface
+                                    .proof_serializer
+                                    .store(&output.proof, &mut interface.proof_cache_file)
+                                    .unwrap();
+                            } else {
+                                println!("Completed something unimportant",);
+                            }
                         }
                     }
                 }

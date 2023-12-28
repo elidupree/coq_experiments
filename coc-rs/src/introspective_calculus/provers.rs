@@ -21,10 +21,16 @@ pub trait FormulaProver {
 
 impl RWMFormula {
     pub fn try_prove(&self, prover: impl FormulaProver) -> Result<Proof, String> {
-        prover.try_prove(self.clone())
+        let result = prover.try_prove(self.clone());
+        if let Ok(p) = &result {
+            assert_eq!(p.conclusion(), *self);
+        }
+        result
     }
     pub fn prove(&self, prover: impl FormulaProver) -> Proof {
-        prover.try_prove(self.clone()).unwrap()
+        let result = prover.try_prove(self.clone()).unwrap();
+        assert_eq!(result.conclusion(), *self);
+        result
     }
 }
 

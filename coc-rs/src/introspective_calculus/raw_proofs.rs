@@ -3,6 +3,7 @@ use crate::introspective_calculus::uncurried_function::UncurriedFunctionEquivale
 use crate::introspective_calculus::{FormulaParser, RWMFormula, RawFormula, Substitutions};
 use crate::{formula, ic, inf};
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -26,7 +27,7 @@ impl Deref for RawProof {
     }
 }
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub enum CleanExternalRule {
     EqSym,
     EqTrans,
@@ -36,32 +37,32 @@ pub enum CleanExternalRule {
     SubstituteInRhs,
     SubstituteInConjunction,
 }
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub struct Axiom {
     pub specified_formula: RWMFormula,
     pub internal_form: UncurriedFunctionEquivalence,
 }
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub enum StrengtheningRule {
     StrengthenSuccessor,
 }
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub enum CleanRule {
     External(CleanExternalRule),
     Axiom(Axiom),
 }
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub enum Rule {
     Clean(CleanRule),
     Strengthening(StrengtheningRule),
 }
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub struct RuleInstance {
     pub rule: Rule,
     pub substitutions: Substitutions,
 }
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub struct RuleRawInstance(RuleInstance);
 
 impl Deref for RuleRawInstance {

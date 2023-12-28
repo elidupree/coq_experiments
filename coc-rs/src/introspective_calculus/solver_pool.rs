@@ -95,6 +95,11 @@ impl time_sharing::Worker for Box<dyn SolverWorker> {
     }
 }
 
+pub struct WorkOutput {
+    pub proof: Proof,
+    pub is_important: bool,
+}
+
 pub struct SolverPool {
     inner: SolverPoolInner,
     sharer: TimeSharer<Box<dyn SolverWorker>>,
@@ -136,12 +141,31 @@ struct DiscoverResult {
 }
 
 impl SolverPool {
-    pub fn do_some_work(&mut self) -> WorkResult<Proof> {
+    pub fn do_some_work(&mut self) -> WorkResult<WorkOutput> {
         let result = self.sharer.do_some_work(&mut self.inner);
-        if let WorkResult::ProducedOutput(proof) = &result {
-            self.discover_proof(proof.clone(), false);
+        match result {
+            WorkResult::ProducedOutput(proof) => {
+                // (it could be None if we're generating unfoldings / making synthetic truths rather than solving goals)
+                let mut solves_any_goal = false;
+                if let Some(c) = self.inner.goals.by_conclusion.get_mut(&proof.conclusion()) {
+                    let before = c.by_premises.len();
+                    c.by_premises
+                        .retain(|premises, _info| !proof.premises().is_subset(premises));
+                    if c.by_premises.len() < before {
+                        solves_any_goal = true;
+                    }
+                }
+                let is_important = solves_any_goal;
+
+                self.discover_proof(proof.clone(), is_important);
+                WorkResult::ProducedOutput(WorkOutput {
+                    proof: proof.clone(),
+                    is_important,
+                })
+            }
+            WorkResult::Idle => WorkResult::Idle,
+            WorkResult::StillWorking => WorkResult::StillWorking,
         }
-        result
     }
 
     pub fn add_goal(&mut self, goal: Goal) {
@@ -157,20 +181,9 @@ impl SolverPool {
         self.inner.add_goal(goal);
     }
 
-    pub fn discover_proof(&mut self, proof: Proof, known_important: bool) {
+    pub fn discover_proof(&mut self, proof: Proof, is_important: bool) {
         //TODO: update bootstrapped-ness
 
-        // (it could be None if we're generating unfoldings / making synthetic truths rather than solving goals)
-        let mut solves_any_goal = false;
-        if let Some(c) = self.inner.goals.by_conclusion.get_mut(&proof.conclusion()) {
-            let before = c.by_premises.len();
-            c.by_premises
-                .retain(|premises, _info| !proof.premises().is_subset(premises));
-            if c.by_premises.len() < before {
-                solves_any_goal = true;
-            }
-        }
-        let is_important = known_important || solves_any_goal;
         // dbg!(proof.conclusion(), proof.premises());
         self.sharer
             .wake(&GlobalSolverId::TrySpecializingProvenInferences);

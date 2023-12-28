@@ -29,8 +29,14 @@ pub trait DisplayItem {
     fn display(&self) -> Box<dyn Display + '_> {
         Box::new(DisplayDisplayItem(self))
     }
-    fn to_string(&self) -> String {
+    fn display_one_liner(&self) -> Box<dyn Display + '_> {
+        Box::new(DisplayNoSplitDisplayItem(self))
+    }
+    fn display_to_string(&self) -> String {
         self.display().to_string()
+    }
+    fn to_one_liner_string(&self) -> String {
+        self.display_one_liner().to_string()
     }
 }
 
@@ -39,6 +45,14 @@ pub struct DisplayDisplayItem<'a, T: ?Sized>(&'a T);
 impl<'a, T: DisplayItem + ?Sized> Display for DisplayDisplayItem<'a, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         self.0.display_with_splits_if_needed(80, 2, f)
+    }
+}
+
+pub struct DisplayNoSplitDisplayItem<'a, T: ?Sized>(&'a T);
+
+impl<'a, T: DisplayItem + ?Sized> Display for DisplayNoSplitDisplayItem<'a, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.0.try_display(f, DisplayAttemptKind::OneLiner)
     }
 }
 

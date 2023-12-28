@@ -6,6 +6,7 @@ use crate::introspective_calculus::{Formula, RWMFormula, RWMFormulaValue, RawFor
 use crate::{formula, ic};
 use hash_capsule::HashCapsule;
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::iter::zip;
@@ -56,7 +57,7 @@ impl FromIterator<UncurriedFunction> for UncurriedPairChain {
 //     pub fn tail(&self) -> GeneralizedArgumentList {}
 // }
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub struct UncurriedFunction(HashCapsule<UncurriedFunctionInner>);
 impl Deref for UncurriedFunction {
     type Target = UncurriedFunctionInner;
@@ -71,13 +72,13 @@ impl Default for UncurriedFunction {
     }
 }
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub struct UncurriedFunctionInner {
     value: UncurriedFunctionValue,
     formula_cache: RawFormula,
 }
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub enum UncurriedFunctionValue {
     Constant(RawFormula),
     Apply([UncurriedFunction; 2]),
@@ -89,7 +90,7 @@ impl From<UncurriedFunctionValue> for UncurriedFunction {
         UncurriedFunction::new(value)
     }
 }
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub struct UncurriedFunctionEquivalence {
     pub sides: [UncurriedFunction; 2],
 }

@@ -1,13 +1,46 @@
-use coc_rs::introspective_calculus::proof_hierarchy::InferenceAsEquivalence;
+use coc_rs::introspective_calculus::proof_hierarchy::{InferenceAsEquivalence, Proof};
 use coc_rs::introspective_calculus::provers::{
     ByAssumingIt, BySpecializingAxiom, BySpecializingWithPremises, ByUnfolding,
 };
 use coc_rs::introspective_calculus::raw_proofs::{Axiom, CleanExternalRule, Rule, RuleTrait};
 use coc_rs::introspective_calculus::raw_proofs_ext::ALL_AXIOM_SCHEMAS;
+use coc_rs::introspective_calculus::solver_pool::GLOBAL_SOLVER;
 use coc_rs::{formula, inf};
+use hash_capsule::serialization::deserialize_file_with_hash_capsules;
 use itertools::Itertools;
 
 fn main() {
+    if let Ok(known_proofs_iter) =
+        deserialize_file_with_hash_capsules::<Proof>("./data/cached_proofs")
+    {
+        let known_proofs: Vec<Proof> = known_proofs_iter
+            // .filter_map(Result::ok)
+            .map(Result::unwrap)
+            .collect();
+        dbg!(known_proofs.len());
+        for proof in &known_proofs {
+            GLOBAL_SOLVER
+                .lock()
+                .unwrap()
+                .discover_proof(proof.clone(), true);
+        }
+        for proof in &known_proofs {
+            let internal_implication = proof
+                .premises_to_internal_implication(&proof.premises().iter().cloned().collect_vec());
+            let fully_internal = internal_implication
+                .proof()
+                .variables_to_internalized_argument_list(
+                    &internal_implication
+                        .proof()
+                        .to_goal()
+                        .in_arbitrary_order()
+                        .free_metavariables()
+                        .into_iter()
+                        .collect_vec(),
+                );
+        }
+    }
+
     let a = formula!("(l=>((const A) l = (const B) l)) = (l=>((const C) l = (const D) l))")
         .prove(ByAssumingIt);
     formula!("(l=>(((const A) l,(const E) l)=((const B) l,(const F) l))) = (l=>(((const C) l,(const E) l)=((const D) l,(const F) l)))").to_rwm().prove(BySpecializingWithPremises{proof_to_specialize: &Rule::from(CleanExternalRule::SubstituteInConjunction).to_proof(), premise_proofs: &[a] });

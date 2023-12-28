@@ -118,7 +118,7 @@ impl Command {
             &result,
             "Roundtrip mismatch with generated text:\n    {text}"
         );
-        let text = self.to_display_item().to_string();
+        let text = self.to_display_item().display_to_string();
         let result = CommandParser::new().parse(&text).map_err(|e| {
             format!("Failed parsing generated text:\n    {text}\nWith error:\n    {e}")
         })?;
