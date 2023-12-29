@@ -76,6 +76,8 @@ pub struct ByUnfolding;
 #[derive(Copy, Clone)]
 pub struct ByGeneralizedUnfolding;
 #[derive(Copy, Clone)]
+pub struct ByExtensionality;
+#[derive(Copy, Clone)]
 pub struct BySubstitutingWith<'a>(pub &'a [Proof]);
 #[derive(Copy, Clone)]
 pub struct ByScriptNamed<'a>(pub &'a str);
@@ -170,11 +172,9 @@ impl FormulaProver for BySpecializingWithPremises<'_> {
             .proof_to_specialize
             .specialize(&substitutions)
             .satisfy_premises_with(
-                &self
-                    .premise_proofs
-                    .iter()
-                    .map(|premise_proof| premise_proof.specialize(&substitutions))
-                    .collect_vec(),
+                &self.premise_proofs, // .iter()
+                                      // .map(|premise_proof| premise_proof.specialize(&substitutions))
+                                      // .collect_vec(),
             ))
     }
 }
@@ -230,6 +230,20 @@ impl FormulaProver for ByGeneralizedUnfolding {
             .as_eq_sides()
             .unwrap()
             .map(|s| s.generalized_unfold_up_to_n_subformulas_proof(100));
+        Proof::eq_trans_chain(&[a, b.flip_conclusion()])
+    }
+}
+
+impl FormulaProver for ByExtensionality {
+    fn try_prove(&self, formula: RWMFormula) -> Result<Proof, String> {
+        // TODO: be more efficient I guess?
+        // TODO fix duplicate code ID 39483029345
+        let [a, b] = formula.as_eq_sides().unwrap().map(|s| {
+            s.convert_up_to_n_subformulas_proof(
+                RWMFormula::extensional_canonicalization_here_proof,
+                1000,
+            )
+        });
         Proof::eq_trans_chain(&[a, b.flip_conclusion()])
     }
 }
@@ -333,13 +347,16 @@ impl FormulaProver for ByScriptWithPremises<'_> {
         let script = ALL_PROOF_SCRIPTS
             .get(self.0)
             .ok_or_else(|| format!("no script named `{}`", self.0))?;
+        let goal = Goal {
+            premises: script.premises.iter().map(Formula::to_rwm).collect(),
+            conclusion: script.conclusions.last().unwrap().to_rwm(),
+        };
         let script_conclusion = GLOBAL_SOLVER
             .try_lock()
             .map_err(|_| "reentrant proof!".to_string())?
-            .solve(&Goal {
-                premises: script.premises.iter().map(Formula::to_rwm).collect(),
-                conclusion: script.conclusions.last().unwrap().to_rwm(),
-            });
+            // .solve(&goal);
+            .get_existing_proof(&goal)
+            .unwrap();
         formula.try_prove(BySpecializingWithPremises {
             proof_to_specialize: &script_conclusion,
             premise_proofs: self.1,

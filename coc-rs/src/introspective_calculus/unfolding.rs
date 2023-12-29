@@ -76,6 +76,30 @@ impl RWMFormula {
         None
     }
 
+    pub fn convert_one_subformula_smallest_proof(
+        &self,
+        convert_here: impl Copy + Fn(&Self) -> Option<Proof>,
+    ) -> Option<Proof> {
+        let mut results = Vec::new();
+        if let Some(result) = convert_here(self) {
+            results.push(result);
+        }
+        if let RWMFormulaValue::Apply([l, r]) = self.value() {
+            if let Some(subresult) = l.convert_any_one_subformula_proof(convert_here) {
+                let [a, b] = subresult.conclusion().as_eq_sides().unwrap();
+                results.push(ic!((a r) = (b r)).prove(BySubstitutingWith(&[subresult])));
+            }
+            if let Some(subresult) = r.convert_any_one_subformula_proof(convert_here) {
+                let [a, b] = subresult.conclusion().as_eq_sides().unwrap();
+                results.push(ic!((l a) = (l b)).prove(BySubstitutingWith(&[subresult])));
+            }
+        }
+
+        results
+            .into_iter()
+            .min_by_key(|proof| proof.conclusion().as_eq_sides().unwrap()[1].naive_size())
+    }
+
     pub fn unfold_any_one_subformula_proof(&self) -> Option<Proof> {
         self.convert_any_one_subformula_proof(Self::unfold_here_proof)
     }
@@ -89,6 +113,22 @@ impl RWMFormula {
         for _ in 0..n {
             let Some(new_proof) = proof.conclusion().as_eq_sides().unwrap()[1]
                 .convert_any_one_subformula_proof(convert_here)
+            else {
+                return proof;
+            };
+            proof = Proof::eq_trans_chain(&[proof, new_proof]).unwrap();
+        }
+        proof
+    }
+    pub fn convert_up_to_n_subformulas_smallest_proof(
+        &self,
+        convert_here: impl Copy + Fn(&Self) -> Option<Proof>,
+        n: usize,
+    ) -> Proof {
+        let mut proof = Proof::eq_refl(self.clone());
+        for _ in 0..n {
+            let Some(new_proof) = proof.conclusion().as_eq_sides().unwrap()[1]
+                .convert_one_subformula_smallest_proof(convert_here)
             else {
                 return proof;
             };

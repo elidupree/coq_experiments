@@ -13,7 +13,7 @@ fn main() {
     if let Ok(known_proofs_iter) =
         deserialize_file_with_hash_capsules::<Proof>("./data/cached_proofs")
     {
-        let known_proofs: Vec<Proof> = known_proofs_iter
+        let mut known_proofs: Vec<Proof> = known_proofs_iter
             // .filter_map(Result::ok)
             .map(Result::unwrap)
             .collect();
@@ -24,9 +24,12 @@ fn main() {
                 .unwrap()
                 .discover_proof(proof.clone(), true);
         }
+        known_proofs.sort_by_key(|p| dbg!(p.naive_size()));
         for proof in &known_proofs {
+            dbg!(proof.to_goal());
             let internal_implication = proof
                 .premises_to_internal_implication(&proof.premises().iter().cloned().collect_vec());
+            dbg!(proof.to_goal());
             let fully_internal = internal_implication
                 .proof()
                 .variables_to_internalized_argument_list(
@@ -38,6 +41,7 @@ fn main() {
                         .into_iter()
                         .collect_vec(),
                 );
+            dbg!(proof.to_goal());
         }
     }
 

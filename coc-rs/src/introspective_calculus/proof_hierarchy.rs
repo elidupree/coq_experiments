@@ -1,8 +1,8 @@
 use crate::introspective_calculus::inference::Inference;
 use crate::introspective_calculus::provers::{
-    ByAssumingIt, ByAxiomSchema, ByConvertingBothSides, ByGeneralizedUnfolding,
+    ByAssumingIt, ByAxiomSchema, ByConvertingBothSides, ByExtensionality, ByGeneralizedUnfolding,
     ByInternalIndistinguishability, ByPartiallySpecializingAxiom, ByScriptNamed,
-    ByScriptWithPremises, BySubstitutingWith, ByUnfolding, FormulaProver,
+    ByScriptWithPremises, BySpecializingAxiom, BySubstitutingWith, ByUnfolding, FormulaProver,
 };
 use crate::introspective_calculus::raw_proofs::{
     CleanExternalRule, CleanRule, RawProof, Rule, RuleInstance, StrengtheningRule,
@@ -15,7 +15,7 @@ use crate::{formula, ic, substitutions};
 use hash_capsule::HashCapsule;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::{Display, Formatter};
 use std::iter::zip;
 use std::ops::Deref;
@@ -148,6 +148,12 @@ impl Proof {
     }
 
     pub fn to_raw(&self) -> RawProof {
+        self.to_raw_impl(&mut Default::default())
+    }
+    pub fn to_raw_impl(&self, results_cache: &mut HashMap<Proof, RawProof>) -> RawProof {
+        if let Some(result) = results_cache.get(self) {
+            return result.clone();
+        }
         assert!(
             self.premises().is_empty(),
             "can only use Proof::to_raw() when there's no premises"
@@ -160,15 +166,45 @@ impl Proof {
             unreachable!()
         };
 
-        RawProof::new(
+        let result = RawProof::new(
             proof.rule_instance.clone().assume_raw(),
-            proof.premise_proofs.iter().map(Proof::to_raw).collect(),
+            proof
+                .premise_proofs
+                .iter()
+                .map(|p| p.to_raw_impl(results_cache))
+                .collect(),
         )
-        .unwrap()
+        .unwrap();
+        results_cache.insert(self.clone(), result.clone());
+        result
     }
 
     pub fn specialize(&self, arguments: &Substitutions) -> Proof {
-        match &self.derivation {
+        // use crate::introspective_calculus::solver_pool::Goal;
+        // use std::cell::RefCell;
+        // use std::collections::HashSet;
+        // thread_local! {static PROOFS_SPECIALIZED: RefCell<HashSet<Goal>> = RefCell::new(HashSet::new());}
+        // if PROOFS_SPECIALIZED.with(|g| g.borrow_mut().insert(self.to_goal())) {
+        //     dbg!(
+        //         PROOFS_SPECIALIZED.with(|g| g.borrow().len()),
+        //         self.to_goal()
+        //     );
+        //     if PROOFS_SPECIALIZED.with(|g| g.borrow().len()) > 30 {
+        //         panic!()
+        //     }
+        // }
+        self.specialize_impl(arguments, &mut Default::default())
+    }
+    pub fn specialize_impl(
+        &self,
+        arguments: &Substitutions,
+        results_cache: &mut HashMap<Proof, Proof>,
+    ) -> Proof {
+        if let Some(result) = results_cache.get(self) {
+            return result.clone();
+        }
+
+        let result = match &self.derivation {
             ProofDerivation::Premise(premise) => {
                 Proof::by_premise(premise.with_metavariables_replaced_rwm(arguments))
             }
@@ -177,15 +213,28 @@ impl Proof {
                 proof
                     .premise_proofs
                     .iter()
-                    .map(|p| p.specialize(arguments))
+                    .map(|p| p.specialize_impl(arguments, results_cache))
                     .collect(),
             )
             .unwrap(),
-        }
+        };
+        results_cache.insert(self.clone(), result.clone());
+        result
     }
 
     pub fn satisfy_premises_with(&self, premise_proofs: &[Proof]) -> Proof {
-        match &self.derivation {
+        self.satisfy_premises_with_impl(premise_proofs, &mut Default::default())
+    }
+    pub fn satisfy_premises_with_impl(
+        &self,
+        premise_proofs: &[Proof],
+        results_cache: &mut HashMap<Proof, Proof>,
+    ) -> Proof {
+        if let Some(result) = results_cache.get(self) {
+            return result.clone();
+        }
+
+        let result = match &self.derivation {
             ProofDerivation::Premise(p) => {
                 for premise_proof in premise_proofs {
                     if p == &premise_proof.conclusion() {
@@ -199,11 +248,13 @@ impl Proof {
                 proof
                     .premise_proofs
                     .iter()
-                    .map(|p| p.satisfy_premises_with(premise_proofs))
+                    .map(|p| p.satisfy_premises_with_impl(premise_proofs, results_cache))
                     .collect(),
             )
             .unwrap(),
-        }
+        };
+        results_cache.insert(self.clone(), result.clone());
+        result
     }
 
     pub fn use_externally(
@@ -237,17 +288,32 @@ impl Proof {
         &self,
         argument_order: &[String],
     ) -> Proven<UncurriedFunctionEquivalence> {
+        self.variables_to_internalized_argument_list_impl(argument_order, &mut Default::default())
+    }
+    pub fn variables_to_internalized_argument_list_impl(
+        &self,
+        argument_order: &[String],
+        results_cache: &mut HashMap<Proof, Proven<UncurriedFunctionEquivalence>>,
+    ) -> Proven<UncurriedFunctionEquivalence> {
+        if let Some(result) = results_cache.get(self) {
+            return result.clone();
+        }
         let conclusion = self
             .conclusion()
             .to_uncurried_function_equivalence(argument_order)
             .unwrap();
-        match &self.derivation {
+        let result = match &self.derivation {
             ProofDerivation::Premise(_) => conclusion.prove(ByAssumingIt),
             ProofDerivation::Rule(proof) => {
                 let premise_proofs: Vec<Proven<UncurriedFunctionEquivalence>> = proof
                     .premise_proofs
                     .iter()
-                    .map(|p| p.variables_to_internalized_argument_list(argument_order))
+                    .map(|p| {
+                        p.variables_to_internalized_argument_list_impl(
+                            argument_order,
+                            results_cache,
+                        )
+                    })
                     .collect();
 
                 match &proof.rule_instance.rule {
@@ -259,6 +325,9 @@ impl Proof {
                         }
                         CleanExternalRule::DefinitionOfConst
                         | CleanExternalRule::DefinitionOfFuse => {
+                            // dbg!(self.to_goal());
+                            // dbg!(self.conclusion());
+                            // eprintln!("{conclusion}");
                             conclusion.prove(ByPartiallySpecializingAxiom)
                         }
                         CleanExternalRule::SubstituteInLhs | CleanExternalRule::SubstituteInRhs => {
@@ -283,10 +352,10 @@ impl Proof {
                             let pairify = |eq: &UncurriedFunctionEquivalence| {
                                 eq.sides.each_ref().map(|s| batch(s.formula()))
                             };
-                            let [x, y] = pairify(&premise_proofs[1].formula);
+                            let [x, y] = pairify(&premise_proofs[0].formula);
                             let [z, w] = pairify(&conclusion);
                             let adapted_premise = ic!(x = y)
-                                .prove(BySubstitutingWith(&[premise_proofs[1].proof().clone()]));
+                                .prove(BySubstitutingWith(&[premise_proofs[0].proof().clone()]));
                             let rule_instance =
                                 Rule::from(CleanExternalRule::SubstituteInConjunction).specialize(
                                     proof
@@ -323,9 +392,18 @@ impl Proof {
                     },
                     Rule::Clean(CleanRule::Axiom(axiom)) => {
                         // The axiom guarantees a=b, and
-                        // since these are raw formulas, only one value of `conclusion` is possible: const a = const b
+                        // since these are raw formulas, only one value of `conclusion` is possible, and it's extensionally equal to const a = const b
                         //assert_eq!(todo(()),todo(()));
-                        conclusion.prove(BySubstitutingWith(&[axiom.proof().proof().clone()]))
+                        let [a, b] = axiom.internal_form.sides.each_ref().map(|s| s.formula());
+                        let [cca, ccb] = conclusion.formula().as_eq_sides().unwrap();
+                        let cca_ca = ic!(cca = (const a)).prove(ByExtensionality);
+                        let ca_cb = ic!((const a) = (const b))
+                            .prove(BySubstitutingWith(&[axiom.proof().proof().clone()]));
+                        let cb_ccb = ic!((const b) = ccb).prove(ByExtensionality);
+                        Proven::new(
+                            conclusion,
+                            Proof::eq_trans_chain(&[cca_ca, ca_cb, cb_ccb]).unwrap(),
+                        )
                     }
                     Rule::Strengthening(s) => match s {
                         StrengtheningRule::StrengthenSuccessor => {
@@ -344,7 +422,9 @@ impl Proof {
                     },
                 }
             }
-        }
+        };
+        results_cache.insert(self.clone(), result.clone());
+        result
     }
 
     pub fn eq_refl(a: RWMFormula) -> Proof {
@@ -386,6 +466,23 @@ impl Proof {
             .unwrap()
         }
         Ok(result)
+    }
+
+    pub fn naive_size(&self) -> usize {
+        match &self.derivation {
+            ProofDerivation::Premise(p) => p.naive_size(),
+            ProofDerivation::Rule(r) => {
+                r.rule_instance.conclusion().naive_size()
+                    + r.rule_instance
+                        .premises()
+                        .map(|f| f.naive_size())
+                        .sum::<usize>()
+                    + r.premise_proofs
+                        .iter()
+                        .map(Proof::naive_size)
+                        .sum::<usize>()
+            }
+        }
     }
 }
 
@@ -704,6 +801,17 @@ impl Proof {
         &self,
         premise_order: &[RWMFormula],
     ) -> Proven<InferenceAsEquivalence> {
+        self.premises_to_internal_implication_impl(premise_order, &mut Default::default())
+    }
+    pub fn premises_to_internal_implication_impl(
+        &self,
+        premise_order: &[RWMFormula],
+        results_cache: &mut HashMap<Proof, Proven<InferenceAsEquivalence>>,
+    ) -> Proven<InferenceAsEquivalence> {
+        if let Some(result) = results_cache.get(self) {
+            return result.clone();
+        }
+
         for premise in self.premises() {
             assert!(premise_order.contains(premise));
         }
@@ -760,7 +868,7 @@ impl Proof {
                 let mut internal_premise_providers = proof
                     .premise_proofs
                     .iter()
-                    .map(|p| p.premises_to_internal_implication(premise_order));
+                    .map(|p| p.premises_to_internal_implication_impl(premise_order, results_cache));
                 match &proof.rule_instance.rule {
                     Rule::Clean(rule) => {
                         // let internal_premise_providers = internal_premise_providers
@@ -772,14 +880,30 @@ impl Proof {
                             )),
                             1 => {
                                 // we have a proof of P -> A (the premise), and another of A -> B (the rule)
+                                // let rule_implication =
+                                //     rule.premises_to_internal_implication(&proof.rule_instance);
+                                // goal.prove(ByScriptWithPremises(
+                                //     "imp_trans",
+                                //     &[
+                                //         internal_premise_providers.next().unwrap().proof().clone(),
+                                //         rule_implication.proof().clone(),
+                                //     ],
+                                // ))
+                                let premise_provider = internal_premise_providers.next().unwrap();
                                 let rule_implication =
-                                    rule.premises_to_internal_implication(&proof.rule_instance);
+                                    ic!({premise_provider.conclusion()} -> {self.conclusion()});
+                                let rule_implication = if matches!(
+                                    rule,
+                                    CleanRule::External(CleanExternalRule::SubstituteInLhs)
+                                ) {
+                                    // dbg!(&rule_implication);
+                                    rule_implication.prove(ByScriptNamed("internal_specialization"))
+                                } else {
+                                    rule_implication.prove(BySpecializingAxiom)
+                                };
                                 goal.prove(ByScriptWithPremises(
                                     "imp_trans",
-                                    &[
-                                        internal_premise_providers.next().unwrap().proof().clone(),
-                                        rule_implication.proof().clone(),
-                                    ],
+                                    &[premise_provider.proof().clone(), rule_implication],
                                 ))
                             }
                             2 => {
@@ -806,6 +930,7 @@ impl Proof {
         };
         // let result = result.weaken_to(inference.conclusion.weakness_level.clone());
         assert_eq!(*result, goal);
+        results_cache.insert(self.clone(), result.clone());
         result
     }
 

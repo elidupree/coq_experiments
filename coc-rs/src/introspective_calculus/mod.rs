@@ -27,7 +27,7 @@ mod lalrpop_wrapper {
 pub use self::lalrpop_wrapper::introspective_calculus::{
     ExplicitRuleParser, FormulaParser, InferenceParser, NamedInferenceParser, ProofLineParser,
 };
-use std::collections::{btree_map, BTreeMap};
+use std::collections::{btree_map, BTreeMap, HashMap};
 use std::fmt::Debug;
 // use crate::introspective_calculus::metavariable_conversions::MetavariablesInjectionContext;
 // use crate::metavariable::Environment;
@@ -270,7 +270,7 @@ macro_rules! ic {
         $crate::introspective_calculus::Formula::equals([ic!($l), ic!($r)])
     };
     ($l:tt -> $r:tt) => {
-        $crate::introspective_calculus::Formula::implies([ic!($l), ic!($r)])
+        $crate::introspective_calculus::Formula::implies([ic!($l), ic!($r)]).unwrap()
     };
     ($l:tt,) => {
         $crate::introspective_calculus::Formula::tuple(vec![ic!($l)])
@@ -729,7 +729,16 @@ impl RWMFormula {
     }
 
     pub fn with_metavariables_replaced_rwm(&self, replacements: &Substitutions) -> RWMFormula {
-        match &self.value {
+        // use std::cell::RefCell;
+        // thread_local! {static RESULTS_CACHE:RefCell<HashMap<(RWMFormula, Substitutions), RWMFormula>> = RefCell::new(HashMap::new());}
+        //
+        // let key = (self.clone(), replacements.clone());
+        // if let Some(result) =
+        //     RESULTS_CACHE.with(|results_cache| results_cache.borrow().get(&key).cloned())
+        // {
+        //     return result;
+        // }
+        let result = match &self.value {
             FormulaValue::Metavariable(n) => {
                 if let Some(replacement) = replacements.get(n) {
                     replacement.clone()
@@ -738,7 +747,10 @@ impl RWMFormula {
                 }
             }
             _ => self.map_children_rwm(|f| f.with_metavariables_replaced_rwm(replacements)),
-        }
+        };
+
+        // RESULTS_CACHE.with(|results_cache| results_cache.borrow_mut().insert(key, result.clone()));
+        result
     }
 }
 impl RawFormula {
@@ -1024,12 +1036,21 @@ impl Formula {
     }
 
     pub fn naive_size(&self) -> usize {
-        1 + self
+        self.naive_size_impl(&mut Default::default())
+    }
+
+    pub fn naive_size_impl(&self, results_cache: &mut HashMap<Formula, usize>) -> usize {
+        if let Some(result) = results_cache.get(self) {
+            return result.clone();
+        }
+        let result = 1 + self
             .as_raw_with_metavariables()
             .children()
             .into_iter()
-            .map(Formula::naive_size)
-            .sum::<usize>()
+            .map(|f| f.naive_size_impl(results_cache))
+            .sum::<usize>();
+        results_cache.insert(self.clone(), result.clone());
+        result
     }
 
     // pub fn left_atom(&self) -> Atom {

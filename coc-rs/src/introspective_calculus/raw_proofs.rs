@@ -249,11 +249,7 @@ pub static ALL_AXIOMS: LazyLock<Vec<Axiom>> = LazyLock::new(|| {
             .into_iter()
             .map(|rule| {
                 let inf = rule.inference();
-                Axiom::new(
-                    ic!({inf.premises.first().unwrap()} -> {inf.conclusion})
-                        .unwrap()
-                        .to_rwm(),
-                )
+                Axiom::new(ic!({inf.premises.first().unwrap()} -> {inf.conclusion}).to_rwm())
             }),
         )
         .collect()

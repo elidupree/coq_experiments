@@ -33,10 +33,9 @@ impl time_sharing::Worker for SingleFormulaWorker {
         pool: &mut Self::Workpiece,
         context: &mut time_sharing::WorkContext,
     ) -> WorkResult<Self::Output> {
-        if let Some(proof) = self
-            .current_formula
-            .convert_any_one_subformula_proof(RWMFormula::extensional_canonicalization_here_proof)
-        {
+        if let Some(proof) = self.current_formula.convert_one_subformula_smallest_proof(
+            RWMFormula::extensional_canonicalization_here_proof,
+        ) {
             let [a, b] = proof.conclusion().as_eq_sides().unwrap();
             assert_eq!(a, self.current_formula);
             let is_fresh = pool.unfolding_visited.insert(b.clone());

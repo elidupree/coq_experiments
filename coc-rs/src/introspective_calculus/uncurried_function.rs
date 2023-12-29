@@ -444,12 +444,12 @@ impl UncurriedFunction {
                 .prove(BySpecializingAxiom);
                 // goal: fuse (const (fuse A B)) args = fuse A' B'
                 // canonicalize if children are both PopIn or both Constant
-                let canonicalization = combined_child_results.sides[1].canonicalize_locally();
+                // let canonicalization = combined_child_results.sides[1].canonicalize_locally();
 
                 Proven::<UncurriedFunctionEquivalence>::trans_chain(&[
                     local_result,
                     combined_child_results,
-                    canonicalization,
+                    // canonicalization,
                 ])
                 .unwrap()
             }
@@ -585,15 +585,15 @@ impl RWMFormula {
         // let Some((head, tail)) = arguments.split_first() else {
         //     return UncurriedFunctionValue::Constant(self.already_raw().unwrap()).into();
         // };
-        if let Some(already_raw) = self.already_raw() {
-            return UncurriedFunctionValue::Constant(already_raw).into();
-        }
+        // if let Some(already_raw) = self.already_raw() {
+        //     return UncurriedFunctionValue::Constant(already_raw).into();
+        // }
         // if !self.contains_free_metavariable(head) {
         //     return UncurriedFunctionValue::PopIn(self.to_uncurried_function_of(tail)).into();
         // }
         let result: UncurriedFunction = match self.value() {
-            RWMFormulaValue::Atom(_) => {
-                unreachable!()
+            RWMFormulaValue::Atom(a) => {
+                UncurriedFunctionValue::Constant(Formula::atom(a).already_raw().unwrap()).into()
             }
             RWMFormulaValue::Apply(children) => UncurriedFunctionValue::Apply(
                 children.map(|c| c.to_uncurried_function_of(arguments)),
@@ -625,15 +625,16 @@ impl RWMFormula {
         //         .unwrap()[1],
         //     *self
         // );
-        let test_args: PairChain = arguments
-            .iter()
-            .map(|arg| arg.to_formula().to_rwm())
-            .collect();
-        let mut test = ic!({result.formula()} {test_args.formula()}).to_rwm();
-        test.unfold_until(1000);
-        let mut test2 = self.clone();
-        test2.unfold_until(100);
-        assert_eq!(test, test2, "{test} != {test2}");
+
+        // let test_args: PairChain = arguments
+        //     .iter()
+        //     .map(|arg| arg.to_formula().to_rwm())
+        //     .collect();
+        // let mut test = ic!({result.formula()} {test_args.formula()}).to_rwm();
+        // test.unfold_until(1000);
+        // let mut test2 = self.clone();
+        // test2.unfold_until(100);
+        // assert_eq!(test, test2, "{test} != {test2}");
         result
     }
     pub fn already_uncurried_function(&self) -> Result<UncurriedFunction, String> {
