@@ -9,7 +9,6 @@ use crate::introspective_calculus::{
     Formula, RWMFormula, RWMFormulaValue, RawFormula, Substitutions,
 };
 use crate::{formula, ic, substitutions};
-use itertools::Itertools;
 use std::collections::HashSet;
 
 pub trait FormulaProver {
@@ -172,9 +171,9 @@ impl FormulaProver for BySpecializingWithPremises<'_> {
             .proof_to_specialize
             .specialize(&substitutions)
             .satisfy_premises_with(
-                &self.premise_proofs, // .iter()
-                                      // .map(|premise_proof| premise_proof.specialize(&substitutions))
-                                      // .collect_vec(),
+                self.premise_proofs, // .iter()
+                                     // .map(|premise_proof| premise_proof.specialize(&substitutions))
+                                     // .collect_vec(),
             ))
     }
 }

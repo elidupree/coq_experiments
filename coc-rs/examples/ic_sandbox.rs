@@ -42,6 +42,8 @@ fn main() {
                         .collect_vec(),
                 );
             dbg!(proof.to_goal());
+            let raw = fully_internal.proof().to_raw();
+            dbg!(proof.to_goal());
         }
     }
 

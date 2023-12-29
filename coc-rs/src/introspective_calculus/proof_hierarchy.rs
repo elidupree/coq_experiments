@@ -12,7 +12,8 @@ use crate::introspective_calculus::uncurried_function::{
 };
 use crate::introspective_calculus::{Formula, RWMFormula, RawFormula, Substitutions, ToFormula};
 use crate::{formula, ic, substitutions};
-use hash_capsule::HashCapsule;
+use hash_capsule::caching::SingleCache;
+use hash_capsule::{hash_capsule_intern, CapsuleContents, HashCapsule, HashCapsuleInner};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
@@ -28,6 +29,15 @@ pub struct ProofInner {
     derivation: ProofDerivation,
     premises_cache: BTreeSet<RWMFormula>,
 }
+hash_capsule_intern!(ProofInner);
+impl CapsuleContents for ProofInner {
+    type Caches = ProofCaches;
+}
+
+#[derive(Default)]
+pub struct ProofCaches {
+    naive_size: SingleCache<u64>,
+}
 
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub enum ProofDerivation {
@@ -42,7 +52,7 @@ pub struct ProofByRule {
 }
 
 impl Deref for Proof {
-    type Target = ProofInner;
+    type Target = HashCapsuleInner<ProofInner>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -468,21 +478,20 @@ impl Proof {
         Ok(result)
     }
 
-    pub fn naive_size(&self) -> usize {
-        match &self.derivation {
+    pub fn naive_size(&self) -> u64 {
+        self.caches.naive_size.get(|| match &self.derivation {
             ProofDerivation::Premise(p) => p.naive_size(),
             ProofDerivation::Rule(r) => {
-                r.rule_instance.conclusion().naive_size()
-                    + r.rule_instance
-                        .premises()
-                        .map(|f| f.naive_size())
-                        .sum::<usize>()
-                    + r.premise_proofs
-                        .iter()
-                        .map(Proof::naive_size)
-                        .sum::<usize>()
+                let mut result = r.rule_instance.conclusion().naive_size();
+                for f in r.rule_instance.premises() {
+                    result = result.saturating_add(f.naive_size());
+                }
+                for f in &r.premise_proofs {
+                    result = result.saturating_add(f.naive_size());
+                }
+                result
             }
-        }
+        })
     }
 }
 

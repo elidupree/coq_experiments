@@ -162,7 +162,7 @@ impl Axiom {
                     .each_ref()
                     .map(|side| side.formula().naive_size())
                     .iter()
-                    .sum::<usize>()
+                    .sum::<u64>()
             })
             .unwrap();
         Axiom {

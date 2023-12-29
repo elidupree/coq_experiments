@@ -48,7 +48,7 @@ impl Interface {
     fn formula_html(&self, formula: &Formula, parenthesis_needs: ParenthesisNeeds) -> Node {
         use ParenthesisNeeds::*;
         let mut parenthesize = false;
-        let specific = match formula.value() {
+        let specific = match &formula.value {
             FormulaValue::Atom(a) => {
                 html! {<span class="atom">{text!("{a}")}</span>}
             }
@@ -184,7 +184,7 @@ impl Interface {
         //         })
         //     }>Unfold+</button>});
         // }
-        let (name, formula) = match formula.value() {
+        let (name, formula) = match &formula.value {
             FormulaValue::NamedGlobal { name, value } => (&**name, value),
             _ => ("", formula),
         };

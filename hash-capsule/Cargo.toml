@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-internment = {version = "0.7.1", features = ["arc"]}
+#internment = {version = "0.7.1", features = ["arc"]}
 siphasher = "0.3.11"
 serde = {version = "1.0.188", features = ["derive"]}
 serde_json = "1.0.105"

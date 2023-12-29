@@ -1,12 +1,10 @@
-use crate::HashCapsule;
+use crate::{CapsuleContents, HashCapsule, HashCapsuleInner};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt::Debug;
 use std::fs::File;
-use std::hash::Hash;
 use std::io::{BufRead, BufReader};
 use std::marker::PhantomData;
 use std::path::Path;
@@ -54,17 +52,17 @@ fn with_serialization_context<R>(callback: impl FnOnce(&mut SerializationContext
     thread_local! {
         static CONTEXT: RefCell<SerializationContext> = RefCell::new(SerializationContext::default());
     }
-    CONTEXT.with(|context| callback(&mut *context.borrow_mut()))
+    CONTEXT.with(|context| callback(&mut context.borrow_mut()))
 }
 
 fn with_deserialization_context<R>(callback: impl FnOnce(&mut DeserializationContext) -> R) -> R {
     thread_local! {
         static CONTEXT: RefCell<DeserializationContext> = RefCell::new(DeserializationContext::default());
     }
-    CONTEXT.with(|context| callback(&mut *context.borrow_mut()))
+    CONTEXT.with(|context| callback(&mut context.borrow_mut()))
 }
 
-impl<T: Eq + Hash + Send + Sync + Serialize + 'static> Serialize for HashCapsule<T> {
+impl<T: CapsuleContents + Serialize> Serialize for HashCapsule<T> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -72,7 +70,7 @@ impl<T: Eq + Hash + Send + Sync + Serialize + 'static> Serialize for HashCapsule
         let (serial_number, already_serialized) = with_serialization_context(|context| {
             let serial_number = *context
                 .serial_numbers_by_object
-                .entry(&**self as *const T as *const () as usize)
+                .entry(&**self as *const HashCapsuleInner<T> as *const () as usize)
                 .or_insert_with(|| {
                     let result = context.stored_objects.len() as u64;
                     context.stored_objects.push(None);
@@ -95,9 +93,7 @@ impl<T: Eq + Hash + Send + Sync + Serialize + 'static> Serialize for HashCapsule
         serial_number.serialize(serializer)
     }
 }
-impl<'de, T: Eq + Hash + Clone + Debug + Send + Sync + DeserializeOwned + 'static> Deserialize<'de>
-    for HashCapsule<T>
-{
+impl<'de, T: CapsuleContents + DeserializeOwned> Deserialize<'de> for HashCapsule<T> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -153,7 +149,7 @@ impl<T> SerializedWithHashCapsules<T> {
         let objects = self
             .capsule_data
             .into_iter()
-            .map(|o| ObjectDeserializationState::UnknownType(o))
+            .map(ObjectDeserializationState::UnknownType)
             .collect();
         with_deserialization_context(move |context| {
             *context = DeserializationContext { objects };

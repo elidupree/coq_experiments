@@ -4,7 +4,7 @@ use crate::introspective_calculus::provers::{
 };
 use crate::introspective_calculus::{Formula, RWMFormula, RWMFormulaValue, RawFormula, ToFormula};
 use crate::{formula, ic};
-use hash_capsule::HashCapsule;
+use hash_capsule::{hash_capsule_intern, CapsuleContents, HashCapsule};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -59,6 +59,10 @@ impl FromIterator<UncurriedFunction> for UncurriedPairChain {
 
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub struct UncurriedFunction(HashCapsule<UncurriedFunctionInner>);
+hash_capsule_intern!(UncurriedFunctionInner);
+impl CapsuleContents for UncurriedFunctionInner {
+    type Caches = ();
+}
 impl Deref for UncurriedFunction {
     type Target = UncurriedFunctionInner;
 

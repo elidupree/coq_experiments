@@ -250,7 +250,7 @@ impl Inference {
             .collect()
     }
 
-    pub fn naive_size(&self) -> usize {
+    pub fn naive_size(&self) -> u64 {
         self.premises
             .iter()
             .chain(once(&self.conclusion))
