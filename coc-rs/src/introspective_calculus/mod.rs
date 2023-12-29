@@ -35,8 +35,11 @@ use std::fmt::Debug;
 // use regex::{Captures, Regex};
 // use arrayvec::ArrayVec;
 use crate::ad_hoc_lazy_static;
-use hash_capsule::caching::SingleCache;
-use hash_capsule::{hash_capsule_intern, CapsuleContents, HashCapsule, HashCapsuleInner};
+use hash_capsule::caching::{BackrefSet, CacheMap, Downgrade, SingleCache};
+use hash_capsule::{
+    hash_capsule_intern, BuildHasherForHashCapsules, CapsuleContents, HashCapsule,
+    HashCapsuleInner, HashCapsuleWeak,
+};
 use itertools::Itertools;
 use live_prop_test::live_prop_test;
 use serde::de::DeserializeOwned;
@@ -66,6 +69,9 @@ pub enum AbstractionKind {
 
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub struct Formula(HashCapsule<FormulaValue>);
+
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub struct FormulaWeak(HashCapsuleWeak<FormulaValue>);
 
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub struct RWMFormula(Formula);
@@ -201,15 +207,59 @@ pub enum FormulaRawness {
 //     rawness: FormulaRawness,
 // }
 
+impl Downgrade<FormulaWeak> for Formula {
+    fn downgrade(&self) -> FormulaWeak {
+        FormulaWeak(self.0.downgrade())
+    }
+
+    fn upgrade(weak: &FormulaWeak) -> Option<Formula> {
+        HashCapsule::upgrade(&weak.0).map(Formula)
+    }
+}
+impl Downgrade<FormulaWeak> for RWMFormula {
+    fn downgrade(&self) -> FormulaWeak {
+        self.0.downgrade()
+    }
+
+    fn upgrade(weak: &FormulaWeak) -> Option<RWMFormula> {
+        Formula::upgrade(weak).map(|f| f.to_rwm())
+    }
+}
+impl FormulaWeak {
+    pub fn upgrade(&self) -> Option<Formula> {
+        Formula::upgrade(self)
+    }
+}
 hash_capsule_intern!(FormulaValue);
 impl CapsuleContents for FormulaValue {
     type Caches = FormulaCaches;
+    fn cleanup(&mut self, self_weak: HashCapsuleWeak<FormulaValue>, caches: &mut Self::Caches) {
+        let self_weak = FormulaWeak(self_weak);
+        if let FormulaValue::Apply([a, b]) = self {
+            a.caches.applications.forget(&b.downgrade());
+        }
+        caches.substitutions.cleanup(|subs, f| {
+            if let Some(f) = f.upgrade() {
+                f.caches
+                    .substitution_backrefs
+                    .forget(&(self_weak.clone(), subs));
+            };
+        });
+        caches.substitution_backrefs.cleanup(|(f, subs)| {
+            if let Some(f) = f.upgrade() {
+                f.caches.substitutions.forget(&subs);
+            };
+        });
+    }
 }
 
 #[derive(Default)]
 pub struct FormulaCaches {
     rawness: SingleCache<FormulaRawness>,
     naive_size: SingleCache<u64>,
+    applications: CacheMap<FormulaWeak, FormulaWeak, BuildHasherForHashCapsules>,
+    substitutions: CacheMap<BTreeMap<String, FormulaWeak>, FormulaWeak>,
+    substitution_backrefs: BackrefSet<(FormulaWeak, BTreeMap<String, FormulaWeak>)>,
 }
 
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
@@ -537,7 +587,13 @@ impl Formula {
         })
     }
     pub fn apply(children: [Formula; 2]) -> Formula {
-        Formula::from(FormulaValue::Apply(children))
+        children[0]
+            .clone()
+            .caches
+            .applications
+            .get(children[1].downgrade(), || {
+                Formula::from(FormulaValue::Apply(children))
+            })
     }
     pub fn and(children: [Formula; 2]) -> Result<Formula, String> {
         for child in &children {
@@ -742,6 +798,27 @@ impl RWMFormula {
     }
 
     pub fn with_metavariables_replaced_rwm(&self, replacements: &Substitutions) -> RWMFormula {
+        let downgraded: BTreeMap<String, FormulaWeak> = replacements
+            .iter()
+            .map(|(k, v)| (k.clone(), v.downgrade()))
+            .collect();
+        let result = self
+            .caches
+            .substitutions
+            .get(downgraded.clone(), || match &self.value {
+                FormulaValue::Metavariable(n) => {
+                    if let Some(replacement) = replacements.get(n) {
+                        replacement.clone()
+                    } else {
+                        self.clone()
+                    }
+                }
+                _ => self.map_children_rwm(|f| f.with_metavariables_replaced_rwm(replacements)),
+            });
+        result
+            .caches
+            .substitution_backrefs
+            .insert(((**self).downgrade(), downgraded));
         // use std::cell::RefCell;
         // thread_local! {static RESULTS_CACHE:RefCell<HashMap<(RWMFormula, Substitutions), RWMFormula>> = RefCell::new(HashMap::new());}
         //
@@ -751,16 +828,6 @@ impl RWMFormula {
         // {
         //     return result;
         // }
-        let result = match &self.value {
-            FormulaValue::Metavariable(n) => {
-                if let Some(replacement) = replacements.get(n) {
-                    replacement.clone()
-                } else {
-                    self.clone()
-                }
-            }
-            _ => self.map_children_rwm(|f| f.with_metavariables_replaced_rwm(replacements)),
-        };
 
         // RESULTS_CACHE.with(|results_cache| results_cache.borrow_mut().insert(key, result.clone()));
         result

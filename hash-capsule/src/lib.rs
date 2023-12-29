@@ -26,22 +26,25 @@ use std::sync::{Arc, Weak};
 #[derive(Hash, PartialOrd, Ord)]
 pub struct HashCapsule<T: CapsuleContents>(Arc<HashCapsuleInner<T>>);
 
-pub trait CapsuleContents: HashCapsuleIntern + Eq + Hash + Debug + Send + Sync + 'static {
-    type Caches: Default + Send + Sync + 'static;
-    #[allow(unused_variables)]
-    fn cleanup(&self, caches: &Self::Caches) {}
+// note that the weak version needs to know the hash even if the value has been discarded. This could theoretically be done in a way that doesn't duplicate the hash (storing it in the ArcInner) but Arc doesn't support that.
+pub struct HashCapsuleWeak<T: CapsuleContents> {
+    hash: u128,
+    pointer: Weak<HashCapsuleInner<T>>,
 }
 
-impl<T: CapsuleContents> Clone for HashCapsule<T> {
-    fn clone(&self) -> Self {
-        HashCapsule(self.0.clone())
-    }
+pub trait CapsuleContents:
+    HashCapsuleIntern + Eq + Hash + Debug + Sized + Send + Sync + 'static
+{
+    type Caches: Default + Send + Sync + 'static;
+    #[allow(unused_variables)]
+    fn cleanup(&mut self, self_weak: HashCapsuleWeak<Self>, caches: &mut Self::Caches) {}
 }
 
 pub struct HashCapsuleInner<T: CapsuleContents> {
     pub hash: u128,
     pub value: T,
     pub caches: T::Caches,
+    self_weak: Weak<HashCapsuleInner<T>>,
 }
 
 /****************************************************
@@ -143,10 +146,11 @@ impl<T: CapsuleContents> HashCapsule<T> {
                         HashCapsule(arc)
                     } else {
                         let caches = Default::default();
-                        let arc = Arc::new(HashCapsuleInner {
+                        let arc = Arc::new_cyclic(|self_weak| HashCapsuleInner {
                             hash,
                             value,
                             caches,
+                            self_weak: self_weak.clone(),
                         });
                         entry.insert(Arc::downgrade(&arc));
                         HashCapsule(arc)
@@ -154,10 +158,11 @@ impl<T: CapsuleContents> HashCapsule<T> {
                 }
                 Entry::Vacant(entry) => {
                     let caches = Default::default();
-                    let arc = Arc::new(HashCapsuleInner {
+                    let arc = Arc::new_cyclic(|self_weak| HashCapsuleInner {
                         hash,
                         value,
                         caches,
+                        self_weak: self_weak.clone(),
                     });
                     entry.insert(Arc::downgrade(&arc));
                     HashCapsule(arc)
@@ -170,7 +175,13 @@ impl<T: CapsuleContents> HashCapsule<T> {
 impl<T: CapsuleContents> Drop for HashCapsuleInner<T> {
     fn drop(&mut self) {
         // When we drop the last reference to an object, we also want to clean up the memory usage in the map
-        self.value.cleanup(&self.caches);
+        self.value.cleanup(
+            HashCapsuleWeak {
+                hash: self.hash,
+                pointer: std::mem::take(&mut self.self_weak),
+            },
+            &mut self.caches,
+        );
         T::with_intern_map(|map| {
             match map.entry(self.hash) {
                 Entry::Occupied(entry) => {
@@ -212,6 +223,21 @@ impl<T: CapsuleContents + Debug> Debug for HashCapsule<T> {
              Boilerplate trait impls
 ****************************************************/
 
+impl<T: CapsuleContents> Clone for HashCapsule<T> {
+    fn clone(&self) -> Self {
+        HashCapsule(self.0.clone())
+    }
+}
+
+impl<T: CapsuleContents> Clone for HashCapsuleWeak<T> {
+    fn clone(&self) -> Self {
+        HashCapsuleWeak {
+            hash: self.hash,
+            pointer: self.pointer.clone(),
+        }
+    }
+}
+
 impl<T: CapsuleContents> Eq for HashCapsuleInner<T> {}
 impl<T: CapsuleContents> PartialEq for HashCapsuleInner<T> {
     fn eq(&self, other: &Self) -> bool {
@@ -227,7 +253,19 @@ impl<T: CapsuleContents> PartialEq for HashCapsule<T> {
         ptr::eq(a, b)
     }
 }
+// HashCapsuleWeak cannot implement equality that way, because there may be multiple weak pointers to different versions of the value
+impl<T: CapsuleContents> Eq for HashCapsuleWeak<T> {}
+impl<T: CapsuleContents> PartialEq for HashCapsuleWeak<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash.eq(&other.hash)
+    }
+}
 impl<T: CapsuleContents> PartialOrd for HashCapsuleInner<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl<T: CapsuleContents> PartialOrd for HashCapsuleWeak<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
@@ -237,7 +275,17 @@ impl<T: CapsuleContents> Ord for HashCapsuleInner<T> {
         self.hash.cmp(&other.hash)
     }
 }
+impl<T: CapsuleContents> Ord for HashCapsuleWeak<T> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.hash.cmp(&other.hash)
+    }
+}
 impl<T: CapsuleContents> Hash for HashCapsuleInner<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.hash.hash(state)
+    }
+}
+impl<T: CapsuleContents> Hash for HashCapsuleWeak<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.hash.hash(state)
     }

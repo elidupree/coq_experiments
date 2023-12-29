@@ -8,6 +8,7 @@ use coc_rs::introspective_calculus::solver_pool::GLOBAL_SOLVER;
 use coc_rs::{formula, inf};
 use hash_capsule::serialization::deserialize_file_with_hash_capsules;
 use itertools::Itertools;
+use std::time::Instant;
 
 fn main() {
     if let Ok(known_proofs_iter) =
@@ -25,11 +26,15 @@ fn main() {
                 .discover_proof(proof.clone(), true);
         }
         known_proofs.sort_by_key(|p| dbg!(p.naive_size()));
+        let start = Instant::now();
         for proof in &known_proofs {
+            let start2 = Instant::now();
             dbg!(proof.to_goal());
+            dbg!(start2.elapsed(), start.elapsed());
             let internal_implication = proof
                 .premises_to_internal_implication(&proof.premises().iter().cloned().collect_vec());
             dbg!(proof.to_goal());
+            dbg!(start2.elapsed(), start.elapsed());
             let fully_internal = internal_implication
                 .proof()
                 .variables_to_internalized_argument_list(
@@ -42,8 +47,10 @@ fn main() {
                         .collect_vec(),
                 );
             dbg!(proof.to_goal());
+            dbg!(start2.elapsed(), start.elapsed());
             let raw = fully_internal.proof().to_raw();
             dbg!(proof.to_goal());
+            dbg!(start2.elapsed(), start.elapsed());
         }
     }
 
