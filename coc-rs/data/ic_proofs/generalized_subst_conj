@@ -1,0 +1,13 @@
+P1. (x=>(l=>(A x l = B x l))) = (x=>(l=>(C x l = D x l)))
+
+1. (p=>(x=>(l=>(A x l = B x l))) (p const) (p (const id))) = (p=>(x=>(l=>(C x l = D x l))) (p const) (p (const id))) [by subst]
+
+2. (p=>((p=>A (p const) (p (const id))) p = (p=>B (p const) (p (const id))) p)) = (p=>((p=>C (p const) (p (const id))) p = (p=>D (p const) (p (const id))) p)) [by generalized_unfolding]
+
+3. (p=>(((p=>A (p const) (p (const id))) p,(p=>E (p const) (p (const id))) p)=((p=>B (p const) (p (const id))) p,(p=>F (p const) (p (const id))) p))) = (p=>(((p=>C (p const) (p (const id))) p,(p=>E (p const) (p (const id))) p)=((p=>D (p const) (p (const id))) p,(p=>F (p const) (p (const id))) p))) [by subst_conj]
+
+4. (p=>(x=>(l=>((A x l,E x l)=(B x l,F x l)))) (p const) (p (const id))) = (p=>(x=>(l=>((C x l,E x l)=(D x l,F x l)))) (p const) (p (const id))) [by generalized_unfolding]
+
+5. (x=>l=> (p=>(x=>(l=>((A x l,E x l)=(B x l,F x l)))) (p const) (p (const id))) (x,l)) = (x=>l=> (p=>(x=>(l=>((C x l,E x l)=(D x l,F x l)))) (p const) (p (const id))) (x,l)) [by subst]
+
+C. (x=>(l=>((A x l,E x l)=(B x l,F x l)))) = (x=>(l=>((C x l,E x l)=(D x l,F x l)))) [by unbatch]

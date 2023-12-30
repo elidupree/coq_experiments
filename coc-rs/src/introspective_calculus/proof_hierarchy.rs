@@ -1,42 +1,74 @@
 use crate::introspective_calculus::inference::Inference;
 use crate::introspective_calculus::provers::{
-    ByAssumingIt, ByAxiomSchema, ByConvertingBothSides, ByExtensionality, ByGeneralizedUnfolding,
+    ByAssumingIt, ByAxiomSchema, ByConvertingBothSides, ByGeneralizedUnfolding,
     ByInternalIndistinguishability, ByPartiallySpecializingAxiom, ByScriptNamed,
     ByScriptWithPremises, BySpecializingAxiom, BySubstitutingWith, ByUnfolding, FormulaProver,
 };
 use crate::introspective_calculus::raw_proofs::{
-    CleanExternalRule, CleanRule, RawProof, Rule, RuleInstance, StrengtheningRule,
+    CleanExternalRule, CleanRule, RawProof, RawProofWeak, Rule, RuleInstance, StrengtheningRule,
 };
 use crate::introspective_calculus::uncurried_function::{
     UncurriedFunction, UncurriedFunctionEquivalence,
 };
-use crate::introspective_calculus::{Formula, RWMFormula, RawFormula, Substitutions, ToFormula};
-use crate::{formula, ic, substitutions};
-use hash_capsule::caching::SingleCache;
-use hash_capsule::{hash_capsule_intern, CapsuleContents, HashCapsule, HashCapsuleInner};
+use crate::introspective_calculus::{
+    downgrade_substitutions, Formula, FormulaWeak, RWMFormula, RawFormula, Substitutions, ToFormula,
+};
+use crate::{ad_hoc_lazy_static, formula, ic, substitutions};
+use hash_capsule::caching::{BackrefSet, CacheMap, Downgrade, SingleCache};
+use hash_capsule::{define_hash_capsule_wrappers, CapsuleContents, HashCapsuleWeak};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 use std::iter::zip;
 use std::ops::Deref;
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
-pub struct Proof(HashCapsule<ProofInner>);
+define_hash_capsule_wrappers!(Proof, ProofWeak, ProofDerivation);
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
-pub struct ProofInner {
-    derivation: ProofDerivation,
-    premises_cache: BTreeSet<RWMFormula>,
-}
-hash_capsule_intern!(ProofInner);
-impl CapsuleContents for ProofInner {
+impl CapsuleContents for ProofDerivation {
     type Caches = ProofCaches;
+    fn cleanup(&mut self, self_weak: HashCapsuleWeak<Self>, caches: &mut Self::Caches) {
+        let self_weak = ProofWeak(self_weak);
+        macro_rules! cleanup {
+            ($map:ident, $backrefs: ident) => {
+                caches.$map.cleanup(|input, result| {
+                    if let Some(result) = result.upgrade() {
+                        result.caches.$backrefs.forget(&(self_weak.clone(), input));
+                    };
+                });
+                caches.$backrefs.cleanup(|(origin, input)| {
+                    if let Some(origin) = origin.upgrade() {
+                        origin.caches.$map.forget(&input);
+                    };
+                });
+            };
+        }
+        cleanup!(specializations, specialization_backrefs);
+        cleanup!(with_premises_satisfied, with_premises_satisfied_backrefs);
+        cleanup!(generalized, generalized_backrefs);
+        cleanup!(as_implications, as_implication_backrefs);
+    }
 }
 
 #[derive(Default)]
 pub struct ProofCaches {
     naive_size: SingleCache<u64>,
+    premises: SingleCache<BTreeSet<RWMFormula>>,
+    conclusion: SingleCache<RWMFormula>,
+
+    raw_form: SingleCache<RawProofWeak>,
+
+    specializations: CacheMap<BTreeMap<String, FormulaWeak>, ProofWeak>,
+    specialization_backrefs: BackrefSet<(ProofWeak, BTreeMap<String, FormulaWeak>)>,
+
+    with_premises_satisfied: CacheMap<Vec<ProofWeak>, ProofWeak>,
+    with_premises_satisfied_backrefs: BackrefSet<(ProofWeak, Vec<ProofWeak>)>,
+
+    generalized: CacheMap<Vec<String>, ProofWeak>,
+    generalized_backrefs: BackrefSet<(ProofWeak, Vec<String>)>,
+
+    as_implications: CacheMap<Vec<FormulaWeak>, ProofWeak>,
+    as_implication_backrefs: BackrefSet<(ProofWeak, Vec<FormulaWeak>)>,
 }
 
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
@@ -49,14 +81,6 @@ pub enum ProofDerivation {
 pub struct ProofByRule {
     pub rule_instance: RuleInstance,
     pub premise_proofs: Vec<Proof>,
-}
-
-impl Deref for Proof {
-    type Target = HashCapsuleInner<ProofInner>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
 }
 
 impl Display for Proof {
@@ -79,12 +103,6 @@ impl<T> Deref for Proven<T> {
     }
 }
 
-impl From<ProofInner> for Proof {
-    fn from(value: ProofInner) -> Self {
-        Proof(HashCapsule::new(value))
-    }
-}
-
 impl<T: ToFormula> Proven<T> {
     pub fn new(formula: T, proof: Proof) -> Proven<T> {
         assert_eq!(formula.to_formula().to_rwm(), proof.conclusion());
@@ -100,11 +118,7 @@ impl<T: ToFormula> Proven<T> {
 
 impl Proof {
     pub fn by_premise(premise: RWMFormula) -> Proof {
-        ProofInner {
-            derivation: ProofDerivation::Premise(premise.clone()),
-            premises_cache: [premise.clone()].into_iter().collect(),
-        }
-        .into()
+        Proof::from(ProofDerivation::Premise(premise))
     }
 
     pub fn by_rule(
@@ -129,41 +143,38 @@ impl Proof {
                 ));
             }
         }
-        let premises_cache = premise_proofs
-            .iter()
-            .flat_map(|proof| proof.premises().iter().cloned())
-            .collect();
-        Ok(Proof(HashCapsule::new(ProofInner {
-            derivation: ProofDerivation::Rule(ProofByRule {
-                rule_instance,
-                premise_proofs,
-            }),
-            premises_cache,
+        Ok(Proof::from(ProofDerivation::Rule(ProofByRule {
+            rule_instance,
+            premise_proofs,
         })))
     }
 
     pub fn conclusion(&self) -> RWMFormula {
-        match &self.derivation {
+        self.caches.conclusion.get(|| match &self.value {
             ProofDerivation::Premise(premise) => premise.clone(),
             ProofDerivation::Rule(proof) => proof.rule_instance.conclusion(),
-        }
+        })
     }
 
-    pub fn premises(&self) -> &BTreeSet<RWMFormula> {
-        &self.premises_cache
+    pub fn premises(&self) -> BTreeSet<RWMFormula> {
+        self.caches.premises.get(|| match &self.value {
+            ProofDerivation::Premise(premise) => [premise.clone()].into_iter().collect(),
+            ProofDerivation::Rule(proof) => proof
+                .premise_proofs
+                .iter()
+                .flat_map(Proof::premises)
+                .collect(),
+        })
     }
 
-    pub fn derivation(&self) -> &ProofDerivation {
-        &self.derivation
-    }
+    // pub fn derivation(&self) -> &ProofDerivation {
+    //     &self.derivation
+    // }
 
     pub fn to_raw(&self) -> RawProof {
-        self.to_raw_impl(&mut Default::default())
+        self.caches.raw_form.get(|| self.to_raw_impl())
     }
-    pub fn to_raw_impl(&self, results_cache: &mut HashMap<Proof, RawProof>) -> RawProof {
-        if let Some(result) = results_cache.get(self) {
-            return result.clone();
-        }
+    pub fn to_raw_impl(&self) -> RawProof {
         assert!(
             self.premises().is_empty(),
             "can only use Proof::to_raw() when there's no premises"
@@ -172,21 +183,15 @@ impl Proof {
             self.conclusion().is_raw(),
             "can only use Proof::to_raw() when there's no variables"
         );
-        let ProofDerivation::Rule(proof) = &self.derivation else {
+        let ProofDerivation::Rule(proof) = &self.value else {
             unreachable!()
         };
 
-        let result = RawProof::new(
+        RawProof::new(
             proof.rule_instance.clone().assume_raw(),
-            proof
-                .premise_proofs
-                .iter()
-                .map(|p| p.to_raw_impl(results_cache))
-                .collect(),
+            proof.premise_proofs.iter().map(|p| p.to_raw()).collect(),
         )
-        .unwrap();
-        results_cache.insert(self.clone(), result.clone());
-        result
+        .unwrap()
     }
 
     pub fn specialize(&self, arguments: &Substitutions) -> Proof {
@@ -203,18 +208,20 @@ impl Proof {
         //         panic!()
         //     }
         // }
-        self.specialize_impl(arguments, &mut Default::default())
+        // self.specialize_impl(arguments, &mut Default::default())
+        let downgraded = downgrade_substitutions(arguments);
+        let result = self
+            .caches
+            .specializations
+            .get(downgraded.clone(), || self.specialize_impl(arguments));
+        result
+            .caches
+            .specialization_backrefs
+            .insert((self.downgrade(), downgraded));
+        result
     }
-    pub fn specialize_impl(
-        &self,
-        arguments: &Substitutions,
-        results_cache: &mut HashMap<Proof, Proof>,
-    ) -> Proof {
-        if let Some(result) = results_cache.get(self) {
-            return result.clone();
-        }
-
-        let result = match &self.derivation {
+    pub fn specialize_impl(&self, arguments: &Substitutions) -> Proof {
+        match &self.value {
             ProofDerivation::Premise(premise) => {
                 Proof::by_premise(premise.with_metavariables_replaced_rwm(arguments))
             }
@@ -223,28 +230,29 @@ impl Proof {
                 proof
                     .premise_proofs
                     .iter()
-                    .map(|p| p.specialize_impl(arguments, results_cache))
+                    .map(|p| p.specialize(arguments))
                     .collect(),
             )
             .unwrap(),
-        };
-        results_cache.insert(self.clone(), result.clone());
-        result
+        }
     }
 
     pub fn satisfy_premises_with(&self, premise_proofs: &[Proof]) -> Proof {
-        self.satisfy_premises_with_impl(premise_proofs, &mut Default::default())
+        let downgraded: Vec<ProofWeak> = premise_proofs.iter().map(Downgrade::downgrade).collect();
+        let result = self
+            .caches
+            .with_premises_satisfied
+            .get(downgraded.clone(), || {
+                self.satisfy_premises_with_impl(premise_proofs)
+            });
+        result
+            .caches
+            .with_premises_satisfied_backrefs
+            .insert((self.downgrade(), downgraded));
+        result
     }
-    pub fn satisfy_premises_with_impl(
-        &self,
-        premise_proofs: &[Proof],
-        results_cache: &mut HashMap<Proof, Proof>,
-    ) -> Proof {
-        if let Some(result) = results_cache.get(self) {
-            return result.clone();
-        }
-
-        let result = match &self.derivation {
+    pub fn satisfy_premises_with_impl(&self, premise_proofs: &[Proof]) -> Proof {
+        match &self.value {
             ProofDerivation::Premise(p) => {
                 for premise_proof in premise_proofs {
                     if p == &premise_proof.conclusion() {
@@ -258,13 +266,11 @@ impl Proof {
                 proof
                     .premise_proofs
                     .iter()
-                    .map(|p| p.satisfy_premises_with_impl(premise_proofs, results_cache))
+                    .map(|p| p.satisfy_premises_with(premise_proofs))
                     .collect(),
             )
             .unwrap(),
-        };
-        results_cache.insert(self.clone(), result.clone());
-        result
+        }
     }
 
     pub fn use_externally(
@@ -298,50 +304,52 @@ impl Proof {
         &self,
         argument_order: &[String],
     ) -> Proven<UncurriedFunctionEquivalence> {
-        self.variables_to_internalized_argument_list_impl(argument_order, &mut Default::default())
+        let result = self.caches.generalized.get(argument_order.to_owned(), || {
+            self.variables_to_internalized_argument_list_impl(argument_order)
+        });
+        result
+            .caches
+            .generalized_backrefs
+            .insert((self.downgrade(), argument_order.to_owned()));
+        Proven::new(
+            self.conclusion()
+                .to_uncurried_function_equivalence(argument_order)
+                .unwrap(),
+            result,
+        )
     }
-    pub fn variables_to_internalized_argument_list_impl(
-        &self,
-        argument_order: &[String],
-        results_cache: &mut HashMap<Proof, Proven<UncurriedFunctionEquivalence>>,
-    ) -> Proven<UncurriedFunctionEquivalence> {
-        if let Some(result) = results_cache.get(self) {
-            return result.clone();
-        }
+    pub fn variables_to_internalized_argument_list_impl(&self, argument_order: &[String]) -> Proof {
         let conclusion = self
             .conclusion()
             .to_uncurried_function_equivalence(argument_order)
             .unwrap();
-        let result = match &self.derivation {
-            ProofDerivation::Premise(_) => conclusion.prove(ByAssumingIt),
+        match &self.value {
+            ProofDerivation::Premise(_) => conclusion.formula().prove(ByAssumingIt),
             ProofDerivation::Rule(proof) => {
                 let premise_proofs: Vec<Proven<UncurriedFunctionEquivalence>> = proof
                     .premise_proofs
                     .iter()
-                    .map(|p| {
-                        p.variables_to_internalized_argument_list_impl(
-                            argument_order,
-                            results_cache,
-                        )
-                    })
+                    .map(|p| p.variables_to_internalized_argument_list(argument_order))
                     .collect();
 
                 match &proof.rule_instance.rule {
                     Rule::Clean(CleanRule::External(c)) => match c {
-                        CleanExternalRule::EqSym => premise_proofs[0].flip(),
+                        CleanExternalRule::EqSym => premise_proofs[0].flip().proof().clone(),
                         CleanExternalRule::EqTrans => {
                             Proven::<UncurriedFunctionEquivalence>::trans_chain(&premise_proofs)
                                 .unwrap()
+                                .proof()
+                                .clone()
                         }
                         CleanExternalRule::DefinitionOfConst
                         | CleanExternalRule::DefinitionOfFuse => {
                             // dbg!(self.to_goal());
                             // dbg!(self.conclusion());
                             // eprintln!("{conclusion}");
-                            conclusion.prove(ByPartiallySpecializingAxiom)
+                            conclusion.formula().prove(ByPartiallySpecializingAxiom)
                         }
                         CleanExternalRule::SubstituteInLhs | CleanExternalRule::SubstituteInRhs => {
-                            conclusion.prove(BySubstitutingWith(
+                            conclusion.formula().prove(BySubstitutingWith(
                                 &premise_proofs
                                     .iter()
                                     .map(|p| p.proof().clone())
@@ -350,11 +358,27 @@ impl Proof {
                         }
                         CleanExternalRule::SubstituteInConjunction => {
                             // We have a double-generalized premise provider, we need to convert it to pair form, then apply SubstituteInConjunction, then unpair again to get the result
+
+                            // let proof_with_original_metavariables = ad_hoc_lazy_static!(Proven<UncurriedFunctionEquivalence>)(|| {
+                            //
+                            // });
+                            //
+                            // proof_with_original_metavariables.specialize()
+
                             let batch = |f: RawFormula| {
-                                ic!((f "A") "B")
+                                ad_hoc_lazy_static!(RWMFormula)(|| {
+                                    formula!(
+                                        "fuse (fuse (const f) a) b",
+                                        {
+                                            a: UncurriedFunction::nth_argument(0).formula(),
+                                            b: UncurriedFunction::nth_argument(1).formula(),
+                                        }
+                                    )
                                     .to_rwm()
-                                    .to_uncurried_function_of(&["A".into(), "B".into()])
-                                    .formula()
+                                })
+                                .with_metavariables_replaced_rwm(&substitutions! {f})
+                                .to_raw()
+                                .unwrap()
                             };
                             let unbatch = |f: RawFormula| {
                                 ic!("a" => ("b" => (f ("a", ("b", {Formula::default()}))))).to_rwm()
@@ -397,6 +421,7 @@ impl Proof {
                             let adapted_conclusion = ic!({ unbatch(z) } = { unbatch(w) })
                                 .prove(BySubstitutingWith(&[adapted_conclusion]));
                             conclusion
+                                .formula()
                                 .prove(ByConvertingBothSides(&adapted_conclusion, ByUnfolding))
                         }
                     },
@@ -404,16 +429,9 @@ impl Proof {
                         // The axiom guarantees a=b, and
                         // since these are raw formulas, only one value of `conclusion` is possible, and it's extensionally equal to const a = const b
                         //assert_eq!(todo(()),todo(()));
-                        let [a, b] = axiom.internal_form.sides.each_ref().map(|s| s.formula());
-                        let [cca, ccb] = conclusion.formula().as_eq_sides().unwrap();
-                        let cca_ca = ic!(cca = (const a)).prove(ByExtensionality);
-                        let ca_cb = ic!((const a) = (const b))
-                            .prove(BySubstitutingWith(&[axiom.proof().proof().clone()]));
-                        let cb_ccb = ic!((const b) = ccb).prove(ByExtensionality);
-                        Proven::new(
-                            conclusion,
-                            Proof::eq_trans_chain(&[cca_ca, ca_cb, cb_ccb]).unwrap(),
-                        )
+                        let result = axiom.generalized_proof();
+                        assert_eq!(result.formula, conclusion);
+                        result.proof().clone()
                     }
                     Rule::Strengthening(s) => match s {
                         StrengtheningRule::StrengthenSuccessor => {
@@ -432,9 +450,7 @@ impl Proof {
                     },
                 }
             }
-        };
-        results_cache.insert(self.clone(), result.clone());
-        result
+        }
     }
 
     pub fn eq_refl(a: RWMFormula) -> Proof {
@@ -479,7 +495,7 @@ impl Proof {
     }
 
     pub fn naive_size(&self) -> u64 {
-        self.caches.naive_size.get(|| match &self.derivation {
+        self.caches.naive_size.get(|| match &self.value {
             ProofDerivation::Premise(p) => p.naive_size(),
             ProofDerivation::Rule(r) => {
                 let mut result = r.rule_instance.conclusion().naive_size();
@@ -810,23 +826,28 @@ impl Proof {
         &self,
         premise_order: &[RWMFormula],
     ) -> Proven<InferenceAsEquivalence> {
-        self.premises_to_internal_implication_impl(premise_order, &mut Default::default())
+        let downgraded: Vec<FormulaWeak> = premise_order.iter().map(Downgrade::downgrade).collect();
+        let result = self.caches.as_implications.get(downgraded.clone(), || {
+            self.premises_to_internal_implication_impl(premise_order)
+        });
+        result
+            .caches
+            .as_implication_backrefs
+            .insert((self.downgrade(), downgraded));
+        Proven::new(
+            InferenceAsEquivalence::new(premise_order.to_owned(), self.conclusion()),
+            result,
+        )
     }
-    pub fn premises_to_internal_implication_impl(
-        &self,
-        premise_order: &[RWMFormula],
-        results_cache: &mut HashMap<Proof, Proven<InferenceAsEquivalence>>,
-    ) -> Proven<InferenceAsEquivalence> {
-        if let Some(result) = results_cache.get(self) {
-            return result.clone();
-        }
-
+    pub fn premises_to_internal_implication_impl(&self, premise_order: &[RWMFormula]) -> Proof {
         for premise in self.premises() {
-            assert!(premise_order.contains(premise));
+            assert!(premise_order.contains(&premise));
         }
-        let goal = InferenceAsEquivalence::new(premise_order.to_owned(), self.conclusion());
-        let [gl, _gr] = goal.formula().as_eq_sides().unwrap();
-        let result: Proven<InferenceAsEquivalence> = match &self.derivation {
+        let goal = InferenceAsEquivalence::new(premise_order.to_owned(), self.conclusion())
+            .formula()
+            .clone();
+        let [gl, _gr] = goal.as_eq_sides().unwrap();
+        let result: Proof = match &self.value {
             ProofDerivation::Premise(conclusion) => {
                 // let [gll,glr]=gl.as_eq_sides().unwrap();
                 let extractor = UncurriedFunction::nth_argument(
@@ -877,7 +898,7 @@ impl Proof {
                 let mut internal_premise_providers = proof
                     .premise_proofs
                     .iter()
-                    .map(|p| p.premises_to_internal_implication_impl(premise_order, results_cache));
+                    .map(|p| p.premises_to_internal_implication(premise_order));
                 match &proof.rule_instance.rule {
                     Rule::Clean(rule) => {
                         // let internal_premise_providers = internal_premise_providers
@@ -938,8 +959,7 @@ impl Proof {
             }
         };
         // let result = result.weaken_to(inference.conclusion.weakness_level.clone());
-        assert_eq!(*result, goal);
-        results_cache.insert(self.clone(), result.clone());
+        assert_eq!(result.conclusion(), goal.to_rwm());
         result
     }
 

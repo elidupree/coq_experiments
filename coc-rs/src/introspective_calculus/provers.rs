@@ -147,7 +147,7 @@ impl FormulaProver for BySpecializingWithPremises<'_> {
 
         let mut possible_substitutions: HashSet<Substitutions> =
             [substitutions].into_iter().collect();
-        for premise in self.proof_to_specialize.premises() {
+        for premise in &self.proof_to_specialize.premises() {
             possible_substitutions = possible_substitutions
                 .into_iter()
                 .flat_map(move |possible_substitutions| {

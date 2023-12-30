@@ -1,0 +1,3 @@
+P1. x=>y=>(p=>A (p const) (p (const id)))(x,y) = x=>y=>(p=>B (p const) (p (const id)))(x,y)
+
+C. A = B

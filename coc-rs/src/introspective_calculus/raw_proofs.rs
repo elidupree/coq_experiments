@@ -2,6 +2,7 @@ use crate::introspective_calculus::inference::Inference;
 use crate::introspective_calculus::uncurried_function::UncurriedFunctionEquivalence;
 use crate::introspective_calculus::{FormulaParser, RWMFormula, RawFormula, Substitutions};
 use crate::{formula, ic, inf};
+use hash_capsule::{define_hash_capsule_wrappers, CapsuleContents};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -9,22 +10,18 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::iter::{once, zip};
 use std::ops::Deref;
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
-#[derive(Clone)]
-pub struct RawProof(Arc<RawProofInner>);
+define_hash_capsule_wrappers!(RawProof, RawProofWeak, RawProofInner);
 
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub struct RawProofInner {
     pub rule_instance: RuleRawInstance,
     pub premises: Vec<RawProof>,
 }
 
-impl Deref for RawProof {
-    type Target = RawProofInner;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+impl CapsuleContents for RawProofInner {
+    type Caches = ();
 }
 
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
@@ -41,6 +38,7 @@ pub enum CleanExternalRule {
 pub struct Axiom {
     pub specified_formula: RWMFormula,
     pub internal_form: UncurriedFunctionEquivalence,
+    // pub generalized_proof_cache: Mutex<Option<Proven<UncurriedFunctionEquivalence>>>,
 }
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub enum StrengtheningRule {
@@ -165,9 +163,11 @@ impl Axiom {
                     .sum::<u64>()
             })
             .unwrap();
+
         Axiom {
             specified_formula,
             internal_form,
+            // generalized_proof_cache: Default::default(),
         }
     }
 }
@@ -350,10 +350,10 @@ impl RawProof {
                 ));
             }
         }
-        Ok(RawProof(Arc::new(RawProofInner {
+        Ok(RawProof::from(RawProofInner {
             rule_instance,
             premises,
-        })))
+        }))
     }
 
     pub fn conclusion(&self) -> RawFormula {

@@ -181,7 +181,7 @@ impl Formula {
 
 impl UncurriedFunction {
     pub fn to_display_item(&self, _parenthesize_abstractions: bool) -> Box<dyn DisplayItem> {
-        match &self.value() {
+        match &self.value {
             UncurriedFunctionValue::Constant(f) => Box::new(DisplayItemSequence {
                 always_parens: true,
                 items: vec![
@@ -266,13 +266,19 @@ impl Display for Goal {
 
 impl Display for RWMFormula {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+        (**self).fmt(f)
     }
 }
 
 impl Display for RawFormula {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+        (**self).fmt(f)
+    }
+}
+
+impl std::fmt::Debug for FormulaValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&Formula::from(self.clone()), f)
     }
 }
 

@@ -37,8 +37,8 @@ use std::fmt::Debug;
 use crate::ad_hoc_lazy_static;
 use hash_capsule::caching::{BackrefSet, CacheMap, Downgrade, SingleCache};
 use hash_capsule::{
-    hash_capsule_intern, BuildHasherForHashCapsules, CapsuleContents, HashCapsule,
-    HashCapsuleInner, HashCapsuleWeak,
+    define_hash_capsule_wrappers, BuildHasherForHashCapsules, CapsuleContents, HashCapsule,
+    HashCapsuleWeak,
 };
 use itertools::Itertools;
 use live_prop_test::live_prop_test;
@@ -67,25 +67,19 @@ pub enum AbstractionKind {
     ForAll,
 }
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
-pub struct Formula(HashCapsule<FormulaValue>);
+define_hash_capsule_wrappers!(Formula(), FormulaWeak, FormulaValue);
 
-#[derive(Clone, Eq, PartialEq, Hash)]
-pub struct FormulaWeak(HashCapsuleWeak<FormulaValue>);
+impl Default for Formula {
+    fn default() -> Self {
+        Formula::atom(Atom::Const)
+    }
+}
 
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub struct RWMFormula(Formula);
 
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub struct RawFormula(Formula);
-
-impl Deref for Formula {
-    type Target = HashCapsuleInner<FormulaValue>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
 
 impl Deref for RWMFormula {
     type Target = Formula;
@@ -163,12 +157,6 @@ impl From<&Formula> for Formula {
     }
 }
 
-impl From<FormulaValue> for Formula {
-    fn from(value: FormulaValue) -> Self {
-        Formula(HashCapsule::new(value))
-    }
-}
-
 pub trait FormulaTrait:
     Clone
     + Eq
@@ -207,15 +195,6 @@ pub enum FormulaRawness {
 //     rawness: FormulaRawness,
 // }
 
-impl Downgrade<FormulaWeak> for Formula {
-    fn downgrade(&self) -> FormulaWeak {
-        FormulaWeak(self.0.downgrade())
-    }
-
-    fn upgrade(weak: &FormulaWeak) -> Option<Formula> {
-        HashCapsule::upgrade(&weak.0).map(Formula)
-    }
-}
 impl Downgrade<FormulaWeak> for RWMFormula {
     fn downgrade(&self) -> FormulaWeak {
         self.0.downgrade()
@@ -225,12 +204,7 @@ impl Downgrade<FormulaWeak> for RWMFormula {
         Formula::upgrade(weak).map(|f| f.to_rwm())
     }
 }
-impl FormulaWeak {
-    pub fn upgrade(&self) -> Option<Formula> {
-        Formula::upgrade(self)
-    }
-}
-hash_capsule_intern!(FormulaValue);
+
 impl CapsuleContents for FormulaValue {
     type Caches = FormulaCaches;
     fn cleanup(&mut self, self_weak: HashCapsuleWeak<FormulaValue>, caches: &mut Self::Caches) {
@@ -262,7 +236,7 @@ pub struct FormulaCaches {
     substitution_backrefs: BackrefSet<(FormulaWeak, BTreeMap<String, FormulaWeak>)>,
 }
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum FormulaValue {
     Atom(Atom),
     Apply([Formula; 2]),
@@ -766,6 +740,10 @@ impl FormulaValue {
     }
 }
 
+pub fn downgrade_substitutions(s: &BTreeMap<String, RWMFormula>) -> BTreeMap<String, FormulaWeak> {
+    s.iter().map(|(k, v)| (k.clone(), v.downgrade())).collect()
+}
+
 impl RWMFormula {
     pub fn value(&self) -> RWMFormulaValue {
         match &self.0.value {
@@ -798,10 +776,7 @@ impl RWMFormula {
     }
 
     pub fn with_metavariables_replaced_rwm(&self, replacements: &Substitutions) -> RWMFormula {
-        let downgraded: BTreeMap<String, FormulaWeak> = replacements
-            .iter()
-            .map(|(k, v)| (k.clone(), v.downgrade()))
-            .collect();
+        let downgraded = downgrade_substitutions(replacements);
         let result = self
             .caches
             .substitutions

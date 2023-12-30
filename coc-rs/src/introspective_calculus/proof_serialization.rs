@@ -41,7 +41,7 @@ impl ProofBucket {
         let goal = proof.to_goal();
         if !self.proofs.contains_key(&goal) {
             // no need to save premises, they are "obvious"
-            if let ProofDerivation::Rule(p) = proof.derivation() {
+            if let ProofDerivation::Rule(p) = &proof.value {
                 let dependencies: Vec<Goal> = p
                     .premise_proofs
                     .iter()

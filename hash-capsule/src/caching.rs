@@ -4,19 +4,6 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{BuildHasher, Hash};
 use std::sync::{Arc, Mutex};
 
-impl<T: CapsuleContents> Downgrade<HashCapsuleWeak<T>> for HashCapsule<T> {
-    fn downgrade(&self) -> HashCapsuleWeak<T> {
-        HashCapsuleWeak {
-            hash: self.hash,
-            pointer: Arc::downgrade(&self.0),
-        }
-    }
-
-    fn upgrade(weak: &HashCapsuleWeak<T>) -> Option<Self> {
-        weak.pointer.upgrade().map(HashCapsule)
-    }
-}
-
 pub trait Downgrade<T>: Sized {
     fn downgrade(&self) -> T;
     fn upgrade(weak: &T) -> Option<Self>;
@@ -29,6 +16,19 @@ impl<T: Clone> Downgrade<T> for T {
 
     fn upgrade(weak: &T) -> Option<Self> {
         Some(weak.clone())
+    }
+}
+
+impl<T: CapsuleContents> Downgrade<HashCapsuleWeak<T>> for HashCapsule<T> {
+    fn downgrade(&self) -> HashCapsuleWeak<T> {
+        HashCapsuleWeak {
+            hash: self.hash,
+            pointer: Arc::downgrade(&self.0),
+        }
+    }
+
+    fn upgrade(weak: &HashCapsuleWeak<T>) -> Option<Self> {
+        weak.pointer.upgrade().map(HashCapsule)
     }
 }
 

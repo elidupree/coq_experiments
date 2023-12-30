@@ -4,13 +4,13 @@ use crate::introspective_calculus::provers::{
 };
 use crate::introspective_calculus::{Formula, RWMFormula, RWMFormulaValue, RawFormula, ToFormula};
 use crate::{formula, ic};
-use hash_capsule::{hash_capsule_intern, CapsuleContents, HashCapsule};
+use hash_capsule::caching::SingleCache;
+use hash_capsule::{define_hash_capsule_wrappers, CapsuleContents};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::iter::zip;
-use std::ops::Deref;
 use std::sync::Arc;
 
 // convenient form of: pair-chain
@@ -57,29 +57,25 @@ impl FromIterator<UncurriedFunction> for UncurriedPairChain {
 //     pub fn tail(&self) -> GeneralizedArgumentList {}
 // }
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
-pub struct UncurriedFunction(HashCapsule<UncurriedFunctionInner>);
-hash_capsule_intern!(UncurriedFunctionInner);
-impl CapsuleContents for UncurriedFunctionInner {
-    type Caches = ();
-}
-impl Deref for UncurriedFunction {
-    type Target = UncurriedFunctionInner;
+define_hash_capsule_wrappers!(
+    UncurriedFunction,
+    UncurriedFunctionWeak,
+    UncurriedFunctionValue
+);
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+impl CapsuleContents for UncurriedFunctionValue {
+    type Caches = UncurriedFunctionCaches;
 }
+
+#[derive(Default)]
+pub struct UncurriedFunctionCaches {
+    formula: SingleCache<RawFormula>,
+}
+
 impl Default for UncurriedFunction {
     fn default() -> Self {
         UncurriedFunctionValue::Constant(Default::default()).into()
     }
-}
-
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
-pub struct UncurriedFunctionInner {
-    value: UncurriedFunctionValue,
-    formula_cache: RawFormula,
 }
 
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
@@ -89,11 +85,7 @@ pub enum UncurriedFunctionValue {
     PopIn(UncurriedFunction),
     Top,
 }
-impl From<UncurriedFunctionValue> for UncurriedFunction {
-    fn from(value: UncurriedFunctionValue) -> Self {
-        UncurriedFunction::new(value)
-    }
-}
+
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub struct UncurriedFunctionEquivalence {
     pub sides: [UncurriedFunction; 2],
@@ -191,11 +183,7 @@ impl UncurriedFunction {
         &self.value
     }
     pub fn formula(&self) -> RawFormula {
-        self.formula_cache.clone()
-    }
-
-    pub fn new(value: UncurriedFunctionValue) -> Self {
-        let formula_cache = match &value {
+        self.caches.formula.get(|| match &self.value {
             UncurriedFunctionValue::Constant(f) => ic!(const f).already_raw().unwrap(),
             UncurriedFunctionValue::Apply(children) => {
                 let [a, b] = children.each_ref().map(|c| c.formula().to_formula());
@@ -205,12 +193,9 @@ impl UncurriedFunction {
                 ic!(((const { child.formula() }),)).to_raw().unwrap()
             }
             UncurriedFunctionValue::Top => ic!((const,)).to_raw().unwrap(),
-        };
-        UncurriedFunction(HashCapsule::new(UncurriedFunctionInner {
-            value,
-            formula_cache,
-        }))
+        })
     }
+
     pub fn constant(f: RawFormula) -> UncurriedFunction {
         UncurriedFunctionValue::Constant(f).into()
     }
@@ -389,6 +374,19 @@ impl UncurriedFunction {
                     child.add_generalized_args_to_return(goal_child, skipped, collector)?;
                 }
             }
+            // (UncurriedFunctionValue::Apply(_), UncurriedFunctionValue::Constant(g)) => {
+            //     if let RawFormulaValue::Apply(goal_children) = g.value() {
+            //         return self.add_generalized_args_to_return(
+            //             &UncurriedFunction::apply(
+            //                 goal_children.map(|f| UncurriedFunction::constant(f)),
+            //             ),
+            //             skipped,
+            //             collector,
+            //         );
+            //     } else {
+            //         return Err(format!("Could not unify `{self}` with `{goal}`"));
+            //     }
+            // }
             (UncurriedFunctionValue::PopIn(child), _) => {
                 child.add_generalized_args_to_return(goal, skipped + 1, collector)?;
             }
@@ -597,6 +595,7 @@ impl RWMFormula {
         // }
         let result: UncurriedFunction = match self.value() {
             RWMFormulaValue::Atom(a) => {
+                // unreachable!()
                 UncurriedFunctionValue::Constant(Formula::atom(a).already_raw().unwrap()).into()
             }
             RWMFormulaValue::Apply(children) => UncurriedFunctionValue::Apply(

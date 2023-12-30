@@ -134,6 +134,52 @@ macro_rules! hash_capsule_intern {
     };
 }
 
+#[macro_export]
+macro_rules! define_hash_capsule_wrappers {
+    ($Strong:ident, $Weak:ident, $Contents:ident) => {
+        $crate::define_hash_capsule_wrappers!($Strong(Debug,), $Weak, $Contents);
+    };
+    ($Strong:ident($($strong_derives:tt)*), $Weak:ident, $Contents:ident) => {
+        #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, $($strong_derives)*)]
+        pub struct $Strong($crate::HashCapsule<$Contents>);
+
+        #[derive(Clone, Eq, PartialEq, Hash)]
+        pub struct $Weak($crate::HashCapsuleWeak<$Contents>);
+
+        $crate::hash_capsule_intern!($Contents);
+
+        impl $crate::caching::Downgrade<$Weak> for $Strong {
+            fn downgrade(&self) -> $Weak {
+                $Weak(self.0.downgrade())
+            }
+
+            fn upgrade(weak: &$Weak) -> Option<$Strong> {
+                $crate::HashCapsule::upgrade(&weak.0).map($Strong)
+            }
+        }
+
+        impl $Weak {
+            pub fn upgrade(&self) -> Option<$Strong> {
+                <$Strong as $crate::caching::Downgrade<$Weak>>::upgrade(self)
+            }
+        }
+
+        impl std::ops::Deref for $Strong {
+            type Target = $crate::HashCapsuleInner<$Contents>;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+
+        impl From<$Contents> for $Strong {
+            fn from(value: $Contents) -> Self {
+                $Strong($crate::HashCapsule::new(value))
+            }
+        }
+    };
+}
+
 impl<T: CapsuleContents> HashCapsule<T> {
     pub fn new(value: T) -> HashCapsule<T> {
         let hash = compute_hash(&value);
