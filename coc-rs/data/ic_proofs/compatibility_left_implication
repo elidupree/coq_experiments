@@ -1,3 +1,4 @@
+ignore:
 A1. (A = B) -> (A C = B C)
 A2. ((A, B) = (C, D)) = ((A = C) & (B = D))
 

@@ -30,10 +30,12 @@ fn main() {
         for proof in &known_proofs {
             let start2 = Instant::now();
             dbg!(proof.to_goal());
+            dbg!(proof.naive_size());
             dbg!(start2.elapsed(), start.elapsed());
             let internal_implication = proof
                 .premises_to_internal_implication(&proof.premises().iter().cloned().collect_vec());
             dbg!(proof.to_goal());
+            dbg!(internal_implication.proof().naive_size());
             dbg!(start2.elapsed(), start.elapsed());
             let fully_internal = internal_implication
                 .proof()
@@ -47,6 +49,7 @@ fn main() {
                         .collect_vec(),
                 );
             dbg!(proof.to_goal());
+            dbg!(fully_internal.proof().naive_size());
             dbg!(start2.elapsed(), start.elapsed());
             let raw = fully_internal.proof().to_raw();
             dbg!(proof.to_goal());

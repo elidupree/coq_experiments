@@ -1,17 +1,19 @@
 use crate::introspective_calculus::inference::Inference;
 use crate::introspective_calculus::provers::{
-    ByAssumingIt, ByAxiomSchema, ByConvertingBothSides, ByGeneralizedUnfolding,
-    ByInternalIndistinguishability, ByPartiallySpecializingAxiom, ByScriptNamed,
-    ByScriptWithPremises, BySpecializingAxiom, BySubstitutingWith, ByUnfolding, FormulaProver,
+    ByAssumingIt, ByAxiomSchema, ByInternalIndistinguishability, ByPartiallySpecializingAxiom,
+    ByScriptNamed, ByScriptWithPremises, BySpecializing, BySpecializingAxiom, BySubstitutingWith,
+    FormulaProver,
 };
 use crate::introspective_calculus::raw_proofs::{
-    CleanExternalRule, CleanRule, RawProof, RawProofWeak, Rule, RuleInstance, StrengtheningRule,
+    CleanExternalRule, CleanRule, RawProof, RawProofWeak, Rule, RuleInstance, RuleTrait,
+    StrengtheningRule,
 };
 use crate::introspective_calculus::uncurried_function::{
     UncurriedFunction, UncurriedFunctionEquivalence,
 };
 use crate::introspective_calculus::{
-    downgrade_substitutions, Formula, FormulaWeak, RWMFormula, RawFormula, Substitutions, ToFormula,
+    downgrade_substitutions, Formula, FormulaWeak, RWMFormula, RWMFormulaValue, Substitutions,
+    ToFormula,
 };
 use crate::{ad_hoc_lazy_static, formula, ic, substitutions};
 use hash_capsule::caching::{BackrefSet, CacheMap, Downgrade, SingleCache};
@@ -305,7 +307,15 @@ impl Proof {
         argument_order: &[String],
     ) -> Proven<UncurriedFunctionEquivalence> {
         let result = self.caches.generalized.get(argument_order.to_owned(), || {
-            self.variables_to_internalized_argument_list_impl(argument_order)
+            let result = self.variables_to_internalized_argument_list_impl(argument_order);
+
+            use std::cell::Cell;
+            thread_local! {static NUMBER:Cell<usize> = Cell::default();}
+            dbg!(NUMBER.with(|n| {
+                n.set(n.get() + 1);
+                n.get()
+            }));
+            result
         });
         result
             .caches
@@ -319,18 +329,67 @@ impl Proof {
         )
     }
     pub fn variables_to_internalized_argument_list_impl(&self, argument_order: &[String]) -> Proof {
-        let conclusion = self
-            .conclusion()
-            .to_uncurried_function_equivalence(argument_order)
-            .unwrap();
+        fn value_variables_to_unary_function_variables(formula: RWMFormula) -> RWMFormula {
+            match formula.value() {
+                RWMFormulaValue::Atom(_a) => {
+                    ic!(const formula)
+                }
+                RWMFormulaValue::Apply([a, b]) => {
+                    let [a, b] = [a, b].map(value_variables_to_unary_function_variables);
+                    ic!((fuse a) b)
+                }
+                RWMFormulaValue::Metavariable(x) => {
+                    ic!(x)
+                }
+            }
+            .to_rwm()
+        }
+        fn value_variables_to_unary_function_variables_under_equivalence(
+            formula: RWMFormula,
+        ) -> RWMFormula {
+            let [a, b] = formula
+                .as_eq_sides()
+                .unwrap()
+                .map(value_variables_to_unary_function_variables);
+            ic!(a = b).to_rwm()
+        }
+
+        // let conclusion = self
+        //     .conclusion()
+        //     .to_uncurried_function_equivalence(argument_order)
+        //     .unwrap();
         match &self.value {
-            ProofDerivation::Premise(_) => conclusion.formula().prove(ByAssumingIt),
+            ProofDerivation::Premise(premise) => premise
+                .to_uncurried_function_equivalence(argument_order)
+                .unwrap()
+                .formula()
+                .prove(ByAssumingIt),
             ProofDerivation::Rule(proof) => {
                 let premise_proofs: Vec<Proven<UncurriedFunctionEquivalence>> = proof
                     .premise_proofs
                     .iter()
                     .map(|p| p.variables_to_internalized_argument_list(argument_order))
                     .collect();
+
+                let conclusion = value_variables_to_unary_function_variables_under_equivalence(
+                    proof.rule_instance.rule.inference().conclusion.clone(),
+                )
+                .with_metavariables_replaced_rwm(
+                    &proof
+                        .rule_instance
+                        .substitutions
+                        .iter()
+                        .map(|(name, value)| {
+                            (
+                                name.clone(),
+                                value
+                                    .to_uncurried_function_of(argument_order)
+                                    .formula()
+                                    .to_rwm(),
+                            )
+                        })
+                        .collect(),
+                );
 
                 match &proof.rule_instance.rule {
                     Rule::Clean(CleanRule::External(c)) => match c {
@@ -341,15 +400,33 @@ impl Proof {
                                 .proof()
                                 .clone()
                         }
-                        CleanExternalRule::DefinitionOfConst
-                        | CleanExternalRule::DefinitionOfFuse => {
+                        CleanExternalRule::DefinitionOfConst => {
+                            // let general_proof = ad_hoc_lazy_static!(Proof)(|| {
+                            //     value_variables_to_unary_function_variables_under_equivalence(
+                            //         formula!("const A B = A").to_rwm(),
+                            //     )
+                            //     .prove(ByPartiallySpecializingAxiom)
+                            // });
+                            // conclusion.prove(BySpecializing(general_proof))
+
+                            conclusion.prove(ByScriptNamed("generalized_const"))
+                        }
+                        CleanExternalRule::DefinitionOfFuse => {
                             // dbg!(self.to_goal());
                             // dbg!(self.conclusion());
                             // eprintln!("{conclusion}");
-                            conclusion.formula().prove(ByPartiallySpecializingAxiom)
+                            // let general_proof = ad_hoc_lazy_static!(Proof)(|| {
+                            //     value_variables_to_unary_function_variables_under_equivalence(
+                            //         formula!("fuse A B C = (A C) (B C)").to_rwm(),
+                            //     )
+                            //     .prove(ByPartiallySpecializingAxiom)
+                            // });
+                            // conclusion.prove(BySpecializing(general_proof))
+
+                            conclusion.prove(ByScriptNamed("generalized_fuse"))
                         }
                         CleanExternalRule::SubstituteInLhs | CleanExternalRule::SubstituteInRhs => {
-                            conclusion.formula().prove(BySubstitutingWith(
+                            conclusion.prove(BySubstitutingWith(
                                 &premise_proofs
                                     .iter()
                                     .map(|p| p.proof().clone())
@@ -365,64 +442,68 @@ impl Proof {
                             //
                             // proof_with_original_metavariables.specialize()
 
-                            let batch = |f: RawFormula| {
-                                ad_hoc_lazy_static!(RWMFormula)(|| {
-                                    formula!(
-                                        "fuse (fuse (const f) a) b",
-                                        {
-                                            a: UncurriedFunction::nth_argument(0).formula(),
-                                            b: UncurriedFunction::nth_argument(1).formula(),
-                                        }
-                                    )
-                                    .to_rwm()
-                                })
-                                .with_metavariables_replaced_rwm(&substitutions! {f})
-                                .to_raw()
-                                .unwrap()
-                            };
-                            let unbatch = |f: RawFormula| {
-                                ic!("a" => ("b" => (f ("a", ("b", {Formula::default()}))))).to_rwm()
-                            };
-                            let pairify = |eq: &UncurriedFunctionEquivalence| {
-                                eq.sides.each_ref().map(|s| batch(s.formula()))
-                            };
-                            let [x, y] = pairify(&premise_proofs[0].formula);
-                            let [z, w] = pairify(&conclusion);
-                            let adapted_premise = ic!(x = y)
-                                .prove(BySubstitutingWith(&[premise_proofs[0].proof().clone()]));
-                            let rule_instance =
-                                Rule::from(CleanExternalRule::SubstituteInConjunction).specialize(
-                                    proof
-                                        .rule_instance
-                                        .substitutions
-                                        .iter()
-                                        .map(|(name, value)| {
-                                            (
-                                                name.clone(),
-                                                batch(
-                                                    value
-                                                        .to_uncurried_function_of(argument_order)
-                                                        .formula(),
-                                                )
-                                                .to_rwm(),
-                                            )
-                                        })
-                                        .collect(),
-                                );
-                            let adapted_premise = rule_instance.premises().next().unwrap().prove(
-                                ByConvertingBothSides(&adapted_premise, ByGeneralizedUnfolding),
-                            );
-                            let adapted_conclusion =
-                                Proof::by_rule(rule_instance, vec![adapted_premise]).unwrap();
-                            let adapted_conclusion = ic!(z = w).prove(ByConvertingBothSides(
-                                &adapted_conclusion,
-                                ByGeneralizedUnfolding,
-                            ));
-                            let adapted_conclusion = ic!({ unbatch(z) } = { unbatch(w) })
-                                .prove(BySubstitutingWith(&[adapted_conclusion]));
-                            conclusion
-                                .formula()
-                                .prove(ByConvertingBothSides(&adapted_conclusion, ByUnfolding))
+                            // let batch = |f: RawFormula| {
+                            //     ad_hoc_lazy_static!(RWMFormula)(|| {
+                            //         formula!(
+                            //             "fuse (fuse (const f) a) b",
+                            //             {
+                            //                 a: UncurriedFunction::nth_argument(0).formula(),
+                            //                 b: UncurriedFunction::nth_argument(1).formula(),
+                            //             }
+                            //         )
+                            //         .to_rwm()
+                            //     })
+                            //     .with_metavariables_replaced_rwm(&substitutions! {f})
+                            //     .to_raw()
+                            //     .unwrap()
+                            // };
+                            // let unbatch = |f: RawFormula| {
+                            //     ic!("a" => ("b" => (f ("a", ("b", {Formula::default()}))))).to_rwm()
+                            // };
+                            // let pairify = |eq: &UncurriedFunctionEquivalence| {
+                            //     eq.sides.each_ref().map(|s| batch(s.formula()))
+                            // };
+                            // let [x, y] = pairify(&premise_proofs[0].formula);
+                            // let [z, w] = pairify(&conclusion);
+                            // let adapted_premise = ic!(x = y)
+                            //     .prove(BySubstitutingWith(&[premise_proofs[0].proof().clone()]));
+                            // let rule_instance =
+                            //     Rule::from(CleanExternalRule::SubstituteInConjunction).specialize(
+                            //         proof
+                            //             .rule_instance
+                            //             .substitutions
+                            //             .iter()
+                            //             .map(|(name, value)| {
+                            //                 (
+                            //                     name.clone(),
+                            //                     batch(
+                            //                         value
+                            //                             .to_uncurried_function_of(argument_order)
+                            //                             .formula(),
+                            //                     )
+                            //                     .to_rwm(),
+                            //                 )
+                            //             })
+                            //             .collect(),
+                            //     );
+                            // let adapted_premise = rule_instance.premises().next().unwrap().prove(
+                            //     ByConvertingBothSides(&adapted_premise, ByGeneralizedUnfolding),
+                            // );
+                            // let adapted_conclusion =
+                            //     Proof::by_rule(rule_instance, vec![adapted_premise]).unwrap();
+                            // let adapted_conclusion = ic!(z = w).prove(ByConvertingBothSides(
+                            //     &adapted_conclusion,
+                            //     ByGeneralizedUnfolding,
+                            // ));
+                            // let adapted_conclusion = ic!({ unbatch(z) } = { unbatch(w) })
+                            //     .prove(BySubstitutingWith(&[adapted_conclusion]));
+                            // conclusion
+                            //     .formula()
+                            //     .prove(ByConvertingBothSides(&adapted_conclusion, ByUnfolding))
+                            conclusion.prove(ByScriptWithPremises(
+                                "generalized_subst_conj",
+                                &[premise_proofs[0].proof().clone()],
+                            ))
                         }
                     },
                     Rule::Clean(CleanRule::Axiom(axiom)) => {
@@ -430,8 +511,8 @@ impl Proof {
                         // since these are raw formulas, only one value of `conclusion` is possible, and it's extensionally equal to const a = const b
                         //assert_eq!(todo(()),todo(()));
                         let result = axiom.generalized_proof();
-                        assert_eq!(result.formula, conclusion);
-                        result.proof().clone()
+                        assert_eq!(result.conclusion(), conclusion);
+                        result
                     }
                     Rule::Strengthening(s) => match s {
                         StrengtheningRule::StrengthenSuccessor => {

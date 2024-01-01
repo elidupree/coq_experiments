@@ -1,3 +1,4 @@
+ignore:
 P1. A = B
 
 1. A = A                     [by eq_refl]

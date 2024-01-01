@@ -1,13 +1,14 @@
+use crate::ic;
 use crate::introspective_calculus::proof_hierarchy::{Proof, Proven};
-use crate::introspective_calculus::provers::{ByAssumingIt, BySubstitutingWith};
+use crate::introspective_calculus::provers::{ByAssumingIt, ByExtensionality, BySubstitutingWith};
 use crate::introspective_calculus::raw_proofs::{
     Axiom, CleanExternalRule, RawProof, Rule, RuleTrait, ALL_AXIOMS,
 };
-use crate::introspective_calculus::uncurried_function::{
-    UncurriedFunction, UncurriedFunctionEquivalence,
-};
+use crate::introspective_calculus::uncurried_function::UncurriedFunctionEquivalence;
 use crate::introspective_calculus::{RawFormula, Substitutions, ToFormula};
 use itertools::Itertools;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::sync::LazyLock;
 
 impl Axiom {
@@ -21,14 +22,15 @@ impl Axiom {
             .unwrap(),
         )
     }
-    pub fn generalized_proof(&self) -> Proven<UncurriedFunctionEquivalence> {
+    pub fn generalized_proof(&self) -> Proof {
         // The axiom guarantees a=b, and
         // since these are raw formulas, there's only 1 possible "generalized form", and it's extensionally equal to const a = const b
         //assert_eq!(todo(()),todo(()));
-        // if let Some(result) = self.generalized_proof_cache.lock().unwrap().clone() {
-        //     return result;
-        // }
-        // let [a, b] = self.internal_form.sides.each_ref().map(|s| s.formula());
+        thread_local! {static CACHE: RefCell<HashMap<Axiom, Proof>> = RefCell::default()}
+        if let Some(result) = CACHE.with(|cache| cache.borrow().get(self).cloned()) {
+            return result;
+        }
+        let [a, b] = self.internal_form.sides.each_ref().map(|s| s.formula());
         // let [cca, ccb] = self
         //     .internal_form
         //     .formula()
@@ -36,24 +38,33 @@ impl Axiom {
         //     .to_uncurried_function_of(&[])
         //     .as_eq_sides()
         //     .unwrap();
-        // let cca_ca = ic!(cca = (const a)).prove(ByExtensionality);
-        // let ca_cb =
-        //     ic!((const a) = (const b)).prove(BySubstitutingWith(&[self.proof().proof().clone()]));
-        // let cb_ccb = ic!((const b) = ccb).prove(ByExtensionality);
+
+        let [cca, ccb] = self
+            .internal_form
+            .formula()
+            .to_rwm()
+            .to_uncurried_function_equivalence(&[])
+            .unwrap()
+            .sides;
+        let cca_ca = ic!(cca = (const a)).prove(ByExtensionality);
+        let ca_cb =
+            ic!((const a) = (const b)).prove(BySubstitutingWith(&[self.proof().proof().clone()]));
+        let cb_ccb = ic!((const b) = ccb).prove(ByExtensionality);
         // let result = Proven::new(
         //     ic!(cca = ccb),
         //     Proof::eq_trans_chain(&[cca_ca, ca_cb, cb_ccb]).unwrap(),
         // );
+        let result = Proof::eq_trans_chain(&[cca_ca, ca_cb, cb_ccb]).unwrap();
 
-        let result = UncurriedFunctionEquivalence {
-            sides: self
-                .internal_form
-                .sides
-                .each_ref()
-                .map(|f| UncurriedFunction::constant(f.formula())),
-        }
-        .prove(BySubstitutingWith(&[self.proof().proof().clone()]));
-        // (*self.generalized_proof_cache.lock().unwrap()) = Some(result.clone());
+        // let result = UncurriedFunctionEquivalence {
+        //     sides: self
+        //         .internal_form
+        //         .sides
+        //         .each_ref()
+        //         .map(|f| UncurriedFunction::constant(f.formula())),
+        // }
+        // .prove(BySubstitutingWith(&[self.proof().proof().clone()]));
+        CACHE.with(|cache| cache.borrow_mut().insert(self.clone(), result.clone()));
         result
     }
 }

@@ -331,7 +331,7 @@ impl FormulaProver for ByInternalIndistinguishability {
     fn try_prove(&self, formula: RWMFormula) -> Result<Proof, String> {
         let c = &self.extractor;
         let [a, b] = self.equivalence.as_eq_sides().unwrap();
-        let folded = formula!("(a=b) = (a=b & (c a = c b))", {a,b,c}).prove(BySpecializingAxiom);
+        let folded = formula!("(a=b) = ((a=b) & (c a = c b))", {a,b,c}).prove(BySpecializingAxiom);
         formula.try_prove(ByConvertingBothSides(&folded, ByUnfolding))
     }
 }
@@ -355,7 +355,7 @@ impl FormulaProver for ByScriptWithPremises<'_> {
             .map_err(|_| "reentrant proof!".to_string())?
             // .solve(&goal);
             .get_existing_proof(&goal)
-            .unwrap();
+            .ok_or_else(|| format!("Missing proof `{}`", self.0))?;
         formula.try_prove(BySpecializingWithPremises {
             proof_to_specialize: &script_conclusion,
             premise_proofs: self.1,

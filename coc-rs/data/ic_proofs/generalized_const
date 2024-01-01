@@ -1,0 +1,1 @@
+C. (x => const (A x) (B x)) = (x => A x)

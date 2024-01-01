@@ -103,7 +103,7 @@ impl RuleTrait for StrengtheningRule {
 
 impl RuleTrait for Axiom {
     fn inference(&self) -> Inference {
-        Inference::new(vec![], self.internal_form.formula().into())
+        Inference::new(vec![], self.internal_form.formula())
     }
 }
 
@@ -204,7 +204,7 @@ fn test_extensionality_axiom(axiom: &UncurriedFunctionEquivalence) {
         .each_ref()
         .map(|s| formula!("s A B C D E", {s: s.formula()}).to_rwm());
     for s in &mut sides {
-        s.unfold_until(100);
+        s.unfold_until(1000);
     }
     assert_eq!(sides[0], sides[1]);
 }

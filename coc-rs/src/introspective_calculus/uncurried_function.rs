@@ -1,9 +1,10 @@
 use crate::introspective_calculus::proof_hierarchy::{Proof, Proven};
 use crate::introspective_calculus::provers::{
-    ByAxiomSchema, BySpecializingAxiom, BySubstitutingWith, ByUnfolding, FormulaProver,
+    ByAxiomSchema, BySpecializing, BySpecializingAxiom, BySubstitutingWith, ByUnfolding,
+    FormulaProver,
 };
-use crate::introspective_calculus::{Formula, RWMFormula, RWMFormulaValue, RawFormula, ToFormula};
-use crate::{formula, ic};
+use crate::introspective_calculus::{Formula, RWMFormula, RWMFormulaValue, ToFormula};
+use crate::{ad_hoc_lazy_static, formula, ic};
 use hash_capsule::caching::SingleCache;
 use hash_capsule::{define_hash_capsule_wrappers, CapsuleContents};
 use itertools::Itertools;
@@ -31,7 +32,7 @@ impl FromIterator<RWMFormula> for PairChain {
 }
 
 // impl ArgumentList {
-//     pub fn head(&self) -> RawFormula {}
+//     pub fn head(&self) -> RWMFormula {}
 //     pub fn tail(&self) -> ArgumentList {}
 // }
 
@@ -69,7 +70,7 @@ impl CapsuleContents for UncurriedFunctionValue {
 
 #[derive(Default)]
 pub struct UncurriedFunctionCaches {
-    formula: SingleCache<RawFormula>,
+    formula: SingleCache<RWMFormula>,
 }
 
 impl Default for UncurriedFunction {
@@ -80,7 +81,7 @@ impl Default for UncurriedFunction {
 
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub enum UncurriedFunctionValue {
-    Constant(RawFormula),
+    Constant(RWMFormula),
     Apply([UncurriedFunction; 2]),
     PopIn(UncurriedFunction),
     Top,
@@ -97,10 +98,16 @@ impl ToFormula for UncurriedFunctionEquivalence {
     }
 }
 
+impl ToFormula for UncurriedFunction {
+    fn to_formula(&self) -> Formula {
+        self.formula().to_formula()
+    }
+}
+
 impl UncurriedFunctionEquivalence {
-    pub fn formula(&self) -> RawFormula {
+    pub fn formula(&self) -> RWMFormula {
         let [a, b] = self.sides.each_ref().map(|s| s.formula());
-        ic!(a = b).to_raw().unwrap()
+        ic!(a = b).to_rwm()
     }
     pub fn prove(&self, prover: impl FormulaProver) -> Proven<Self> {
         Proven::new(self.clone(), self.formula().prove(prover))
@@ -132,7 +139,7 @@ impl Proven<UncurriedFunctionEquivalence> {
             UncurriedFunctionEquivalence {
                 sides: [value.clone(), value.clone()],
             },
-            Proof::eq_refl(value.formula().into()),
+            Proof::eq_refl(value.formula()),
         )
     }
     pub fn flip(&self) -> Self {
@@ -182,21 +189,19 @@ impl UncurriedFunction {
     pub fn value(&self) -> &UncurriedFunctionValue {
         &self.value
     }
-    pub fn formula(&self) -> RawFormula {
+    pub fn formula(&self) -> RWMFormula {
         self.caches.formula.get(|| match &self.value {
-            UncurriedFunctionValue::Constant(f) => ic!(const f).already_raw().unwrap(),
+            UncurriedFunctionValue::Constant(f) => ic!(const f).to_rwm(),
             UncurriedFunctionValue::Apply(children) => {
                 let [a, b] = children.each_ref().map(|c| c.formula().to_formula());
-                ic!((fuse a) b).already_raw().unwrap()
+                ic!((fuse a) b).to_rwm()
             }
-            UncurriedFunctionValue::PopIn(child) => {
-                ic!(((const { child.formula() }),)).to_raw().unwrap()
-            }
-            UncurriedFunctionValue::Top => ic!((const,)).to_raw().unwrap(),
+            UncurriedFunctionValue::PopIn(child) => ic!(((const { child.formula() }),)).to_rwm(),
+            UncurriedFunctionValue::Top => ic!((const,)).to_rwm(),
         })
     }
 
-    pub fn constant(f: RawFormula) -> UncurriedFunction {
+    pub fn constant(f: RWMFormula) -> UncurriedFunction {
         UncurriedFunctionValue::Constant(f).into()
     }
     pub fn apply(children: [UncurriedFunction; 2]) -> UncurriedFunction {
@@ -315,8 +320,11 @@ impl UncurriedFunction {
                 // subgoal: P tail = P'
                 let child_result = child.call(tail);
                 // subgoal: (const P,)(head, tail) = P tail
+                let general_proof = ad_hoc_lazy_static!(Proof)(|| {
+                    formula!("(const P,)(head, tail) = P tail").prove(ByUnfolding)
+                });
                 let intermediate = child_result.conclusion().as_eq_sides().unwrap()[0].clone();
-                let local_result = ic!(lhs = intermediate).prove(ByUnfolding);
+                let local_result = ic!(lhs = intermediate).prove(BySpecializing(general_proof));
                 // goal: (const P,)(head, tail) = P'
                 Proof::eq_trans_chain(&[local_result, child_result]).unwrap()
             }
@@ -325,7 +333,10 @@ impl UncurriedFunction {
                 let PairChain::Cons(head, _tail) = arguments else {
                     panic!("insufficient arguments passed to call")
                 };
-                ic!(lhs = head).prove(ByUnfolding)
+                let general_proof = ad_hoc_lazy_static!(Proof)(|| {
+                    formula!("(const,)(head, tail) = head").prove(ByUnfolding)
+                });
+                ic!(lhs = head).prove(BySpecializing(general_proof))
             }
         }
     }
@@ -375,7 +386,7 @@ impl UncurriedFunction {
                 }
             }
             // (UncurriedFunctionValue::Apply(_), UncurriedFunctionValue::Constant(g)) => {
-            //     if let RawFormulaValue::Apply(goal_children) = g.value() {
+            //     if let RWMFormulaValue::Apply(goal_children) = g.value() {
             //         return self.add_generalized_args_to_return(
             //             &UncurriedFunction::apply(
             //                 goal_children.map(|f| UncurriedFunction::constant(f)),
@@ -421,8 +432,12 @@ impl UncurriedFunction {
         match self.value() {
             UncurriedFunctionValue::Constant(f) => {
                 // goal: fuse (const (const f)) args = (const f)
+                let general_proof = ad_hoc_lazy_static!(Proof)(|| {
+                    formula!("fuse (const (const f)) args = (const f)").prove(BySpecializingAxiom)
+                });
                 let rhs = UncurriedFunction::constant(f.clone());
-                UncurriedFunctionEquivalence { sides: [lhs, rhs] }.prove(BySpecializingAxiom)
+                UncurriedFunctionEquivalence { sides: [lhs, rhs] }
+                    .prove(BySpecializing(general_proof))
             }
             UncurriedFunctionValue::Apply(children) => {
                 // subgoals: fuse (const A) args = A', fuse (const B) args = B'
@@ -440,10 +455,13 @@ impl UncurriedFunction {
                     &child_proofs.each_ref().map(|c| c.proof().clone()),
                 ));
                 // subgoal: fuse (const (fuse A B)) args = fuse (fuse (const A) args) (fuse (const B) args)
+                let general_proof = ad_hoc_lazy_static!(Proof)(|| {
+                    formula!("fuse (const (fuse A B)) args = fuse (fuse (const A) args) (fuse (const B) args)").prove(BySpecializingAxiom)
+                });
                 let local_result = UncurriedFunctionEquivalence {
                     sides: [lhs, children_lhs],
                 }
-                .prove(BySpecializingAxiom);
+                .prove(BySpecializing(general_proof));
                 // goal: fuse (const (fuse A B)) args = fuse A' B'
                 // canonicalize if children are both PopIn or both Constant
                 // let canonicalization = combined_child_results.sides[1].canonicalize_locally();
@@ -462,16 +480,26 @@ impl UncurriedFunction {
                 // subgoal: fuse (const P) tail = P'
                 let child_result = child.generalized_call(tail);
                 // subgoal: fuse (const (const P,)) (l => (head l, tail l)) = fuse (const P) tail
+                let general_proof = ad_hoc_lazy_static!(Proof)(|| {
+                    formula!(
+                        "fuse (const (const P,)) (l => (head l, tail l)) = fuse (const P) tail"
+                    )
+                    .prove(BySpecializingAxiom)
+                });
                 let local_result = UncurriedFunctionEquivalence {
                     sides: [lhs, child_result.sides[0].clone()],
                 }
-                .prove(BySpecializingAxiom);
+                .prove(BySpecializing(general_proof));
                 // goal: fuse (const (const P,)) (l => (head l, tail l)) = P'
                 Proven::<UncurriedFunctionEquivalence>::trans_chain(&[local_result, child_result])
                     .unwrap()
             }
             UncurriedFunctionValue::Top => {
                 // goal: fuse (const (const,)) (l => (head l, tail l)) = head
+                let general_proof = ad_hoc_lazy_static!(Proof)(|| {
+                    formula!("fuse (const (const,)) (l => (head l, tail l)) = head")
+                        .prove(BySpecializingAxiom)
+                });
                 let UncurriedPairChain::Cons(head, _tail) = arguments else {
                     panic!("insufficient arguments passed to call")
                 };
@@ -484,7 +512,7 @@ impl UncurriedFunction {
                 UncurriedFunctionEquivalence {
                     sides: [lhs, head.clone()],
                 }
-                .prove(BySpecializingAxiom)
+                .prove(BySpecializing(general_proof))
             }
         }
     }
@@ -493,7 +521,7 @@ impl UncurriedFunction {
             #[allow(clippy::single_match)]
             match (a.value(), b.value()) {
                 (UncurriedFunctionValue::Constant(a), UncurriedFunctionValue::Constant(b)) => {
-                    let combined = ic!(a b).already_raw().unwrap();
+                    let combined = ic!(a b).to_rwm();
                     // goal: fuse (const a) (const b) = const (a b)
                     return UncurriedFunctionEquivalence {
                         sides: [self.clone(), UncurriedFunction::constant(combined)],
@@ -568,13 +596,11 @@ impl RWMFormula {
         &self,
         substitutions: &BTreeMap<String, UncurriedFunction>,
     ) -> UncurriedFunction {
-        if let Some(raw) = self.already_raw() {
-            return UncurriedFunctionValue::Constant(raw).into();
-        }
+        // if let Some(raw) = self.already_raw() {
+        //     return UncurriedFunctionValue::Constant(raw).into();
+        // }
         match self.value() {
-            RWMFormulaValue::Atom(_) => {
-                unreachable!()
-            }
+            RWMFormulaValue::Atom(_) => UncurriedFunctionValue::Constant(self.clone()).into(),
             RWMFormulaValue::Apply(children) => UncurriedFunctionValue::Apply(
                 children
                     .map(|c| c.with_metavariables_replaced_with_uncurried_functions(substitutions)),
@@ -585,7 +611,7 @@ impl RWMFormula {
     }
     pub fn to_uncurried_function_of(&self, arguments: &[String]) -> UncurriedFunction {
         // let Some((head, tail)) = arguments.split_first() else {
-        //     return UncurriedFunctionValue::Constant(self.already_raw().unwrap()).into();
+        //     return UncurriedFunctionValue::Constant(self.to_rwm()).into();
         // };
         // if let Some(already_raw) = self.already_raw() {
         //     return UncurriedFunctionValue::Constant(already_raw).into();
@@ -596,7 +622,7 @@ impl RWMFormula {
         let result: UncurriedFunction = match self.value() {
             RWMFormulaValue::Atom(a) => {
                 // unreachable!()
-                UncurriedFunctionValue::Constant(Formula::atom(a).already_raw().unwrap()).into()
+                UncurriedFunctionValue::Constant(Formula::atom(a).to_rwm()).into()
             }
             RWMFormulaValue::Apply(children) => UncurriedFunctionValue::Apply(
                 children.map(|c| c.to_uncurried_function_of(arguments)),
@@ -642,10 +668,7 @@ impl RWMFormula {
     }
     pub fn already_uncurried_function(&self) -> Result<UncurriedFunction, String> {
         let result = if let Ok([a]) = ic!(const "a").matches::<[RWMFormula; 1]>(self) {
-            Ok(UncurriedFunction::constant(
-                a.to_raw()
-                    .ok_or_else(|| format!("Not a UCF (not raw): {a}"))?,
-            ))
+            Ok(UncurriedFunction::constant(a))
         } else if let Ok([a]) = ic!(((const "a"),)).matches::<[RWMFormula; 1]>(self) {
             Ok(UncurriedFunction::pop_in(a.already_uncurried_function()?))
         } else if self == &ic!(const,).to_rwm() {

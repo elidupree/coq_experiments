@@ -1,7 +1,21 @@
 const A B = A
 fuse A B C = (A C) (B C)
 
+fuse (fuse (const const) A) B = A
+fuse (fuse (fuse (const fuse) A) B) C = fuse (fuse A C) (fuse B C)
+
 fuse (const A) (const B) = const (A B)
+# rotate fuse-tree
+fuse (fuse (const (fuse (const A))) B) C = fuse (const A) (fuse B C)
+# distribute two bindings under one
+fuse (fuse (fuse (const fuse) (fuse (const A) C)) (fuse (const B) C)) D = fuse (fuse ( fuse (const A) C) D) (fuse (fuse (const B) C) D)
+
+# unfold const under two bindings
+# fuse (const (fuse (const (const A)))) B = const (const A)
+# (redundant with:)
+fuse (const (const A)) = const (const A)
+# unfold fuse under two bindings
+fuse (const (fuse (const (fuse A B)))) P = fuse (fuse (const fuse) (fuse (const (fuse (const A))) P)) (fuse (const (fuse (const B))) P)
 
 fuse (const (const A)) B = (const A)
 fuse (const (fuse A B)) C = fuse (fuse (const A) C) (fuse (const B) C)
@@ -13,3 +27,10 @@ fuse (const (const A,)) (l => (head l, tail l)) = fuse (const A) tail
 #fuse (fuse (const const) A) (const const) = A
 #(fuse (fuse (const const) A) B) = A
 #(fuse (fuse (fuse (const fuse) A) B) C) = fuse (fuse A C) (fuse B C)
+
+#const (fuse const A) = fuse const
+#fuse (const (const A)) = const (const A)
+#fuse (fuse const) = id
+
+# hack - I'm sure there's a way to do this one more simple/principled
+(x=>y=>(p=>A (p const) (p (const id)))(x,y)) = A

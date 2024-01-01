@@ -201,34 +201,42 @@ impl Interface {
         }
     }
     fn sandbox(&self) -> Node {
-        let callback = interface_callback_with(
-            r#"document.getElementById("sandbox_text").value"#,
-            move |text: String, i| {
-                i.sandbox_text = text;
-                match FormulaParser::new().parse(&i.sandbox_text) {
-                    Ok(formula) => {
-                        let mut formula = formula.to_rwm();
-                        formula.unfold_until(100);
-                        let new = formula.to_string();
-                        if new == i.sandbox_text {
-                            i.sandbox_message = "Nothing to do".to_string();
-                        } else {
-                            i.sandbox_message = "Unfolded!".to_string();
+        fn callback(conversion: impl (Fn(&RWMFormula) -> Proof) + Send + Sync + 'static) -> String {
+            interface_callback_with(
+                r#"document.getElementById("sandbox_text").value"#,
+                move |text: String, i| {
+                    i.sandbox_text = text;
+                    match FormulaParser::new().parse(&i.sandbox_text) {
+                        Ok(formula) => {
+                            let result = conversion(&formula.to_rwm())
+                                .conclusion()
+                                .as_eq_sides()
+                                .unwrap()[1]
+                                .clone();
+                            let new = result.to_string();
+                            if new == i.sandbox_text {
+                                i.sandbox_message = "Nothing to do".to_string();
+                            } else {
+                                i.sandbox_message = "Unfolded!".to_string();
+                            }
+                            i.sandbox_text = new;
                         }
-                        i.sandbox_text = formula.to_string();
+                        Err(e) => {
+                            i.sandbox_message = e.to_string();
+                        }
                     }
-                    Err(e) => {
-                        i.sandbox_message = e.to_string();
-                    }
-                }
-            },
-        );
+                },
+            )
+        }
         html! {
             <div class="sandbox">
                 <textarea id="sandbox_text">{text!("{}", self.sandbox_text)}</textarea>
                 <button onclick={
-                    callback
+                    callback(|f| f.unfold_up_to_n_subformulas_proof(100))
                 }>Unfold</button>
+                <button onclick={
+                    callback(|f| f.convert_up_to_n_subformulas_proof( RWMFormula::extensional_canonicalization_here_proof, 100))
+                }>Extensionality</button>
                 <div>{text!("{}", self.sandbox_message)}</div>
             </div>
         }

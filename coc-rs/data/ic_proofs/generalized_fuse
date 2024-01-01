@@ -1,0 +1,1 @@
+C. (x => fuse (A x) (B x) (C x)) = (x => ((A x) (C x)) ((B x) (C x)))
