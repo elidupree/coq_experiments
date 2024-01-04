@@ -34,6 +34,7 @@ nra.cache
 *.vos
 
 .idea
+.vscode
 .makefile.d
 makefile
 makefile.conf
