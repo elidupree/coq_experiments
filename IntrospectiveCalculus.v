@@ -149,8 +149,8 @@ Theorem justified_rules_make_justified_proofs :
       : Forall (λ f, InferenceJustified (ps |- f)) mid_prems_part
     := match mid_prems_proved_part as m in (Forall _ l) return (Forall (λ f, InferenceJustified (ps |- f)) l) with
       | Forall_nil => Forall_nil _
-      | Forall_cons head tail head_proof tail_proof => _
-         Forall_cons (ind ps head head_proof) (fl tail tail_proof)
+      | Forall_cons head tail head_proof tail_proof => 
+         Forall_cons _ (ind ps head head_proof) (fl tail tail_proof)
       end) mid_prems mid_prems_proved in _).
   clearbody indH.
   clear ind mid_prems_proved.
@@ -163,17 +163,60 @@ Theorem justified_rules_make_justified_proofs :
   unfold RulesTransformIntPredInfs in *.
   unfold map_inf_to_coq_prop in *; intros; cbn in *.
   (* unfold RulesProveIntPredInf in *. *)
-  cbn in *.
-  destruct pred_infs; cbn in *.
-  intros.
 
-  apply H.
-
-  specialize H with H0.
-
-  split 
   
-  destruct H.
+  dependent destruction sj.
+  unfold IntPredInfTransformJustified in H.
+  specialize H with Rules.
+  unfold RulesTransformIntPredInfs in H.
+  unfold map_inf_to_coq_prop in H; cbn in H.
+  apply H; clear H.
+
+  induction indH; [apply Forall_nil|].
+  apply Forall_cons; [|assumption].
+  clear l indH IHindH.
+
+  dependent destruction H.
+  unfold IntPredInfTransformJustified in H.
+  specialize H with Rules.
+  unfold RulesTransformIntPredInfs in H.
+  unfold map_inf_to_coq_prop in H; cbn in H.
+  apply H; clear H.
+  assumption.
+Admitted.
+
+
+Definition f_id := [fuse const const].
+Definition f_fst := [fuse f_id const].
+Definition f_snd := [fuse f_id [const f_id]].
+Definition f_false := [pred_imp f_fst f_snd].
+Definition f_true := [pred_imp [pred_imp pred_imp] [pred_imp pred_imp]].
+
+
+Lemma false_unjustified :
+  InferenceJustified (nil |- (f_fst::nil |- f_snd)) -> False.
+  intro.
+  dependent destruction H.
+  unfold IntPredInfTransformJustified in H.
+  specialize H with Rules.
+  unfold RulesTransformIntPredInfs in H.
+  unfold map_inf_to_coq_prop in H; cbn in H.
+  specialize H with (Rules := (λ _, False)).
+  assert (H := H (Forall_nil _)).
+  unfold RulesProveIntPredInf in H.
+
+  unfold RulesProveFormulaInf in H.
+  specialize H with (x := const).
+  destruct H as (ps,H).
+  destruct H as (c,H).
+  destruct H as (rule,H).
+  destruct H as (ps_unf,c_unf).
+  dependent destruction rule.
+
+  destruct rule.
+  dependent destruction H .
+  dependent destruction H.
+
 
   
   
