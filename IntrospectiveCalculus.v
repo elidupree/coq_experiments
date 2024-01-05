@@ -46,8 +46,12 @@ Record Inference F := makeInf
 Notation "ps |- c" := {| inf_premises := ps; inf_conclusion := c |} (at level 80).
 
 Print inf_conclusion.
-Definition map_inf A B (f : A -> B) i := ((map f (inf_premises i)) |- f (inf_conclusion i)).
-  
+Definition map_inf A B (f : A -> B) i :=
+  ((map f (inf_premises i)) |- f (inf_conclusion i)).
+Definition map_inf_to_coq_prop A (f : A -> Prop) i :=
+  ((Forall f (inf_premises i)) -> f (inf_conclusion i)).
+
+Definition Rule := Inference FormulaWithVariables.
 
 Fixpoint specialize_fwv f values :=
   match f with
@@ -93,20 +97,50 @@ Definition internal_pred_inf i :=
 Definition RulesProvePredInf Rules i :=
   ∀x, RulesProve Rules (map_inf (λ p, [p x]) i).
 
+Definition RulesProveDoublePredInf Rules metainf :=
+  ∀y, (map_inf_to_coq_prop
+      (λ i, RulesProvePredInf Rules (specialize_inf i y))
+      metainf).
+
+Inductive Justified : Rule -> Prop :=
+  | justified (metainf : Inference (Inference FormulaWithVariables)) :
+    (∀Rules, RulesProveDoublePredInf Rules metainf)
+    ->
+    Justified (map_inf internal_pred_inf metainf).
+  
+Lemma justified_to_any : 
+  ∀ metainf, 
+    RulesProveDoublePredInf Justified metainf
+    ->
+    (∀Rules, RulesProveDoublePredInf Rules metainf).
+  unfold RulesProveDoublePredInf in *.
+  unfold map_inf_to_coq_prop in *.
+  intros.
+  specialize (H y).
+  
+
+Theorem justified_rules_make_justified_proofs :
+  ∀ metainf,
+    ((∀ y, (map_inf_to_coq_prop
+      (λ i, RulesProvePredInf Justified (specialize_inf i y))
+      metainf))
+    ->
+    Justified (map_inf internal_pred_inf metainf)).
+  intros.
+  apply justified.
+  unfold map_inf_to_coq_prop in *.
+  intros.
+  specialize (H y).
+  cbn in H.
+
+  induction H.
+  constructor.
+
+
 Definition f_id := [fuse const const].
 Definition f_fst := [fuse f_id const].
 Definition f_snd := [fuse f_id [const f_id]].
 Definition f_false := [pred_imp f_fst f_snd].
-
-Inductive Justified : Inference FormulaWithVariables -> Prop :=
-  | justified ls r :
-    (∀Rules y,
-      Forall (λ l, RulesProvePredInf Rules (specialize_inf l y)) ls
-      ->
-      RulesProvePredInf Rules (specialize_inf r y))
-    ->
-    Justified ((map internal_pred_inf ls) |- (internal_pred_inf r)).
-  
 
 Theorem ic_is_consistent : (∀ i, RulesProve Justified (nil |- i)) -> False.
   intro.
