@@ -169,7 +169,46 @@ Theorem justified_rulesets_are_consistent R :
 Qed.
 
 
+Notation "[ x & y ]" := [f_and x y] (at level 0, x at next level, y at next level).
+Notation "[ x |= y ]" := [pred_imp x y] (at level 0, x at next level, y at next level).
 
+Lemma and_sym_justified a b : InferenceJustified [a & b] [b & a].
+  unfold InferenceJustified; intros; cbn in *.
+  intuition.
+Qed.
+
+Lemma and_assoc1_justified a b c : InferenceJustified [a & [b & c]] [[a & b] & c].
+  unfold InferenceJustified; intros; cbn in *.
+  intuition.
+Qed.
+
+Lemma and_assoc2_justified a b c : InferenceJustified [[a & b] & c] [a & [b & c]].
+  unfold InferenceJustified; intros; cbn in *.
+  intuition.
+Qed.
+(* 
+Lemma unfold_further :
+  RulseProveInference a b *)
+
+Lemma predimp_trans_justified a b c :
+  InferenceJustified [[a |= b] & [b |= c]] [a |= c].
+  unfold InferenceJustified; intros; cbn in *.
+  intuition.
+  specialize H0 with (x := x).
+  specialize H1 with (x := x).
+  destruct H0 as (ap0, (bp0, (ua0, (ub0, p0)))).
+  destruct H1 as (ap1, (bp1, (ua1, (ub1, p1)))).
+
+Qed.
+
+Inductive IC : Ruleset :=
+  | and_sym a b : IC [a & b] [b & a]
+  | and_assoc1 a b c : IC [a & [b & c]] [[a & b] & c]
+  | and_assoc2 a b c : IC [[a & b] & c] [a & [b & c]]
+  | predimp_trans a b c : IC [[a |= b] & [b |= c]] [a |= c].
+
+
+Definition rule_and_assoc a b := 
 
 Definition f_fst := [fuse f_id const].
 Definition f_snd := [fuse f_id [const f_id]].
