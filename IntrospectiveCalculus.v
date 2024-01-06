@@ -22,40 +22,8 @@ Definition const := formula_atom atom_const.
 Definition fuse := formula_atom atom_fuse.
 Definition pred_imp := formula_atom atom_pred_imp.
 Definition f_and := formula_atom atom_and.
-(* Definition f_nil := const. *)
 
-(* Record Inference F := makeInf
-  { inf_premises: list F
-  ; inf_conclusion: F
-  }.
-
-Notation "ps |- c" := {| inf_premises := ps; inf_conclusion := c |} (at level 80). *)
-
-(* Print inf_conclusion. *)
-(* Definition map_inf A B (f : A -> B) i :=
-  ((map f (inf_premises i)) |- f (inf_conclusion i)).
-Definition zipmap_inf A B C (f : A -> B -> C) i :=
-  ((map f (inf_premises i)) |- f (inf_conclusion i)).
-Definition map_inf_to_coq_prop A (f : A -> Prop) i :=
-  ((Forall f (inf_premises i)) -> f (inf_conclusion i)). *)
-
-(* Definition InternalPredicateToBeRepresentedAsAFormula := Inference Formula. *)
-(* Definition InternalPredicate := Formula. *)
-(* Definition InternalProposition := Formula. *)
-(* Definition InferenceBetweenPropositions := Inference InternalProposition. *)
 Definition Ruleset := Formula -> Formula -> Prop.
-
-(* Fixpoint f_pred_list ps :=
-  match ps with
-    | nil => f_nil
-    | cons x xs => [f_and x (f_pred_list xs)]
-    end. *)
-  
-(* Definition f_prop (p : Inference InternalPredicate) : Formula :=
-  [pred_imp (f_pred_list (inf_premises p)) (inf_conclusion p)]. *)
-    
-(* Definition f_pred_inf_transform i : Formula :=
-  [pred_imp (f_pred_list (inf_premises i)) (inf_conclusion i)]. *)
 
 Inductive Unfold : Formula -> Formula -> Prop :=
   | unfold_nothing f : Unfold f f
@@ -63,9 +31,6 @@ Inductive Unfold : Formula -> Formula -> Prop :=
   | unfold_fuse f a b c : Unfold f [fuse a b] -> Unfold [f c] [[a c] [b c]]
   | unfold_pred_imp a b c d : Unfold a b -> Unfold c d -> Unfold [pred_imp a c] [pred_imp b d]
   | unfold_pred_and a b c d : Unfold a b -> Unfold c d -> Unfold [f_and a c] [f_and b d].
-
-(* Definition UnfoldToProposition : Formula -> Inference InternalPredicate -> Prop :=
-  λ f i, Unfold f (f_prop i). *)
 
 Inductive RulesProveInference Rules : Formula -> Formula -> Prop :=
   | proof_by_rule a b : Rules a b -> RulesProveInference Rules a b
@@ -92,73 +57,18 @@ Definition meaning
         | _ => UnknownMeanings f
         end.
 
-(* Inductive IntrospectProp : Prop -> Formula -> Prop :=
-  | introspect_pred_imp a b :
-    IntrospectProp (∀x meanings ap bp,
-      Unfold [a x] ap -> Unfold [b x] bp ->
-      IntrospectProp A ap -> IntrospectProp B bp) [pred_imp a b]
-  | introspect_and A a B b :
-    IntrospectProp A a -> IntrospectProp B b -> 
-    IntrospectProp (A /\ B) [f_and a b]. *)
-  
-(* Inductive MappedList A B f : list A -> list B -> Prop :=
-  | MappedList_nil : MappedList f nil nil
-  | MappedList_cons a b atl btl :
-    f a b -> MappedList f atl btl -> MappedList f (a::atl) (b::btl).
-  
-
-Inductive RulesProvePropInf Rules : InferenceBetweenPropositions -> Prop :=
-  | proof_by_premise ps c : In c ps -> RulesProvePropInf Rules (ps |- c)
-  | proof_by_rule specialized ps :
-    Rules specialized ->
-    map_inf_to_coq_prop (λ f, RulesProvePropInf Rules (ps |- f)) specialized.
-    (* Forall (λ spec_premise, RulesProvePropInf Rules (ps |- spec_premise)) (inf_premises specialized) ->
-    RulesProvePropInf Rules (ps |- (inf_conclusion specialized)). *) *)
-
-(* Definition RulesProvePropInfWthUnfolding Rules fi :=
-  ∃ ps c, RulesProvePropInf Rules (ps |- c)
-    /\ MappedList Unfold (inf_premises fi) ps
-    /\ Unfold (inf_conclusion fi) c. *)
-  
-(* Definition RulesProveIntPredInf Rules (i : Inference InternalPredicate) :=
-  ∀x, RulesProvePropInfWthUnfolding Rules (map_inf (λ p, [p x]) i). *)
-
-(* "if these rules prove all inferences on the left...
-    then they prove the inference on the right" *)
-(* Definition RulesTransformIntPredInfs Rules
-  (pred_infs : Inference (Inference InternalPredicate)) : Prop :=
-  map_inf_to_coq_prop
-    (λ pred_inf, RulesProveIntPredInf Rules pred_inf)
-    pred_infs. *)
-
-(* Definition IntPredInfTransformJustified pred_infs : Prop :=
-  ∀Rules, RulesTransformIntPredInfs Rules pred_infs. *)
-
-(* Definition pred_inf_transform_to_inf
-  (pred_infs : Inference (Inference InternalPredicate))
-  : Inference PropositionPreF
-  := map_inf f_prop pred_infs. *)
-
 Definition InferenceJustified a b : Prop :=
   ∀Rules UnknownMeanings,
     (meaning Rules UnknownMeanings a) ->
     (meaning Rules UnknownMeanings b).
 
-(* Inductive InferenceJustified :  -> Prop :=
-| inference_justified_by_premise ps c :
-   In c ps -> InferenceJustified (ps |- c)
-| inference_justified_by_pred_inf pred_infs :
-  (IntPredInfTransformJustified pred_infs) ->
-  InferenceJustified (map_inf f_prop pred_infs). *)
+Definition RulesetJustified Rules : Prop :=
+  ∀a b, Rules a b -> InferenceJustified a b.
 
-(* Lemma forall_in A P l (x:A) : Forall P l -> In x l -> P x.
-  (* specialize Forall_forall with (A := A), P:=P). *)
-Admitted. *)
-
-Lemma provable_by_justified_rules_means_justified p c :
-  RulesProveInference InferenceJustified p c
-  ->
-  InferenceJustified p c.
+Lemma provable_by_InferenceJustified_means_justified p c :
+    RulesProveInference InferenceJustified p c
+    ->
+    InferenceJustified p c.
   intro.
   induction H; [assumption|clear H H0].
   unfold InferenceJustified in *.
@@ -169,6 +79,37 @@ Lemma provable_by_justified_rules_means_justified p c :
   specialize IHRulesProveInference2 with (UnknownMeanings := UnknownMeanings).
   exact (IHRulesProveInference2 (IHRulesProveInference1 H)).
 Qed.
+
+Lemma provable_by_justified_rules_means_justified R p c :
+    RulesetJustified R ->
+    RulesProveInference R p c ->
+    InferenceJustified p c.
+  unfold RulesetJustified in *.
+  intros.
+  induction H0.
+  exact (H a b X).
+  exact (provable_by_InferenceJustified_means_justified
+    (proof_by_transitivity
+      (proof_by_rule InferenceJustified a b IHRulesProveInference1)
+      (proof_by_rule InferenceJustified b c IHRulesProveInference2)
+    )).
+Qed.
+
+Lemma eq_justified : RulesetJustified eq.
+  unfold RulesetJustified.
+  unfold InferenceJustified.
+  intros.
+  subst b; assumption.
+Qed.
+
+Lemma provable_by_eq_means_eq p c :
+  RulesProveInference eq p c -> p = c.
+  intro.
+  induction H; [assumption | ].
+  subst b; assumption.
+Qed.
+
+  
 
 Definition f_id := [fuse const const].
 Definition f_true := [pred_imp f_id f_id].
@@ -208,187 +149,33 @@ Lemma false_unjustified :
   (* Using "and" here just because it's a formula that doesn't unfold. *)
   specialize H with (x := f_and).
   destruct H as (ap, (bp, (ua, (ub, i)))).
-  destruct i.
-  subst b.
+  assert (j := provable_by_eq_means_eq i); clear i.
+  subst bp.
 
-  destruct H.
-
-
-
-  Unshelve.
-  exact const.
-  apply unfold_nothing.
-  apply (exist _ [(f_id) (x)]).
-  
+  (* Now all we have to do is prove that [const true and] and [id and]
+     can never unfold to the same thing.
+     There are only finitely many possible unfoldings;
+     this tells Coq to exhaust them. *)
+  repeat (dependent destruction ua || dependent destruction ub).
+Qed.
 
 
+Theorem justified_rulesets_are_consistent R :
+    RulesetJustified R ->
+    RulesProveInference R f_true f_false ->
+    False.
+  intros justified proved.
+  exact (false_unjustified (provable_by_justified_rules_means_justified justified proved)).
+Qed.
 
-Theorem justified_rules_make_justified_proofs :
-  ∀ i,
-    RulesProvePropInf InferenceJustified i
-    ->
-    InferenceJustified i.
-  
-  intro; destruct i as (original_ps, original_c).
 
-  (* basically "induction H.", it's just that Coq didn't manage to get the right IH *)
-  refine ((fix ind ps1 c1 H : InferenceJustified (ps1 |- c1) :=
-    match H in RulesProvePropInf _ i return InferenceJustified i with
-    | proof_by_premise ps c cinp => _
-    | proof_by_rule specialized ps sj mid_prems_proved => _
-    end) original_ps original_c); clear original_ps original_c H ps1 c1.
-  
-  (* premise case *)
-  constructor; assumption.
-  (* constructor; unfold IntPredInfTransformJustified; intros.
-  unfold RulesTransformIntPredInfs. unfold map_inf_to_coq_prop. intros.
-  (* cbn in H. *)
-  apply (forall_in _ H).
-  assumption. *)
-  
-  (* rule case *)
-  destruct specialized as (mid_prems, c).
-
-  (* finish doing induction; this is basically just boilerplate *)
-  refine (let indH : Forall (λ f, InferenceJustified (ps |- f)) mid_prems := (fix fl
-      (mid_prems_part: list InternalProposition)
-      (mid_prems_proved_part: Forall (λ f : InternalProposition,
-          RulesProvePropInf
-          InferenceJustified
-          (ps |- f)) mid_prems_part)
-      : Forall (λ f, InferenceJustified (ps |- f)) mid_prems_part
-    := match mid_prems_proved_part as m in (Forall _ l) return (Forall (λ f, InferenceJustified (ps |- f)) l) with
-      | Forall_nil => Forall_nil _
-      | Forall_cons head tail head_proof tail_proof => 
-         Forall_cons _ (ind ps head head_proof) (fl tail tail_proof)
-      end) mid_prems mid_prems_proved in _).
-  clearbody indH.
-  clear ind mid_prems_proved.
-
-  (* Now back to the real proof logic for the "rule" case *)
-  cbn in *.
-
-  dependent destruction sj.
-
-  (* Justified by premise? ok, sure, use that premise's justification *)
-  pose (forall_in c indH H) as i; cbn in i; exact i.
-
-  (* Justified by rule? *)
-  destruct pred_infs as (l, r); cbn in *.
-  unfold IntPredInfTransformJustified in H.
-  specialize H with (Rules := InferenceJustified).
-  unfold RulesTransformIntPredInfs in *.
-  unfold map_inf_to_coq_prop in *; cbn in *.
-  apply inference_justified_by_pred_inf.
-
-  apply inference_justified_by_premise.
-
-  apply forall_in.
-
-  assert (Forall
-    (λ f : InternalProposition,
-    InferenceJustified
-    (ps |- f))
-    mid_prems).
-
-  destruct H.
-  apply inference_justified_by_pred_inf.
-  unfold IntPredInfTransformJustified in *; intros.
-  (* specialize H with InferenceJustified.  *)
-  unfold RulesTransformIntPredInfs in *.
-  unfold map_inf_to_coq_prop in *; intros; cbn in *.
-  (* unfold RulesProveIntPredInf in *. *)
-
-  
-  dependent destruction sj.
-  unfold IntPredInfTransformJustified in H.
-  specialize H with Rules.
-  unfold RulesTransformIntPredInfs in H.
-  unfold map_inf_to_coq_prop in H; cbn in H.
-  apply H; clear H.
-
-  induction indH; [apply Forall_nil|].
-  apply Forall_cons; [|assumption].
-  clear l indH IHindH.
-
-  dependent destruction H.
-  unfold IntPredInfTransformJustified in H.
-  specialize H with Rules.
-  unfold RulesTransformIntPredInfs in H.
-  unfold map_inf_to_coq_prop in H; cbn in H.
-  apply H; clear H.
-  assumption.
-Admitted.
 
 
 Definition f_fst := [fuse f_id const].
 Definition f_snd := [fuse f_id [const f_id]].
 
 
-Lemma false_unjustified :
-  InferenceJustified (nil |- (f_fst::nil |- f_snd)) -> False.
-  intro.
-  dependent destruction H.
-  unfold IntPredInfTransformJustified in H.
-  specialize H with Rules.
-  unfold RulesTransformIntPredInfs in H.
-  unfold map_inf_to_coq_prop in H; cbn in H.
-  specialize H with (Rules := (λ _, False)).
-  assert (H := H (Forall_nil _)).
-  unfold RulesProveIntPredInf in H.
-
-  unfold RulesProveFormulaInf in H.
-  specialize H with (x := const).
-  destruct H as (ps,H).
-  destruct H as (c,H).
-  destruct H as (rule,H).
-  destruct H as (ps_unf,c_unf).
-  dependent destruction rule.
-
-  destruct rule.
-  dependent destruction H .
-  dependent destruction H.
-
-
-  
-  
-Lemma justified_to_any : 
-Lemma justified_to_any : 
-  ∀ metainf, 
-    RulesProveDoublePredInf Justified metainf
-    ->
-    (∀Rules, RulesProveDoublePredInf Rules metainf).
-  unfold RulesProveDoublePredInf in *.
-  unfold map_inf_to_coq_prop in *.
-  intros.
-  specialize (H y).
-  
-
-Theorem justified_rules_make_justified_proofs :
-  ∀ metainf,
-    ((∀ y, (map_inf_to_coq_prop
-      (λ i, RulesProvePredInf Justified (specialize_inf i y))
-      metainf))
-    ->
-    Justified (map_inf f_pred_inf metainf)).
-  intros.
-  apply justified.
-  unfold map_inf_to_coq_prop in *.
-  intros.
-  specialize (H y).
-  cbn in H.
-
-  induction H.
-  constructor.
-
-
-Definition f_id := [fuse const const].
-Definition f_fst := [fuse f_id const].
-Definition f_snd := [fuse f_id [const f_id]].
-Definition f_false := [pred_imp f_fst f_snd].
-Definition f_true := [pred_imp [pred_imp pred_imp] [pred_imp pred_imp]].
-
-Theorem ic_is_consistent : (∀ i, RulesProve Justified (nil |- i)) -> False.
+(* Theorem ic_is_consistent : (∀ i, RulesProve Justified (nil |- i)) -> False.
   intro.
   specialize H with (i := f_false).
   dependent induction H.
@@ -397,14 +184,10 @@ Theorem ic_is_consistent : (∀ i, RulesProve Justified (nil |- i)) -> False.
   unfold In in H; assumption.
   
   (* "How was the rule justified?" *)
-  destruct H.
-
-  destruct H0.
-
-  cbv in H.
+  destruct H. *)
 
 
-  
+
 Parameter VariableIndex : Set.
 Parameter VariableValues : Set.
 Parameter get_variable_value: VariableValues-> VariableIndex ->Formula.
