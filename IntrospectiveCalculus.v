@@ -13,29 +13,107 @@ Inductive Atom :=
   | atom_quote.
 
 Inductive Formula :=
-  | formula_atom : Atom -> Formula
-  | formula_apply: Formula-> Formula-> Formula.
+  | f_atm : Atom -> Formula
+  | f_apl: Formula-> Formula-> Formula.
 
-Notation "[ x y .. z ]" := (formula_apply .. (formula_apply x y) .. z)
+Notation "[ x y .. z ]" := (f_apl .. (f_apl x y) .. z)
  (at level 0, x at next level, y at next level).
 
-Definition const := formula_atom atom_const.
-Definition fuse := formula_atom atom_fuse.
-Definition pred_imp := formula_atom atom_pred_imp.
-Definition f_and := formula_atom atom_and.
-Definition f_quote := formula_atom atom_quote.
+Definition const := f_atm atom_const.
+Definition fuse := f_atm atom_fuse.
+Definition pred_imp := f_atm atom_pred_imp.
+Definition f_and := f_atm atom_and.
+Definition f_quote := f_atm atom_quote.
 Definition f_id := [fuse const const].
-Definition f_pair a b := [fuse [fuse f_id a] b].
-Definition fp_fst := [fuse f_id const].
+Definition f_pair a b := [fuse [fuse f_id [const a]] [const b]].
+Definition fp_fst := [fuse f_id [const const]].
 Definition fp_snd := [fuse f_id [const f_id]].
+Definition f_default := const.
 
 Definition Ruleset := Formula -> Formula -> Prop.
 
 Fixpoint quote_formula f :=
   match f with
-    | formula_atom _ => [f_quote f]
-    | formula_apply a b => [f_quote (quote_formula a) (quote_formula b)]
+    | f_atm _ => [f_quote f]
+    | f_apl a b => [f_quote (quote_formula a) (quote_formula b)]
     end.
+
+Fixpoint unquote_formula f : option Formula :=
+  match f with
+    | f_apl (f_atm atom_quote) (f_atm a) =>
+      Some (f_atm a)
+    | f_apl (f_apl (f_atm atom_quote) a) b =>
+      match (unquote_formula a,unquote_formula b) with
+        | (Some a, Some b) => Some [a b]
+        | _ => None
+      end
+    | _ => None
+    end.
+
+Lemma quote_unquote f : (unquote_formula (quote_formula f)) = Some f.
+  induction f; cbn.
+  reflexivity.
+  rewrite IHf1. rewrite IHf2. reflexivity.
+Qed.
+
+Fixpoint unfold_step f : option Formula :=
+  match f with
+    (* Atoms never unfold *)
+    | f_atm _ => None
+    (* Unfold in the LHS until you're done... *)
+    | f_apl f x => match unfold_step f with
+      | Some f => Some [f x]
+      (* Then if you're done with the LHS, check its form... *)
+      | None => match f with
+        | f_apl (f_atm atom_const) a => Some a
+        | f_apl (f_apl (f_atm atom_fuse) a) b => Some [[a x] [b x]]
+        | (f_atm atom_quote) =>
+          option_map (λ x, [f_quote x]) (unfold_step x)
+        | f_apl (f_atm atom_quote) a =>
+          option_map (λ x, [f_quote a x]) (unfold_step x)
+        | _ => None
+        end
+      end
+    end.
+  
+(* Fixpoint unfold_n steps f : Formula :=
+  match steps with
+    | 0 => f
+    | S pred => match unfold_step f with
+      | None => f
+      | Some g => unfold_n pred g
+      end
+    end.
+Fixpoint try_unfold_n steps f : option Formula :=
+  match steps with
+    | 0 => None
+    | S pred => match unfold_step f with
+      | None => Some f
+      | Some g => try_unfold_n pred g
+      end
+    end.
+
+Definition UnfoldsTo f g :=
+  ∃ steps, try_unfold_n steps f = Some g.
+
+Eval simpl in unfold_n 30 [fp_fst (f_pair f_quote f_and)].
+Lemma pair_fst a b c : 
+  UnfoldsTo a c ->
+  UnfoldsTo [fp_fst (f_pair a b)] c.
+  unfold UnfoldsTo. apply ex_intro with 20.
+Qed. *)
+  
+Fixpoint try_unfold_to_quoted steps f : option Formula :=
+  match steps with
+    | 0 => None
+    | S pred => match unfold_step f with
+      | None => unquote_formula f
+      | Some g => try_unfold_to_quoted pred g
+      end
+    end.
+
+Definition UnfoldsToQuotedFormulaByFn f g :=
+  ∃ steps, try_unfold_to_quoted steps f = Some g.
 
 Inductive UnfoldStep : Formula -> Formula -> Prop :=
   | unfold_const a b : UnfoldStep [const a b] a
@@ -47,22 +125,23 @@ Inductive UnfoldStep : Formula -> Formula -> Prop :=
   | unfold_under_quote_1 a b c : UnfoldStep a b ->
     UnfoldStep [f_quote c a] [f_quote c b].
   
-Inductive UnfoldToQuotedFormula : Formula -> Formula -> Prop :=
-  | unfold_quoted_done f : UnfoldToQuotedFormula (quote_formula f) f
-  | unfold_step_then a b c : UnfoldStep a b -> UnfoldToQuotedFormula b c -> UnfoldToQuotedFormula a c.
+Inductive UnfoldsToQuotedFormula : Formula -> Formula -> Prop :=
+  | unfold_quoted_done f : UnfoldsToQuotedFormula (quote_formula f) f
+  | unfold_step_then a b c : UnfoldStep a b ->
+    UnfoldsToQuotedFormula b c -> UnfoldsToQuotedFormula a c.
 
 (* Quoted formula streams: *)
 (* [f => h => h const (f f)] *)
 Definition qfs_tail_fn := [fuse
-    [const [fuse [fuse f_id [const [f_quote f_quote]]]]]
+    [const [fuse [fuse f_id [const [f_quote f_default]]]]]
     [fuse [const const] [fuse f_id f_id]]
   ].
 Definition qfs_tail := [qfs_tail_fn qfs_tail_fn].
-
+Definition qfs_cons head tail := f_pair (quote_formula head) tail.
 Inductive IsQuotedFormulaStream : Formula -> Prop :=
   | isqfs_tail : IsQuotedFormulaStream qfs_tail
   | isqfs_cons head tail : IsQuotedFormulaStream tail ->
-    IsQuotedFormulaStream (f_pair (quote_formula head) tail).
+    IsQuotedFormulaStream (qfs_cons head tail).
 
 Inductive RulesProveInference Rules : Formula -> Formula -> Prop :=
   | proof_by_rule a b : Rules a b -> RulesProveInference Rules a b
@@ -71,28 +150,35 @@ Inductive RulesProveInference Rules : Formula -> Formula -> Prop :=
     RulesProveInference Rules b c ->
     RulesProveInference Rules a c.
 
-Definition meaning
+Definition FormulaMeaning
     (Rules : Ruleset)
     (UnknownMeanings : Formula -> Prop)
   : Formula -> Prop
   :=
-    fix meaning (f : Formula) :=
+    fix FormulaMeaning (f : Formula) :=
       match f with
         (* [and a b] *)
-        | formula_apply (formula_apply (formula_atom atom_and) a) b
-          => meaning a /\ meaning b
+        | f_apl (f_apl (f_atm atom_and) a) b
+          => FormulaMeaning a /\ FormulaMeaning b
         (* [pred_imp a b] *)
-        | formula_apply (formula_apply (formula_atom atom_pred_imp) a) b
-          => (∀ x, IsQuotedFormulaStream x -> ∃ ap bp,
-            UnfoldToQuotedFormula [a x] ap /\ UnfoldToQuotedFormula [b x] bp /\
-            RulesProveInference Rules ap bp)
+        | f_apl (f_apl (f_atm atom_pred_imp) a) b
+          => (∀ x,
+            IsQuotedFormulaStream x -> ∃ ap bp,
+              UnfoldsToQuotedFormula [a x] ap /\
+              UnfoldsToQuotedFormula [b x] bp /\
+              RulesProveInference Rules ap bp)
         | _ => UnknownMeanings f
         end.
 
+Definition InferenceMeaning Rules a b : Prop :=
+  ∀UnknownMeanings,
+    (FormulaMeaning Rules UnknownMeanings a) ->
+    (FormulaMeaning Rules UnknownMeanings b).
+
 Definition InferenceJustified a b : Prop :=
   ∀Rules UnknownMeanings,
-    (meaning Rules UnknownMeanings a) ->
-    (meaning Rules UnknownMeanings b).
+    (FormulaMeaning Rules UnknownMeanings a) ->
+    (FormulaMeaning Rules UnknownMeanings b).
 
 Definition RulesetJustified Rules : Prop :=
   ∀a b, Rules a b -> InferenceJustified a b.
@@ -141,24 +227,138 @@ Lemma provable_by_eq_means_eq p c :
   subst b; assumption.
 Qed.
 
-  
+Definition fs_pop_then handler :=
+  [fuse [const handler] fp_snd].
 
 Fixpoint fs_nth n := match n with
   | 0 => fp_fst
-  | S p => [fuse [const (fs_nth p)] fp_snd]
+  | S p => fs_pop_then (fs_nth p)
   end.
 
 Notation "@ n" := (fs_nth n) (at level 0).
 
+(* Eval simpl in try_unfold_n 100 [fp_fst (f_pair f_quote f_quote)].
+Eval simpl in unfold_step [@0 (qfs_cons const qfs_tail)].
+Eval simpl in try_unfold_n 100 [@0 (qfs_cons const qfs_tail)]. *)
+
+Lemma quoted_no_unfold f : unfold_step (quote_formula f) = None.
+  induction f; cbn.
+  reflexivity.
+  rewrite IHf1. rewrite IHf2. cbn. reflexivity.
+Qed.
+
+Lemma quoted_unfold_to_quoted a :
+  try_unfold_to_quoted 1 (quote_formula a) = Some a.
+  induction a; cbn; [reflexivity|].
+  rewrite (quoted_no_unfold a1).
+  rewrite (quoted_no_unfold a2).
+  rewrite (quote_unquote a1).
+  rewrite (quote_unquote a2).
+  cbn; reflexivity.
+Qed.
+
+Lemma ustep_fn_to_prop a b :
+  (unfold_step a = Some (b)) -> UnfoldStep a b.
+Qed.
+
+Lemma utqf_fn_to_prop a b :
+  UnfoldsToQuotedFormulaByFn a b -> UnfoldsToQuotedFormula a b.
+  intro.
+  destruct H.
+  unfold UnfoldsToQuotedFormulaByFn.
+  dependent induction x.
+  cbn in H. dependent destruction H.
+  cbn in H.
+  destruct (unfold_step a).
+  
+  unfold try_unfold_to_quoted in H.
+  unfold UnfoldsToQuotedFormula.
+Qed.
+
+
+  
+Lemma pair_first_quoted_byfn a b :
+  UnfoldsToQuotedFormulaByFn [fp_fst (f_pair (quote_formula a) b)] a.
+  unfold UnfoldsToQuotedFormulaByFn.
+  apply ex_intro with 11.
+  cbn.
+  rewrite (quoted_no_unfold a).
+  rewrite (quote_unquote a).
+  cbn; reflexivity.
+Qed.
+
+  
+Lemma pair_first_quoted a b :
+  UnfoldsToQuotedFormula [fp_fst (f_pair (quote_formula a) b)] a.
+  
+  apply ex_intro with 11.
+  cbn.
+  rewrite (quoted_no_unfold a).
+  rewrite (quote_unquote a).
+  cbn; reflexivity.
+Qed.
+  
+
+Lemma qfs_tail_first :
+  UnfoldsToQuotedFormulaByFn [fp_fst qfs_tail] f_default.
+  unfold UnfoldsToQuotedFormulaByFn.
+  apply ex_intro with 13.
+  cbn; reflexivity.
+Qed.
+  
+
+Lemma qfs_tail_tail handler hout:
+    UnfoldsToQuotedFormula [handler qfs_tail] hout
+    ->
+    UnfoldsToQuotedFormula [(fs_pop_then handler) qfs_tail] hout.
+  unfold UnfoldsToQuotedFormula.
+  intro.
+  destruct H as (steps, H).
+
+  refine(
+    fix ind h := match h with
+  ).
+
+
+  induction handler.
+  contradict H. intro.
+  unfold try_unfold_to_quoted in H. cbn in H.
+
+
+  apply ex_intro with (10 + steps).
+  rewrite <- H.
+  unfold try_unfold_to_quoted; cbn.
+  reflexivity.
+  cbn.
+  (* ; reflexivity. *)
+Qed.
+
+
 Lemma stream_nth_quoted s n :
     IsQuotedFormulaStream s ->
-    ∃ f, [(fs_nth n) s] = quote_formula f.
+    ∃ f, UnfoldsToQuotedFormula [@n s] f.
   intro.
+  unfold UnfoldsToQuotedFormula.
   induction n.
+  (* zero case (@n = f_fst) *)
   destruct H.
+  apply ex_intro with f_quote.
+  apply ex_intro with 20.
+  destruct H.
+  cbn; reflexivity.
+
+  apply ex_intro with f_quote. cbn. unfold quote_formula. cbn.
   induction n.
   admit.
   induction n.
+Qed.
+
+Lemma unfold_unique a b c :
+  UnfoldsToQuotedFormula a b ->
+  UnfoldsToQuotedFormula a c ->
+  b = c.
+  intros.
+
 Qed.
 
 Definition f_true := [pred_imp @0 @0].
@@ -174,14 +374,14 @@ Lemma false_unjustified :
   specialize H with (UnknownMeanings := λ _, True). (* doesn't matter *)
   cbn in H.
 
-  (* Right now we basically have (meaning True -> meaning False),
-     and we want to simplify this by _providing_ (meaning True).
+  (* Right now we basically have (FormulaMeaning True -> FormulaMeaning False),
+     and we want to simplify this by _providing_ (FormulaMeaning True).
      So we just say hey look, id x = id x. *)
   assert (∀ x : Formula,
     IsQuotedFormulaStream x
     → ∃ ap bp : Formula,
-        UnfoldToQuotedFormula [(fp_fst) (x)] ap /\
-        UnfoldToQuotedFormula [(fp_fst) (x)] bp /\
+        UnfoldsToQuotedFormula [(fp_fst) (x)] ap /\
+        UnfoldsToQuotedFormula [(fp_fst) (x)] bp /\
         RulesProveInference eq ap
         bp).
   intros; clear H.
@@ -244,9 +444,17 @@ Qed.
 Notation "[ x & y ]" := [f_and x y] (at level 0, x at next level, y at next level).
 Notation "[ x |= y ]" := [pred_imp x y] (at level 0, x at next level, y at next level).
 
+Definition and_sym_axiom := [[@0 & @1] |= [@1 & @0]].
+
 Lemma and_sym_justified a b : InferenceJustified [a & b] [b & a].
   unfold InferenceJustified; intros; cbn in *.
   intuition.
+Qed.
+
+Lemma and_sym_axiom_justified : InferenceJustified f_true and_sym_axiom.
+  unfold InferenceJustified; intros; cbn in *; intros.
+  clear H. (* we're not going to use the proof of True *)
+  
 Qed.
 
 Lemma and_assoc1_justified a b c : InferenceJustified [a & [b & c]] [[a & b] & c].
@@ -268,9 +476,15 @@ Lemma predimp_trans_justified a b c :
   intuition.
   specialize H0 with (x := x).
   specialize H1 with (x := x).
-  destruct H0 as (ap0, (bp0, (ua0, (ub0, p0)))).
-  destruct H1 as (ap1, (bp1, (ua1, (ub1, p1)))).
-
+  destruct (H0 H) as (ap0, (bp0, (ua0, (ub0, p0)))).
+  destruct (H1 H) as (bp1, (cp1, (ub1, (uc1, p1)))).
+  clear H0 H1.
+  apply ex_intro with ap0.
+  apply ex_intro with cp1.
+  split; [assumption|].
+  split; [assumption|].
+  rewrite (unfold_unique ub0 ub1) in *.
+  apply proof_by_transitivity with bp1; assumption.
 Qed.
 
 Inductive IC : Ruleset :=
@@ -278,6 +492,15 @@ Inductive IC : Ruleset :=
   | and_assoc1 a b c : IC [a & [b & c]] [[a & b] & c]
   | and_assoc2 a b c : IC [[a & b] & c] [a & [b & c]]
   | predimp_trans a b c : IC [[a |= b] & [b |= c]] [a |= c].
+
+Lemma IC_justified : RulesetJustified IC.
+  unfold RulesetJustified; intros.
+  destruct H.
+  apply and_sym_justified.
+  apply and_assoc1_justified.
+  apply and_assoc2_justified.
+  apply predimp_trans_justified.
+Qed.
 
 
 Definition rule_and_assoc a b := 
@@ -324,6 +547,6 @@ Definition specialize_inf i values :=
 
 Inductive RuleSpecializes rule : Inference Formula -> Prop :=
   | rule_specializes values ps c :
-    Forall2 (λ rule_p p, UnfoldToQuotedFormula (specialize_fwv rule_p values) p) (inf_premises rule) ps ->
-    UnfoldToQuotedFormula (specialize_fwv (inf_conclusion rule) values) c ->
+    Forall2 (λ rule_p p, UnfoldsToQuotedFormula (specialize_fwv rule_p values) p) (inf_premises rule) ps ->
+    UnfoldsToQuotedFormula (specialize_fwv (inf_conclusion rule) values) c ->
     RuleSpecializes rule (ps |- c).
