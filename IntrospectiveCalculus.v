@@ -170,52 +170,60 @@ Definition FormulaMeaning
         | _ => UnknownMeanings f
         end.
 
-Definition InferenceMeaning Rules a b : Prop :=
+Definition InferenceDescribesRuleset Rules a b : Prop :=
   ∀UnknownMeanings,
     (FormulaMeaning Rules UnknownMeanings a) ->
     (FormulaMeaning Rules UnknownMeanings b).
 
-Definition InferenceJustified a b : Prop :=
-  ∀Rules UnknownMeanings,
-    (FormulaMeaning Rules UnknownMeanings a) ->
-    (FormulaMeaning Rules UnknownMeanings b).
+Definition InferenceDescribesAllRulesets a b : Prop :=
+  ∀Rules, InferenceDescribesRuleset Rules a b.
 
-Definition RulesetJustified Rules : Prop :=
-  ∀a b, Rules a b -> InferenceJustified a b.
+Definition RulesetDescribesAllRulesets Rules : Prop :=
+  ∀a b, Rules a b -> InferenceDescribesAllRulesets a b.
 
-Lemma provable_by_InferenceJustified_means_justified p c :
-    RulesProveInference InferenceJustified p c
+Definition InferenceDescribesAllRulesetsThatAre Valid a b : Prop :=
+  ∀Rules, Valid Rules -> InferenceDescribesRuleset Rules a b.
+
+Definition RulesetDescribesAllRulesetsThatAre Valid Rules : Prop :=
+  ∀a b, Rules a b -> InferenceDescribesAllRulesetsThatAre Valid a b.
+
+
+
+
+Lemma provable_by_InferenceJustified_means_justified p c Valid :
+    RulesProveInference (InferenceDescribesAllRulesetsThatAre Valid) p c
     ->
-    InferenceJustified p c.
+    InferenceDescribesAllRulesetsThatAre Valid p c.
   intro.
   induction H; [assumption|clear H H0].
-  unfold InferenceJustified in *.
+  unfold InferenceDescribesAllRulesetsThatAre, InferenceDescribesRuleset in *.
   intros.
   specialize IHRulesProveInference1 with (Rules := Rules).
   specialize IHRulesProveInference1 with (UnknownMeanings := UnknownMeanings).
   specialize IHRulesProveInference2 with (Rules := Rules).
   specialize IHRulesProveInference2 with (UnknownMeanings := UnknownMeanings).
-  exact (IHRulesProveInference2 (IHRulesProveInference1 H)).
+  exact (IHRulesProveInference2 X (IHRulesProveInference1 X H)).
 Qed.
 
-Lemma provable_by_justified_rules_means_justified R p c :
-    RulesetJustified R ->
+Lemma provable_by_justified_rules_means_justified Valid R p c :
+    RulesetDescribesAllRulesetsThatAre Valid R ->
     RulesProveInference R p c ->
-    InferenceJustified p c.
-  unfold RulesetJustified in *.
+    InferenceDescribesAllRulesetsThatAre Valid p c.
+  unfold RulesetDescribesAllRulesetsThatAre in *.
   intros.
   induction H0.
   exact (H a b X).
   exact (provable_by_InferenceJustified_means_justified
     (proof_by_transitivity
-      (proof_by_rule InferenceJustified a b IHRulesProveInference1)
-      (proof_by_rule InferenceJustified b c IHRulesProveInference2)
+      (proof_by_rule (InferenceDescribesAllRulesetsThatAre Valid) a b IHRulesProveInference1)
+      (proof_by_rule (InferenceDescribesAllRulesetsThatAre Valid) b c IHRulesProveInference2)
     )).
 Qed.
 
-Lemma eq_justified : RulesetJustified eq.
-  unfold RulesetJustified.
-  unfold InferenceJustified.
+Lemma eq_justified Valid : RulesetDescribesAllRulesetsThatAre Valid eq.
+  unfold RulesetDescribesAllRulesetsThatAre,
+         InferenceDescribesAllRulesetsThatAre,
+         InferenceDescribesRuleset.
   intros.
   subst b; assumption.
 Qed.
@@ -364,14 +372,15 @@ Qed.
 Definition f_true := [pred_imp @0 @0].
 Definition f_false := [pred_imp [const f_true] @0].
 
-Lemma false_unjustified :
-  InferenceJustified f_true f_false -> False.
-  unfold InferenceJustified; intro.
+Lemma false_unjustified Valid :
+  Valid eq ->
+  InferenceDescribesAllRulesetsThatAre Valid f_true f_false -> False.
+  unfold InferenceDescribesAllRulesetsThatAre, InferenceDescribesRuleset ; intros.
 
   (* use the very weak rules "eq",
     so it'll be easy to show that the rules don't prove what False says. *)
-  specialize H with (Rules := eq).
-  specialize H with (UnknownMeanings := λ _, True). (* doesn't matter *)
+  (* specialize H with (Rules := eq). *)
+  specialize (H eq X) with (UnknownMeanings := λ _, True). (* doesn't matter *)
   cbn in H.
 
   (* Right now we basically have (FormulaMeaning True -> FormulaMeaning False),
@@ -387,12 +396,14 @@ Lemma false_unjustified :
   intros; clear H.
   destruct (stream_nth_quoted 0 H0) as (q, qe).
   unfold fs_nth in qe.
-  rewrite qe.
+  (* rewrite qe. *)
   apply ex_intro with q.
   apply ex_intro with q.
 
-  split; [apply unfold_quoted_done|].
-  split; [apply unfold_quoted_done|].
+  split; [assumption|].
+  split; [assumption|].
+  (* split; [apply unfold_quoted_done|].
+  split; [apply unfold_quoted_done|]. *)
   apply proof_by_rule.
   reflexivity.
 
@@ -433,7 +444,7 @@ Qed.
 
 
 Theorem justified_rulesets_are_consistent R :
-    RulesetJustified R ->
+    RulesetDescribesAllRulesetsThatAre R ->
     RulesProveInference R f_true f_false ->
     False.
   intros justified proved.
@@ -442,28 +453,29 @@ Qed.
 
 
 Notation "[ x & y ]" := [f_and x y] (at level 0, x at next level, y at next level).
+Notation "[ x &* y ]" := [fuse [fuse [const f_and] x] y] (at level 0, x at next level, y at next level).
 Notation "[ x |= y ]" := [pred_imp x y] (at level 0, x at next level, y at next level).
 
-Definition and_sym_axiom := [[@0 & @1] |= [@1 & @0]].
+Definition and_sym_axiom := [[@0 &* @1] |= [@1 &* @0]].
 
-Lemma and_sym_justified a b : InferenceJustified [a & b] [b & a].
-  unfold InferenceJustified; intros; cbn in *.
+Lemma and_sym_justified a b : InferenceDescribesAllRulesets [a & b] [b & a].
+  unfold InferenceDescribesAllRulesets, InferenceDescribesRuleset; intros; cbn in *.
   intuition.
 Qed.
 
-Lemma and_sym_axiom_justified : InferenceJustified f_true and_sym_axiom.
-  unfold InferenceJustified; intros; cbn in *; intros.
+Lemma and_sym_axiom_justified Valid : InferenceDescribesAllRulesetsThatAre Valid f_true and_sym_axiom.
+  unfold InferenceDescribesAllRulesetsThatAre, InferenceDescribesRuleset; intros; cbn in *; intros.
   clear H. (* we're not going to use the proof of True *)
   
 Qed.
 
-Lemma and_assoc1_justified a b c : InferenceJustified [a & [b & c]] [[a & b] & c].
-  unfold InferenceJustified; intros; cbn in *.
+Lemma and_assoc1_justified a b c : InferenceDescribesAllRulesets [a & [b & c]] [[a & b] & c].
+  unfold InferenceDescribesAllRulesets, InferenceDescribesRuleset; intros; cbn in *.
   intuition.
 Qed.
 
-Lemma and_assoc2_justified a b c : InferenceJustified [[a & b] & c] [a & [b & c]].
-  unfold InferenceJustified; intros; cbn in *.
+Lemma and_assoc2_justified a b c : InferenceDescribesAllRulesets [[a & b] & c] [a & [b & c]].
+  unfold InferenceDescribesAllRulesets; intros; cbn in *.
   intuition.
 Qed.
 (* 
@@ -471,9 +483,9 @@ Lemma unfold_further :
   RulseProveInference a b *)
 
 Lemma predimp_trans_justified a b c :
-  InferenceJustified [[a |= b] & [b |= c]] [a |= c].
-  unfold InferenceJustified; intros; cbn in *.
-  intuition.
+  InferenceDescribesAllRulesets [[a |= b] & [b |= c]] [a |= c].
+  unfold InferenceDescribesAllRulesets, InferenceDescribesRuleset; intros; cbn in *.
+  intuition idtac.
   specialize H0 with (x := x).
   specialize H1 with (x := x).
   destruct (H0 H) as (ap0, (bp0, (ua0, (ub0, p0)))).
@@ -493,8 +505,8 @@ Inductive IC : Ruleset :=
   | and_assoc2 a b c : IC [[a & b] & c] [a & [b & c]]
   | predimp_trans a b c : IC [[a |= b] & [b |= c]] [a |= c].
 
-Lemma IC_justified : RulesetJustified IC.
-  unfold RulesetJustified; intros.
+Lemma IC_justified : RulesetDescribesAllRulesetsThatAre IC.
+  unfold RulesetDescribesAllRulesetsThatAre; intros.
   destruct H.
   apply and_sym_justified.
   apply and_assoc1_justified.
