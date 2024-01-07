@@ -9,7 +9,8 @@ Inductive Atom :=
   | atom_const
   | atom_fuse
   | atom_pred_imp
-  | atom_and.
+  | atom_and
+  | atom_quote.
 
 Inductive Formula :=
   | formula_atom : Atom -> Formula
@@ -22,15 +23,46 @@ Definition const := formula_atom atom_const.
 Definition fuse := formula_atom atom_fuse.
 Definition pred_imp := formula_atom atom_pred_imp.
 Definition f_and := formula_atom atom_and.
+Definition f_quote := formula_atom atom_quote.
+Definition f_id := [fuse const const].
+Definition f_pair a b := [fuse [fuse f_id a] b].
+Definition fp_fst := [fuse f_id const].
+Definition fp_snd := [fuse f_id [const f_id]].
 
 Definition Ruleset := Formula -> Formula -> Prop.
 
-Inductive Unfold : Formula -> Formula -> Prop :=
-  | unfold_nothing f : Unfold f f
-  | unfold_const f a b : Unfold f [const a] -> Unfold [f b] a
-  | unfold_fuse f a b c : Unfold f [fuse a b] -> Unfold [f c] [[a c] [b c]]
-  | unfold_pred_imp a b c d : Unfold a b -> Unfold c d -> Unfold [pred_imp a c] [pred_imp b d]
-  | unfold_pred_and a b c d : Unfold a b -> Unfold c d -> Unfold [f_and a c] [f_and b d].
+Fixpoint quote_formula f :=
+  match f with
+    | formula_atom _ => [f_quote f]
+    | formula_apply a b => [f_quote (quote_formula a) (quote_formula b)]
+    end.
+
+Inductive UnfoldStep : Formula -> Formula -> Prop :=
+  | unfold_const a b : UnfoldStep [const a b] a
+  | unfold_fuse a b c : UnfoldStep [fuse a b c] [[a c] [b c]]
+  | unfold_in_lhs a b c : UnfoldStep a b -> UnfoldStep [a c] [b c]
+  (* | unfold_in_rhs a b c : UnfoldStep a b -> UnfoldStep [c a] [c b] *)
+  | unfold_under_quote_0 a b : UnfoldStep a b ->
+    UnfoldStep [f_quote a] [f_quote b]
+  | unfold_under_quote_1 a b c : UnfoldStep a b ->
+    UnfoldStep [f_quote c a] [f_quote c b].
+  
+Inductive UnfoldToQuotedFormula : Formula -> Formula -> Prop :=
+  | unfold_quoted_done f : UnfoldToQuotedFormula (quote_formula f) f
+  | unfold_step_then a b c : UnfoldStep a b -> UnfoldToQuotedFormula b c -> UnfoldToQuotedFormula a c.
+
+(* Quoted formula streams: *)
+(* [f => h => h const (f f)] *)
+Definition qfs_tail_fn := [fuse
+    [const [fuse [fuse f_id [const [f_quote f_quote]]]]]
+    [fuse [const const] [fuse f_id f_id]]
+  ].
+Definition qfs_tail := [qfs_tail_fn qfs_tail_fn].
+
+Inductive IsQuotedFormulaStream : Formula -> Prop :=
+  | isqfs_tail : IsQuotedFormulaStream qfs_tail
+  | isqfs_cons head tail : IsQuotedFormulaStream tail ->
+    IsQuotedFormulaStream (f_pair (quote_formula head) tail).
 
 Inductive RulesProveInference Rules : Formula -> Formula -> Prop :=
   | proof_by_rule a b : Rules a b -> RulesProveInference Rules a b
@@ -51,8 +83,8 @@ Definition meaning
           => meaning a /\ meaning b
         (* [pred_imp a b] *)
         | formula_apply (formula_apply (formula_atom atom_pred_imp) a) b
-          => (∀ x, ∃ ap bp,
-            Unfold [a x] ap /\ Unfold [b x] bp /\
+          => (∀ x, IsQuotedFormulaStream x -> ∃ ap bp,
+            UnfoldToQuotedFormula [a x] ap /\ UnfoldToQuotedFormula [b x] bp /\
             RulesProveInference Rules ap bp)
         | _ => UnknownMeanings f
         end.
@@ -111,9 +143,26 @@ Qed.
 
   
 
-Definition f_id := [fuse const const].
-Definition f_true := [pred_imp f_id f_id].
-Definition f_false := [pred_imp [const f_true] f_id].
+Fixpoint fs_nth n := match n with
+  | 0 => fp_fst
+  | S p => [fuse [const (fs_nth p)] fp_snd]
+  end.
+
+Notation "@ n" := (fs_nth n) (at level 0).
+
+Lemma stream_nth_quoted s n :
+    IsQuotedFormulaStream s ->
+    ∃ f, [(fs_nth n) s] = quote_formula f.
+  intro.
+  induction n.
+  destruct H.
+  induction n.
+  admit.
+  induction n.
+Qed.
+
+Definition f_true := [pred_imp @0 @0].
+Definition f_false := [pred_imp [const f_true] @0].
 
 Lemma false_unjustified :
   InferenceJustified f_true f_false -> False.
@@ -129,34 +178,57 @@ Lemma false_unjustified :
      and we want to simplify this by _providing_ (meaning True).
      So we just say hey look, id x = id x. *)
   assert (∀ x : Formula,
-    ∃ ap bp : Formula,
-        Unfold [(f_id) (x)] ap /\
-        Unfold [(f_id) (x)] bp /\
+    IsQuotedFormulaStream x
+    → ∃ ap bp : Formula,
+        UnfoldToQuotedFormula [(fp_fst) (x)] ap /\
+        UnfoldToQuotedFormula [(fp_fst) (x)] bp /\
         RulesProveInference eq ap
         bp).
-  intro.
-  apply ex_intro with [f_id x].
-  apply ex_intro with [f_id x].
-  split; [apply unfold_nothing|].
-  split; [apply unfold_nothing|].
+  intros; clear H.
+  destruct (stream_nth_quoted 0 H0) as (q, qe).
+  unfold fs_nth in qe.
+  rewrite qe.
+  apply ex_intro with q.
+  apply ex_intro with q.
+
+  split; [apply unfold_quoted_done|].
+  split; [apply unfold_quoted_done|].
   apply proof_by_rule.
-  unfold InferenceJustified; intros.
   reflexivity.
 
   assert (H := H H0); clear H0.
 
   (* Now, back to the main proving. *)
-  (* Using "and" here just because it's a formula that doesn't unfold. *)
-  specialize H with (x := f_and).
-  destruct H as (ap, (bp, (ua, (ub, i)))).
+  specialize H with qfs_tail.
+  destruct H as (ap, (bp, (ua, (ub, i)))); [apply isqfs_tail|].
   assert (j := provable_by_eq_means_eq i); clear i.
   subst bp.
 
-  (* Now all we have to do is prove that [const true and] and [id and]
+  (* Now all we have to do is prove that [const true qfs_tail] and [@0 qfs_tail]
      can never unfold to the same thing.
      There are only finitely many possible unfoldings;
      this tells Coq to exhaust them. *)
-  repeat (dependent destruction ua || dependent destruction ub).
+  dependent destruction ua.
+  dependent destruction ub.
+  rewrite x0 in x; clear x0 f.
+  dependent destruction x.
+  dependent destruction c.
+  dependent destruction x.
+  dependent destruction x.
+  dependent destruction H.
+  dependent destruction ua.
+  dependent destruction ub.
+  rewrite x0 in x; clear x0 f.
+  dependent destruction x.
+  dependent destruction c.
+  dependent destruction x.
+  dependent destruction x.
+  dependent destruction H.
+  dependent destruction H.
+  dependent destruction H.
+  dependent destruction H.
+  dependent destruction H.
+  (* repeat (dependent destruction ua || dependent destruction ub). *)
 Qed.
 
 
@@ -210,8 +282,6 @@ Inductive IC : Ruleset :=
 
 Definition rule_and_assoc a b := 
 
-Definition f_fst := [fuse f_id const].
-Definition f_snd := [fuse f_id [const f_id]].
 
 
 (* Theorem ic_is_consistent : (∀ i, RulesProve Justified (nil |- i)) -> False.
@@ -254,6 +324,6 @@ Definition specialize_inf i values :=
 
 Inductive RuleSpecializes rule : Inference Formula -> Prop :=
   | rule_specializes values ps c :
-    Forall2 (λ rule_p p, Unfold (specialize_fwv rule_p values) p) (inf_premises rule) ps ->
-    Unfold (specialize_fwv (inf_conclusion rule) values) c ->
+    Forall2 (λ rule_p p, UnfoldToQuotedFormula (specialize_fwv rule_p values) p) (inf_premises rule) ps ->
+    UnfoldToQuotedFormula (specialize_fwv (inf_conclusion rule) values) c ->
     RuleSpecializes rule (ps |- c).
