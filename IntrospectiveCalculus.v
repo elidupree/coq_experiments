@@ -149,6 +149,7 @@ Inductive RulesProveInference Rules : Formula -> Formula -> Prop :=
     RulesProveInference Rules a b ->
     RulesProveInference Rules b c ->
     RulesProveInference Rules a c.
+Definition InferencesProvenBy Rules := RulesProveInference Rules.
 
 Definition FormulaMeaning
     (Rules : Ruleset)
@@ -170,33 +171,48 @@ Definition FormulaMeaning
         | _ => UnknownMeanings f
         end.
 
-Definition InferenceDescribesRuleset Rules a b : Prop :=
+Definition RulesetObeysInference Rules a b : Prop :=
   ∀UnknownMeanings,
     (FormulaMeaning Rules UnknownMeanings a) ->
     (FormulaMeaning Rules UnknownMeanings b).
 
-Definition InferenceDescribesAllRulesets a b : Prop :=
-  ∀Rules, InferenceDescribesRuleset Rules a b.
+Definition AllRulesetsObeyInference a b : Prop :=
+  ∀Rules, RulesetObeysInference Rules a b.
 
-Definition RulesetDescribesAllRulesets Rules : Prop :=
-  ∀a b, Rules a b -> InferenceDescribesAllRulesets a b.
+Definition AllRulesetsObeyAllOf Rules : Prop :=
+  ∀a b, Rules a b -> AllRulesetsObeyInference a b.
 
-Definition InferenceDescribesAllRulesetsThatAre Valid a b : Prop :=
-  ∀Rules, Valid Rules -> InferenceDescribesRuleset Rules a b.
+Definition InferencesTheseRulesetsObey These a b : Prop :=
+  ∀Rules, These Rules -> RulesetObeysInference Rules a b.
 
-Definition RulesetDescribesAllRulesetsThatAre Valid Rules : Prop :=
-  ∀a b, Rules a b -> InferenceDescribesAllRulesetsThatAre Valid a b.
+Definition AllTheseRulesetsObeyAllOf These Rules : Prop :=
+  ∀a b, Rules a b -> InferencesTheseRulesetsObey These a b.
+
+Definition NoRules : Ruleset := λ _ _, False.
+
+(* subset notation is for rulesets (which are 2-way relations) *)
+Notation "R ⊆ S" := (∀ a b, R a b -> S a b) (at level 70).
+Notation "R ⊇ S" := (∀ a b, S a b -> R a b) (at level 70).
+
+(* An increasing progression of inferences that are known to be 
+  required, each one adding the ones that are possible
+  in all rulesets that include the last *)
+Fixpoint KnownRequiredInferences n : Ruleset :=
+  match n with
+    | 0 => eq
+    | S pred => InferencesTheseRulesetsObey
+      (λ Rules, (InferencesProvenBy Rules) ⊇
+        (KnownRequiredInferences pred))
+    end.
 
 
-
-
-Lemma provable_by_InferenceJustified_means_justified p c Valid :
-    RulesProveInference (InferenceDescribesAllRulesetsThatAre Valid) p c
+Lemma InferencesTheseRulesetsObey_closed_under_transitivity p c These :
+    RulesProveInference (InferencesTheseRulesetsObey These) p c
     ->
-    InferenceDescribesAllRulesetsThatAre Valid p c.
+    InferencesTheseRulesetsObey These p c.
   intro.
   induction H; [assumption|clear H H0].
-  unfold InferenceDescribesAllRulesetsThatAre, InferenceDescribesRuleset in *.
+  unfold InferencesTheseRulesetsObey, RulesetObeysInference in *.
   intros.
   specialize IHRulesProveInference1 with (Rules := Rules).
   specialize IHRulesProveInference1 with (UnknownMeanings := UnknownMeanings).
@@ -205,28 +221,42 @@ Lemma provable_by_InferenceJustified_means_justified p c Valid :
   exact (IHRulesProveInference2 X (IHRulesProveInference1 X H)).
 Qed.
 
-Lemma provable_by_justified_rules_means_justified Valid R p c :
-    RulesetDescribesAllRulesetsThatAre Valid R ->
-    RulesProveInference R p c ->
-    InferenceDescribesAllRulesetsThatAre Valid p c.
-  unfold RulesetDescribesAllRulesetsThatAre in *.
-  intros.
-  induction H0.
-  exact (H a b X).
-  exact (provable_by_InferenceJustified_means_justified
-    (proof_by_transitivity
-      (proof_by_rule (InferenceDescribesAllRulesetsThatAre Valid) a b IHRulesProveInference1)
-      (proof_by_rule (InferenceDescribesAllRulesetsThatAre Valid) b c IHRulesProveInference2)
-    )).
+Lemma KnownRequiredInferences_closed_under_transitivity p c n :
+    RulesProveInference (KnownRequiredInferences n) p c
+    ->
+    KnownRequiredInferences n p c.
+    destruct n.
+    intro. induction H; contradiction.
+    intro.
+    apply InferencesTheseRulesetsObey_closed_under_transitivity.
+    assumption.
 Qed.
 
-Lemma eq_justified Valid : RulesetDescribesAllRulesetsThatAre Valid eq.
-  unfold RulesetDescribesAllRulesetsThatAre,
-         InferenceDescribesAllRulesetsThatAre,
-         InferenceDescribesRuleset.
+Lemma proofs_monotonic_in_rules R1 R2 :
+  (R1 ⊆ R2) -> (InferencesProvenBy R1 ⊆ InferencesProvenBy R2).
+  intros. induction H.
+  apply proof_by_rule. exact (X a b X0).
+  apply proof_by_transitivity with b; assumption.
+Qed.
+
+Lemma provable_by_subset_of_KnownRequiredInferences_means_required n p c R :
+    R ⊆ KnownRequiredInferences n ->
+    RulesProveInference R p c ->
+    KnownRequiredInferences n p c.
+  intros.
+  exact (KnownRequiredInferences_closed_under_transitivity n
+      (@proofs_monotonic_in_rules
+        R (KnownRequiredInferences n) H p c H0)
+    ).
+Qed.
+
+(* Lemma eq_justified These : AllTheseRulesetsObeyAllOf These eq.
+  unfold AllTheseRulesetsObeyAllOf,
+         InferencesTheseRulesetsObey,
+         RulesetObeysInference.
   intros.
   subst b; assumption.
-Qed.
+Qed. *)
 
 Lemma provable_by_eq_means_eq p c :
   RulesProveInference eq p c -> p = c.
@@ -370,13 +400,69 @@ Lemma unfold_unique a b c :
 Qed.
 
 Definition f_true := [pred_imp @0 @0].
-Definition f_false := [pred_imp [const f_true] @0].
+Definition f_false := [pred_imp [const [f_quote f_true]] @0].
 
-Lemma false_unjustified Valid :
-  Valid eq ->
-  InferenceDescribesAllRulesetsThatAre Valid f_true f_false -> False.
-  unfold InferenceDescribesAllRulesetsThatAre, InferenceDescribesRuleset ; intros.
+(* Lemma KnownRequiredInferences_increasing n :
+  KnownRequiredInferences n ⊆ KnownRequiredInferences (S n).
+  intros.
+  cbn. *)
 
+Lemma True_required n UnknownMeanings :
+  FormulaMeaning (KnownRequiredInferences n)
+    UnknownMeanings f_true.
+  
+  cbn. intros.
+  destruct (stream_nth_quoted 0 H) as (q, qe).
+  unfold fs_nth in qe.
+  apply ex_intro with q.
+  apply ex_intro with q.
+  split; [assumption|].
+  split; [assumption|].
+  apply proof_by_rule.
+  destruct n.
+  reflexivity.
+  cbn.
+  unfold InferencesTheseRulesetsObey, RulesetObeysInference.
+  intros. assumption.
+Qed.
+
+Lemma false_never_required n :
+  KnownRequiredInferences n f_true f_false -> False.
+  induction n.
+  intro. cbn in H. discriminate.
+
+  intro.
+  cbn in *. unfold InferencesTheseRulesetsObey in *.
+  specialize H with (Rules := KnownRequiredInferences n).
+
+  assert (InferencesProvenBy (KnownRequiredInferences n)
+          ⊇ KnownRequiredInferences n).
+  intros. apply proof_by_rule; assumption.
+
+  pose (H H0) as r. clearbody r. clear H H0.
+  unfold RulesetObeysInference in r.
+  specialize r with (UnknownMeanings := λ _, False).
+  pose (r (True_required n (λ _, False))) as H. clearbody H. clear r.
+
+  cbn in H.
+
+  specialize H with (qfs_cons f_false qfs_tail).
+  destruct H as (ap, (bp, (ua, (ub, i)))).
+  apply isqfs_cons. apply isqfs_tail.
+  
+  (* TODO: coax Coq to understand this *)
+  assert (ap = f_true) as apt. admit. rewrite apt in *. clear apt.
+  assert (bp = f_false) as bpt. admit. rewrite bpt in *. clear bpt.
+  
+  exact (IHn (KnownRequiredInferences_closed_under_transitivity n i)).
+Qed.
+
+(* 
+Lemma false_never_in_lower_bound_sequence n :
+  LowerBoundSequence n f_true f_false -> False.
+  induction n.
+  unfold LowerBoundSequence, InferencesTheseRulesetsObey, RulesetObeysInference ; intros.
+  cbn in H.
   (* use the very weak rules "eq",
     so it'll be easy to show that the rules don't prove what False says. *)
   (* specialize H with (Rules := eq). *)
@@ -440,51 +526,57 @@ Lemma false_unjustified Valid :
   dependent destruction H.
   dependent destruction H.
   (* repeat (dependent destruction ua || dependent destruction ub). *)
-Qed.
+Qed. *)
 
 
-Theorem justified_rulesets_are_consistent R :
-    RulesetDescribesAllRulesetsThatAre R ->
+Theorem subsets_of_KnownRequiredInferences_are_consistent R n :
+    R ⊆ (KnownRequiredInferences n) ->
     RulesProveInference R f_true f_false ->
     False.
   intros justified proved.
-  exact (false_unjustified (provable_by_justified_rules_means_justified justified proved)).
+  exact (false_never_required n (provable_by_subset_of_KnownRequiredInferences_means_required n justified proved)).
 Qed.
 
 
 Notation "[ x & y ]" := [f_and x y] (at level 0, x at next level, y at next level).
-Notation "[ x &* y ]" := [fuse [fuse [const f_and] x] y] (at level 0, x at next level, y at next level).
+Notation "[ x &* y ]" := [fuse [fuse [const [f_quote [f_quote f_and]]] x] y] (at level 0, x at next level, y at next level).
 Notation "[ x |= y ]" := [pred_imp x y] (at level 0, x at next level, y at next level).
 
 Definition and_sym_axiom := [[@0 &* @1] |= [@1 &* @0]].
 
-Lemma and_sym_justified a b : InferenceDescribesAllRulesets [a & b] [b & a].
-  unfold InferenceDescribesAllRulesets, InferenceDescribesRuleset; intros; cbn in *.
-  intuition.
+Lemma and_sym_required a b : KnownRequiredInferences 1 [a & b] [b & a].
+  unfold KnownRequiredInferences, InferencesTheseRulesetsObey, RulesetObeysInference.
+  intros. cbn in *.
+  intuition idtac.
 Qed.
 
-Lemma and_sym_axiom_justified Valid : InferenceDescribesAllRulesetsThatAre Valid f_true and_sym_axiom.
-  unfold InferenceDescribesAllRulesetsThatAre, InferenceDescribesRuleset; intros; cbn in *; intros.
-  clear H. (* we're not going to use the proof of True *)
+Eval cbn in FormulaMeaning eq _ [_ & _].
+Lemma and_sym_axiom_required : KnownRequiredInferences 2 f_true and_sym_axiom.
+  unfold KnownRequiredInferences, InferencesTheseRulesetsObey,
+    RulesetObeysInference.
+  intros. cbn in *. intros.
+  clear H0. (* we're not going to use the proof of True *)
   
 Qed.
 
-Lemma and_assoc1_justified a b c : InferenceDescribesAllRulesets [a & [b & c]] [[a & b] & c].
-  unfold InferenceDescribesAllRulesets, InferenceDescribesRuleset; intros; cbn in *.
-  intuition.
+Lemma and_assoc1_required a b c : KnownRequiredInferences 1 [a & [b & c]] [[a & b] & c].
+  unfold KnownRequiredInferences, InferencesTheseRulesetsObey, RulesetObeysInference.
+  intros. cbn in *.
+  intuition idtac.
 Qed.
 
-Lemma and_assoc2_justified a b c : InferenceDescribesAllRulesets [[a & b] & c] [a & [b & c]].
-  unfold InferenceDescribesAllRulesets; intros; cbn in *.
-  intuition.
+Lemma and_assoc2_required a b c : KnownRequiredInferences 1 [[a & b] & c] [a & [b & c]].
+  unfold KnownRequiredInferences, InferencesTheseRulesetsObey, RulesetObeysInference.
+  intros. cbn in *.
+  intuition idtac.
 Qed.
 (* 
 Lemma unfold_further :
   RulseProveInference a b *)
 
-Lemma predimp_trans_justified a b c :
-  InferenceDescribesAllRulesets [[a |= b] & [b |= c]] [a |= c].
-  unfold InferenceDescribesAllRulesets, InferenceDescribesRuleset; intros; cbn in *.
+Lemma predimp_trans_required a b c :
+  AllRulesetsObeyInference [[a |= b] & [b |= c]] [a |= c].
+  unfold AllRulesetsObeyInference, RulesetObeysInference; intros; cbn in *.
   intuition idtac.
   specialize H0 with (x := x).
   specialize H1 with (x := x).
@@ -500,20 +592,29 @@ Lemma predimp_trans_justified a b c :
 Qed.
 
 Inductive IC : Ruleset :=
+  | drop a b : IC [a & b] a
+  | dup a b : IC [a & b] [[a & a] & b]
   | and_sym a b : IC [a & b] [b & a]
   | and_assoc1 a b c : IC [a & [b & c]] [[a & b] & c]
   | and_assoc2 a b c : IC [[a & b] & c] [a & [b & c]]
-  | predimp_trans a b c : IC [[a |= b] & [b |= c]] [a |= c].
+  | predimp_trans a b c : IC [[a |= b] & [b |= c]] [a |= c]
+  | axioms : IC f_true [and_sym_axiom & [some_other_axiom & more_axioms]].
 
-Lemma IC_justified : RulesetDescribesAllRulesetsThatAre IC.
-  unfold RulesetDescribesAllRulesetsThatAre; intros.
+Lemma IC_required : AllTheseRulesetsObeyAllOf IC.
+  unfold AllTheseRulesetsObeyAllOf; intros.
   destruct H.
-  apply and_sym_justified.
-  apply and_assoc1_justified.
-  apply and_assoc2_justified.
-  apply predimp_trans_justified.
+  apply and_sym_required.
+  apply and_assoc1_required.
+  apply and_assoc2_required.
+  apply predimp_trans_required.
 Qed.
 
+Lemma IC_meets_all_requirements n p c :
+  KnownRequiredInferences n p c
+  ->
+  RulesProveInference IC p c.
+
+Qed.
 
 Definition rule_and_assoc a b := 
 
