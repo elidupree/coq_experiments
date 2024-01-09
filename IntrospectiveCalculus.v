@@ -33,7 +33,7 @@ Definition fp_snd := [fuse f_id [const f_id]].
 Definition f_default := const.
 
 Notation "[ x & y ]" := [f_and x y] (at level 0, x at next level, y at next level).
-Notation "[ x &* y ]" := [fuse [fuse [const [f_quote [f_quote f_and]]] x] y] (at level 0, x at next level, y at next level).
+(* Notation "[ x &* y ]" := [fuse [fuse [const [f_quote [f_quote f_and]]] x] y] (at level 0, x at next level, y at next level). *)
 Notation "[ x -> y ]" := [f_implies x y] (at level 0, x at next level, y at next level).
 
 (* subset notation is used for rulesets (which are 2-way relations) *)
@@ -47,10 +47,10 @@ Notation "⋂2 S" := (λ a b, ∀ x, S x -> x a b) (at level 70).
 
 Definition Ruleset := Formula -> Formula -> Prop.
 
-Fixpoint quote_formula f :=
+Fixpoint quote_f f :=
   match f with
     | f_atm _ => [f_quote f]
-    | f_apl a b => [f_quote (quote_formula a) (quote_formula b)]
+    | f_apl a b => [f_quote (quote_f a) (quote_f b)]
     end.
 
 Fixpoint unquote_formula f : option Formula :=
@@ -65,7 +65,7 @@ Fixpoint unquote_formula f : option Formula :=
     | _ => None
     end.
 
-Lemma quote_unquote f : (unquote_formula (quote_formula f)) = Some f.
+Lemma quote_unquote f : (unquote_formula (quote_f f)) = Some f.
   induction f; cbn.
   reflexivity.
   rewrite IHf1. rewrite IHf2. reflexivity.
@@ -134,16 +134,16 @@ Inductive UnfoldStep : Formula -> Formula -> Prop :=
   | unfold_const a b : UnfoldStep [const a b] a
   | unfold_fuse a b c : UnfoldStep [fuse a b c] [[a c] [b c]]
   | unfold_in_lhs a b c : UnfoldStep a b -> UnfoldStep [a c] [b c]
-  (* | unfold_in_rhs a b c : UnfoldStep a b -> UnfoldStep [c a] [c b] *)
-  | unfold_under_quote_0 a b : UnfoldStep a b ->
+  | unfold_in_rhs a b c : UnfoldStep a b -> UnfoldStep [c a] [c b].
+  (* | unfold_under_quote_0 a b : UnfoldStep a b ->
     UnfoldStep [f_quote a] [f_quote b]
   | unfold_under_quote_1 a b c : UnfoldStep a b ->
-    UnfoldStep [f_quote c a] [f_quote c b].
+    UnfoldStep [f_quote c a] [f_quote c b]. *)
   
-Inductive UnfoldsToQuotedFormula : Formula -> Formula -> Prop :=
-  | unfold_quoted_done f : UnfoldsToQuotedFormula (quote_formula f) f
+(* Inductive UnfoldsToQuotedFormula : Formula -> Formula -> Prop :=
+  | unfold_quoted_done f : UnfoldsToQuotedFormula (quote_f f) f
   | unfold_step_then a b c : UnfoldStep a b ->
-    UnfoldsToQuotedFormula b c -> UnfoldsToQuotedFormula a c.
+    UnfoldsToQuotedFormula b c -> UnfoldsToQuotedFormula a c. *)
 
 (* Quoted formula streams: *)
 (* [f => h => h const (f f)] *)
@@ -152,54 +152,57 @@ Definition qfs_tail_fn := [fuse
     [fuse [const const] [fuse f_id f_id]]
   ].
 Definition qfs_tail := [qfs_tail_fn qfs_tail_fn].
-Definition qfs_cons head tail := f_pair (quote_formula head) tail.
+Definition qfs_cons head tail := f_pair (quote_f head) tail.
 Inductive IsQuotedFormulaStream : Formula -> Prop :=
   | isqfs_tail : IsQuotedFormulaStream qfs_tail
   | isqfs_cons head tail : IsQuotedFormulaStream tail ->
     IsQuotedFormulaStream (qfs_cons head tail).
 
 
-Definition ObeysIntrinsicMeanings TruthValues KnownJudgedInferences :=
+(* Definition ObeysIntrinsicMeanings TruthValues KnownJudgedInferences :=
   (∀ a b, KnownJudgedInferences a b ->
-    TruthValues [(quote_formula a) -> (quote_formula b)]) /\
+    TruthValues [(quote_f a) -> (quote_f b)]) /\
   (∀ a b, TruthValues [a & b] <-> TruthValues a /\ TruthValues b) /\
   (∀ a, TruthValues [f_all a] <->
-    (∀ x, TruthValues [a (quote_formula x)])) /\
+    (∀ x, TruthValues [a (quote_f x)])) /\
   (∀ a b, UnfoldStep a b -> (TruthValues a <-> TruthValues b))
-  .
+  . *)
 
-(* Inductive IntrinsicMeanings ExtraTrue Infs : Formula -> Prop :=
-  | intrinsic_extra a : ExtraTrue a ->
-    IntrinsicMeanings ExtraTrue Infs a
-  | intrinsic_derivability a b :
-    Infs a b ->
-    IntrinsicMeanings ExtraTrue Infs [(quote_formula a) -> (quote_formula b)]
-  | intrinsic_and a b :
-    IntrinsicMeanings ExtraTrue Infs a -> IntrinsicMeanings ExtraTrue Infs b ->
-    IntrinsicMeanings ExtraTrue Infs [a & b]
-  | intrinsic_all a :
-    (∀ x, IntrinsicMeanings ExtraTrue Infs [a (quote_formula x)]) ->
-    IntrinsicMeanings ExtraTrue Infs [f_all a]
-  | intrinsic_unfold a b :
-    UnfoldStep a b ->
-    IntrinsicMeanings ExtraTrue Infs b -> IntrinsicMeanings ExtraTrue Infs a.
+(* Whether a formula is a true
+   statement about a set of inferences. *)
+Inductive TrueOf Infs : Formula -> Prop :=
+  | t_implies a b :
+      Infs a b ->
+      TrueOf Infs [(quote_f a) -> (quote_f b)]
+  | t_and a b :
+      (TrueOf Infs a) -> (TrueOf Infs b) ->
+      TrueOf Infs [a & b]
+  | t_all a :
+      (∀ x, TrueOf Infs [a (quote_f x)]) ->
+      TrueOf Infs [f_all a]
+  | t_unfold a b :
+      UnfoldStep a b ->
+      TrueOf Infs b -> TrueOf Infs a.
 
-Definition MetaInferences KnownJudgedInferences (a b : Formula) :=
-  ∀ ExtraTrue,
-    ((IntrinsicMeanings ExtraTrue KnownJudgedInferences) a ->
-     (IntrinsicMeanings ExtraTrue KnownJudgedInferences) b). *)
+(* The inferences that are guaranteed to be true on formulas that
+   speak _about_ an earlier set of inferences - knowing only
+   that certain inferences ARE present, but leaving open
+   the possibility that more inferences will be added. *)
+Definition MetaInferences KnownJudgedInferences (a b : Formula) : Prop :=
+  ∀ Infs,
+    Infs ⊇2 KnownJudgedInferences ->
+    (TrueOf Infs a -> TrueOf Infs b).
 
-Definition MetaInferences KnownJudgedInferences (a b : Formula) :=
+(* Definition MetaInferences KnownJudgedInferences (a b : Formula) :=
   ∀ TruthValues,
     (ObeysIntrinsicMeanings TruthValues KnownJudgedInferences) ->
-    (TruthValues a -> TruthValues b).
+    (TruthValues a -> TruthValues b). *)
 
 (* An increasing progression of inferences that are known to be 
-  required, each one adding the ones that are possible
-  in all rulesets that include the last *)
+  required, each one adding the ones that describe the last. *)
 Fixpoint KnownInferences n : Ruleset :=
   match n with
-    | 0 => eq
+    | 0 => eq (* same as MetaInferences (λ _, False) *)
     | S pred => MetaInferences (KnownInferences pred)
     end.
 
@@ -209,7 +212,7 @@ Inductive RulesProveInference Rules : Formula -> Formula -> Prop :=
     RulesProveInference Rules a b ->
     RulesProveInference Rules b c ->
     RulesProveInference Rules a c.
-Definition InferencesProvenBy Rules := RulesProveInference Rules.
+Definition InferencesProvenBy Rules : Ruleset := RulesProveInference Rules.
 
 (* Definition FormulaMeaning
     (Rules : Ruleset)
@@ -270,8 +273,8 @@ Lemma MetaInferences_closed_under_transitivity K p c :
   induction H; [assumption|clear H H0].
   unfold MetaInferences in *.
   intros.
-  specialize IHRulesProveInference1 with (TruthValues := TruthValues).
-  specialize IHRulesProveInference2 with (TruthValues := TruthValues).
+  specialize IHRulesProveInference1 with (Infs := Infs).
+  specialize IHRulesProveInference2 with (Infs := Infs).
   apply IHRulesProveInference2; [assumption|].
   apply IHRulesProveInference1; assumption.
 Qed.
@@ -332,14 +335,14 @@ Notation "@ n" := (fs_nth n) (at level 0).
 Eval simpl in unfold_step [@0 (qfs_cons const qfs_tail)].
 Eval simpl in try_unfold_n 100 [@0 (qfs_cons const qfs_tail)]. *)
 
-Lemma quoted_no_unfold f : unfold_step (quote_formula f) = None.
+Lemma quoted_no_unfold f : unfold_step (quote_f f) = None.
   induction f; cbn.
   reflexivity.
   rewrite IHf1. rewrite IHf2. cbn. reflexivity.
 Qed.
 
 Lemma quoted_unfold_to_quoted a :
-  try_unfold_to_quoted 1 (quote_formula a) = Some a.
+  try_unfold_to_quoted 1 (quote_f a) = Some a.
   induction a; cbn; [reflexivity|].
   rewrite (quoted_no_unfold a1).
   rewrite (quoted_no_unfold a2).
@@ -369,7 +372,7 @@ Qed.
 
   
 Lemma pair_first_quoted_byfn a b :
-  UnfoldsToQuotedFormulaByFn [fp_fst (f_pair (quote_formula a) b)] a.
+  UnfoldsToQuotedFormulaByFn [fp_fst (f_pair (quote_f a) b)] a.
   unfold UnfoldsToQuotedFormulaByFn.
   apply ex_intro with 11.
   cbn.
@@ -380,7 +383,7 @@ Qed.
 
   
 Lemma pair_first_quoted a b :
-  UnfoldsToQuotedFormula [fp_fst (f_pair (quote_formula a) b)] a.
+  UnfoldsToQuotedFormula [fp_fst (f_pair (quote_f a) b)] a.
   
   apply ex_intro with 11.
   cbn.
@@ -438,7 +441,7 @@ Lemma stream_nth_quoted s n :
   destruct H.
   cbn; reflexivity.
 
-  apply ex_intro with f_quote. cbn. unfold quote_formula. cbn.
+  apply ex_intro with f_quote. cbn. unfold quote_f. cbn.
   induction n.
   admit.
   induction n.
@@ -460,33 +463,39 @@ Definition f_false := [f_all [fuse [const f_all] f_implies]].
   intros.
   cbn. *)
 
-Lemma True_known n TruthValues :
-  ObeysIntrinsicMeanings TruthValues (KnownInferences n) ->
-    TruthValues f_true.
-
-  intros.
-  destruct H as (A,_).
-  specialize A with (a := f_default).
-  specialize A with (b := f_default).
-  apply A; clear A.
-  destruct n.
-  reflexivity.
-  cbn.
-  unfold MetaInferences.
-  intros. assumption.
+Lemma True_known n :
+  TrueOf (KnownInferences n) f_true.
+  apply (t_implies (KnownInferences n) f_default f_default).
+  destruct n; [reflexivity|].
+  cbn. unfold MetaInferences. intros. assumption.
 Qed.
 
-Lemma false_never_required n :
+Lemma false_never_known n :
   KnownInferences n f_true f_false -> False.
   induction n.
   intro. cbn in H. discriminate.
 
   intro.
   cbn in *. unfold MetaInferences in *.
-  specialize H with (TruthValues := ⋂(λ TruthValues,
-  ObeysIntrinsicMeanings
-  TruthValues
-  (KnownInferences n))).
+  specialize H with (Infs := (KnownInferences n)).
+  apply IHn; clear IHn.
+
+  assert (TrueOf (KnownInferences n) f_false).
+  apply H.
+  intros; assumption.
+  apply True_known.
+  clear H.
+
+  dependent destruction H0.
+  specialize (H f_false). dependent destruction H; trivial.
+  
+  repeat (dependent destruction H || dependent destruction H0).
+  dependent destruction H.
+
+  apply (t_all (KnownInferences n) f_true f_false).
+  
+  (* pose (t_implies (KnownInferences n) f_true f_false). *)
+  apply  in IHn.
   cbn in *.
 
 
@@ -592,24 +601,131 @@ Theorem subsets_of_KnownInferences_are_consistent R n :
     RulesProveInference R f_true f_false ->
     False.
   intros justified proved.
-  exact (false_never_required n (provable_by_subset_of_KnownInferences_means_known n justified proved)).
+  exact (false_never_known n (provable_by_subset_of_KnownInferences_means_known n justified proved)).
+Qed.
+
+
+Inductive ReifiedRule : Set :=
+  .
+
+Definition rule_external (rule : ReifiedRule) : Ruleset.
+  admit. Admitted.
+
+Definition rule_internal (rule : ReifiedRule) : Formula.
+  admit. Admitted.
+
+Definition and_sym : ReifiedRule.
+  admit. Admitted.
+
+Definition IC_reified_rules : list ReifiedRule :=
+  and_sym ::
+  nil.
+
+Definition axioms rules : Formula :=
+  fold_right
+  (λ rule agg, [(rule_internal rule) & agg])
+  f_true
+  rules.
+
+Definition IC_axioms : Formula :=
+  axioms IC_reified_rules.
+
+Definition IC_axioms_rule : Ruleset := (λ a b, b = IC_axioms).
+
+Definition IC :=
+  fold_right
+  (λ rule agg a b, rule_external rule a b \/ agg a b)
+  IC_axioms_rule
+  IC_reified_rules.
+
+Lemma and_sym_known : (rule_external and_sym ⊆2 KnownInferences 1).
+Qed.
+
+Lemma IC_external_rules_known :
+  Forall
+    (λ rule, (rule_external rule ⊆2 KnownInferences 1))
+    IC_reified_rules.
+  constructor; [apply and_sym_known|].
+  trivial.
+Qed.
+
+Lemma internalize_rule_known rule :
+  (rule_external rule ⊆2 KnownInferences 1) ->
+  (KnownInferences 2 f_true (rule_internal rule)).
+  
+Qed.
+
+Lemma IC_axioms_known :
+  Forall
+    (λ rule, (KnownInferences 2 f_true (rule_internal rule)))
+    IC_reified_rules.
+  apply Forall_impl with (λ rule, (rule_external rule ⊆2 KnownInferences 1)).
+  apply internalize_rule_known.
+  apply IC_external_rules_known.
+Qed.
+
+Lemma and_join t a b :
+  KnownInferences 2 t a ->
+  KnownInferences 2 t b ->
+  KnownInferences 2 t [a & b].
+  intros.
+  unfold KnownInferences, MetaInferences in *.
+  intros.
+  apply t_and.
+  apply H; trivial.
+  apply H0; trivial.
+Qed.
+
+
+Lemma axioms_known a
+  (rules : list ReifiedRule)
+  (known : Forall
+    (λ rule, (KnownInferences 2 a (rule_internal rule)))
+    rules) : KnownInferences 2 a (axioms rules).
+  
+  induction rules as [|rule].
+  cbn. unfold MetaInferences. intros. apply True_known. assumption.
+
+  dependent destruction known.
+  apply IHrules in known; clear IHrules.
+  apply and_join; assumption.
+Qed.
+
+Lemma IC_axioms_rule_known :
+  IC_axioms_rule ⊆2 KnownInferences 2.
+  pose (axioms_known IC_axioms_known).
+
+  intros. unfold IC_axioms_rule in H. rewrite H; clear H.
 Qed.
 
 
 
+Inductive Abstraction F :=
+  | abstraction_const : F -> Abstraction F
+  | abstraction_usage : Abstraction F
+  | abstraction_apply :
+      Abstraction F -> Abstraction F -> Abstraction F.
+
+
+
+Notation "[ x => B ]" := (λ x, B)
+  (at level 0, x at next level, y at next level).
+
+
+
+(* ∀x, ∀y, [x & y] -> [y & x] *)
 Definition and_sym_axiom := [[@0 &* @1] -> [@1 &* @0]].
 
-Lemma and_sym_required a b : KnownInferences 1 [a & b] [b & a].
+Lemma and_sym_known a b : KnownInferences 1 [a & b] [b & a].
   unfold KnownInferences, MetaInferences.
   intros. cbn in *.
-  destruct H as (A,(B,(C,D))).
-  destruct (B a b).
-  destruct (B b a).
-  intuition idtac.
+  dependent destruction H.
+  apply t_and; assumption.
+  (* repeat (dependent destruction H). *)
 Qed.
 
 Eval cbn in FormulaMeaning eq _ [_ & _].
-Lemma and_sym_axiom_required : KnownRequiredInferences 2 f_true and_sym_axiom.
+Lemma and_sym_axiom_known : KnownRequiredInferences 2 f_true and_sym_axiom.
   unfold KnownRequiredInferences, InferencesTheseRulesetsObey,
     RulesetObeysInference.
   intros. cbn in *. intros.
@@ -655,22 +771,80 @@ Inductive IC : Ruleset :=
   | and_sym a b : IC [a & b] [b & a]
   | and_assoc1 a b c : IC [a & [b & c]] [[a & b] & c]
   | and_assoc2 a b c : IC [[a & b] & c] [a & [b & c]]
-  | predimp_trans a b c : IC [[a |= b] & [b |= c]] [a |= c]
-  | axioms : IC f_true [and_sym_axiom & [some_other_axiom & more_axioms]].
+  | predimp_trans a b c t :
+    IC [t &[[a -> b] & [b -> c]]]
+       [t & [a -> c]]
+  (* |  *)
+  (* | axioms : IC f_true [and_sym_axiom & [some_other_axiom & more_axioms]] *)
+  .
 
-Lemma IC_required : AllTheseRulesetsObeyAllOf IC.
-  unfold AllTheseRulesetsObeyAllOf; intros.
+Lemma IC_known : IC ⊆2 KnownInferences 2.
+  intros.
   destruct H.
-  apply and_sym_required.
+  (* admit. admit. *)
+  apply and_sym_known.
   apply and_assoc1_required.
   apply and_assoc2_required.
   apply predimp_trans_required.
 Qed.
 
-Lemma IC_meets_all_requirements n p c :
-  KnownRequiredInferences n p c
-  ->
-  RulesProveInference IC p c.
+Theorem IC_is_consistent : ~(RulesProveInference IC f_true f_false).
+  intro.
+  pose 2 as n.
+  exact (false_never_known n
+    (provable_by_subset_of_KnownInferences_means_known n IC_known H)).
+Qed.
+
+Theorem IC_self_describing a b :
+  RulesProveInference IC f_true [(quote_f a) -> (quote_f b)] ->
+  RulesProveInference IC a b.
+Qed.
+
+Theorem IC_deduction a b :
+  RulesProveInference IC a b ->
+  RulesProveInference IC f_true [(quote_f a) -> (quote_f b)].
+  intros.
+  (* rule or transitivity? *)
+  induction H.
+
+  (* rule case: what rule? *)
+  induction H.
+
+  (* mostly just using axioms to fulfill rules: *)
+  admit. admit. admit. admit.
+
+
+  
+
+  (* transitivity: *)
+  admit.
+Qed.
+
+(* Theorem IC_deduction a b :
+  TrueOf (InferencesProvenBy IC) a  *)
+
+Lemma IC_proves_all_known n :
+  KnownInferences n ⊆2 InferencesProvenBy IC.
+  (* intros. *)
+
+  induction n.
+
+  admit.
+
+  (* apply IHn; clear IHn. *)
+
+  intros.
+  unfold KnownInferences in H.
+  unfold MetaInferences in H.
+
+  (* pose (InferencesProvenBy IC) as Infs. *)
+  assert (∀ Infs, (Infs ⊇2 InferencesProvenBy IC) -> )
+
+  specialize (H Infs).
+  pose (H IHn) as I. clearbody I. clear H.
+
+  unfold KnownInferences, MetaInferences.
+  
 
 Qed.
 
@@ -707,7 +881,7 @@ Inductive FormulaTrue KnownInferences : Formula -> Prop :=
   | true_implies a b :
     (KnownInferences a b) ->
     FormulaTrue KnownInferences
-      [(quote_formula a) |= (quote_formula b)]
+      [(quote_f a) |= (quote_f b)]
   | true_all f :
     (∀ x, FormulaTrue KnownInferences [f x])
     -> FormulaTrue KnownInferences [fuse f].
