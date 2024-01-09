@@ -8,8 +8,9 @@ Require Import Coq.Program.Equality.
 Inductive Atom :=
   | atom_const
   | atom_fuse
-  | atom_pred_imp
+  | atom_implies
   | atom_and
+  | atom_all
   | atom_quote.
 
 Inductive Formula :=
@@ -21,14 +22,28 @@ Notation "[ x y .. z ]" := (f_apl .. (f_apl x y) .. z)
 
 Definition const := f_atm atom_const.
 Definition fuse := f_atm atom_fuse.
-Definition pred_imp := f_atm atom_pred_imp.
+Definition f_implies := f_atm atom_implies.
 Definition f_and := f_atm atom_and.
+Definition f_all := f_atm atom_all.
 Definition f_quote := f_atm atom_quote.
 Definition f_id := [fuse const const].
 Definition f_pair a b := [fuse [fuse f_id [const a]] [const b]].
 Definition fp_fst := [fuse f_id [const const]].
 Definition fp_snd := [fuse f_id [const f_id]].
 Definition f_default := const.
+
+Notation "[ x & y ]" := [f_and x y] (at level 0, x at next level, y at next level).
+Notation "[ x &* y ]" := [fuse [fuse [const [f_quote [f_quote f_and]]] x] y] (at level 0, x at next level, y at next level).
+Notation "[ x -> y ]" := [f_implies x y] (at level 0, x at next level, y at next level).
+
+(* subset notation is used for rulesets (which are 2-way relations) *)
+Notation "R ⊆2 S" := (∀ a b, R a b -> S a b) (at level 70).
+Notation "R ⊇2 S" := (∀ a b, S a b -> R a b) (at level 70).
+Notation "R ⊆ S" := (∀ a, R a -> S a) (at level 70).
+Notation "R ⊇ S" := (∀ a, S a -> R a) (at level 70).
+Notation "⋂ S" := (λ a, ∀ x, S x -> x a) (at level 70).
+Notation "⋂2 S" := (λ a b, ∀ x, S x -> x a b) (at level 70).
+
 
 Definition Ruleset := Formula -> Formula -> Prop.
 
@@ -143,6 +158,51 @@ Inductive IsQuotedFormulaStream : Formula -> Prop :=
   | isqfs_cons head tail : IsQuotedFormulaStream tail ->
     IsQuotedFormulaStream (qfs_cons head tail).
 
+
+Definition ObeysIntrinsicMeanings TruthValues KnownJudgedInferences :=
+  (∀ a b, KnownJudgedInferences a b ->
+    TruthValues [(quote_formula a) -> (quote_formula b)]) /\
+  (∀ a b, TruthValues [a & b] <-> TruthValues a /\ TruthValues b) /\
+  (∀ a, TruthValues [f_all a] <->
+    (∀ x, TruthValues [a (quote_formula x)])) /\
+  (∀ a b, UnfoldStep a b -> (TruthValues a <-> TruthValues b))
+  .
+
+(* Inductive IntrinsicMeanings ExtraTrue Infs : Formula -> Prop :=
+  | intrinsic_extra a : ExtraTrue a ->
+    IntrinsicMeanings ExtraTrue Infs a
+  | intrinsic_derivability a b :
+    Infs a b ->
+    IntrinsicMeanings ExtraTrue Infs [(quote_formula a) -> (quote_formula b)]
+  | intrinsic_and a b :
+    IntrinsicMeanings ExtraTrue Infs a -> IntrinsicMeanings ExtraTrue Infs b ->
+    IntrinsicMeanings ExtraTrue Infs [a & b]
+  | intrinsic_all a :
+    (∀ x, IntrinsicMeanings ExtraTrue Infs [a (quote_formula x)]) ->
+    IntrinsicMeanings ExtraTrue Infs [f_all a]
+  | intrinsic_unfold a b :
+    UnfoldStep a b ->
+    IntrinsicMeanings ExtraTrue Infs b -> IntrinsicMeanings ExtraTrue Infs a.
+
+Definition MetaInferences KnownJudgedInferences (a b : Formula) :=
+  ∀ ExtraTrue,
+    ((IntrinsicMeanings ExtraTrue KnownJudgedInferences) a ->
+     (IntrinsicMeanings ExtraTrue KnownJudgedInferences) b). *)
+
+Definition MetaInferences KnownJudgedInferences (a b : Formula) :=
+  ∀ TruthValues,
+    (ObeysIntrinsicMeanings TruthValues KnownJudgedInferences) ->
+    (TruthValues a -> TruthValues b).
+
+(* An increasing progression of inferences that are known to be 
+  required, each one adding the ones that are possible
+  in all rulesets that include the last *)
+Fixpoint KnownInferences n : Ruleset :=
+  match n with
+    | 0 => eq
+    | S pred => MetaInferences (KnownInferences pred)
+    end.
+
 Inductive RulesProveInference Rules : Formula -> Formula -> Prop :=
   | proof_by_rule a b : Rules a b -> RulesProveInference Rules a b
   | proof_by_transitivity a b c :
@@ -151,7 +211,7 @@ Inductive RulesProveInference Rules : Formula -> Formula -> Prop :=
     RulesProveInference Rules a c.
 Definition InferencesProvenBy Rules := RulesProveInference Rules.
 
-Definition FormulaMeaning
+(* Definition FormulaMeaning
     (Rules : Ruleset)
     (UnknownMeanings : Formula -> Prop)
   : Formula -> Prop
@@ -169,84 +229,77 @@ Definition FormulaMeaning
               UnfoldsToQuotedFormula [b x] bp /\
               RulesProveInference Rules ap bp)
         | _ => UnknownMeanings f
-        end.
+        end. *)
 
-Definition RulesetObeysInference Rules a b : Prop :=
+(* Definition RulesetObeysInference Rules a b : Prop :=
   ∀UnknownMeanings,
     (FormulaMeaning Rules UnknownMeanings a) ->
     (FormulaMeaning Rules UnknownMeanings b).
 
 Definition AllRulesetsObeyInference a b : Prop :=
-  ∀Rules, RulesetObeysInference Rules a b.
+  ∀Rules, RulesetObeysInference Rules a b. *)
 
-Definition AllRulesetsObeyAllOf Rules : Prop :=
-  ∀a b, Rules a b -> AllRulesetsObeyInference a b.
+(* Definition AllRulesetsObeyAllOf Rules : Prop :=
+  ∀a b, Rules a b -> AllRulesetsObeyInference a b. *)
 
-Definition InferencesTheseRulesetsObey These a b : Prop :=
-  ∀Rules, These Rules -> RulesetObeysInference Rules a b.
+(* Definition InferencesTheseRulesetsObey These a b : Prop :=
+  ∀Rules, These Rules -> RulesetObeysInference Rules a b. *)
 
-Definition AllTheseRulesetsObeyAllOf These Rules : Prop :=
-  ∀a b, Rules a b -> InferencesTheseRulesetsObey These a b.
+(* Definition AllTheseRulesetsObeyAllOf These Rules : Prop :=
+  ∀a b, Rules a b -> InferencesTheseRulesetsObey These a b. *)
 
-Definition NoRules : Ruleset := λ _ _, False.
-
-(* subset notation is for rulesets (which are 2-way relations) *)
-Notation "R ⊆ S" := (∀ a b, R a b -> S a b) (at level 70).
-Notation "R ⊇ S" := (∀ a b, S a b -> R a b) (at level 70).
+(* Definition NoRules : Ruleset := λ _ _, False. *)
 
 (* An increasing progression of inferences that are known to be 
   required, each one adding the ones that are possible
   in all rulesets that include the last *)
-Fixpoint KnownRequiredInferences n : Ruleset :=
+(* Fixpoint KnownRequiredInferences n : Ruleset :=
   match n with
     | 0 => eq
     | S pred => InferencesTheseRulesetsObey
-      (λ Rules, (InferencesProvenBy Rules) ⊇
+      (λ Rules, (InferencesProvenBy Rules) ⊇2
         (KnownRequiredInferences pred))
-    end.
+    end. *)
 
 
-Lemma InferencesTheseRulesetsObey_closed_under_transitivity p c These :
-    RulesProveInference (InferencesTheseRulesetsObey These) p c
+Lemma MetaInferences_closed_under_transitivity K p c :
+    RulesProveInference (MetaInferences K) p c
     ->
-    InferencesTheseRulesetsObey These p c.
+    (MetaInferences K) p c.
   intro.
   induction H; [assumption|clear H H0].
-  unfold InferencesTheseRulesetsObey, RulesetObeysInference in *.
+  unfold MetaInferences in *.
   intros.
-  specialize IHRulesProveInference1 with (Rules := Rules).
-  specialize IHRulesProveInference1 with (UnknownMeanings := UnknownMeanings).
-  specialize IHRulesProveInference2 with (Rules := Rules).
-  specialize IHRulesProveInference2 with (UnknownMeanings := UnknownMeanings).
-  exact (IHRulesProveInference2 X (IHRulesProveInference1 X H)).
+  specialize IHRulesProveInference1 with (TruthValues := TruthValues).
+  specialize IHRulesProveInference2 with (TruthValues := TruthValues).
+  apply IHRulesProveInference2; [assumption|].
+  apply IHRulesProveInference1; assumption.
 Qed.
 
-Lemma KnownRequiredInferences_closed_under_transitivity p c n :
-    RulesProveInference (KnownRequiredInferences n) p c
+Lemma KnownInferences_closed_under_transitivity p c n :
+    RulesProveInference (KnownInferences n) p c
     ->
-    KnownRequiredInferences n p c.
+    KnownInferences n p c.
     destruct n.
-    intro. induction H; contradiction.
-    intro.
-    apply InferencesTheseRulesetsObey_closed_under_transitivity.
-    assumption.
+    intro. induction H. assumption. cbn in *. subst b. assumption.
+    apply MetaInferences_closed_under_transitivity.
 Qed.
 
 Lemma proofs_monotonic_in_rules R1 R2 :
-  (R1 ⊆ R2) -> (InferencesProvenBy R1 ⊆ InferencesProvenBy R2).
+  (R1 ⊆2 R2) -> (InferencesProvenBy R1 ⊆2 InferencesProvenBy R2).
   intros. induction H.
   apply proof_by_rule. exact (X a b X0).
   apply proof_by_transitivity with b; assumption.
 Qed.
 
-Lemma provable_by_subset_of_KnownRequiredInferences_means_required n p c R :
-    R ⊆ KnownRequiredInferences n ->
+Lemma provable_by_subset_of_KnownInferences_means_known n p c R :
+    R ⊆2 KnownInferences n ->
     RulesProveInference R p c ->
-    KnownRequiredInferences n p c.
+    KnownInferences n p c.
   intros.
-  exact (KnownRequiredInferences_closed_under_transitivity n
+  exact (KnownInferences_closed_under_transitivity n
       (@proofs_monotonic_in_rules
-        R (KnownRequiredInferences n) H p c H0)
+        R (KnownInferences n) H p c H0)
     ).
 Qed.
 
@@ -399,44 +452,49 @@ Lemma unfold_unique a b c :
 
 Qed.
 
-Definition f_true := [pred_imp @0 @0].
-Definition f_false := [pred_imp [const [f_quote f_true]] @0].
+Definition f_true := [[f_quote f_default] -> [f_quote f_default]].
+Definition f_false := [f_all [fuse [const f_all] f_implies]].
 
 (* Lemma KnownRequiredInferences_increasing n :
-  KnownRequiredInferences n ⊆ KnownRequiredInferences (S n).
+  KnownRequiredInferences n ⊆2 KnownRequiredInferences (S n).
   intros.
   cbn. *)
 
-Lemma True_required n UnknownMeanings :
-  FormulaMeaning (KnownRequiredInferences n)
-    UnknownMeanings f_true.
-  
-  cbn. intros.
-  destruct (stream_nth_quoted 0 H) as (q, qe).
-  unfold fs_nth in qe.
-  apply ex_intro with q.
-  apply ex_intro with q.
-  split; [assumption|].
-  split; [assumption|].
-  apply proof_by_rule.
+Lemma True_known n TruthValues :
+  ObeysIntrinsicMeanings TruthValues (KnownInferences n) ->
+    TruthValues f_true.
+
+  intros.
+  destruct H as (A,_).
+  specialize A with (a := f_default).
+  specialize A with (b := f_default).
+  apply A; clear A.
   destruct n.
   reflexivity.
   cbn.
-  unfold InferencesTheseRulesetsObey, RulesetObeysInference.
+  unfold MetaInferences.
   intros. assumption.
 Qed.
 
 Lemma false_never_required n :
-  KnownRequiredInferences n f_true f_false -> False.
+  KnownInferences n f_true f_false -> False.
   induction n.
   intro. cbn in H. discriminate.
 
   intro.
-  cbn in *. unfold InferencesTheseRulesetsObey in *.
+  cbn in *. unfold MetaInferences in *.
+  specialize H with (TruthValues := ⋂(λ TruthValues,
+  ObeysIntrinsicMeanings
+  TruthValues
+  (KnownInferences n))).
+  cbn in *.
+
+
+
   specialize H with (Rules := KnownRequiredInferences n).
 
   assert (InferencesProvenBy (KnownRequiredInferences n)
-          ⊇ KnownRequiredInferences n).
+          ⊇2 KnownRequiredInferences n).
   intros. apply proof_by_rule; assumption.
 
   pose (H H0) as r. clearbody r. clear H H0.
@@ -529,24 +587,24 @@ Lemma false_never_in_lower_bound_sequence n :
 Qed. *)
 
 
-Theorem subsets_of_KnownRequiredInferences_are_consistent R n :
-    R ⊆ (KnownRequiredInferences n) ->
+Theorem subsets_of_KnownInferences_are_consistent R n :
+    R ⊆2 (KnownInferences n) ->
     RulesProveInference R f_true f_false ->
     False.
   intros justified proved.
-  exact (false_never_required n (provable_by_subset_of_KnownRequiredInferences_means_required n justified proved)).
+  exact (false_never_required n (provable_by_subset_of_KnownInferences_means_known n justified proved)).
 Qed.
 
 
-Notation "[ x & y ]" := [f_and x y] (at level 0, x at next level, y at next level).
-Notation "[ x &* y ]" := [fuse [fuse [const [f_quote [f_quote f_and]]] x] y] (at level 0, x at next level, y at next level).
-Notation "[ x |= y ]" := [pred_imp x y] (at level 0, x at next level, y at next level).
 
-Definition and_sym_axiom := [[@0 &* @1] |= [@1 &* @0]].
+Definition and_sym_axiom := [[@0 &* @1] -> [@1 &* @0]].
 
-Lemma and_sym_required a b : KnownRequiredInferences 1 [a & b] [b & a].
-  unfold KnownRequiredInferences, InferencesTheseRulesetsObey, RulesetObeysInference.
+Lemma and_sym_required a b : KnownInferences 1 [a & b] [b & a].
+  unfold KnownInferences, MetaInferences.
   intros. cbn in *.
+  destruct H as (A,(B,(C,D))).
+  destruct (B a b).
+  destruct (B b a).
   intuition idtac.
 Qed.
 
@@ -616,9 +674,78 @@ Lemma IC_meets_all_requirements n p c :
 
 Qed.
 
-Definition rule_and_assoc a b := 
 
 
+Inductive FormulaMeaning2 PreviousMeanings : Formula -> Prop -> Prop :=
+  | meaning_and a b A B :
+    FormulaMeaning2 PreviousMeanings a A -> 
+    FormulaMeaning2 PreviousMeanings b B -> 
+    FormulaMeaning2 PreviousMeanings [a & b] (A /\ B)
+  | meaning_implies a b :
+    FormulaMeaning2 PreviousMeanings [a |= b]
+      ((PreviousMeanings a) -> (PreviousMeanings b)).
+    
+  
+
+Inductive FormulaTrue KnownInferences : Formula -> Prop :=
+  | true_unfold a b :
+    UnfoldStep a b ->
+    FormulaTrue KnownInferences b -> 
+    FormulaTrue KnownInferences a
+  | true_and a b :
+    FormulaTrue KnownInferences a -> 
+    FormulaTrue KnownInferences b -> 
+    FormulaTrue KnownInferences [a & b]
+  (* | true_implies1 qa qb a :
+    UnfoldsToQuotedFormula qa a ->
+    (KnownInferences a -> False) ->
+    FormulaTrue KnownInferences [qa |= qb]
+  | true_implies2 qa qb b :
+    UnfoldsToQuotedFormula qb b ->
+    KnownInferences b ->
+    FormulaTrue KnownInferences [qa |= qb] *)
+  | true_implies a b :
+    (KnownInferences a b) ->
+    FormulaTrue KnownInferences
+      [(quote_formula a) |= (quote_formula b)]
+  | true_all f :
+    (∀ x, FormulaTrue KnownInferences [f x])
+    -> FormulaTrue KnownInferences [fuse f].
+
+(* sets of sets of true formulas *)
+(* a decreasing sequence (of sets-of-sets),
+   with more formulas forced to be true each time *)
+Fixpoint Sequence n (IsTrue : Formula -> Prop) := match n with
+  | 0 => True
+  | S pred => ∀ PreviouslyTrue,
+    (Sequence pred) PreviouslyTrue ->
+    ∀ f, FormulaTrue (PreviouslyTrue) f -> IsTrue f
+  end.
+(* or, increasing sequence (of sets of true formulas),
+   with more formulas forced to be true each time *)
+Definition InferencesBetween Truths (a b: Formula) := (Truths a -> Truths b).
+Definition KnownInferences PreviousInferences (a b : Formula) :=
+  ∀ Inferences Truths,
+    (Inferences ⊇2 PreviousInferences) ->
+    (InferencesBetween Truths ⊇2 PreviousInferences) ->
+    (Truths ⊇ FormulaTrue Inferences) ->
+    (Truths a -> Truths b).
+    
+Fixpoint KnownTrue n f := match n with
+  | 0 => False
+  | S pred => ∀ IsTrue,
+    (∀ g, (KnownTrue pred) g -> IsTrue g) ->
+    FormulaTrue IsTrue f
+  end.
+(* sets of meanings *)
+Fixpoint SequenceM n Meanings := match n with
+  | 0 => True
+  | S pred => ∀ PreviousMeanings,
+    (SequenceM pred) PreviousMeanings ->
+    ∀ f M,
+      FormulaMeaning2 PreviousMeanings f M ->
+      Meanings f = M
+  end.
 
 (* Theorem ic_is_consistent : (∀ i, RulesProve Justified (nil |- i)) -> False.
   intro.
