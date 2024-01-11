@@ -37,12 +37,15 @@ Notation "[ x & y ]" := [f_and x y] (at level 0, x at next level, y at next leve
 Notation "[ x -> y ]" := [f_implies x y] (at level 0, x at next level, y at next level).
 
 (* subset notation is used for rulesets (which are 2-way relations) *)
-Notation "R ⊆2 S" := (∀ a b, R a b -> S a b) (at level 70).
-Notation "R ⊇2 S" := (∀ a b, S a b -> R a b) (at level 70).
-Notation "R ⊆ S" := (∀ a, R a -> S a) (at level 70).
-Notation "R ⊇ S" := (∀ a, S a -> R a) (at level 70).
-Notation "⋂ S" := (λ a, ∀ x, S x -> x a) (at level 70).
-Notation "⋂2 S" := (λ a b, ∀ x, S x -> x a b) (at level 70).
+Notation "R ⊆ S" := (∀ x, R x -> S x) (at level 70).
+Notation "R ⊆2 S" := (∀ x y, R x y -> S x y) (at level 70).
+Notation "R ⊇ S" := (∀ x, S x -> R x) (at level 70).
+Notation "R ⊇2 S" := (∀ x y, S x y -> R x y) (at level 70).
+Notation "R <->2 S" := (∀ x y, S x y <-> R x y) (at level 70).
+Notation "R ∪2 S" := (λ x y, R x y \/ S x y) (at level 70).
+Notation "⋂ S" := (λ x, ∀ x, S x -> x x) (at level 70).
+Notation "⋂2 S" := (λ x y, ∀ x, S x -> x x y) (at level 70).
+Notation "∅2" := (λ x y, False) (at level 70).
 
 
 Definition Ruleset := Formula -> Formula -> Prop.
@@ -170,7 +173,7 @@ Inductive IsQuotedFormulaStream : Formula -> Prop :=
 
 (* Whether a formula is a true
    statement about a set of inferences. *)
-Inductive TrueOf Infs : Formula -> Prop :=
+(* Inductive TrueOf (Infs : Ruleset) : Formula -> Prop :=
   | t_implies a b :
       Infs a b ->
       TrueOf Infs [(quote_f a) -> (quote_f b)]
@@ -182,29 +185,172 @@ Inductive TrueOf Infs : Formula -> Prop :=
       TrueOf Infs [f_all a]
   | t_unfold a b :
       UnfoldStep a b ->
-      TrueOf Infs b -> TrueOf Infs a.
+      TrueOf Infs b -> TrueOf Infs a. *)
 
 (* The inferences that are guaranteed to be true on formulas that
    speak _about_ an earlier set of inferences - knowing only
    that certain inferences ARE present, but leaving open
    the possibility that more inferences will be added. *)
-Definition MetaInferences KnownJudgedInferences (a b : Formula) : Prop :=
+(* Definition MetaInferences KnownJudgedInferences (a b : Formula) : Prop :=
   ∀ Infs,
     Infs ⊇2 KnownJudgedInferences ->
-    (TrueOf Infs a -> TrueOf Infs b).
+    (TrueOf Infs a -> TrueOf Infs b). *)
 
 (* Definition MetaInferences KnownJudgedInferences (a b : Formula) :=
   ∀ TruthValues,
     (ObeysIntrinsicMeanings TruthValues KnownJudgedInferences) ->
     (TruthValues a -> TruthValues b). *)
 
+(* Definition FormulaAsRule f (a b : Formula) : Prop :=
+  ∀ Infs, TrueOf Infs f -> Infs a b. *)
+
+Inductive InfsAssertedBy : Formula -> Ruleset :=
+  | ia_implies p c :
+      InfsAssertedBy [(quote_f p) -> (quote_f c)] p c
+  | ia_and_l a b :
+      InfsAssertedBy a ⊆2 InfsAssertedBy [a & b]
+  | ia_and_r a b :
+      InfsAssertedBy b ⊆2 InfsAssertedBy [a & b]
+  | ia_all a x :
+      InfsAssertedBy [a (quote_f x)] ⊆2 InfsAssertedBy [f_all a]
+  | ia_unfold a b :
+      UnfoldStep a b ->
+      InfsAssertedBy b ⊆2 InfsAssertedBy a.
+
+Definition TrueOf2 Infs f : Prop :=
+  InfsAssertedBy f ⊆2 Infs.
+
+Definition FormulasTrueAbout Infs f : Prop :=
+  InfsAssertedBy f ⊆2 Infs.
+
+(* The inferences that are guaranteed to be true on formulas that
+   speak _about_ an earlier set of inferences - knowing only
+   that certain inferences ARE present, but leaving open
+   the possibility that more inferences will be added. *)
+Definition MetaInferences KnownJudgedInferences (a b : Formula) : Prop :=
+  (* ∀ p c,
+    InfsAssertedBy b p c ->
+    (InfsAssertedBy a p c \/ KnownJudgedInferences p c). *)
+  InfsAssertedBy b ⊆2 
+    (InfsAssertedBy a ∪2 KnownJudgedInferences).
+
 (* An increasing progression of inferences that are known to be 
   required, each one adding the ones that describe the last. *)
 Fixpoint KnownInferences n : Ruleset :=
   match n with
-    | 0 => eq (* same as MetaInferences (λ _, False) *)
+    | 0 => ∅2
     | S pred => MetaInferences (KnownInferences pred)
     end.
+
+(* An increasing progression of inferences that are known to be 
+  required, each one adding the ones that describe the last. *)
+(* Fixpoint KnownInferences n : Ruleset :=
+  match n with
+    | 0 => eq (* same as MetaInferences (λ _, False) *)
+    | S pred => MetaInferences (KnownInferences pred)
+    end. *)
+
+Inductive FType :=
+  | t_proposition : FType
+  | t_quoted_formula : FType
+  | t_function : FType -> FType -> FType.
+
+(* Inductive FMember (t : FType) f : Prop :=
+  | tm_proposition p : (InfsAssertedBy f <->2 p) -> FMember t f
+  | tm_quoted_formula : True -> FMember t f
+  | tm_function a b : (∀x, FMember a x -> FMember b [f x]) -> FMember t f.
+  
+ 
+Fixpoint FMember t f : Prop := match t with
+  | t_proposition => ∃ p, (InfsAssertedBy f <->2 p) -> FMember t f
+  | t_quoted_formula => True
+  | t_function a b => ∀x, FMember a x -> FMember b [f x]
+  end. *)
+
+Parameter FMember : FType -> Formula -> Prop.
+
+Inductive interpret_result t f :=
+  | is_member : FMember t f -> interpret_result t f
+  | timed_out : interpret_result t f
+  | error : interpret_result t f.
+
+Notation "x <- m1 ; m2" :=
+  (match m1 with
+    | is_member x => m2
+    | timed_out => timed_out
+    | error => error
+    end) (right associativity, at level 70).
+(* Notation "x :? t ; m2" :=
+  (x <- recurse t x ; m2) (right associativity, at level 70). *)
+
+Definition interpret_as_prop recurse f :=
+  match f with
+    | f_apl (f_apl f_implies p) c => 
+      p <- recurse t_quoted_formula p ;
+      c <- recurse t_quoted_formula c ;
+      is_member t_proposition (λ x y, (x = p) /\ (y = c))
+    | f_apl (f_apl f_and a) b => 
+      a <- recurse t_proposition a ;
+      b <- recurse t_proposition b ;
+      is_member t_proposition (a ∪2 b)
+    | f_apl (f_all) a =>
+      a <- recurse (t_function t_quoted_formula t_proposition) a ;
+      is_member t_proposition (∀x, a x)
+    | _ => error
+  end. 
+Definition interpret_as_fn recurse f :=
+  match f with
+  
+  | _ => error
+  end. 
+  
+    (* | _ => match
+        unfold_step b
+        with
+      | Some b => CleanExternalMeaning pred b
+      | _ => None
+      end
+    end *)
+  
+
+Fixpoint interpret_as n t f :=
+  match n with 0 => timed_out | S pred =>
+    end.
+
+
+Fixpoint CleanExternalMeaning n f quoted_args : option Ruleset :=
+  match n with
+    | 0 => None
+    | S pred => match f with
+      | f_apl (f_apl f_implies p) c => match (
+          unquote_formula p,
+          unquote_formula c
+          ) with
+        | (Some p, Some c) => λ x y, x = p /\ y = c
+        | _ => None
+      end
+      | f_apl (f_apl f_and a) b => match (
+          CleanExternalMeaning pred a,
+          CleanExternalMeaning pred b
+          ) with
+        | (Some a, Some b) => Some (a ∪2 b)
+        | _ => None
+      end
+      | f_apl (f_all) a => match
+          CleanExternalMeaning pred a
+          with
+        | Some a => Some (∀x, a ∪2 b)
+        | _ => None
+      end
+      | _ => match
+          unfold_step b
+          with
+        | Some b => CleanExternalMeaning pred b
+        | _ => None
+        end
+      end
+    end.
+
 
 Inductive RulesProveInference Rules : Formula -> Formula -> Prop :=
   | proof_by_rule a b : Rules a b -> RulesProveInference Rules a b
@@ -265,6 +411,10 @@ Definition AllRulesetsObeyInference a b : Prop :=
     end. *)
 
 
+Lemma CleanExternalMeaning_correct n f m :
+  (CleanExternalMeaning n f = Some m) ->
+  (m <->2 InfsAssertedBy f).
+
 Lemma MetaInferences_closed_under_transitivity K p c :
     RulesProveInference (MetaInferences K) p c
     ->
@@ -273,10 +423,17 @@ Lemma MetaInferences_closed_under_transitivity K p c :
   induction H; [assumption|clear H H0].
   unfold MetaInferences in *.
   intros.
-  specialize IHRulesProveInference1 with (Infs := Infs).
-  specialize IHRulesProveInference2 with (Infs := Infs).
-  apply IHRulesProveInference2; [assumption|].
-  apply IHRulesProveInference1; assumption.
+  specialize (IHRulesProveInference1 x y).
+  specialize (IHRulesProveInference2 x y).
+  destruct (IHRulesProveInference2 H); [|constructor; assumption].
+  destruct (IHRulesProveInference1 H0); constructor; assumption.
+Qed.
+
+Lemma emptyset_closed_under_transitivity p c :
+    RulesProveInference (∅2) p c
+    ->
+    ∅2 p c.
+  intro. induction H; assumption.
 Qed.
 
 Lemma KnownInferences_closed_under_transitivity p c n :
@@ -284,7 +441,7 @@ Lemma KnownInferences_closed_under_transitivity p c n :
     ->
     KnownInferences n p c.
     destruct n.
-    intro. induction H. assumption. cbn in *. subst b. assumption.
+    apply emptyset_closed_under_transitivity.
     apply MetaInferences_closed_under_transitivity.
 Qed.
 
@@ -314,12 +471,12 @@ Qed.
   subst b; assumption.
 Qed. *)
 
-Lemma provable_by_eq_means_eq p c :
+(* Lemma provable_by_eq_means_eq p c :
   RulesProveInference eq p c -> p = c.
   intro.
   induction H; [assumption | ].
   subst b; assumption.
-Qed.
+Qed. *)
 
 Definition fs_pop_then handler :=
   [fuse [const handler] fp_snd].
@@ -463,20 +620,44 @@ Definition f_false := [f_all [fuse [const f_all] f_implies]].
   intros.
   cbn. *)
 
-Lemma True_known n :
+(* Lemma True_known n :
   TrueOf (KnownInferences n) f_true.
   apply (t_implies (KnownInferences n) f_default f_default).
   destruct n; [reflexivity|].
   cbn. unfold MetaInferences. intros. assumption.
+Qed. *)
+
+Lemma false_implies_everything p c :
+  InfsAssertedBy f_false p c.
+  apply ia_all with (x := p).
+  (* apply ia_unfold with b :=. *)
+  admit.
+Qed.
+
+Lemma false_not_directly_inferrable :
+  InfsAssertedBy f_true f_true f_false -> False.
+  intro.
+  dependent induction H.
+
 Qed.
 
 Lemma false_never_known n :
   KnownInferences n f_true f_false -> False.
-  induction n.
-  intro. cbn in H. discriminate.
+  induction n; [trivial|].
 
   intro.
   cbn in *. unfold MetaInferences in *.
+  specialize (H f_true f_false).
+
+  (* use IHn to eliminate the "or already known" case: *)
+  assert (InfsAssertedBy f_false f_true f_false
+        → InfsAssertedBy f_true f_true f_false) as H2.
+  intro. apply H in H0. destruct H0; [assumption|contradiction].
+  clear H IHn n. rename H2 into H.
+
+  
+
+
   specialize H with (Infs := (KnownInferences n)).
   apply IHn; clear IHn.
 
