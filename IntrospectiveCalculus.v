@@ -5,17 +5,21 @@ Require Import Unicode.Utf8.
 Require Import List.
 Require Import Coq.Program.Equality.
 
+(* Parameter ExtraAtoms : Set. *)
 Inductive Atom :=
   | atom_const
   | atom_fuse
   | atom_implies
   | atom_and
-  | atom_all
-  | atom_quote.
+  | atom_forall_valid_propositions
+  | atom_forall_quoted_formulas
+  | atom_quote
+  (* | atom_extra : ExtraAtoms -> Atom *)
+  .
 
 Inductive Formula :=
   | f_atm : Atom -> Formula
-  | f_apl: Formula-> Formula-> Formula.
+  | f_apl : Formula -> Formula -> Formula.
 
 Notation "[ x y .. z ]" := (f_apl .. (f_apl x y) .. z)
  (at level 0, x at next level, y at next level).
@@ -24,9 +28,11 @@ Definition const := f_atm atom_const.
 Definition fuse := f_atm atom_fuse.
 Definition f_implies := f_atm atom_implies.
 Definition f_and := f_atm atom_and.
-Definition f_all := f_atm atom_all.
+Definition f_forall_valid_propositions := f_atm atom_forall_valid_propositions.
+Definition f_forall_quoted_formulas := f_atm atom_forall_quoted_formulas.
 Definition f_quote := f_atm atom_quote.
 Definition f_id := [fuse const const].
+(* Definition f_extra e := f_atm (atom_extra e). *)
 Definition f_pair a b := [fuse [fuse f_id [const a]] [const b]].
 Definition fp_fst := [fuse f_id [const const]].
 Definition fp_snd := [fuse f_id [const f_id]].
@@ -42,15 +48,23 @@ Notation "R ⊆2 S" := (∀ x y, R x y -> S x y) (at level 70).
 Notation "R ⊇ S" := (∀ x, S x -> R x) (at level 70).
 Notation "R ⊇2 S" := (∀ x y, S x y -> R x y) (at level 70).
 Notation "R <->2 S" := (∀ x y, S x y <-> R x y) (at level 70).
+Notation "R ∪ S" := (λ x, R x \/ S x) (at level 70).
 Notation "R ∪2 S" := (λ x y, R x y \/ S x y) (at level 70).
-Notation "⋂ S" := (λ x, ∀ x, S x -> x x) (at level 70).
-Notation "⋂2 S" := (λ x y, ∀ x, S x -> x x y) (at level 70).
+(* Notation "⋃ S" := (λ x, ∃ T, S T /\ T x) (at level 70).
+Notation "⋂ S" := (λ x, ∀ T, S T -> T x) (at level 70).
+Notation "⋃2 S" := (λ x y, ∃ T, S T /\ T x y) (at level 70).
+Notation "⋂2 S" := (λ x y, ∀ T, S T -> T x y) (at level 70). *)
+Notation "∅" := (λ x, False) (at level 70).
 Notation "∅2" := (λ x y, False) (at level 70).
+Definition Singleton A (a:A) := λ x, x = a.
+Definition Singleton2 A B (a:A) (b:B) := λ x y, x = a /\ y = b.
+(* Inductive Singleton2 A B (a:A) (b:B) : A -> B -> Prop :=
+  | singleton2_cons x y : Singleton2 a b x y. *)
 
 
 Definition Ruleset := Formula -> Formula -> Prop.
 
-Fixpoint quote_f f :=
+(* Fixpoint quote_f f :=
   match f with
     | f_atm _ => [f_quote f]
     | f_apl a b => [f_quote (quote_f a) (quote_f b)]
@@ -72,23 +86,35 @@ Lemma quote_unquote f : (unquote_formula (quote_f f)) = Some f.
   induction f; cbn.
   reflexivity.
   rewrite IHf1. rewrite IHf2. reflexivity.
-Qed.
+Qed. *)
 
-Fixpoint unfold_step f : option Formula :=
+Inductive UnfoldStep : Formula -> Formula -> Prop :=
+  | unfold_const a b : UnfoldStep [const a b] a
+  | unfold_fuse a b c : UnfoldStep [fuse a b c] [[a c] [b c]]
+  | unfold_in_lhs a b c : UnfoldStep a b -> UnfoldStep [a c] [b c].
+  (* | unfold_in_rhs a b c : UnfoldStep a b -> UnfoldStep [c a] [c b]. *)
+  (* | unfold_under_quote_0 a b : UnfoldStep a b ->
+    UnfoldStep [f_quote a] [f_quote b]
+  | unfold_under_quote_1 a b c : UnfoldStep a b ->
+    UnfoldStep [f_quote c a] [f_quote c b]. *)
+
+Fixpoint unfold_step f : option {g | UnfoldStep f g} :=
   match f with
     (* Atoms never unfold *)
     | f_atm _ => None
     (* Unfold in the LHS until you're done... *)
     | f_apl f x => match unfold_step f with
-      | Some f => Some [f x]
+      | Some (exist g u) => Some (exist _ [g x] (unfold_in_lhs x u)) 
       (* Then if you're done with the LHS, check its form... *)
       | None => match f with
-        | f_apl (f_atm atom_const) a => Some a
-        | f_apl (f_apl (f_atm atom_fuse) a) b => Some [[a x] [b x]]
-        | (f_atm atom_quote) =>
-          option_map (λ x, [f_quote x]) (unfold_step x)
-        | f_apl (f_atm atom_quote) a =>
-          option_map (λ x, [f_quote a x]) (unfold_step x)
+        | f_apl (f_atm atom_const) a =>
+            Some (exist _ a (unfold_const a x))
+        | f_apl (f_apl (f_atm atom_fuse) a) b =>
+            Some (exist _ [[a x] [b x]] (unfold_fuse a b x))
+        (* | (f_atm atom_quote) =>
+          option_map (λ x, [f_quote x]) (unfold_step x) *)
+        (* | f_apl (f_atm atom_quote) a =>
+          option_map (λ x, [f_quote a x]) (unfold_step x) *)
         | _ => None
         end
       end
@@ -121,27 +147,26 @@ Lemma pair_fst a b c :
   unfold UnfoldsTo. apply ex_intro with 20.
 Qed. *)
   
-Fixpoint try_unfold_to_quoted steps f : option Formula :=
+(* Fixpoint try_unfold_to_quoted steps f : option Formula :=
   match steps with
     | 0 => None
     | S pred => match unfold_step f with
       | None => unquote_formula f
       | Some g => try_unfold_to_quoted pred g
       end
-    end.
+    end. *)
 
-Definition UnfoldsToQuotedFormulaByFn f g :=
-  ∃ steps, try_unfold_to_quoted steps f = Some g.
+(* Definition UnfoldsToQuotedFormulaByFn f g :=
+  ∃ steps, try_unfold_to_quoted steps f = Some g. *)
 
-Inductive UnfoldStep : Formula -> Formula -> Prop :=
-  | unfold_const a b : UnfoldStep [const a b] a
-  | unfold_fuse a b c : UnfoldStep [fuse a b c] [[a c] [b c]]
-  | unfold_in_lhs a b c : UnfoldStep a b -> UnfoldStep [a c] [b c]
-  | unfold_in_rhs a b c : UnfoldStep a b -> UnfoldStep [c a] [c b].
-  (* | unfold_under_quote_0 a b : UnfoldStep a b ->
-    UnfoldStep [f_quote a] [f_quote b]
-  | unfold_under_quote_1 a b c : UnfoldStep a b ->
-    UnfoldStep [f_quote c a] [f_quote c b]. *)
+(* Inductive UnfoldsTo
+  Interpretation
+  (Interpret : Formula -> Interpretation -> Prop)
+  : Formula -> Interpretation -> Prop :=
+  | unfold_done f i : Interpret f i -> UnfoldsTo Interpret f i
+  | unfold_step_then a b i : UnfoldStep a b ->
+    UnfoldsTo Interpret b i ->
+    UnfoldsTo Interpret a i. *)
   
 (* Inductive UnfoldsToQuotedFormula : Formula -> Formula -> Prop :=
   | unfold_quoted_done f : UnfoldsToQuotedFormula (quote_f f) f
@@ -150,7 +175,7 @@ Inductive UnfoldStep : Formula -> Formula -> Prop :=
 
 (* Quoted formula streams: *)
 (* [f => h => h const (f f)] *)
-Definition qfs_tail_fn := [fuse
+(* Definition qfs_tail_fn := [fuse
     [const [fuse [fuse f_id [const [f_quote f_default]]]]]
     [fuse [const const] [fuse f_id f_id]]
   ].
@@ -159,7 +184,7 @@ Definition qfs_cons head tail := f_pair (quote_f head) tail.
 Inductive IsQuotedFormulaStream : Formula -> Prop :=
   | isqfs_tail : IsQuotedFormulaStream qfs_tail
   | isqfs_cons head tail : IsQuotedFormulaStream tail ->
-    IsQuotedFormulaStream (qfs_cons head tail).
+    IsQuotedFormulaStream (qfs_cons head tail). *)
 
 
 (* Definition ObeysIntrinsicMeanings TruthValues KnownJudgedInferences :=
@@ -204,42 +229,264 @@ Inductive IsQuotedFormulaStream : Formula -> Prop :=
 (* Definition FormulaAsRule f (a b : Formula) : Prop :=
   ∀ Infs, TrueOf Infs f -> Infs a b. *)
 
-Inductive InfsAssertedBy : Formula -> Ruleset :=
-  | ia_implies p c :
-      InfsAssertedBy [(quote_f p) -> (quote_f c)] p c
-  | ia_and_l a b :
-      InfsAssertedBy a ⊆2 InfsAssertedBy [a & b]
-  | ia_and_r a b :
-      InfsAssertedBy b ⊆2 InfsAssertedBy [a & b]
-  | ia_all a x :
-      InfsAssertedBy [a (quote_f x)] ⊆2 InfsAssertedBy [f_all a]
-  | ia_unfold a b :
-      UnfoldStep a b ->
-      InfsAssertedBy b ⊆2 InfsAssertedBy a.
+Inductive QuotedFormula : Formula -> Formula -> Prop :=
+  | quoted_atom a : QuotedFormula [f_quote a] a
+  | quoted_apply qa a qb b :
+    QuotedFormula qa a -> QuotedFormula qb b ->
+    QuotedFormula [f_quote qa qb] [a b]
+  | quoted_unfold qa qb b :
+      UnfoldStep qa qb ->
+      QuotedFormula qb b ->
+      QuotedFormula qa b.
 
-Definition TrueOf2 Infs f : Prop :=
+
+Inductive GetResult t :=
+  | success : t -> GetResult t
+  | timed_out : GetResult t
+  | error : GetResult t.
+
+Notation "? x <- m1 ; m2" :=
+  (match m1 with
+    | success (x) => m2
+    | timed_out => timed_out _
+    | error => error _
+    end) (right associativity, at level 70, x pattern).
+
+(* Fixpoint unfold_until (t : Type) n
+  (body : (Formula -> GetResult t) -> Formula -> GetResult t)
+  : (Formula -> GetResult t) :=
+  match n with
+    | 0 => timed_out _
+    | S pred => body (unfold_until pred body) f
+    end.
+Notation "'unfold_or' body" :=
+  (match n with
+    | 0 => timed_out _ | S pred => body end) (at level 40). *)
+
+Fixpoint get_QuotedFormula n qf : GetResult {f | QuotedFormula qf f} :=
+  match n with 0 => timed_out _ | S pred =>
+    match unfold_step qf with
+      | Some (exist qg u) =>
+          ? (exist g gp) <- get_QuotedFormula pred qg ;
+          success (exist _ g (quoted_unfold u gp))
+      | None => match qf with
+          | f_apl (f_atm atom_quote) (f_atm a) =>
+              success (exist _ (f_atm a) (quoted_atom (f_atm a)))
+          | f_apl (f_apl (f_atm atom_quote) qa) qb =>
+            ? (exist a ap) <- get_QuotedFormula pred qa ; 
+            ? (exist b bp) <- get_QuotedFormula pred qb ;
+            success (exist _ [a b] (quoted_apply ap bp))
+          | _ => error _
+          end
+      end
+  end.
+
+Definition Meanings := Formula -> Ruleset -> Prop.
+
+Inductive PropImplication (assumed: Formula -> Prop) : Formula -> Prop :=
+  | pi_implies qp p qc c :
+      QuotedFormula qp p -> QuotedFormula qc c -> 
+      PropImplication assumed [qp -> qc]
+  | pi_and a b :
+      PropImplication assumed a ->
+      PropImplication assumed b ->
+      PropImplication assumed [a & b]
+  | pi_forall_valid_propositions f :
+      (∀ x, PropImplication (assumed ∪ (Singleton x)) [f x]) ->
+      PropImplication assumed [f_forall_valid_propositions f]
+  | pi_unfold a b :
+      UnfoldStep a b ->
+      PropImplication assumed b ->
+      PropImplication assumed a.
+
+Inductive PropMeaning assumed f
+  (assumed: Formula -> Prop)
+  (p : PropImplication assumed f)
+  (assumed_meanings : ∀ g, assumed g -> Ruleset) : Ruleset :=
+  | pm_implies qp p qc c
+      (qqp : QuotedFormula qp p) (qqc : QuotedFormula qc c) :
+      pi_implies assumed qqp qqc .
+
+Fixpoint PropMeaning assumed f
+  (p : PropImplication assumed f)
+  (assumed_meanings : ∀ g, assumed g -> Ruleset) : Ruleset :=
+  match p return Ruleset with
+    | pi_implies qp p qc c _ _ => (Singleton2 p c)
+    | pi_and a b pa pb =>
+        PropMeaning pa assumed_meanings ∪2
+        PropMeaning pb assumed_meanings
+    | pi_forall_valid_propositions f pf =>
+        (λ p c, ∃ x (px : PropImplication assumed x), PropMeaning (pf x) (λ g ag, match ag with
+          | or_introl ag => assumed_meanings g ag
+          | or_intror ag => PropMeaning px assumed_meanings
+          end) p c)
+    | pi_unfold a b u pb =>
+        PropMeaning pb assumed_meanings
+    end.
+    
+
+Inductive MeaningImplication (assumed : Meanings) : Meanings :=
+  | mi_implies qp p qc c :
+      QuotedFormula qp p -> QuotedFormula qc c -> 
+      MeaningImplication assumed [qp -> qc] (Singleton2 p c)
+  | mi_unfold a b B :
+      UnfoldStep a b ->
+      MeaningImplication assumed b B ->
+      MeaningImplication assumed a B
+  | mi_and a A b B :
+      MeaningImplication assumed a A ->
+      MeaningImplication assumed b B ->
+      MeaningImplication assumed [a & b] (A ∪2 B)
+  | mi_forall_valid_propositions f F :
+    (∀ x X,
+      MeaningImplication
+        (assumed ∪2 (Singleton2 x X))
+        [f x]
+        (F X)
+    ) -> 
+    MeaningImplication
+      assumed
+      [f_forall_valid_propositions f]
+      (λ p c, ∃ X, (F X) p c)
+  | mi_forall_quoted_formulas f F :
+    (∀ x qx,
+      QuotedFormula qx x -> 
+      MeaningImplication assumed [f qx] (F x)
+    ) -> 
+    MeaningImplication
+      assumed
+      [f_forall_quoted_formulas f]
+      (λ p c, ∃ x, (F x) p c).
+
+Definition Meaning : Meanings := MeaningImplication (∅2).
+
+Inductive MeaningConstructor (meanings : Meanings) : Meanings :=
+  | mc_unfold a b B :
+      UnfoldStep a b ->
+      meanings b B ->
+      MeaningConstructor meanings a B
+  | mc_and a A b B :
+    meanings a A -> meanings b B ->
+    MeaningConstructor meanings [a & b] (A ∪2 B)
+  | mc_forall_valid_propositions f F :
+    (* "if, as long as m2 assigns a meaning to x,
+       a MeaningConstructor exists that will
+       carry a meaning to [f x]..." *)
+    (∀ m2 x X, m2 x X -> MeaningConstructor m2 [f x] (F X)) ->
+    (* "...then, [f_forall_valid_propositions f] includes
+        any meaning established by such an x/[f x] pair
+          " *)
+    MeaningConstructor meanings
+      [f_forall_valid_propositions f]
+      (* (λ p c, ∃ x X, meanings x X /\ (F X) p c). *)
+      (λ p c, ∃ x X, meanings x X /\ (F X) p c).
+
+Inductive ImpliesMeanings : Meanings :=
+  | im_implies qp p qc c :
+      QuotedFormula qp p -> QuotedFormula qc c -> 
+      ImpliesMeanings [qp -> qc] (Singleton2 p c).
+
+Inductive ValidMeanings : Meanings -> Prop :=
+  | vm_implies : ValidMeanings ImpliesMeanings
+  | vm_chain M :
+    ValidMeanings M -> ValidMeanings (MeaningConstructor M).
+
+Inductive AllPropositionMeanings : Meanings :=
+  | apm_cons M f F :
+    ValidMeanings M -> M f F
+    -> AllPropositionMeanings f F.
+
+Inductive Meanings : (Formula -> Ruleset -> Prop) -> Prop :=
+  | a_implies qp p qc c :
+      QuotedFormula qp p -> QuotedFormula qc c -> 
+      Meanings (Singleton2 [qp -> qc] (Singleton2 p c))
+  | a_and As Bs :
+      Meanings As -> Meanings Bs ->
+      Meanings (λ p P, ∃a b A B,
+        As a A /\
+        Bs b B /\
+        p = [a & b] /\
+        (P = (A ∪2 B)))
+  (* | a_forall_quoted_formulas As :
+      (∀ qx x, QuotedFormula qx x -> As [f qx] (R x)) ->
+      InfsAssertedBy [f_forall_quoted_formulas f] (λ p c, ∃ x, (R x) p c) *)
+  | a_forall_valid_propositions As fs :
+      Meanings As ->
+      ∀ 
+      ∀ f, fs f -> ∀ x, 
+      Meanings (λ p P, ∃f (F : Ruleset -> Ruleset),
+        ∀ x, As x X -> As [f x] (F X)) /\
+        p = [f_forall_valid_propositions f] /\
+        P = (λ p c, ∃ x X, (F x) p c)).
+        
+      (∀ qx x, As qx x -> As [f qx] (R x)) ->
+      InfsAssertedBy [f_forall_valid_propositions f] (λ p c, ∃ x, (R x) p c)
+  | ia_unfold a b B :
+      UnfoldStep a b ->
+      InfsAssertedBy b B ->
+      InfsAssertedBy a B.
+      
+
+Inductive InfsAssertedBy : Formula -> Ruleset -> Prop :=
+  | ia_implies qp p qc c :
+      QuotedFormula qp p -> QuotedFormula qc c -> 
+      InfsAssertedBy [qp -> qc] (Singleton2 p c)
+  | ia_and a A b B :
+      InfsAssertedBy a A -> InfsAssertedBy b B ->
+      InfsAssertedBy [a & b] (A ∪2 B)
+  | ia_forall_quoted_formulas f R :
+      (∀ qx x, QuotedFormula qx x -> InfsAssertedBy [f qx] (R x)) ->
+      InfsAssertedBy [f_forall_quoted_formulas f] (λ p c, ∃ x, (R x) p c)
+  | ia_forall_valid_propositions f R :
+      (∀ qx x, InfsAssertedBy qx x -> InfsAssertedBy [f qx] (R x)) ->
+      InfsAssertedBy [f_forall_valid_propositions f] (λ p c, ∃ x, (R x) p c)
+  | ia_unfold a b B :
+      UnfoldStep a b ->
+      InfsAssertedBy b B ->
+      InfsAssertedBy a B.
+
+(* Definition TrueOf2 Infs f : Prop :=
   InfsAssertedBy f ⊆2 Infs.
 
 Definition FormulasTrueAbout Infs f : Prop :=
-  InfsAssertedBy f ⊆2 Infs.
+  InfsAssertedBy f ⊆2 Infs. *)
 
 (* The inferences that are guaranteed to be true on formulas that
    speak _about_ an earlier set of inferences - knowing only
    that certain inferences ARE present, but leaving open
    the possibility that more inferences will be added. *)
-Definition MetaInferences KnownJudgedInferences (a b : Formula) : Prop :=
+Definition RequiredMetaInferences KnownJudgedInferences (a b : Formula) : Prop :=
   (* ∀ p c,
     InfsAssertedBy b p c ->
     (InfsAssertedBy a p c \/ KnownJudgedInferences p c). *)
-  InfsAssertedBy b ⊆2 
-    (InfsAssertedBy a ∪2 KnownJudgedInferences).
+  ∃ A B,
+    InfsAssertedBy a A /\ InfsAssertedBy b B /\
+    B ⊆2 (A ∪2 KnownJudgedInferences).
+
+Definition PermittedMetaInferences KnownJudgedInferences (a b : Formula) : Prop :=
+  ∀ A B,
+    InfsAssertedBy a A -> InfsAssertedBy b B ->
+    B ⊆2 (A ∪2 KnownJudgedInferences).
+
+(* (want to prove: True -> required -> IC -> permitted -/> False.
+    by induction: (permitted -/> False)
+    somehow: "all statements that describe IC are provable in IC"
+    by induction using that: (required -> IC)
+    by proofs for individual rules: (IC -> permitted)
+    which yields "all provable IC statements describe IC" I think) *)
 
 (* An increasing progression of inferences that are known to be 
   required, each one adding the ones that describe the last. *)
-Fixpoint KnownInferences n : Ruleset :=
+Fixpoint KnownRequiredInferences n : Ruleset :=
   match n with
     | 0 => ∅2
-    | S pred => MetaInferences (KnownInferences pred)
+    | S pred => RequiredMetaInferences (KnownRequiredInferences pred)
+    end.
+
+Fixpoint KnownPermittedInferences n : Ruleset :=
+  match n with
+    | 0 => ∅2
+    | S pred => PermittedMetaInferences (KnownPermittedInferences pred)
     end.
 
 (* An increasing progression of inferences that are known to be 
