@@ -6,7 +6,7 @@ Require Import List.
 Require Import Coq.Program.Equality.
 
 (* Parameter ExtraAtoms : Set. *)
-Inductive Atom :=
+Inductive Atom {ExtraAtoms} :=
   | atom_const
   | atom_fuse
   | atom_implies
@@ -14,29 +14,29 @@ Inductive Atom :=
   | atom_forall_valid_propositions
   | atom_forall_quoted_formulas
   | atom_quote
-  (* | atom_extra : ExtraAtoms -> Atom *)
+  | atom_extra : ExtraAtoms -> Atom
   .
 
-Inductive Formula :=
-  | f_atm : Atom -> Formula
+Inductive Formula {ExtraAtoms} :=
+  | f_atm : @Atom ExtraAtoms -> Formula
   | f_apl : Formula -> Formula -> Formula.
 
 Notation "[ x y .. z ]" := (f_apl .. (f_apl x y) .. z)
  (at level 0, x at next level, y at next level).
 
-Definition const := f_atm atom_const.
-Definition fuse := f_atm atom_fuse.
-Definition f_implies := f_atm atom_implies.
-Definition f_and := f_atm atom_and.
-Definition f_forall_valid_propositions := f_atm atom_forall_valid_propositions.
-Definition f_forall_quoted_formulas := f_atm atom_forall_quoted_formulas.
-Definition f_quote := f_atm atom_quote.
-Definition f_id := [fuse const const].
+Definition const {ExtraAtoms} := f_atm (@atom_const ExtraAtoms).
+Definition fuse {ExtraAtoms} := f_atm (@atom_fuse ExtraAtoms).
+Definition f_implies {ExtraAtoms} := f_atm (@atom_implies ExtraAtoms).
+Definition f_and {ExtraAtoms} := f_atm (@atom_and ExtraAtoms).
+Definition f_forall_valid_propositions {ExtraAtoms} := f_atm (@atom_forall_valid_propositions ExtraAtoms).
+Definition f_forall_quoted_formulas {ExtraAtoms} := f_atm (@atom_forall_quoted_formulas ExtraAtoms).
+Definition f_quote {ExtraAtoms} := f_atm (@atom_quote ExtraAtoms).
+Definition f_id {ExtraAtoms} : @Formula ExtraAtoms := [fuse const const].
 (* Definition f_extra e := f_atm (atom_extra e). *)
-Definition f_pair a b := [fuse [fuse f_id [const a]] [const b]].
-Definition fp_fst := [fuse f_id [const const]].
-Definition fp_snd := [fuse f_id [const f_id]].
-Definition f_default := const.
+Definition f_pair [ExtraAtoms] a b : @Formula ExtraAtoms := [fuse [fuse f_id [const a]] [const b]].
+Definition fp_fst {ExtraAtoms} : @Formula ExtraAtoms := [fuse f_id [const const]].
+Definition fp_snd {ExtraAtoms} : @Formula ExtraAtoms := [fuse f_id [const f_id]].
+Definition f_default {ExtraAtoms} : @Formula ExtraAtoms := const.
 
 Notation "[ x & y ]" := [f_and x y] (at level 0, x at next level, y at next level).
 (* Notation "[ x &* y ]" := [fuse [fuse [const [f_quote [f_quote f_and]]] x] y] (at level 0, x at next level, y at next level). *)
@@ -61,8 +61,17 @@ Definition Singleton2 A B (a:A) (b:B) := λ x y, x = a /\ y = b.
 (* Inductive Singleton2 A B (a:A) (b:B) : A -> B -> Prop :=
   | singleton2_cons x y : Singleton2 a b x y. *)
 
+Fixpoint embed_formula
+  EA1 EA2 (embed : EA1 -> EA2)
+  (f : (@Formula EA1)) : (@Formula EA2)
+  := match f with
+    | f_atm a => f_atm (embed a)
+    | f_apl a b => [(embed_formula embed a) (embed_formula embed b)]
+    end.
 
-Definition Ruleset := Formula -> Formula -> Prop.
+
+Definition Ruleset {ExtraAtoms} :=
+  (@Formula ExtraAtoms) -> (@Formula ExtraAtoms) -> Prop.
 
 (* Fixpoint quote_f f :=
   match f with
@@ -88,7 +97,7 @@ Lemma quote_unquote f : (unquote_formula (quote_f f)) = Some f.
   rewrite IHf1. rewrite IHf2. reflexivity.
 Qed. *)
 
-Inductive UnfoldStep : Formula -> Formula -> Prop :=
+Inductive UnfoldStep [ExtraAtoms] : (@Formula ExtraAtoms) -> (@Formula ExtraAtoms) -> Prop :=
   | unfold_const a b : UnfoldStep [const a b] a
   | unfold_fuse a b c : UnfoldStep [fuse a b c] [[a c] [b c]]
   | unfold_in_lhs a b c : UnfoldStep a b -> UnfoldStep [a c] [b c].
@@ -98,7 +107,7 @@ Inductive UnfoldStep : Formula -> Formula -> Prop :=
   | unfold_under_quote_1 a b c : UnfoldStep a b ->
     UnfoldStep [f_quote c a] [f_quote c b]. *)
 
-Fixpoint unfold_step f : option {g | UnfoldStep f g} :=
+Fixpoint unfold_step [ExtraAtoms] f : option {g : (@Formula ExtraAtoms) | UnfoldStep f g} :=
   match f with
     (* Atoms never unfold *)
     | f_atm _ => None
@@ -229,7 +238,7 @@ Inductive IsQuotedFormulaStream : Formula -> Prop :=
 (* Definition FormulaAsRule f (a b : Formula) : Prop :=
   ∀ Infs, TrueOf Infs f -> Infs a b. *)
 
-Inductive QuotedFormula : Formula -> Formula -> Prop :=
+Inductive QuotedFormula [ExtraAtoms] : (@Formula ExtraAtoms) -> (@Formula ExtraAtoms) -> Prop :=
   | quoted_atom a : QuotedFormula [f_quote a] a
   | quoted_apply qa a qb b :
     QuotedFormula qa a -> QuotedFormula qb b ->
@@ -263,7 +272,7 @@ Notation "'unfold_or' body" :=
   (match n with
     | 0 => timed_out _ | S pred => body end) (at level 40). *)
 
-Fixpoint get_QuotedFormula n qf : GetResult {f | QuotedFormula qf f} :=
+Fixpoint get_QuotedFormula [ExtraAtoms] n qf : GetResult {f : (@Formula ExtraAtoms) | QuotedFormula qf f} :=
   match n with 0 => timed_out _ | S pred =>
     match unfold_step qf with
       | Some (exist qg u) =>
@@ -281,9 +290,10 @@ Fixpoint get_QuotedFormula n qf : GetResult {f | QuotedFormula qf f} :=
       end
   end.
 
-Definition Meanings := Formula -> Ruleset -> Prop.
+Definition Meanings {ExtraAtoms} :=
+  (@Formula ExtraAtoms) -> (@Ruleset ExtraAtoms) -> Prop.
 
-Inductive PropImplication (assumed: Formula -> Prop) : Formula -> Prop :=
+(* Inductive PropImplication (assumed: Formula -> Prop) : Formula -> Prop :=
   | pi_implies qp p qc c :
       QuotedFormula qp p -> QuotedFormula qc c -> 
       PropImplication assumed [qp -> qc]
@@ -297,17 +307,17 @@ Inductive PropImplication (assumed: Formula -> Prop) : Formula -> Prop :=
   | pi_unfold a b :
       UnfoldStep a b ->
       PropImplication assumed b ->
-      PropImplication assumed a.
+      PropImplication assumed a. *)
 
-Inductive PropMeaning assumed f
+(* Inductive PropMeaning assumed f
   (assumed: Formula -> Prop)
   (p : PropImplication assumed f)
   (assumed_meanings : ∀ g, assumed g -> Ruleset) : Ruleset :=
   | pm_implies qp p qc c
       (qqp : QuotedFormula qp p) (qqc : QuotedFormula qc c) :
-      pi_implies assumed qqp qqc .
+      pi_implies assumed qqp qqc . *)
 
-Fixpoint PropMeaning assumed f
+(* Fixpoint PropMeaning assumed f
   (p : PropImplication assumed f)
   (assumed_meanings : ∀ g, assumed g -> Ruleset) : Ruleset :=
   match p return Ruleset with
@@ -322,10 +332,15 @@ Fixpoint PropMeaning assumed f
           end) p c)
     | pi_unfold a b u pb =>
         PropMeaning pb assumed_meanings
-    end.
+    end. *)
     
 
-Inductive MeaningImplication (assumed : Meanings) : Meanings :=
+Inductive MeaningImplication [ExtraAtoms]
+    (assumed : @Meanings ExtraAtoms)
+    : (@Meanings ExtraAtoms) :=
+  | mi_assumed a A :
+      assumed a A ->
+      MeaningImplication assumed a A
   | mi_implies qp p qc c :
       QuotedFormula qp p -> QuotedFormula qc c -> 
       MeaningImplication assumed [qp -> qc] (Singleton2 p c)
@@ -358,7 +373,47 @@ Inductive MeaningImplication (assumed : Meanings) : Meanings :=
       [f_forall_quoted_formulas f]
       (λ p c, ∃ x, (F x) p c).
 
-Definition Meaning : Meanings := MeaningImplication (∅2).
+(* Definition Meaning : Meanings := MeaningImplication (∅2). *)
+
+Inductive OneMoreAtom OldAtoms :=
+  | onemore_old : OldAtoms -> OneMoreAtom OldAtoms
+  | onemore_new : OneMoreAtom OldAtoms.
+
+
+Fixpoint get_MeaningImplication n [ExtraAtoms]
+  (f : @Formula ExtraAtoms)
+  (assumed : @Meanings ExtraAtoms)
+  (dec_assumed : ∀ a : @Formula ExtraAtoms, option {A | assumed a A})
+  : GetResult {F | (MeaningImplication assumed f F)} :=
+  match n with 0 => timed_out _ | S pred =>
+    match dec_assumed f with
+      | Some (exist F Fp) => success (exist _ F (mi_assumed assumed f F Fp))
+      | None =>
+    match unfold_step f with
+      | Some (exist g u) =>
+          ? (exist G Gp) <- get_MeaningImplication pred g assumed dec_assumed ;
+          success (exist _ G (mi_unfold u Gp))
+      | None => match f with
+          (* | f_apl (f_apl (f_atm atom_implies) qp) qc =>
+              ? (exist p pp) <- get_QuotedFormula pred qp ; 
+              ? (exist c cp) <- get_QuotedFormula pred qc ;
+              _ (* success (exist _ (Singleton2 p c)
+                (mi_implies assumed pp cp)) *) *)
+          | f_apl (f_apl (f_atm atom_and) a) b =>
+              ? (exist A Ap) <- get_MeaningImplication pred a assumed dec_assumed ; 
+              ? (exist B Bp) <- get_MeaningImplication pred b assumed dec_assumed ; 
+              success (exist _ _ (mi_and Ap Bp))
+          | f_apl (f_atm atom_forall_valid_propositions) f =>
+              ? (exist F Fp) <- get_MeaningImplication pred
+                  [(embed_formula onemore_old f) x]
+                  (assumed ∪2 (Singleton2 x X))
+                  dec_assumed ; 
+              success (exist _ _ (mi_and Ap Bp))
+          | _ => error _
+          end
+      end
+    end
+  end.
 
 Inductive MeaningConstructor (meanings : Meanings) : Meanings :=
   | mc_unfold a b B :
