@@ -6,7 +6,7 @@ Require Import List.
 Require Import Coq.Program.Equality.
 
 (* Parameter ExtraAtoms : Set. *)
-Inductive Atom {ExtraAtoms} :=
+Inductive Atom :=
   | atom_const
   | atom_fuse
   | atom_implies
@@ -14,23 +14,24 @@ Inductive Atom {ExtraAtoms} :=
   | atom_forall_valid_propositions
   | atom_forall_quoted_formulas
   | atom_quote
-  | atom_extra : ExtraAtoms -> Atom
+  (* | atom_extra : ExtraAtoms -> Atom *)
   .
 
 Inductive Formula {ExtraAtoms} :=
-  | f_atm : @Atom ExtraAtoms -> Formula
+  | f_atm : Atom -> Formula
+  | f_ext : ExtraAtoms -> Formula
   | f_apl : Formula -> Formula -> Formula.
 
 Notation "[ x y .. z ]" := (f_apl .. (f_apl x y) .. z)
  (at level 0, x at next level, y at next level).
 
-Definition const {ExtraAtoms} := f_atm (@atom_const ExtraAtoms).
-Definition fuse {ExtraAtoms} := f_atm (@atom_fuse ExtraAtoms).
-Definition f_implies {ExtraAtoms} := f_atm (@atom_implies ExtraAtoms).
-Definition f_and {ExtraAtoms} := f_atm (@atom_and ExtraAtoms).
-Definition f_forall_valid_propositions {ExtraAtoms} := f_atm (@atom_forall_valid_propositions ExtraAtoms).
-Definition f_forall_quoted_formulas {ExtraAtoms} := f_atm (@atom_forall_quoted_formulas ExtraAtoms).
-Definition f_quote {ExtraAtoms} := f_atm (@atom_quote ExtraAtoms).
+Definition const {ExtraAtoms} := @f_atm ExtraAtoms atom_const.
+Definition fuse {ExtraAtoms} := @f_atm ExtraAtoms atom_fuse.
+Definition f_implies {ExtraAtoms} := @f_atm ExtraAtoms atom_implies.
+Definition f_and {ExtraAtoms} := @f_atm ExtraAtoms atom_and.
+Definition f_forall_valid_propositions {ExtraAtoms} := @f_atm ExtraAtoms atom_forall_valid_propositions.
+Definition f_forall_quoted_formulas {ExtraAtoms} := @f_atm ExtraAtoms atom_forall_quoted_formulas.
+Definition f_quote {ExtraAtoms} := @f_atm ExtraAtoms atom_quote.
 Definition f_id {ExtraAtoms} : @Formula ExtraAtoms := [fuse const const].
 (* Definition f_extra e := f_atm (atom_extra e). *)
 Definition f_pair [ExtraAtoms] a b : @Formula ExtraAtoms := [fuse [fuse f_id [const a]] [const b]].
@@ -65,13 +66,11 @@ Fixpoint embed_formula
   EA1 EA2 (embed : EA1 -> EA2)
   (f : (@Formula EA1)) : (@Formula EA2)
   := match f with
-    | f_atm a => f_atm (embed a)
+    | f_atm a => f_atm a
+    | f_ext a => f_ext (embed a)
     | f_apl a b => [(embed_formula embed a) (embed_formula embed b)]
     end.
 
-
-Definition Ruleset {ExtraAtoms} :=
-  (@Formula ExtraAtoms) -> (@Formula ExtraAtoms) -> Prop.
 
 (* Fixpoint quote_f f :=
   match f with
@@ -111,6 +110,7 @@ Fixpoint unfold_step [ExtraAtoms] f : option {g : (@Formula ExtraAtoms) | Unfold
   match f with
     (* Atoms never unfold *)
     | f_atm _ => None
+    | f_ext _ => None
     (* Unfold in the LHS until you're done... *)
     | f_apl f x => match unfold_step f with
       | Some (exist g u) => Some (exist _ [g x] (unfold_in_lhs x u)) 
@@ -238,8 +238,11 @@ Inductive IsQuotedFormulaStream : Formula -> Prop :=
 (* Definition FormulaAsRule f (a b : Formula) : Prop :=
   ∀ Infs, TrueOf Infs f -> Infs a b. *)
 
-Inductive QuotedFormula [ExtraAtoms] : (@Formula ExtraAtoms) -> (@Formula ExtraAtoms) -> Prop :=
-  | quoted_atom a : QuotedFormula [f_quote a] a
+Definition StandardFormula := @Formula False.
+
+Inductive QuotedFormula [ExtraAtoms]
+    : (@Formula ExtraAtoms) -> StandardFormula -> Prop :=
+  | quoted_atom a : QuotedFormula [f_quote (f_atm a)] (f_atm a)
   | quoted_apply qa a qb b :
     QuotedFormula qa a -> QuotedFormula qb b ->
     QuotedFormula [f_quote qa qb] [a b]
@@ -290,8 +293,14 @@ Fixpoint get_QuotedFormula [ExtraAtoms] n qf : GetResult {f : (@Formula ExtraAto
       end
   end.
 
+(* 
+Definition Ruleset {ExtraAtoms} :=
+  (@Formula ExtraAtoms) -> (@Formula ExtraAtoms) -> Prop. *)
+Definition Ruleset :=
+  StandardFormula -> StandardFormula -> Prop.
+
 Definition Meanings {ExtraAtoms} :=
-  (@Formula ExtraAtoms) -> (@Ruleset ExtraAtoms) -> Prop.
+  (@Formula ExtraAtoms) -> Ruleset -> Prop.
 
 (* Inductive PropImplication (assumed: Formula -> Prop) : Formula -> Prop :=
   | pi_implies qp p qc c :
@@ -336,8 +345,7 @@ Definition Meanings {ExtraAtoms} :=
     
 
 Inductive MeaningImplication [ExtraAtoms]
-    (assumed : @Meanings ExtraAtoms)
-    : (@Meanings ExtraAtoms) :=
+    (assumed : @Meanings ExtraAtoms) : @Meanings ExtraAtoms :=
   | mi_assumed a A :
       assumed a A ->
       MeaningImplication assumed a A
@@ -372,28 +380,286 @@ Inductive MeaningImplication [ExtraAtoms]
       assumed
       [f_forall_quoted_formulas f]
       (λ p c, ∃ x, (F x) p c).
-
+Print MeaningImplication.
 (* Definition Meaning : Meanings := MeaningImplication (∅2). *)
 
-Inductive OneMoreAtom OldAtoms :=
-  | onemore_old : OldAtoms -> OneMoreAtom OldAtoms
-  | onemore_new : OneMoreAtom OldAtoms.
+Inductive OneMoreAtom {OldAtoms} :=
+  | onemore_old : OldAtoms -> OneMoreAtom
+  | onemore_new : OneMoreAtom.
+
+Fixpoint embed_onemore OldAtoms
+  (f : @Formula OldAtoms)
+  : @Formula (@OneMoreAtom OldAtoms) :=
+  match f with
+    | f_apl a b => [(embed_onemore a) (embed_onemore b)] 
+    | f_atm a => f_atm a
+    | f_ext a => f_ext (onemore_old a)
+    end.
+
+
+Fixpoint specialize_onemore OldAtoms
+  (f : @Formula (@OneMoreAtom OldAtoms))
+  (x : @Formula OldAtoms)
+  : @Formula OldAtoms :=
+  match f with
+    | f_apl a b => [(specialize_onemore a x) (specialize_onemore b x)] 
+    | f_atm a => f_atm a
+    | f_ext a => match a with
+        | onemore_old a => f_ext a
+        | onemore_new => x
+      end
+    end.
+
+Inductive UnreifiedAssumed [ExtraAtoms]
+  (assumed : ExtraAtoms -> Prop)
+  (meanings : ∀ e, assumed e -> Ruleset)
+  : Meanings :=
+  | unreified_assumed e (ae : assumed e) :
+  UnreifiedAssumed assumed meanings
+    (f_ext e) (meanings e ae).
+(* 
+Parameter MiSearchSuccess :
+  ∀ [ExtraAtoms] (f : @Formula ExtraAtoms), Type. *)
+Definition MiSearchSuccess [ExtraAtoms]
+    (assumed : ExtraAtoms -> Prop)
+    (f : @Formula ExtraAtoms) : Type :=
+    ∀ meanings : (∀ e, assumed e -> Ruleset),
+    {F | MeaningImplication
+      (UnreifiedAssumed assumed meanings)
+      f F}.
+
+(* Inductive MiSearchSuccess [ExtraAtoms]
+    (assumed : ExtraAtoms -> Prop)
+    : (@Formula ExtraAtoms) -> Type :=
+  | missss_assumed a :
+      assumed a -> MiSearchSuccess assumed (f_ext a) 
+  | missss_proven qp p qc c :
+      QuotedFormula qp p -> QuotedFormula qc c -> 
+      MiSearchSuccess [qp -> qc]
+  | missss_unfold a b :
+      UnfoldStep a b ->
+      MiSearchSuccess b ->
+      MiSearchSuccess a
+  | missss_and a b :
+      MiSearchSuccess a ->
+      MiSearchSuccess b ->
+      MiSearchSuccess [a & b]
+  | missss_forall_valid_propositions f :
+    (∀ x, MiSearchSuccess [f x]) -> 
+    MiSearchSuccess [f_forall_valid_propositions f]
+  | missss_forall_quoted_formulas f :
+    (∀ x qx,
+      QuotedFormula qx x -> 
+      MiSearchSuccess [f qx]
+    ) -> 
+    MiSearchSuccess [f_forall_quoted_formulas f]. *)
+
+Definition assume_one_more
+    [OldAtoms]
+    (assumed : OldAtoms -> Prop)
+    : (@OneMoreAtom OldAtoms) -> Prop :=
+  λ a, match a with
+    | onemore_old a => assumed a
+    | onemore_new => True 
+    end.
+
+Definition one_more_meaning
+    [OldAtoms]
+    (assumed : OldAtoms -> Prop)
+    (meanings : ∀ e, assumed e -> Ruleset)
+    (new_meaning : Ruleset)
+    : (∀ e, (assume_one_more assumed) e -> Ruleset) :=
+  λ e, match e return (assume_one_more assumed) e -> Ruleset with
+    | onemore_old a => λ ae, meanings a ae
+    | onemore_new => λ _, new_meaning
+    end.
+
+Lemma qf_convert [EA1 EA2]
+  (qf : @Formula EA1) f :
+  QuotedFormula qf f -> {qf2 : @Formula EA2 | QuotedFormula qf2 f}.
+  (* "qf can't have f_ext anywhere in it" *)
+  admit.
+
+  (* intros. dependent induction qf.
+
+  apply exist with (f_atm a).
+  dependent induction H. apply IHQuotedFormula. dependent induction H.
+  
+  exfalso.
+  dependent induction H. apply IHQuotedFormula with e. dependent induction H.
+
+  dependent induction f.
+  apply exist with [f_quote (f_atm a)]. constructor.
+
+  exfalso. dependent induction H.
+  (* ugh now I have to convince Coq that you can't unfold to a quoted f_ext? *)
+  admit.
+
+  specialize (IHf1 H).
+
+  apply quoted_apply.
+  dependent induction H.
+  specialize IHqf1 with  *)
+Qed.
+
+
+Lemma specialize_MeaningImplication [OldAtoms] 
+    (assumed : OldAtoms -> Prop)
+    (meanings : ∀ e, assumed e -> Ruleset) f F x X :
+  MeaningImplication (UnreifiedAssumed
+      (assume_one_more assumed)
+      (one_more_meaning assumed meanings X)
+    ) f F ->
+  MeaningImplication (UnreifiedAssumed assumed meanings)
+    x X ->
+  MeaningImplication (UnreifiedAssumed assumed meanings)
+    (specialize_onemore f x) F.
+
+  intros.
+
+  refine ((fix recurse 
+    OldAtoms (assumed : OldAtoms -> Prop) meanings f F x X mf mx
+      : MeaningImplication
+        (UnreifiedAssumed assumed meanings)
+        (specialize_onemore f x) F
+    := match mf
+        in MeaningImplication _ f F
+        return MeaningImplication (UnreifiedAssumed assumed meanings)
+    (specialize_onemore f x) F
+        with
+    | mi_assumed a A aAassumed => _
+    | mi_implies qp p qc c x y => _
+    | mi_unfold a b B unf bBimp => _
+    | mi_and a A b B aAimp bBimp => _
+    | mi_forall_valid_propositions f F fxFXimp => _
+    | mi_forall_quoted_formulas f F fxFXimp => _
+    end) OldAtoms assumed meanings f F x X H H0);
+      [refine ?[assumed] | refine ?[implies] |
+        refine ?[unfold] | refine ?[and] |
+        refine ?[forall_prop] | refine ?[forall_quote]];
+     [| | | | | admit];
+      clear OldAtoms0 assumed0 meanings0 f0 F0 x0 X0 H H0 mf.
+
+  [assumed] : {
+    dependent destruction aAassumed.
+    dependent destruction e; cbn in *; [|assumption].
+    apply mi_assumed. constructor.
+  }
+
+  [implies] : {
+    (* TODO: "quoted formulas should still work because they can't have f_ext in them?" *)
+    admit.
+  }
+
+  [unfold] : {
+    apply mi_unfold with (specialize_onemore b x).
+
+    (* TODO: unfold-specialize lemma *)
+    admit.
+
+    apply recurse with X; assumption.
+  }
+
+  [and] : {
+    apply mi_and; apply recurse with X; assumption.
+  }
+
+  [forall_prop] : {
+    apply mi_forall_valid_propositions.
+    intros y Y.
+    specialize (fxFXimp (embed_onemore y) Y).
+    specialize (recurse
+      OldAtoms
+      assumed
+      meanings
+      _ _ _ _
+      fxFXimp
+   ).
+  }
+
+
+
+
+  { 
+
+  [fqf] : {
+    
+  }
+  
+  intros. dependent induction H.
+
+  dependent destruction H.
+  dependent destruction e; cbn in *; [|assumption].
+  apply mi_assumed. constructor.
+
+  apply mi_implies.
+  (* pose (qf_convert (EA2 := OldAtoms) H). *)
+  (* "quoted formulas should still work because they can't have f_ext in them?" *)
+  admit. admit.
+  
+  ; cbn.
+  
+
+Definition specialize_MiSearchSuccess
+    [OldAtoms] f
+    (assumed : OldAtoms -> Prop)
+    (x : @Formula OldAtoms)
+    (X : Ruleset)
+    (missss : MiSearchSuccess
+      (assume_one_more assumed) f)
+    :
+    (MiSearchSuccess assumed
+      (specialize_onemore f x)) :=
+  λ meanings,
+    exist _ _ (missss (one_more_meaning assumed meanings X))
+  .
+    ∀ meanings : (∀ e, assumed e -> Ruleset),
+    {F | MeaningImplication
+      (UnreifiedAssumed assumed meanings)
+      f F}.
+
+Fixpoint finish_MiSearchSuccess [ExtraAtoms]
+    (f : @Formula ExtraAtoms)
+    (missss : @MiSearchSuccess ExtraAtoms f)
+    : {F | MeaningImplication (∅2) f F} :=
+  match missss with
+    | missss_assumed a : 
+    | missss_implies qp p qc c :
+        QuotedFormula qp p -> QuotedFormula qc c -> 
+        MiSearchSuccess [qp -> qc]
+    | missss_unfold a b :
+        UnfoldStep a b ->
+        MiSearchSuccess b ->
+        MiSearchSuccess a
+    | missss_and a b :
+        MiSearchSuccess a ->
+        MiSearchSuccess b ->
+        MiSearchSuccess [a & b]
+    | missss_forall_valid_propositions f :
+      (∀ x, MiSearchSuccess [f x]) -> 
+      MiSearchSuccess [f_forall_valid_propositions f]
+    | missss_forall_quoted_formulas f :
+
+    end.
 
 
 Fixpoint get_MeaningImplication n [ExtraAtoms]
   (f : @Formula ExtraAtoms)
-  (assumed : @Meanings ExtraAtoms)
-  (dec_assumed : ∀ a : @Formula ExtraAtoms, option {A | assumed a A})
-  : GetResult {F | (MeaningImplication assumed f F)} :=
+  (assumed : ExtraAtoms -> option Ruleset)
+  (* (assumed : @Meanings ExtraAtoms)
+  (dec_assumed : ∀ a : @Formula ExtraAtoms, option {A | assumed a A}) *)
+  : GetResult (MiSearchSuccess f) :=
   match n with 0 => timed_out _ | S pred =>
-    match dec_assumed f with
-      | Some (exist F Fp) => success (exist _ F (mi_assumed assumed f F Fp))
-      | None =>
     match unfold_step f with
       | Some (exist g u) =>
-          ? (exist G Gp) <- get_MeaningImplication pred g assumed dec_assumed ;
+          ? (exist G Gp) <- get_MeaningImplication pred g assumed ;
           success (exist _ G (mi_unfold u Gp))
       | None => match f with
+          | f_ext a => 
+            match dec_assumed f with
+              | Some (exist F Fp) => success (exist _ F (mi_assumed assumed f F Fp))
+              | None => None
+              end
           (* | f_apl (f_apl (f_atm atom_implies) qp) qc =>
               ? (exist p pp) <- get_QuotedFormula pred qp ; 
               ? (exist c cp) <- get_QuotedFormula pred qc ;
@@ -405,10 +671,12 @@ Fixpoint get_MeaningImplication n [ExtraAtoms]
               success (exist _ _ (mi_and Ap Bp))
           | f_apl (f_atm atom_forall_valid_propositions) f =>
               ? (exist F Fp) <- get_MeaningImplication pred
-                  [(embed_formula onemore_old f) x]
-                  (assumed ∪2 (Singleton2 x X))
-                  dec_assumed ; 
-              success (exist _ _ (mi_and Ap Bp))
+                  [(embed_formula (λ a, onemore_old a) f) (f_ext onemore_new)]
+                  _ (* (assumed ∪2 (Singleton2 (f_atm onemore_new) _)) *)
+                  _ ; 
+              success (exist _ _ (mi_forall_valid_propositions
+                assumed
+                (λ x X, _ F Fp)))
           | _ => error _
           end
       end
