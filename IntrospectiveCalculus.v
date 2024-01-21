@@ -410,6 +410,11 @@ Fixpoint specialize_onemore OldAtoms
       end
     end.
 
+Lemma specialize_embed [OldAtoms] (f: @Formula OldAtoms) x :
+  specialize_onemore (embed_onemore f) x = f.
+  induction f; cbn; [| |rewrite IHf1; rewrite IHf2]; reflexivity.
+Qed.
+
 Inductive UnreifiedAssumed [ExtraAtoms]
   (assumed : ExtraAtoms -> Prop)
   (meanings : ∀ e, assumed e -> Ruleset)
@@ -454,16 +459,21 @@ Definition MiSearchSuccess [ExtraAtoms]
     ) -> 
     MiSearchSuccess [f_forall_quoted_formulas f]. *)
 
+Definition embed_assumed 
+    [OldAtoms]
+    (assumed : @Meanings OldAtoms)
+    : @Meanings (@OneMoreAtom OldAtoms) :=
+  λ f F, (∃ fp, f = embed_onemore fp /\ assumed fp F).
+
 Definition assume_one_more
     [OldAtoms]
-    (assumed : OldAtoms -> Prop)
-    : (@OneMoreAtom OldAtoms) -> Prop :=
-  λ a, match a with
-    | onemore_old a => assumed a
-    | onemore_new => True 
-    end.
+    (assumed : @Meanings OldAtoms)
+    (new_meaning : Ruleset)
+    : @Meanings (@OneMoreAtom OldAtoms) :=
+  (embed_assumed assumed) ∪2 (Singleton2 (f_ext (onemore_new)) new_meaning).
 
-Definition one_more_meaning
+
+(* Definition one_more_meaning
     [OldAtoms]
     (assumed : OldAtoms -> Prop)
     (meanings : ∀ e, assumed e -> Ruleset)
@@ -472,7 +482,7 @@ Definition one_more_meaning
   λ e, match e return (assume_one_more assumed) e -> Ruleset with
     | onemore_old a => λ ae, meanings a ae
     | onemore_new => λ _, new_meaning
-    end.
+    end. *)
 
 Lemma qf_convert [EA1 EA2]
   (qf : @Formula EA1) f :
@@ -502,29 +512,74 @@ Lemma qf_convert [EA1 EA2]
   specialize IHqf1 with  *)
 Qed.
 
+Lemma mi_monotonic [ExtraAtoms]
+  (assumed1 : @Meanings ExtraAtoms)
+  (assumed2 : @Meanings ExtraAtoms)
+  : (assumed1 ⊆2 assumed2) ->
+  (MeaningImplication assumed1 ⊆2 MeaningImplication assumed2).
+  intros a1_a2 f F mf.
+
+  refine ((fix recurse 
+    ExtraAtoms (assumed1 : @Meanings ExtraAtoms) assumed2 a1_a2 f F mf
+      {struct mf}
+      : MeaningImplication assumed2 f F
+    := match mf
+        in MeaningImplication _ f F
+        return MeaningImplication assumed2 f F
+        with
+    | mi_assumed a A aAassumed => _
+    | mi_implies qp p qc c x y => _
+    | mi_unfold a b B unf bBimp => _
+    | mi_and a A b B aAimp bBimp => _
+    | mi_forall_valid_propositions f F fxFXimp => _
+    | mi_forall_quoted_formulas f F fxFXimp => _
+    end) ExtraAtoms assumed1 assumed2 a1_a2 f F mf);
+      [refine ?[assumed] | refine ?[implies] |
+        refine ?[unfold] | refine ?[and] |
+        refine ?[forall_prop] | refine ?[forall_quote]];
+      clear assumed3 assumed4 f0 F0 a1_a3 mf0.
+
+  [assumed]: { apply mi_assumed. apply a1_a2; assumption. }
+  [implies]: { apply mi_implies; assumption. }
+  [unfold]: {
+    apply mi_unfold with b.
+    assumption. apply recurse with assumed1; assumption.
+  }
+  [and]: {
+    apply mi_and; apply recurse with assumed1; assumption.
+  }
+  [forall_prop]: {
+    apply mi_forall_valid_propositions.
+    intros.
+    specialize (fxFXimp x X).
+    apply recurse with (assumed1 ∪2 Singleton2 x X).
+    intuition. assumption.
+  }
+  [forall_quote]: {
+    apply mi_forall_quoted_formulas.
+    intros.
+    specialize (fxFXimp x qx H).
+    apply recurse with assumed1; assumption.
+  }
+Qed.
+    
+  
 
 Lemma specialize_MeaningImplication [OldAtoms] 
-    (assumed : OldAtoms -> Prop)
-    (meanings : ∀ e, assumed e -> Ruleset) f F x X :
-  MeaningImplication (UnreifiedAssumed
-      (assume_one_more assumed)
-      (one_more_meaning assumed meanings X)
-    ) f F ->
-  MeaningImplication (UnreifiedAssumed assumed meanings)
-    x X ->
-  MeaningImplication (UnreifiedAssumed assumed meanings)
-    (specialize_onemore f x) F.
+    (assumed : @Meanings OldAtoms) f F x X :
+  MeaningImplication (assume_one_more assumed X) f F ->
+  MeaningImplication assumed x X ->
+  MeaningImplication assumed (specialize_onemore f x) F.
 
   intros.
 
   refine ((fix recurse 
-    OldAtoms (assumed : OldAtoms -> Prop) meanings f F x X mf mx
-      : MeaningImplication
-        (UnreifiedAssumed assumed meanings)
+    OldAtoms (assumed : @Meanings OldAtoms) f F x X mf mx
+      : MeaningImplication assumed
         (specialize_onemore f x) F
     := match mf
         in MeaningImplication _ f F
-        return MeaningImplication (UnreifiedAssumed assumed meanings)
+        return MeaningImplication assumed
     (specialize_onemore f x) F
         with
     | mi_assumed a A aAassumed => _
@@ -533,17 +588,21 @@ Lemma specialize_MeaningImplication [OldAtoms]
     | mi_and a A b B aAimp bBimp => _
     | mi_forall_valid_propositions f F fxFXimp => _
     | mi_forall_quoted_formulas f F fxFXimp => _
-    end) OldAtoms assumed meanings f F x X H H0);
+    end) OldAtoms assumed f F x X H H0);
       [refine ?[assumed] | refine ?[implies] |
         refine ?[unfold] | refine ?[and] |
         refine ?[forall_prop] | refine ?[forall_quote]];
-     [| | | | | admit];
-      clear OldAtoms0 assumed0 meanings0 f0 F0 x0 X0 H H0 mf.
+     [| | | | | ];
+      clear OldAtoms0 assumed0 f0 F0 x0 X0 H H0 mf.
 
   [assumed] : {
-    dependent destruction aAassumed.
-    dependent destruction e; cbn in *; [|assumption].
-    apply mi_assumed. constructor.
+    dependent destruction aAassumed. destruct H.
+    
+    destruct H. rewrite H.
+    rewrite (specialize_embed x0 x).
+    apply mi_assumed; assumption.
+    
+    destruct H. rewrite H. rewrite H0. cbn. assumption.
   }
 
   [implies] : {
@@ -570,34 +629,52 @@ Lemma specialize_MeaningImplication [OldAtoms]
     specialize (fxFXimp (embed_onemore y) Y).
     specialize (recurse
       OldAtoms
-      assumed
-      meanings
-      _ _ _ _
-      fxFXimp
+      (assumed ∪2 Singleton2 y Y)
+      ([f (embed_onemore y)])
+      (F Y)
+      x
+      X
    ).
+  assert ([(specialize_onemore f x) y] =
+    (specialize_onemore [f (embed_onemore y)] x)).
+    cbn.
+    rewrite (specialize_embed y x). reflexivity.
+    rewrite <- H in recurse.
+    apply recurse.
+    apply mi_monotonic with  (assume_one_more assumed X
+∪2 Singleton2 (embed_onemore
+  y)
+  Y); [|assumption].
+  intuition idtac; unfold assume_one_more, embed_assumed in *; cbn in *;intuition idtac.
+  apply or_introl. destruct H0. apply ex_intro with x1; intuition idtac.
+  destruct H1. rewrite H0. rewrite H1.
+  apply or_introl. apply ex_intro with y. intuition idtac. apply or_intror. unfold Singleton2. intuition idtac.
+  apply mi_monotonic with assumed; [| assumption].
+  intuition idtac.
   }
 
-
-
-
-  { 
-
-  [fqf] : {
-    
+  [forall_quote] : {
+    apply mi_forall_quoted_formulas.
+    intros y qy qqy.
+    destruct (qf_convert (EA2:=(@OneMoreAtom OldAtoms)) qqy) as [qy_ qqy_].
+    specialize (fxFXimp y qy_ qqy_).
+    specialize (recurse
+      OldAtoms
+      assumed
+      ([f qy_])
+      (F y)
+      x
+      X
+   ).
+  assert ([(specialize_onemore f x) qy] =
+    (specialize_onemore [f qy_] x)).
+    cbn.
+    (* TODO: quoted version of the same formula are basically the same *)
+    admit.
+    rewrite <- H in recurse.
+    apply recurse; assumption.
   }
-  
-  intros. dependent induction H.
-
-  dependent destruction H.
-  dependent destruction e; cbn in *; [|assumption].
-  apply mi_assumed. constructor.
-
-  apply mi_implies.
-  (* pose (qf_convert (EA2 := OldAtoms) H). *)
-  (* "quoted formulas should still work because they can't have f_ext in them?" *)
-  admit. admit.
-  
-  ; cbn.
+Qed.
   
 
 Definition specialize_MiSearchSuccess
