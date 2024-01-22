@@ -275,7 +275,8 @@ Notation "'unfold_or' body" :=
   (match n with
     | 0 => timed_out _ | S pred => body end) (at level 40). *)
 
-Fixpoint get_QuotedFormula [ExtraAtoms] n qf : GetResult {f : (@Formula ExtraAtoms) | QuotedFormula qf f} :=
+Fixpoint get_QuotedFormula [ExtraAtoms] n qf
+  : GetResult {f : StandardFormula | QuotedFormula qf f} :=
   match n with 0 => timed_out _ | S pred =>
     match unfold_step qf with
       | Some (exist qg u) =>
@@ -283,11 +284,11 @@ Fixpoint get_QuotedFormula [ExtraAtoms] n qf : GetResult {f : (@Formula ExtraAto
           success (exist _ g (quoted_unfold u gp))
       | None => match qf with
           | f_apl (f_atm atom_quote) (f_atm a) =>
-              success (exist _ (f_atm a) (quoted_atom (f_atm a)))
+              success (exist _ (f_atm a) (quoted_atom a))
           | f_apl (f_apl (f_atm atom_quote) qa) qb =>
             ? (exist a ap) <- get_QuotedFormula pred qa ; 
             ? (exist b bp) <- get_QuotedFormula pred qb ;
-            success (exist _ [a b] (quoted_apply ap bp))
+            success (exist _ [a b] (quoted_apply (ExtraAtoms:=ExtraAtoms) ap bp))
           | _ => error _
           end
       end
@@ -416,21 +417,21 @@ Lemma specialize_embed [OldAtoms] (f: @Formula OldAtoms) x :
 Qed.
 
 Inductive UnreifiedAssumed [ExtraAtoms]
-  (assumed : ExtraAtoms -> Prop)
-  (meanings : ∀ e, assumed e -> Ruleset)
+  (propvars : ExtraAtoms -> Prop)
+  (meanings : ∀ e, propvars e -> Ruleset)
   : Meanings :=
-  | unreified_assumed e (ae : assumed e) :
-  UnreifiedAssumed assumed meanings
+  | unreified_assumed e (ae : propvars e) :
+  UnreifiedAssumed propvars meanings
     (f_ext e) (meanings e ae).
 (* 
 Parameter MiSearchSuccess :
   ∀ [ExtraAtoms] (f : @Formula ExtraAtoms), Type. *)
 Definition MiSearchSuccess [ExtraAtoms]
-    (assumed : ExtraAtoms -> Prop)
+    (propvars : ExtraAtoms -> Prop)
     (f : @Formula ExtraAtoms) : Type :=
-    ∀ meanings : (∀ e, assumed e -> Ruleset),
+    ∀ meanings : (∀ e, propvars e -> Ruleset),
     {F | MeaningImplication
-      (UnreifiedAssumed assumed meanings)
+      (UnreifiedAssumed propvars meanings)
       f F}.
 
 (* Inductive MiSearchSuccess [ExtraAtoms]
@@ -472,17 +473,25 @@ Definition assume_one_more
     : @Meanings (@OneMoreAtom OldAtoms) :=
   (embed_assumed assumed) ∪2 (Singleton2 (f_ext (onemore_new)) new_meaning).
 
-
-(* Definition one_more_meaning
+Definition one_more_propvar
     [OldAtoms]
-    (assumed : OldAtoms -> Prop)
-    (meanings : ∀ e, assumed e -> Ruleset)
+    (propvars : OldAtoms -> Prop)
+    : (@OneMoreAtom OldAtoms) -> Prop :=
+  λ a, match a with
+    | onemore_old a => propvars a
+    | onemore_new => True 
+    end.
+
+Definition one_more_meaning
+    [OldAtoms]
+    (propvars : OldAtoms -> Prop)
+    (meanings : ∀ e, propvars e -> Ruleset)
     (new_meaning : Ruleset)
-    : (∀ e, (assume_one_more assumed) e -> Ruleset) :=
-  λ e, match e return (assume_one_more assumed) e -> Ruleset with
+    : (∀ e, (one_more_propvar propvars) e -> Ruleset) :=
+  λ e, match e return (one_more_propvar propvars) e -> Ruleset with
     | onemore_old a => λ ae, meanings a ae
     | onemore_new => λ _, new_meaning
-    end. *)
+    end.
 
 Lemma qf_convert [EA1 EA2]
   (qf : @Formula EA1) f :
@@ -592,7 +601,6 @@ Lemma specialize_MeaningImplication [OldAtoms]
       [refine ?[assumed] | refine ?[implies] |
         refine ?[unfold] | refine ?[and] |
         refine ?[forall_prop] | refine ?[forall_quote]];
-     [| | | | | ];
       clear OldAtoms0 assumed0 f0 F0 x0 X0 H H0 mf.
 
   [assumed] : {
@@ -679,23 +687,39 @@ Qed.
 
 Definition specialize_MiSearchSuccess
     [OldAtoms] f
-    (assumed : OldAtoms -> Prop)
+    (propvars : OldAtoms -> Prop)
     (x : @Formula OldAtoms)
     (X : Ruleset)
+    (xXimp : ∀ meanings, MeaningImplication (UnreifiedAssumed
+  propvars meanings) x X)
     (missss : MiSearchSuccess
-      (assume_one_more assumed) f)
+      (one_more_propvar propvars) f)
     :
-    (MiSearchSuccess assumed
-      (specialize_onemore f x)) :=
-  λ meanings,
-    exist _ _ (missss (one_more_meaning assumed meanings X))
-  .
-    ∀ meanings : (∀ e, assumed e -> Ruleset),
-    {F | MeaningImplication
-      (UnreifiedAssumed assumed meanings)
-      f F}.
+    (MiSearchSuccess propvars
+      (specialize_onemore f x)).
+  refine (
+    λ meanings,
+       match (missss (one_more_meaning propvars meanings X)) with
+       exist F p => 
+        exist _ F _ end).
+  
+  apply specialize_MeaningImplication with X.
+  apply mi_monotonic with (UnreifiedAssumed
+  (one_more_propvar propvars)
+  (one_more_meaning propvars
+  meanings X)).
+  intros.
+  destruct H.
+  unfold assume_one_more, embed_assumed.
+  destruct e.
+  apply or_introl. apply ex_intro with (f_ext o). constructor.
+  reflexivity.
+  constructor. apply or_intror. constructor; trivial.
+  assumption.
+  apply xXimp.
+Qed.
 
-Fixpoint finish_MiSearchSuccess [ExtraAtoms]
+(* Fixpoint finish_MiSearchSuccess [ExtraAtoms]
     (f : @Formula ExtraAtoms)
     (missss : @MiSearchSuccess ExtraAtoms f)
     : {F | MeaningImplication (∅2) f F} :=
@@ -717,24 +741,177 @@ Fixpoint finish_MiSearchSuccess [ExtraAtoms]
       MiSearchSuccess [f_forall_valid_propositions f]
     | missss_forall_quoted_formulas f :
 
-    end.
+    end. *)
 
+Definition unreify_propvars  [ExtraAtoms]
+  (propvars : ExtraAtoms -> bool)
+  :ExtraAtoms -> Prop :=
+  λ e, eq_true (propvars e).
+
+Definition get_MeaningImplication (n:nat) [ExtraAtoms]
+  (f : @Formula ExtraAtoms)
+  (propvars : ExtraAtoms -> bool)
+  : GetResult (MiSearchSuccess (unreify_propvars propvars) f).
+  refine ((fix get_MeaningImplication ExtraAtoms
+    n f propvars :=
+    match n with 0 => timed_out _ | S pred => _ end) ExtraAtoms n f propvars)
+    ; clear ExtraAtoms0 n0 f0 propvars0.
+  specialize get_MeaningImplication with (n := pred).
+  
+  pose (λ meanings, (UnreifiedAssumed (unreify_propvars propvars) meanings)) as assumed.
+
+  destruct (unfold_step f) as [(g, unf)|].
+  {
+    refine (? GS <- get_MeaningImplication ExtraAtoms g propvars ; _).
+    apply success; intro meanings; specialize (assumed meanings).
+    destruct (GS meanings) as (G, Gp).
+    apply (exist _ G (mi_unfold unf Gp)).
+  }
+
+  refine (match f with
+          | f_ext a => _
+          | f_apl (f_atm atom_forall_valid_propositions) f => _
+          | f_apl (f_atm atom_forall_quoted_formulas) f => _
+          | f_apl (f_apl (f_atm atom_implies) qp) qc => _
+          | f_apl (f_apl (f_atm atom_and) a) b => _
+          | _ => error _
+          end);
+      [refine ?[assumed] |
+        refine ?[forall_prop] | refine ?[forall_quote] |
+        refine ?[implies] | refine ?[and]]
+        ;
+        [| | | | ].
+  
+  [assumed]: {
+    refine (match propvars a with
+              | true => success (λ meanings, _)
+              | false => error _
+              end).
+    specialize (assumed meanings).
+
+    (* TODO: sigh, Coq forgot that we're
+       in the (propvars a)=true case *)
+    assert (unreify_propvars propvars a) as pa; [admit|].
+
+    apply exist with (meanings a pa).
+    apply mi_assumed.
+    apply unreified_assumed.
+  }
+
+  [forall_prop]: {
+    pose (λ e, match e with
+        | onemore_old e => propvars e
+        | onemore_new => true
+      end) as propvars1.
+    refine (? FXS <- (get_MeaningImplication (@OneMoreAtom ExtraAtoms)
+      [(embed_formula (λ a, onemore_old a) f) (f_ext onemore_new)]
+      propvars1) ; _).
+    apply success; intro meanings.
+    refine (exist _ (λ p c, ∃ X : Ruleset, (_ X) p c) _).
+    Unshelve. 2: {
+      (* TODO reduce duplicate code ID 23489305 *)
+      assert (∀ e : OneMoreAtom,
+          unreify_propvars
+          propvars1 e
+        → Ruleset) as meanings1.
+      {
+        intro. dependent destruction e.
+        exact (meanings e).
+        exact (λ _, X).
+      }
+      destruct (FXS meanings1) as (FX, FXp).
+      exact (λ _, FX).
+    }
+
+    apply mi_forall_valid_propositions.
+    intros.
+
+    (* TODO reduce duplicate code ID 23489305 *)
+    assert (∀ e : OneMoreAtom,
+        unreify_propvars
+        propvars1 e
+      → Ruleset) as meanings1.
+    {
+      intro. dependent destruction e.
+      exact (meanings e).
+      exact (λ _, X).
+    }
+    destruct (FXS meanings1) as (FX, FXp).
+    pose (@specialize_MeaningImplication
+      ExtraAtoms (assumed meanings)
+      [(embed_formula onemore_old f) (f_ext onemore_new)]
+      FX
+      x
+      X
+      ) as m.
+    apply mi_monotonic with (assumed2 := assume_one_more
+  (assumed
+  meanings)
+  X) in FXp. 2: {
+      clear m.
+      intros. destruct H. unfold assume_one_more. cbn.
+      dependent destruction e.
+      apply or_introl. unfold unreify_propvars in ae.
+      cbn.
+      apply ex_intro with (f_ext e).
+      constructor; [reflexivity|].
+      (* unfold meanings1  .  *)
+      admit.
+      apply or_intror.
+      admit.
+    }
+    specialize (m FXp).
+
+    admit.
+  }
+
+  [forall_quote]: {
+    
+  }
+
+  [implies]: {
+    refine (? PQ <- (get_QuotedFormula pred qp) ; _).
+    refine (? CQ <- (get_QuotedFormula pred qc) ; _).
+    apply success; intro meanings; specialize (assumed meanings).
+    destruct PQ as (p, qqp).
+    destruct CQ as (c, qqc).
+    apply exist with (Singleton2 p c).
+    apply mi_implies; assumption.
+  }
+
+  [and]: {
+    refine (? AS <- (get_MeaningImplication ExtraAtoms a propvars) ; _).
+    refine (? BS <- (get_MeaningImplication ExtraAtoms b propvars) ; _).
+    apply success; intro meanings; specialize (assumed meanings).
+    destruct (AS meanings) as (A, Ap).
+    destruct (BS meanings) as (B, Bp).
+    apply exist with (A ∪2 B).
+    apply mi_and; assumption.
+  }
+Qed.
 
 Fixpoint get_MeaningImplication n [ExtraAtoms]
   (f : @Formula ExtraAtoms)
-  (assumed : ExtraAtoms -> option Ruleset)
+  (* (propvars : ExtraAtoms -> Prop) *)
+  (propvars : ExtraAtoms -> option Ruleset)
   (* (assumed : @Meanings ExtraAtoms)
   (dec_assumed : ∀ a : @Formula ExtraAtoms, option {A | assumed a A}) *)
-  : GetResult (MiSearchSuccess f) :=
+  : GetResult (MiSearchSuccess (unreify_propvars propvars) f) :=
   match n with 0 => timed_out _ | S pred =>
+    let assumed := λ meanings, (UnreifiedAssumed (unreify_propvars propvars) meanings) in
     match unfold_step f with
       | Some (exist g u) =>
-          ? (exist G Gp) <- get_MeaningImplication pred g assumed ;
-          success (exist _ G (mi_unfold u Gp))
+          ? GS <- get_MeaningImplication pred g propvars ;
+          success (λ meanings, match (GS meanings) with
+            exist G Gp => exist _ G
+                  (mi_unfold u Gp) end)
       | None => match f with
           | f_ext a => 
-            match dec_assumed f with
-              | Some (exist F Fp) => success (exist _ F (mi_assumed assumed f F Fp))
+            match propvars a with
+              | Some F => success (λ meanings, exist _ F
+                  (mi_assumed
+                    (assumed meanings)
+                    f F))
               | None => None
               end
           (* | f_apl (f_apl (f_atm atom_implies) qp) qc =>
@@ -743,21 +920,22 @@ Fixpoint get_MeaningImplication n [ExtraAtoms]
               _ (* success (exist _ (Singleton2 p c)
                 (mi_implies assumed pp cp)) *) *)
           | f_apl (f_apl (f_atm atom_and) a) b =>
-              ? (exist A Ap) <- get_MeaningImplication pred a assumed dec_assumed ; 
-              ? (exist B Bp) <- get_MeaningImplication pred b assumed dec_assumed ; 
+              ? (exist A Ap) <- get_MeaningImplication pred a propvars ; 
+              ? (exist B Bp) <- get_MeaningImplication pred b propvars ; 
               success (exist _ _ (mi_and Ap Bp))
           | f_apl (f_atm atom_forall_valid_propositions) f =>
               ? (exist F Fp) <- get_MeaningImplication pred
                   [(embed_formula (λ a, onemore_old a) f) (f_ext onemore_new)]
-                  _ (* (assumed ∪2 (Singleton2 (f_atm onemore_new) _)) *)
-                  _ ; 
+                  (one_more_propvar propvars) ;
+                  (* _ (assumed ∪2 (Singleton2 (f_atm onemore_new) _))
+                  _ ;  *)
               success (exist _ _ (mi_forall_valid_propositions
                 assumed
                 (λ x X, _ F Fp)))
           | _ => error _
           end
       end
-    end
+    end.
   end.
 
 Inductive MeaningConstructor (meanings : Meanings) : Meanings :=
