@@ -571,13 +571,35 @@ Definition unreify_vars  [Ext]
   :Ext -> Prop :=
   λ e, true = (propvars e).
 
+Definition embed_revar_meanings
+    [OldExt]
+    [VarType]
+    (vars : OldExt -> bool)
+    (meanings : ∀ e, (unreify_vars vars e) -> VarType)
+    : (∀ e, (unreify_vars (embed_revars vars)) e -> VarType) :=
+  λ e, match e with
+    | onemore_old a => meanings a
+    | onemore_new => λ f, match f with end
+    end.
+Definition one_more_revar_meaning
+    [OldExt]
+    [VarType]
+    (vars : OldExt -> bool)
+    (meanings : ∀ e, (unreify_vars vars e) -> VarType)
+    (new_meaning : VarType)
+    : (∀ e, (unreify_vars (one_more_revar vars) e) -> VarType) :=
+  λ e, match e with
+    | onemore_old a => meanings a
+    | onemore_new => λ _, new_meaning
+    end.
+
 Lemma unreify_embed1 [Ext] (vars : Ext -> bool) e :
   unreify_vars (embed_revars vars) e ->
   embed_vars (unreify_vars vars) e.
   unfold unreify_vars, embed_vars, embed_revars.
   intros. destruct e.
   assumption. dependent destruction H.
-Qed.  
+Defined.  
 
 Lemma unreify_embed2 [Ext] R (vars : Ext -> bool) :
   (∀ e, embed_vars (unreify_vars vars) e -> R) ->
@@ -586,7 +608,7 @@ Lemma unreify_embed2 [Ext] R (vars : Ext -> bool) :
   intros.
   specialize (X e).
   exact (X (unreify_embed1 H)).
-Qed.  
+Defined.  
 
 Lemma unreify_onemore1 [Ext] (vars : Ext -> bool) e :
   unreify_vars (one_more_revar vars) e ->
@@ -595,6 +617,7 @@ Lemma unreify_onemore1 [Ext] (vars : Ext -> bool) e :
   intros. destruct e.
   assumption.
   cbn. trivial.
+  Show Proof.
 Qed. 
 
 Lemma unreify_onemore2 [Ext] R (vars : Ext -> bool) :
@@ -604,7 +627,8 @@ Lemma unreify_onemore2 [Ext] R (vars : Ext -> bool) :
   intros.
   specialize (X e).
   exact (X (unreify_onemore1 H)).
-Qed.  
+  Show Proof.
+Defined.  
 
 Definition QfResult [Ext] (quotvars : Ext -> bool) :=
   (∀ qv_meanings : 
@@ -652,7 +676,9 @@ Fixpoint get_MeansQuoted [Ext] n qf
           end
       end
   end.
-
+Eval cbv beta iota delta -[embed_onemore embed_vars embed_revars] in
+  ( λ quotvars qv_meanings, unreify_embed2 (embed_var_meanings
+                    (unreify_vars quotvars) qv_meanings)).
 Fixpoint get_prop_meaning (n:nat) [Ext]
   (f : @Formula Ext)
   (quotvars : Ext -> bool)
@@ -698,10 +724,12 @@ Fixpoint get_prop_meaning (n:nat) [Ext]
             success (λ qv_meanings pv_meanings,
               (λ p c, ∃ X : Ruleset,
                  FX
-                 (unreify_embed2 (embed_var_meanings
-                    (unreify_vars quotvars) qv_meanings))
-                (unreify_onemore2 (one_more_var_meaning
-                    (unreify_vars propvars) pv_meanings X))
+                 (embed_revar_meanings qv_meanings)
+                 (one_more_revar_meaning pv_meanings X)
+                 (* (unreify_embed2 (embed_var_meanings
+                    (unreify_vars quotvars) qv_meanings)) *)
+                (* (unreify_onemore2 (one_more_var_meaning
+                    (unreify_vars propvars) pv_meanings X)) *)
                 p c
                 ))
         | f_apl (f_atm atom_forall_quoted_formulas) f =>
@@ -713,10 +741,12 @@ Fixpoint get_prop_meaning (n:nat) [Ext]
             success (λ qv_meanings pv_meanings,
               (λ p c, ∃ x : StandardFormula,
                  Fx
-                 (unreify_onemore2 (one_more_var_meaning
+                 (one_more_revar_meaning qv_meanings x)
+                 (embed_revar_meanings pv_meanings)
+                 (* (unreify_onemore2 (one_more_var_meaning
                     (unreify_vars quotvars) qv_meanings x))
                 (unreify_embed2 (embed_var_meanings
-                    (unreify_vars propvars) pv_meanings))
+                    (unreify_vars propvars) pv_meanings)) *)
                 p c
                 ))
         | _ => error _
@@ -913,6 +943,52 @@ Fixpoint quote_f [Ext] f : @Formula Ext :=
     | f_apl a b => [f_quote (quote_f a) (quote_f b)]
     end.
 
+Require Import Ascii String.
+Open Scope string_scope.
+Inductive ParensState := ps_default | ps_apply_chain | ps_fuse_chain.
+Fixpoint display_f_impl ps [Ext] (f : @Formula Ext) : string :=
+  match f with
+    | f_ext _ => "@"
+    | f_apl (f_apl (f_atm atom_fuse)
+      (f_atm atom_const))
+      (f_atm atom_const) => "id"
+    | f_apl (f_apl (f_atm atom_fuse) a) b => 
+      let 
+        b := display_f_impl ps_default b in
+      let items := match a with
+        | f_apl (f_atm atom_const) (f_atm atom_implies) => b ++ " ->" 
+         | _ =>
+         display_f_impl ps_fuse_chain a ++ " " ++ b
+         end in
+      match ps with
+        | ps_fuse_chain => items
+        | _ => "[" ++ items ++ "]"
+        end
+    | f_apl a b => 
+      let 
+        b := display_f_impl ps_default b in
+      let items := match a with
+        | f_atm atom_implies => b ++ " ->" 
+        | _ =>
+         display_f_impl ps_fuse_chain a ++ " " ++ b
+         end in
+      match ps with
+        | ps_apply_chain => items
+        | _ => "(" ++ items ++ ")"
+        end
+    | f_atm a => match a with
+      | atom_const => "c"
+      | atom_fuse => "fuse"
+      | atom_implies => "implies"
+      | atom_and => "and"
+      | atom_forall_quoted_formulas => "∀Q"
+      | atom_forall_valid_propositions => "∀P"
+      | atom_quote => "quote"
+      end
+    end.
+  
+Definition display_f := display_f_impl ps_default.
+
 Notation "[ x => y ]" :=
   (eliminate_abstraction (f_with_variable (λ x, y)))
   (at level 0, x at next level, y at next level).
@@ -965,21 +1041,39 @@ Lemma uhh2 :
   (no_meanings Ruleset) X)
   eq_refl).
   cbv.
-  
+Qed.
 
+
+Definition simple_get_prop_meaning n f :=
+  (with_no_meanings (get_prop_meaning n f no_vars no_vars)).
 
 Definition test1 : StandardFormula :=
   [∀a:Q, [a -> a]].
-Eval compute in (with_no_meanings (get_prop_meaning 90 test1 no_vars no_vars)).
+Eval compute in display_f test1.
+Eval compute in (simple_get_prop_meaning 90 test1).
 
 Definition test2 : StandardFormula :=
-  [∀a:Q, [a -> a]].
-Eval lazy in (get_prop_meaning 90 test2 no_vars no_vars).
+  [∀a:Q, [∀b:Q, [a -> b]]].
+Eval compute in display_f test2.
+Eval lazy in (simple_get_prop_meaning 90 test2).
+Definition test3 : StandardFormula :=
+  [∀a:Q, [(quote_f [a const]) -> a]].
+Eval compute in display_f test3.
+Eval lazy in (simple_get_prop_meaning 90 test3).
+
+(* 
+  (λ (_ : False → true = false → Formula)
+     (_ : False → true = false → Ruleset)
+     (p c : Formula),
+     ∃ x : Formula, p = x ∧ c = x)
+ *)
 
 Definition and_sym : StandardFormula :=
   [∀a:Q, [∀b:Q, [(quote_f [a & b]) -> (quote_f [b & a])]]].
+Eval compute in display_f and_sym.
+(* Eval cbv beta iota delta in and_sym. *)
 
-Eval lazy in (get_prop_meaning 90 and_sym no_vars no_vars).
+Eval lazy in (simple_get_prop_meaning 90 and_sym).
 
 (* Definition TrueOf2 Infs f : Prop :=
   InfsAssertedBy f ⊆2 Infs.
