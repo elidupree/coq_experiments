@@ -139,13 +139,25 @@ Fixpoint embed_formula
     | f_apl a b => [(embed_formula embed a) (embed_formula embed b)]
     end.
 
-(* Fixpoint quote_f f :=
+
+Fixpoint unfold_step_result [Ext] f : option (@Formula Ext) :=
   match f with
-    | f_atm _ => [f_quote f]
-    | f_apl a b => [f_quote (quote_f a) (quote_f b)]
-    end. *)
-
-
+    (* Atoms never unfold *)
+    | f_atm _ => None
+    | f_ext _ => None
+    (* Unfold in the LHS until you're done... *)
+    | f_apl f x => match unfold_step_result f with
+      | Some g => Some [g x]
+      (* Then if you're done with the LHS, check its form... *)
+      | None => match f with
+        | f_apl (f_atm atom_const) a =>
+            Some a
+        | f_apl (f_apl (f_atm atom_fuse) a) b =>
+            Some [[a x] [b x]]
+        | _ => None
+        end
+      end
+    end.
 Fixpoint unfold_step [Ext] f : option {g : (@Formula Ext) | UnfoldStep f g} :=
   match f with
     (* Atoms never unfold *)
@@ -192,25 +204,6 @@ Notation "'unfold_or' body" :=
   (match n with
     | 0 => timed_out _ | S pred => body end) (at level 40). *)
 
-Fixpoint get_MeansQuoted [Ext] n qf
-  : GetResult {f : StandardFormula | MeansQuoted qf f} :=
-  match n with 0 => timed_out _ | S pred =>
-    match unfold_step qf with
-      | Some (exist qg u) =>
-          ? (exist g gp) <- get_MeansQuoted pred qg ;
-          success (exist _ g (quoted_unfold u gp))
-      | None => match qf with
-          | f_apl (f_atm atom_quote) (f_atm a) =>
-              success (exist _ (f_atm a) (quoted_atom a))
-          | f_apl (f_apl (f_atm atom_quote) qa) qb =>
-            ? (exist a ap) <- get_MeansQuoted pred qa ; 
-            ? (exist b bp) <- get_MeansQuoted pred qb ;
-            success (exist _ [a b] (quoted_apply (Ext:=Ext) ap bp))
-          | _ => error _
-          end
-      end
-  end.
-
 
 Print MeansProp.
 (* Definition Meaning : Meanings := MeansProp (∅2). *)
@@ -254,7 +247,14 @@ Inductive UnreifiedAssumed [Ext]
   | unreified_assumed e (ae : propvars e) :
   UnreifiedAssumed propvars pv_meanings
     (f_ext e) (pv_meanings e ae).
-    
+        
+Definition MiSearchResult [Ext]
+    (quotvars : Ext -> Prop)
+    (propvars : Ext -> Prop)
+    (f : @Formula Ext) : Type :=
+    ∀ (qv_meanings : ∀ e, quotvars e -> StandardFormula)
+      (pv_meanings : ∀ e, propvars e -> Ruleset),
+    Ruleset.
 Definition MiSearchSuccess [Ext]
     (quotvars : Ext -> Prop)
     (propvars : Ext -> Prop)
@@ -569,7 +569,7 @@ Qed.
 Definition unreify_vars  [Ext]
   (propvars : Ext -> bool)
   :Ext -> Prop :=
-  λ e, eq_true (propvars e).
+  λ e, true = (propvars e).
 
 Lemma unreify_embed1 [Ext] (vars : Ext -> bool) e :
   unreify_vars (embed_revars vars) e ->
@@ -605,6 +605,127 @@ Lemma unreify_onemore2 [Ext] R (vars : Ext -> bool) :
   specialize (X e).
   exact (X (unreify_onemore1 H)).
 Qed.  
+
+Definition QfResult [Ext] (quotvars : Ext -> bool) :=
+  (∀ qv_meanings : 
+    (∀ e, (unreify_vars quotvars) e -> StandardFormula),
+    StandardFormula).
+
+Fixpoint get_quoted_formula [Ext]
+  (quotvars : Ext -> bool) n qf
+  : GetResult (QfResult quotvars) :=
+  match n with 0 => timed_out _ | S pred =>
+    match unfold_step_result (Ext:=Ext) qf with
+      | Some qg => get_quoted_formula quotvars pred qg
+      | None => match qf with
+          | f_apl (f_atm atom_quote) (f_atm a) =>
+              success (λ _, (f_atm a))
+          | f_apl (f_apl (f_atm atom_quote) qa) qb =>
+            ? a <- get_quoted_formula quotvars pred qa ; 
+            ? b <- get_quoted_formula quotvars pred qb ;
+            success (λ qv_meanings, [(a qv_meanings) (b qv_meanings)])
+          | f_ext e => match quotvars e as qe
+            return qe = quotvars e -> GetResult (QfResult quotvars) with
+            | true => λ eq, success (λ qv_meanings, qv_meanings e eq)
+            | false => λ _, error _
+            end eq_refl
+          | _ => error _
+          end
+      end
+  end.
+
+Fixpoint get_MeansQuoted [Ext] n qf
+  : GetResult {f : StandardFormula | MeansQuoted qf f} :=
+  match n with 0 => timed_out _ | S pred =>
+    match unfold_step qf with
+      | Some (exist qg u) =>
+          ? (exist g gp) <- get_MeansQuoted pred qg ;
+          success (exist _ g (quoted_unfold u gp))
+      | None => match qf with
+          | f_apl (f_atm atom_quote) (f_atm a) =>
+              success (exist _ (f_atm a) (quoted_atom a))
+          | f_apl (f_apl (f_atm atom_quote) qa) qb =>
+            ? (exist a ap) <- get_MeansQuoted pred qa ; 
+            ? (exist b bp) <- get_MeansQuoted pred qb ;
+            success (exist _ [a b] (quoted_apply (Ext:=Ext) ap bp))
+          | _ => error _
+          end
+      end
+  end.
+
+Fixpoint get_prop_meaning (n:nat) [Ext]
+  (f : @Formula Ext)
+  (quotvars : Ext -> bool)
+  (propvars : Ext -> bool)
+  : GetResult (MiSearchResult
+    (unreify_vars quotvars) (unreify_vars propvars) f) :=
+  match n with 0 => timed_out _ | S pred =>
+    match unfold_step_result f with
+      | Some g => get_prop_meaning pred g quotvars propvars
+      | None => match f with
+        | f_ext a => match propvars a as pa return
+          (pa = propvars a) -> GetResult
+  (MiSearchResult (unreify_vars quotvars)
+  (unreify_vars propvars) f) with
+              | true => λ eq, success (λ qv_meanings pv_meanings,
+                 pv_meanings a eq)
+              | false => λ _ , error _
+              end eq_refl
+        | f_apl (f_apl (f_atm atom_implies) qp) qc =>
+          ? p <- (get_quoted_formula quotvars pred qp) ;
+          ? c <- (get_quoted_formula quotvars pred qc) ;
+          success (λ qv_meanings _,
+            (Singleton2 (p qv_meanings) (c qv_meanings)))
+             
+        (* 
+    refine (? PQ <- (get_MeansQuoted pred qp) ; _).
+    refine (? CQ <- (get_MeansQuoted pred qc) ; _).
+    apply success; intros qv_meanings pv_meanings.
+    destruct PQ as (p, qqp).
+    destruct CQ as (c, qqc).
+    apply exist with (Singleton2 p c). *)
+        | f_apl (f_apl (f_atm atom_and) a) b =>
+          ? A <- (get_prop_meaning pred a quotvars propvars) ;
+          ? B <- (get_prop_meaning pred b quotvars propvars) ;
+          success (λ qv_meanings pv_meanings,
+            ((A qv_meanings pv_meanings) ∪2 (B qv_meanings pv_meanings)))
+        | f_apl (f_atm atom_forall_valid_propositions) f =>
+          ? FX <- (get_prop_meaning pred
+              [(embed_formula (λ a, onemore_old a) f)
+                  (f_ext onemore_new)]
+                  (embed_revars quotvars)
+                  (one_more_revar propvars)) ; 
+            success (λ qv_meanings pv_meanings,
+              (λ p c, ∃ X : Ruleset,
+                 FX
+                 (unreify_embed2 (embed_var_meanings
+                    (unreify_vars quotvars) qv_meanings))
+                (unreify_onemore2 (one_more_var_meaning
+                    (unreify_vars propvars) pv_meanings X))
+                p c
+                ))
+        | f_apl (f_atm atom_forall_quoted_formulas) f =>
+          ? Fx <- (get_prop_meaning pred
+              [(embed_formula (λ a, onemore_old a) f)
+                  (f_ext onemore_new)]
+                  (one_more_revar quotvars)
+                  (embed_revars propvars)) ; 
+            success (λ qv_meanings pv_meanings,
+              (λ p c, ∃ x : StandardFormula,
+                 Fx
+                 (unreify_onemore2 (one_more_var_meaning
+                    (unreify_vars quotvars) qv_meanings x))
+                (unreify_embed2 (embed_var_meanings
+                    (unreify_vars propvars) pv_meanings))
+                p c
+                ))
+        | _ => error _
+      end
+    end
+  end.
+
+  
+
 
 
 Definition get_MeansProp (n:nat) [Ext]
@@ -764,6 +885,101 @@ Lemma uhh : False.
   (λ _, false) (λ _, false)) as x.
   cbn in x.
   unfold get_MeansProp in x.
+Qed.
+
+Definition f_with_variable [Ext1] [Ext2]
+  (fgen : @Formula (@OneMoreAtom Ext1) ->
+          @Formula (@OneMoreAtom Ext2)) : Formula :=
+  (fgen (f_ext onemore_new)).
+
+Fixpoint eliminate_abstraction
+  [Ext]
+  (f : @Formula (@OneMoreAtom Ext))
+  : @Formula Ext :=
+  match f with
+    | f_atm a => [const (f_atm a)]
+    | f_ext e => match e with
+      | onemore_new => f_id
+      | onemore_old e => [const (f_ext e)]
+      end
+    | f_apl a b => [fuse (eliminate_abstraction a) (eliminate_abstraction b)]
+    end.
+
+Fixpoint quote_f [Ext] f : @Formula Ext :=
+  match f with
+    | f_atm _ => [f_quote f]
+    (* assume this is a variable that represents a quoted formula: *)
+    | f_ext _ => f
+    | f_apl a b => [f_quote (quote_f a) (quote_f b)]
+    end.
+
+Notation "[ x => y ]" :=
+  (eliminate_abstraction (f_with_variable (λ x, y)))
+  (at level 0, x at next level, y at next level).
+  
+Notation "[ ∀ x : 'P' , y ]" :=
+  [f_forall_valid_propositions [x => y]]
+  (at level 0, x at next level, y at next level).
+Notation "[ ∀ x : 'Q' , y ]" :=
+  [f_forall_quoted_formulas [x => y]]
+  (at level 0, x at next level, y at next level).
+
+(* Definition foo : StandardFormula := [x => [x & x]].
+Print foo.
+Eval lazy in foo.
+Eval cbv beta iota delta -[f_id const fuse] in foo. *)
+
+Definition no_vars (e:False) := false.
+Definition no_meanings R (e:False) : (true = false) -> R.
+  intro. dependent destruction H.
+Defined.
+
+Definition with_no_meanings
+  f
+  (g : GetResult (MiSearchResult
+    (unreify_vars no_vars) (unreify_vars no_vars) f)) :
+  GetResult Ruleset :=
+  match g with
+    | success g => success (g
+        (no_meanings StandardFormula) (no_meanings Ruleset))
+    | error => error _
+    | timed_out => timed_out _
+    end.
+
+Definition test0 : StandardFormula :=
+  [[f_quote const] -> [f_quote const]].
+Eval compute in (with_no_meanings (get_prop_meaning 90 test0 no_vars no_vars)).
+
+Definition test05 : StandardFormula :=
+  [∀a:P, a].
+Eval compute in (with_no_meanings (get_prop_meaning 90 test05 no_vars no_vars)).
+
+Lemma uhh2 :
+  success (λ p c, ∃ X : Ruleset, X p c)
+  =
+  (with_no_meanings (get_prop_meaning 90 test05 no_vars no_vars)).
+  cbn.
+  assert (∀ X : Ruleset, X = unreify_onemore2
+  (one_more_var_meaning
+  (unreify_vars no_vars)
+  (no_meanings Ruleset) X)
+  eq_refl).
+  cbv.
+  
+
+
+Definition test1 : StandardFormula :=
+  [∀a:Q, [a -> a]].
+Eval compute in (with_no_meanings (get_prop_meaning 90 test1 no_vars no_vars)).
+
+Definition test2 : StandardFormula :=
+  [∀a:Q, [a -> a]].
+Eval lazy in (get_prop_meaning 90 test2 no_vars no_vars).
+
+Definition and_sym : StandardFormula :=
+  [∀a:Q, [∀b:Q, [(quote_f [a & b]) -> (quote_f [b & a])]]].
+
+Eval lazy in (get_prop_meaning 90 and_sym no_vars no_vars).
 
 (* Definition TrueOf2 Infs f : Prop :=
   InfsAssertedBy f ⊆2 Infs.
