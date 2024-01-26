@@ -43,18 +43,20 @@ Notation "[ x & y ]" := [f_and x y] (at level 0, x at next level, y at next leve
 (* Notation "[ x &* y ]" := [fuse [fuse [const [f_quote [f_quote f_and]]] x] y] (at level 0, x at next level, y at next level). *)
 Notation "[ x -> y ]" := [f_implies x y] (at level 0, x at next level, y at next level).
 
-(* subset notation is used for rulesets (which are 2-way relations) *)
+(* subset notation is used for InfSets (which are 2-way relations) *)
 Notation "R ⊆ S" := (∀ x, R x -> S x) (at level 70).
 Notation "R ⊆2 S" := (∀ x y, R x y -> S x y) (at level 70).
 Notation "R ⊇ S" := (∀ x, S x -> R x) (at level 70).
 Notation "R ⊇2 S" := (∀ x y, S x y -> R x y) (at level 70).
 Notation "R <->2 S" := (∀ x y, S x y <-> R x y) (at level 70).
+Notation "R ∧1 S" := (λ x, R x ∧ S x) (at level 70).
 Notation "R ∪ S" := (λ x, R x \/ S x) (at level 70).
 Notation "R ∪2 S" := (λ x y, R x y \/ S x y) (at level 70).
 (* Notation "⋃ S" := (λ x, ∃ T, S T /\ T x) (at level 70).
 Notation "⋂ S" := (λ x, ∀ T, S T -> T x) (at level 70).
 Notation "⋃2 S" := (λ x y, ∃ T, S T /\ T x y) (at level 70).
 Notation "⋂2 S" := (λ x y, ∀ T, S T -> T x y) (at level 70). *)
+(* Notation "⋀ S" := (λ x, ∀ T, (S T) x) (at level 70). *)
 Notation "∅" := (λ x, False) (at level 70).
 Notation "∅2" := (λ x y, False) (at level 70).
 Definition Singleton A (a:A) := λ x, x = a.
@@ -64,11 +66,13 @@ Definition Singleton2 A B (a:A) (b:B) := λ x y, x = a /\ y = b.
 
 Definition StandardFormula := @Formula False.
 
-Definition Ruleset :=
+Definition InfSet :=
   StandardFormula -> StandardFormula -> Prop.
 
+Definition Rule := InfSet -> Prop.
+
 Definition Meanings {Ext} :=
-  (@Formula Ext) -> Ruleset -> Prop.
+  (@Formula Ext) -> Rule -> Prop.
 
 Inductive UnfoldStep [Ext] : (@Formula Ext) -> (@Formula Ext) -> Prop :=
   | unfold_const a b : UnfoldStep [const a b] a
@@ -96,7 +100,7 @@ Inductive MeansProp [Ext]
       MeansProp assumed_meanings a A
   | mi_implies qp p qc c :
       MeansQuoted qp p -> MeansQuoted qc c -> 
-      MeansProp assumed_meanings [qp -> qc] (Singleton2 p c)
+      MeansProp assumed_meanings [qp -> qc] (λ infs, infs p c)
   | mi_unfold a b B :
       UnfoldStep a b ->
       MeansProp assumed_meanings b B ->
@@ -104,18 +108,18 @@ Inductive MeansProp [Ext]
   | mi_and a A b B :
       MeansProp assumed_meanings a A ->
       MeansProp assumed_meanings b B ->
-      MeansProp assumed_meanings [a & b] (A ∪2 B)
+      MeansProp assumed_meanings [a & b] (A ∧1 B)
   | mi_forall_valid_propositions f F :
     (∀ x X,
       MeansProp
         (assumed_meanings ∪2 (Singleton2 x X))
         [f x]
         (F X)
-    ) -> 
+    ) ->
     MeansProp
       assumed_meanings
       [f_forall_valid_propositions f]
-      (λ p c, ∃ X, (F X) p c)
+      (λ infs, ∀ X, (F X) infs)
   | mi_forall_quoted_formulas f F :
     (∀ x qx,
       MeansQuoted qx x -> 
@@ -124,8 +128,27 @@ Inductive MeansProp [Ext]
     MeansProp
       assumed_meanings
       [f_forall_quoted_formulas f]
-      (λ p c, ∃ x, (F x) p c).
+      (λ infs, ∀ x, (F x) infs).
 
+
+(* The inferences that are guaranteed to be true on formulas that
+   speak _about_ an earlier set of inferences - knowing only
+   that certain inferences ARE present, but leaving open
+   the possibility that more inferences will be added. *)
+Definition MetaInferences
+  KnownRules
+  (p c : StandardFormula) : Prop :=
+  ∀ P, MeansProp (∅2) p P -> 
+    ∃ C, MeansProp (∅2) c C ∧
+      ∀ infs, KnownRules infs -> P infs -> C infs.
+
+(* An increasing progression of inferences that are known to be 
+  required, each one adding the ones that describe the last. *)
+Fixpoint KnownInferences n : InfSet :=
+  match n with
+    | 0 => ∅2
+    | S pred => MetaInferences (λ infs, infs ⊇2 KnownInferences pred)
+    end.
 
 
 
@@ -242,7 +265,7 @@ Qed.
 
 Inductive UnreifiedAssumed [Ext]
   (propvars : Ext -> Prop)
-  (pv_meanings : ∀ e, propvars e -> Ruleset)
+  (pv_meanings : ∀ e, propvars e -> Rule)
   : Meanings :=
   | unreified_assumed e (ae : propvars e) :
   UnreifiedAssumed propvars pv_meanings
@@ -253,14 +276,14 @@ Definition MiSearchResult [Ext]
     (propvars : Ext -> Prop)
     (f : @Formula Ext) : Type :=
     ∀ (qv_meanings : ∀ e, quotvars e -> StandardFormula)
-      (pv_meanings : ∀ e, propvars e -> Ruleset),
-    Ruleset.
+      (pv_meanings : ∀ e, propvars e -> Rule),
+    Rule.
 Definition MiSearchSuccess [Ext]
     (quotvars : Ext -> Prop)
     (propvars : Ext -> Prop)
     (f : @Formula Ext) : Type :=
     ∀ (qv_meanings : ∀ e, quotvars e -> StandardFormula)
-      (pv_meanings : ∀ e, propvars e -> Ruleset),
+      (pv_meanings : ∀ e, propvars e -> Rule),
     {F | MeansProp
       (UnreifiedAssumed propvars pv_meanings)
       f F}.
@@ -274,7 +297,7 @@ Definition embed_assumed
 Definition assume_one_more
     [OldExt]
     (assumed_meanings : @Meanings OldExt)
-    (new_meaning : Ruleset)
+    (new_meaning : Rule)
     : @Meanings (@OneMoreAtom OldExt) :=
   (embed_assumed assumed_meanings) ∪2 (Singleton2 (f_ext (onemore_new)) new_meaning).
 
@@ -531,7 +554,7 @@ Definition specialize_MiSearchSuccess_prop
     (quotvars : OldExt -> Prop)
     (propvars : OldExt -> Prop)
     (x : @Formula OldExt)
-    (X : Ruleset)
+    (X : Rule)
     (xXimp : ∀ pv_meanings, MeansProp (UnreifiedAssumed
   propvars pv_meanings) x X)
     (missss : MiSearchSuccess
@@ -722,7 +745,7 @@ Fixpoint get_prop_meaning (n:nat) [Ext]
                   (embed_revars quotvars)
                   (one_more_revar propvars)) ; 
             success (λ qv_meanings pv_meanings,
-              (λ p c, ∃ X : Ruleset,
+              (λ p c, ∃ X : Rule,
                  FX
                  (embed_revar_meanings qv_meanings)
                  (one_more_revar_meaning pv_meanings X)
@@ -813,7 +836,7 @@ Definition get_MeansProp (n:nat) [Ext]
       (embed_revars quotvars)
       (one_more_revar propvars)) ; _).
     apply success; intros qv_meanings pv_meanings.
-    refine (exist _ (λ p c, ∃ X : Ruleset, (_ X) p c) _).
+    refine (exist _ (λ p c, ∃ X : Rule, (_ X) p c) _).
     Unshelve. 2: {
       (* TODO reduce duplicate code ID 23489305 *)
       pose (unreify_embed2 (embed_var_meanings
@@ -917,10 +940,23 @@ Lemma uhh : False.
   unfold get_MeansProp in x.
 Qed.
 
-Definition f_with_variable [Ext1] [Ext2]
-  (fgen : @Formula (@OneMoreAtom Ext1) ->
-          @Formula (@OneMoreAtom Ext2)) : Formula :=
-  (fgen (f_ext onemore_new)).
+Fixpoint NMoreAtoms [Ext] n :=
+  match n with
+    | 0 => Ext
+    | S n => @OneMoreAtom (@NMoreAtoms Ext n)
+    end.
+
+Fixpoint last_more_atom [Ext] n : (@NMoreAtoms Ext (S n)) :=
+  match n with
+    | 0 => onemore_new
+    | S n => onemore_old (@last_more_atom Ext n)
+    end.
+  
+
+Definition f_with_variable [n] [Ext]
+  (fgen : @Formula (@NMoreAtoms Ext (S n)) ->
+          @Formula (@NMoreAtoms Ext n)) : Formula :=
+  (fgen (f_ext (last_more_atom n))).
 
 Fixpoint eliminate_abstraction
   [Ext]
@@ -1014,10 +1050,10 @@ Definition with_no_meanings
   f
   (g : GetResult (MiSearchResult
     (unreify_vars no_vars) (unreify_vars no_vars) f)) :
-  GetResult Ruleset :=
+  GetResult Rule :=
   match g with
     | success g => success (g
-        (no_meanings StandardFormula) (no_meanings Ruleset))
+        (no_meanings StandardFormula) (no_meanings Rule))
     | error => error _
     | timed_out => timed_out _
     end.
@@ -1031,14 +1067,14 @@ Definition test05 : StandardFormula :=
 Eval compute in (with_no_meanings (get_prop_meaning 90 test05 no_vars no_vars)).
 
 Lemma uhh2 :
-  success (λ p c, ∃ X : Ruleset, X p c)
+  success (λ p c, ∃ X : Rule, X p c)
   =
   (with_no_meanings (get_prop_meaning 90 test05 no_vars no_vars)).
   cbn.
-  assert (∀ X : Ruleset, X = unreify_onemore2
+  assert (∀ X : Rule, X = unreify_onemore2
   (one_more_var_meaning
   (unreify_vars no_vars)
-  (no_meanings Ruleset) X)
+  (no_meanings Rule) X)
   eq_refl).
   cbv.
 Qed.
@@ -1063,15 +1099,43 @@ Eval lazy in (simple_get_prop_meaning 90 test3).
 
 (* 
   (λ (_ : False → true = false → Formula)
-     (_ : False → true = false → Ruleset)
+     (_ : False → true = false → Rule)
      (p c : Formula),
      ∃ x : Formula, p = x ∧ c = x)
  *)
 
+Fixpoint NMore n Ext :=
+  match n with
+    | 0 => Ext
+    | S pred => @OneMoreAtom (NMore pred Ext)
+    end.
+
+Fixpoint embed_nmore n [Ext] (f : @Formula Ext)
+  : (@Formula (NMore n Ext)) :=
+  match n with
+    | 0 => f
+    | S pred => embed_formula onemore_old (embed_nmore pred f)
+    end.
+Notation "$ n f" := (embed_nmore n f) (at level 0).
+
 Definition and_sym : StandardFormula :=
-  [∀a:Q, [∀b:Q, [(quote_f [a & b]) -> (quote_f [b & a])]]].
+  [∀a:Q, [∀b:Q,
+    [(quote_f [(embed_nmore 1 a) & b])
+    -> (quote_f [b & (embed_nmore 1 a)])]
+  ]].
 Eval compute in display_f and_sym.
 (* Eval cbv beta iota delta in and_sym. *)
+
+(* [(forall_n) p] should mean
+  "put a stream of n qfs into p and it'll be true" *)
+Fixpoint forall_n n :=
+  match n with
+    | 0 => f_id
+    | S pred => [p => [(forall_n pred) [l => [∀x:Q, [p (f_pair x l)]]]]]
+    end.
+
+Definition and_sym : StandardFormula :=
+  [(forall_n 2) [[@0 & @1] -> [@1 & @0]]].
 
 Eval lazy in (simple_get_prop_meaning 90 and_sym).
 
@@ -1107,13 +1171,13 @@ Definition PermittedMetaInferences KnownJudgedInferences (a b : Formula) : Prop 
 
 (* An increasing progression of inferences that are known to be 
   required, each one adding the ones that describe the last. *)
-Fixpoint KnownRequiredInferences n : Ruleset :=
+Fixpoint KnownRequiredInferences n : InfSet :=
   match n with
     | 0 => ∅2
     | S pred => RequiredMetaInferences (KnownRequiredInferences pred)
     end.
 
-Fixpoint KnownPermittedInferences n : Ruleset :=
+Fixpoint KnownPermittedInferences n : InfSet :=
   match n with
     | 0 => ∅2
     | S pred => PermittedMetaInferences (KnownPermittedInferences pred)
@@ -1121,7 +1185,7 @@ Fixpoint KnownPermittedInferences n : Ruleset :=
 
 (* An increasing progression of inferences that are known to be 
   required, each one adding the ones that describe the last. *)
-(* Fixpoint KnownInferences n : Ruleset :=
+(* Fixpoint KnownInferences n : InfSet :=
   match n with
     | 0 => eq (* same as MetaInferences (λ _, False) *)
     | S pred => MetaInferences (KnownInferences pred)
@@ -1195,7 +1259,7 @@ Fixpoint interpret_as n t f :=
     end.
 
 
-Fixpoint CleanExternalMeaning n f quoted_args : option Ruleset :=
+Fixpoint CleanExternalMeaning n f quoted_args : option InfSet :=
   match n with
     | 0 => None
     | S pred => match f with
@@ -1235,10 +1299,10 @@ Inductive RulesProveInference Rules : Formula -> Formula -> Prop :=
     RulesProveInference Rules a b ->
     RulesProveInference Rules b c ->
     RulesProveInference Rules a c.
-Definition InferencesProvenBy Rules : Ruleset := RulesProveInference Rules.
+Definition InferencesProvenBy Rules : InfSet := RulesProveInference Rules.
 
 (* Definition FormulaMeaning
-    (Rules : Ruleset)
+    (Rules : InfSet)
     (UnknownMeanings : Formula -> Prop)
   : Formula -> Prop
   :=
@@ -1257,32 +1321,32 @@ Definition InferencesProvenBy Rules : Ruleset := RulesProveInference Rules.
         | _ => UnknownMeanings f
         end. *)
 
-(* Definition RulesetObeysInference Rules a b : Prop :=
+(* Definition InfSetObeysInference Rules a b : Prop :=
   ∀UnknownMeanings,
     (FormulaMeaning Rules UnknownMeanings a) ->
     (FormulaMeaning Rules UnknownMeanings b).
 
-Definition AllRulesetsObeyInference a b : Prop :=
-  ∀Rules, RulesetObeysInference Rules a b. *)
+Definition AllInfSetsObeyInference a b : Prop :=
+  ∀Rules, InfSetObeysInference Rules a b. *)
 
-(* Definition AllRulesetsObeyAllOf Rules : Prop :=
-  ∀a b, Rules a b -> AllRulesetsObeyInference a b. *)
+(* Definition AllInfSetsObeyAllOf Rules : Prop :=
+  ∀a b, Rules a b -> AllInfSetsObeyInference a b. *)
 
-(* Definition InferencesTheseRulesetsObey These a b : Prop :=
-  ∀Rules, These Rules -> RulesetObeysInference Rules a b. *)
+(* Definition InferencesTheseInfSetsObey These a b : Prop :=
+  ∀Rules, These Rules -> InfSetObeysInference Rules a b. *)
 
-(* Definition AllTheseRulesetsObeyAllOf These Rules : Prop :=
-  ∀a b, Rules a b -> InferencesTheseRulesetsObey These a b. *)
+(* Definition AllTheseInfSetsObeyAllOf These Rules : Prop :=
+  ∀a b, Rules a b -> InferencesTheseInfSetsObey These a b. *)
 
-(* Definition NoRules : Ruleset := λ _ _, False. *)
+(* Definition NoRules : InfSet := λ _ _, False. *)
 
 (* An increasing progression of inferences that are known to be 
   required, each one adding the ones that are possible
-  in all rulesets that include the last *)
-(* Fixpoint KnownRequiredInferences n : Ruleset :=
+  in all InfSets that include the last *)
+(* Fixpoint KnownRequiredInferences n : InfSet :=
   match n with
     | 0 => eq
-    | S pred => InferencesTheseRulesetsObey
+    | S pred => InferencesTheseInfSetsObey
       (λ Rules, (InferencesProvenBy Rules) ⊇2
         (KnownRequiredInferences pred))
     end. *)
@@ -1340,10 +1404,10 @@ Lemma provable_by_subset_of_KnownInferences_means_known n p c R :
     ).
 Qed.
 
-(* Lemma eq_justified These : AllTheseRulesetsObeyAllOf These eq.
-  unfold AllTheseRulesetsObeyAllOf,
-         InferencesTheseRulesetsObey,
-         RulesetObeysInference.
+(* Lemma eq_justified These : AllTheseInfSetsObeyAllOf These eq.
+  unfold AllTheseInfSetsObeyAllOf,
+         InferencesTheseInfSetsObey,
+         InfSetObeysInference.
   intros.
   subst b; assumption.
 Qed. *)
@@ -1565,7 +1629,7 @@ Lemma false_never_known n :
   intros. apply proof_by_rule; assumption.
 
   pose (H H0) as r. clearbody r. clear H H0.
-  unfold RulesetObeysInference in r.
+  unfold InfSetObeysInference in r.
   specialize r with (UnknownMeanings := λ _, False).
   pose (r (True_required n (λ _, False))) as H. clearbody H. clear r.
 
@@ -1586,7 +1650,7 @@ Qed.
 Lemma false_never_in_lower_bound_sequence n :
   LowerBoundSequence n f_true f_false -> False.
   induction n.
-  unfold LowerBoundSequence, InferencesTheseRulesetsObey, RulesetObeysInference ; intros.
+  unfold LowerBoundSequence, InferencesTheseInfSetsObey, InfSetObeysInference ; intros.
   cbn in H.
   (* use the very weak rules "eq",
     so it'll be easy to show that the rules don't prove what False says. *)
@@ -1666,7 +1730,7 @@ Qed.
 Inductive ReifiedRule : Set :=
   .
 
-Definition rule_external (rule : ReifiedRule) : Ruleset.
+Definition rule_external (rule : ReifiedRule) : InfSet.
   admit. Admitted.
 
 Definition rule_internal (rule : ReifiedRule) : Formula.
@@ -1688,7 +1752,7 @@ Definition axioms rules : Formula :=
 Definition IC_axioms : Formula :=
   axioms IC_reified_rules.
 
-Definition IC_axioms_rule : Ruleset := (λ a b, b = IC_axioms).
+Definition IC_axioms_rule : InfSet := (λ a b, b = IC_axioms).
 
 Definition IC :=
   fold_right
@@ -1784,21 +1848,21 @@ Qed.
 
 Eval cbn in FormulaMeaning eq _ [_ & _].
 Lemma and_sym_axiom_known : KnownRequiredInferences 2 f_true and_sym_axiom.
-  unfold KnownRequiredInferences, InferencesTheseRulesetsObey,
-    RulesetObeysInference.
+  unfold KnownRequiredInferences, InferencesTheseInfSetsObey,
+    InfSetObeysInference.
   intros. cbn in *. intros.
   clear H0. (* we're not going to use the proof of True *)
   
 Qed.
 
 Lemma and_assoc1_required a b c : KnownRequiredInferences 1 [a & [b & c]] [[a & b] & c].
-  unfold KnownRequiredInferences, InferencesTheseRulesetsObey, RulesetObeysInference.
+  unfold KnownRequiredInferences, InferencesTheseInfSetsObey, InfSetObeysInference.
   intros. cbn in *.
   intuition idtac.
 Qed.
 
 Lemma and_assoc2_required a b c : KnownRequiredInferences 1 [[a & b] & c] [a & [b & c]].
-  unfold KnownRequiredInferences, InferencesTheseRulesetsObey, RulesetObeysInference.
+  unfold KnownRequiredInferences, InferencesTheseInfSetsObey, InfSetObeysInference.
   intros. cbn in *.
   intuition idtac.
 Qed.
@@ -1807,8 +1871,8 @@ Lemma unfold_further :
   RulseProveInference a b *)
 
 Lemma predimp_trans_required a b c :
-  AllRulesetsObeyInference [[a |= b] & [b |= c]] [a |= c].
-  unfold AllRulesetsObeyInference, RulesetObeysInference; intros; cbn in *.
+  AllInfSetsObeyInference [[a |= b] & [b |= c]] [a |= c].
+  unfold AllInfSetsObeyInference, InfSetObeysInference; intros; cbn in *.
   intuition idtac.
   specialize H0 with (x := x).
   specialize H1 with (x := x).
@@ -1823,7 +1887,7 @@ Lemma predimp_trans_required a b c :
   apply proof_by_transitivity with bp1; assumption.
 Qed.
 
-Inductive IC : Ruleset :=
+Inductive IC : InfSet :=
   | drop a b : IC [a & b] a
   | dup a b : IC [a & b] [[a & a] & b]
   | and_sym a b : IC [a & b] [b & a]
