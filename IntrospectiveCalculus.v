@@ -5,6 +5,9 @@ Require Import Unicode.Utf8.
 Require Import List.
 Require Import Coq.Program.Equality.
 
+Require Import Ascii String.
+Open Scope string_scope.
+
 (* Parameter Ext : Set. *)
 Inductive Atom :=
   | atom_const
@@ -39,9 +42,15 @@ Definition fp_fst {Ext} : @Formula Ext := [fuse f_id [const const]].
 Definition fp_snd {Ext} : @Formula Ext := [fuse f_id [const f_id]].
 Definition f_default {Ext} : @Formula Ext := const.
 
-Notation "[ x & y ]" := [f_and x y] (at level 0, x at next level, y at next level).
+Notation "[ x & y ]" := [f_and x y]
+  (at level 0, x at next level, y at next level).
 (* Notation "[ x &* y ]" := [fuse [fuse [const [f_quote [f_quote f_and]]] x] y] (at level 0, x at next level, y at next level). *)
 Notation "[ x -> y ]" := [f_implies x y] (at level 0, x at next level, y at next level).
+
+(* Notation "[ x & y & .. & z ]" :=
+  (f_apl (f_apl f_and x) .. (f_apl (f_apl f_and y) z) ..)
+  (at level 0, x at next level, y at next level).
+Definition foo := [f_const & f_const & f_const]. *)
 
 (* subset notation is used for InfSets (which are 2-way relations) *)
 Notation "R ⊆ S" := (∀ x, R x -> S x) (at level 70).
@@ -80,18 +89,29 @@ Inductive UnfoldStep [Ext] : (@Formula Ext) -> (@Formula Ext) -> Prop :=
   | unfold_in_lhs a b c : UnfoldStep a b -> UnfoldStep [a c] [b c].
 (* 
 Definition QuotedJudgment qf := StandardFormula -> Prop *)
+Inductive UnfoldsToKind [Ext] [T]
+    (kind : (@Formula Ext) -> T -> Prop) :
+    (@Formula Ext) -> T -> Prop :=
+  | utk_done f t : kind f t -> UnfoldsToKind kind f t
+  | utk_step a b t :
+      UnfoldStep a b ->
+      UnfoldsToKind kind b t ->
+      UnfoldsToKind kind a t.
+
+Inductive IsAtom [Ext]
+    : (@Formula Ext) -> Atom -> Prop :=
+  | is_atom a : IsAtom (f_atm a) a.
 
 Inductive MeansQuoted [Ext]
     (* (Ext -> StandardFormula -> Prop) *)
     : (@Formula Ext) -> StandardFormula -> Prop :=
-  | quoted_atom a : MeansQuoted [f_quote (f_atm a)] (f_atm a)
+  | quoted_atom f a :
+    UnfoldsToKind (@IsAtom Ext) f a ->
+    MeansQuoted [f_quote f] (f_atm a)
   | quoted_apply qa a qb b :
-    MeansQuoted qa a -> MeansQuoted qb b ->
-    MeansQuoted [f_quote qa qb] [a b]
-  | quoted_unfold qa qb b :
-      UnfoldStep qa qb ->
-      MeansQuoted qb b ->
-      MeansQuoted qa b.
+    UnfoldsToKind (@MeansQuoted Ext) qa a ->
+    UnfoldsToKind (@MeansQuoted Ext) qb b ->
+    MeansQuoted [f_quote qa qb] [a b].
 
 Inductive MeansProp [Ext]
     (assumed_meanings : @Meanings Ext) : @Meanings Ext :=
@@ -207,13 +227,13 @@ Fixpoint unfold_step [Ext] f : option {g : (@Formula Ext) | UnfoldStep f g} :=
 Inductive GetResult t :=
   | success : t -> GetResult t
   | timed_out : GetResult t
-  | error : GetResult t.
+  | error T : T -> GetResult t.
 
 Notation "? x <- m1 ; m2" :=
   (match m1 with
-    | success (x) => m2
+    | success x => m2
     | timed_out => timed_out _
-    | error => error _
+    | error T s => error _ s
     end) (right associativity, at level 70, x pattern).
 
 (* Fixpoint unfold_until (t : Type) n
@@ -674,9 +694,9 @@ Fixpoint get_quoted_formula [Ext]
           | f_ext e => match quotvars e as qe
             return qe = quotvars e -> GetResult (QfResult quotvars) with
             | true => λ eq, success (λ qv_meanings, qv_meanings e eq)
-            | false => λ _, error _
+            | false => λ _, error _ ("non-variable extension in quote", e, quotvars e)
             end eq_refl
-          | _ => error _
+          | _ => error _ ("not a quoted formula:", qf)
           end
       end
   end.
@@ -718,13 +738,13 @@ Fixpoint get_prop_meaning (n:nat) [Ext]
   (unreify_vars propvars) f) with
               | true => λ eq, success (λ qv_meanings pv_meanings,
                  pv_meanings a eq)
-              | false => λ _ , error _
+              | false => λ _ , error _ ("not a propvar:", f, propvars, a)
               end eq_refl
         | f_apl (f_apl (f_atm atom_implies) qp) qc =>
           ? p <- (get_quoted_formula quotvars pred qp) ;
           ? c <- (get_quoted_formula quotvars pred qc) ;
           success (λ qv_meanings _,
-            (Singleton2 (p qv_meanings) (c qv_meanings)))
+            (λ infs, infs (p qv_meanings) (c qv_meanings)))
              
         (* 
     refine (? PQ <- (get_MeansQuoted pred qp) ; _).
@@ -737,7 +757,7 @@ Fixpoint get_prop_meaning (n:nat) [Ext]
           ? A <- (get_prop_meaning pred a quotvars propvars) ;
           ? B <- (get_prop_meaning pred b quotvars propvars) ;
           success (λ qv_meanings pv_meanings,
-            ((A qv_meanings pv_meanings) ∪2 (B qv_meanings pv_meanings)))
+            ((A qv_meanings pv_meanings) ∧1 (B qv_meanings pv_meanings)))
         | f_apl (f_atm atom_forall_valid_propositions) f =>
           ? FX <- (get_prop_meaning pred
               [(embed_formula (λ a, onemore_old a) f)
@@ -745,7 +765,7 @@ Fixpoint get_prop_meaning (n:nat) [Ext]
                   (embed_revars quotvars)
                   (one_more_revar propvars)) ; 
             success (λ qv_meanings pv_meanings,
-              (λ p c, ∃ X : Rule,
+              (λ infs, ∀ X : Rule,
                  FX
                  (embed_revar_meanings qv_meanings)
                  (one_more_revar_meaning pv_meanings X)
@@ -753,7 +773,7 @@ Fixpoint get_prop_meaning (n:nat) [Ext]
                     (unreify_vars quotvars) qv_meanings)) *)
                 (* (unreify_onemore2 (one_more_var_meaning
                     (unreify_vars propvars) pv_meanings X)) *)
-                p c
+                infs
                 ))
         | f_apl (f_atm atom_forall_quoted_formulas) f =>
           ? Fx <- (get_prop_meaning pred
@@ -762,7 +782,7 @@ Fixpoint get_prop_meaning (n:nat) [Ext]
                   (one_more_revar quotvars)
                   (embed_revars propvars)) ; 
             success (λ qv_meanings pv_meanings,
-              (λ p c, ∃ x : StandardFormula,
+              (λ infs, ∀ x : StandardFormula,
                  Fx
                  (one_more_revar_meaning qv_meanings x)
                  (embed_revar_meanings pv_meanings)
@@ -770,9 +790,9 @@ Fixpoint get_prop_meaning (n:nat) [Ext]
                     (unreify_vars quotvars) qv_meanings x))
                 (unreify_embed2 (embed_var_meanings
                     (unreify_vars propvars) pv_meanings)) *)
-                p c
+                infs
                 ))
-        | _ => error _
+        | _ => error _ ("not a proposition:", f)
       end
     end
   end.
@@ -953,10 +973,10 @@ Fixpoint last_more_atom [Ext] n : (@NMoreAtoms Ext (S n)) :=
     end.
   
 
-Definition f_with_variable [n] [Ext]
-  (fgen : @Formula (@NMoreAtoms Ext (S n)) ->
-          @Formula (@NMoreAtoms Ext n)) : Formula :=
-  (fgen (f_ext (last_more_atom n))).
+Definition f_with_variable [Ext]
+  (fgen : @Formula (@OneMoreAtom Ext) ->
+          @Formula (@OneMoreAtom Ext)) : Formula :=
+  (fgen (f_ext onemore_new)).
 
 Fixpoint eliminate_abstraction
   [Ext]
@@ -979,8 +999,6 @@ Fixpoint quote_f [Ext] f : @Formula Ext :=
     | f_apl a b => [f_quote (quote_f a) (quote_f b)]
     end.
 
-Require Import Ascii String.
-Open Scope string_scope.
 Inductive ParensState := ps_default | ps_apply_chain | ps_fuse_chain.
 Fixpoint display_f_impl ps [Ext] (f : @Formula Ext) : string :=
   match f with
@@ -1051,12 +1069,9 @@ Definition with_no_meanings
   (g : GetResult (MiSearchResult
     (unreify_vars no_vars) (unreify_vars no_vars) f)) :
   GetResult Rule :=
-  match g with
-    | success g => success (g
-        (no_meanings StandardFormula) (no_meanings Rule))
-    | error => error _
-    | timed_out => timed_out _
-    end.
+  ? g <- g ;
+  success (g
+        (no_meanings StandardFormula) (no_meanings Rule)).
 
 Definition test0 : StandardFormula :=
   [[f_quote const] -> [f_quote const]].
@@ -1079,17 +1094,32 @@ Lemma uhh2 :
   cbv.
 Qed.
 
+Fixpoint NMore n Ext :=
+  match n with
+    | 0 => Ext
+    | S pred => @OneMoreAtom (NMore pred Ext)
+    end.
+
+Fixpoint embed_nmore n [Ext] (f : @Formula Ext)
+  : (@Formula (NMore n Ext)) :=
+  match n with
+    | 0 => f
+    | S pred => embed_formula onemore_old (embed_nmore pred f)
+    end.
+Notation "f @ n" := (embed_nmore n f) (at level 0).
 
 Definition simple_get_prop_meaning n f :=
   (with_no_meanings (get_prop_meaning n f no_vars no_vars)).
 
+(* Definition test1 : StandardFormula :=
+  (eliminate_abstraction (f_with_variable (λ a, [a -> a]))). *)
 Definition test1 : StandardFormula :=
   [∀a:Q, [a -> a]].
 Eval compute in display_f test1.
 Eval compute in (simple_get_prop_meaning 90 test1).
 
 Definition test2 : StandardFormula :=
-  [∀a:Q, [∀b:Q, [a -> b]]].
+  [∀a:Q, [∀b:Q, [(a@1) -> b]]].
 Eval compute in display_f test2.
 Eval lazy in (simple_get_prop_meaning 90 test2).
 Definition test3 : StandardFormula :=
@@ -1104,27 +1134,88 @@ Eval lazy in (simple_get_prop_meaning 90 test3).
      ∃ x : Formula, p = x ∧ c = x)
  *)
 
-Fixpoint NMore n Ext :=
-  match n with
-    | 0 => Ext
-    | S pred => @OneMoreAtom (NMore pred Ext)
-    end.
 
-Fixpoint embed_nmore n [Ext] (f : @Formula Ext)
-  : (@Formula (NMore n Ext)) :=
-  match n with
-    | 0 => f
-    | S pred => embed_formula onemore_old (embed_nmore pred f)
-    end.
-Notation "$ n f" := (embed_nmore n f) (at level 0).
+Definition dup : StandardFormula :=
+  [∀a:Q,
+    [a -> (quote_f [a & a])]
+  ].
+
+Definition drop : StandardFormula :=
+  [∀a:Q, [∀b:Q,
+    [(quote_f [(a@1) & b]) -> b]
+  ]].
 
 Definition and_sym : StandardFormula :=
   [∀a:Q, [∀b:Q,
-    [(quote_f [(embed_nmore 1 a) & b])
-    -> (quote_f [b & (embed_nmore 1 a)])]
+    [(quote_f [(a@1) & b])
+    -> (quote_f [b & (a@1)])]
   ]].
 Eval compute in display_f and_sym.
 (* Eval cbv beta iota delta in and_sym. *)
+Eval compute in (simple_get_prop_meaning 90 and_sym).
+
+Definition and_assoc_left : StandardFormula :=
+  [∀a:Q, [∀b:Q, [∀c:Q,
+    [(quote_f [(a@2) & [(b@1) & c]])
+    -> (quote_f [[(a@2) & (b@1)] & c])]
+  ]]].
+
+Definition and_assoc_right : StandardFormula :=
+  [∀a:Q, [∀b:Q, [∀c:Q,
+    [(quote_f [[(a@2) & (b@1)] & c])
+    -> (quote_f [(a@2) & [(b@1) & c]])]
+  ]]].
+
+Definition f_false : StandardFormula := [∀p:Q, p].
+
+Definition IC_axioms : StandardFormula := and_sym.
+Definition IC_external_rules : Rule :=
+  match simple_get_prop_meaning 90 IC_axioms with
+  | success r => r
+  | _ => ∅
+  end.
+Definition transitivity : Rule := λ infs, ∀ a b c, infs a b -> infs b c -> infs a c.
+Definition IC_rules : Rule := IC_external_rules ∧1 transitivity.
+
+Definition infs_provable_from (rules : Rule) : InfSet :=
+  λ p c, ∀ infs, rules infs -> infs p c.
+Definition IC_provable_infs := infs_provable_from IC_rules.
+Definition IC_provable_props := IC_provable_infs IC_axioms.
+
+(* Definition IC_introspective :=
+  ∀ p c, IC_provable_infs p c -> IC_provable_props [p -> c]. *)
+
+Lemma IC_implements_inference_universal :
+  ∀ axioms Axioms, MeansProp (∅2) axioms Axioms ->
+    ∀ p P, MeansProp (∅2) p P ->
+      P (infs_provable_from (Axioms ∧1 transitivity))
+      -> (* <-> *)
+      IC_provable_infs axioms p.
+  intros.
+  induction H0; [admit | admit | admit | admit | admit |].
+
+  unfold IC_provable_infs, infs_provable_from. intros.
+  5: {
+  }
+Qed.
+
+Definition IC_implements_inference :=
+  ∀ axioms Axioms, MeansProp (∅2) axioms Axioms ->
+    ∀ qp p qc c, MeansQuoted qp p -> MeansQuoted qc c ->
+      infs_provable_from (Axioms ∧1 transitivity) p c
+      <->
+      IC_provable_infs axioms [qp -> qc].
+
+Definition IC_self_describing :=
+  ∀ p, IC_provable_props p ->
+    ∃ P, MeansProp (∅2) p P ∧ P IC_provable_infs.
+
+Definition IC_introspective :=
+  ∀ p P, MeansProp (∅2) p P ∧ P IC_provable_infs    
+    -> IC_provable_props p.
+
+Definition IC_consistent :=
+  ¬ IC_provable_props f_false.
 
 (* [(forall_n) p] should mean
   "put a stream of n qfs into p and it'll be true" *)
@@ -1213,13 +1304,13 @@ Parameter FMember : FType -> Formula -> Prop.
 Inductive interpret_result t f :=
   | is_member : FMember t f -> interpret_result t f
   | timed_out : interpret_result t f
-  | error : interpret_result t f.
+  | error : string -> interpret_result t f.
 
 Notation "x <- m1 ; m2" :=
   (match m1 with
     | is_member x => m2
     | timed_out => timed_out
-    | error => error
+    | error s => error s
     end) (right associativity, at level 70).
 (* Notation "x :? t ; m2" :=
   (x <- recurse t x ; m2) (right associativity, at level 70). *)
@@ -1554,7 +1645,6 @@ Lemma unfold_unique a b c :
 Qed.
 
 Definition f_true := [[f_quote f_default] -> [f_quote f_default]].
-Definition f_false := [f_all [fuse [const f_all] f_implies]].
 
 (* Lemma KnownRequiredInferences_increasing n :
   KnownRequiredInferences n ⊆2 KnownRequiredInferences (S n).
