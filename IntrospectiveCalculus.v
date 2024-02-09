@@ -59,6 +59,7 @@ Notation "R ⊇ S" := (∀ x, S x -> R x) (at level 70).
 Notation "R ⊇2 S" := (∀ x y, S x y -> R x y) (at level 70).
 Notation "R <->2 S" := (∀ x y, S x y <-> R x y) (at level 70).
 Notation "R ∧1 S" := (λ x, R x ∧ S x) (at level 70).
+Notation "R ∧3 S" := (λ x y z, R x y z ∧ S x y z) (at level 70).
 Notation "R ∪ S" := (λ x, R x \/ S x) (at level 70).
 Notation "R ∪2 S" := (λ x y, R x y \/ S x y) (at level 70).
 (* Notation "⋃ S" := (λ x, ∃ T, S T /\ T x) (at level 70).
@@ -75,13 +76,12 @@ Definition Singleton2 A B (a:A) (b:B) := λ x y, x = a /\ y = b.
 
 Definition StandardFormula := @Formula False.
 
-Definition InfSet :=
-  StandardFormula -> StandardFormula -> Prop.
+Definition InfSet F := F -> F -> Prop.
 
-Definition Rule := InfSet -> Prop.
+Definition Rule F := ∀ G, (F -> G) -> InfSet G -> Prop.
 
-Definition Meanings {Ext} :=
-  (@Formula Ext) -> Rule -> Prop.
+Definition Meanings {EExt} J :=
+  (@Formula EExt) -> Rule J -> Prop.
 
 Inductive UnfoldStep [Ext] : (@Formula Ext) -> (@Formula Ext) -> Prop :=
   | unfold_const a b : UnfoldStep [const a b] a
@@ -113,66 +113,6 @@ Inductive MeansQuoted [Ext]
     UnfoldsToKind (@MeansQuoted Ext) qb b ->
     MeansQuoted [f_quote qa qb] [a b].
 
-Inductive MeansProp [Ext]
-    (assumed_meanings : @Meanings Ext) : @Meanings Ext :=
-  | mi_assumed a A :
-      assumed_meanings a A ->
-      MeansProp assumed_meanings a A
-  | mi_implies qp p qc c :
-      MeansQuoted qp p -> MeansQuoted qc c -> 
-      MeansProp assumed_meanings [qp -> qc] (λ infs, infs p c)
-  | mi_unfold a b B :
-      UnfoldStep a b ->
-      MeansProp assumed_meanings b B ->
-      MeansProp assumed_meanings a B
-  | mi_and a A b B :
-      MeansProp assumed_meanings a A ->
-      MeansProp assumed_meanings b B ->
-      MeansProp assumed_meanings [a & b] (A ∧1 B)
-  | mi_forall_valid_propositions f F :
-    (∀ x X,
-      MeansProp
-        (assumed_meanings ∪2 (Singleton2 x X))
-        [f x]
-        (F X)
-    ) ->
-    MeansProp
-      assumed_meanings
-      [f_forall_valid_propositions f]
-      (λ infs, ∀ X, (F X) infs)
-  | mi_forall_quoted_formulas f F :
-    (∀ x qx,
-      MeansQuoted qx x -> 
-      MeansProp assumed_meanings [f qx] (F x)
-    ) -> 
-    MeansProp
-      assumed_meanings
-      [f_forall_quoted_formulas f]
-      (λ infs, ∀ x, (F x) infs).
-
-
-(* The inferences that are guaranteed to be true on formulas that
-   speak _about_ an earlier set of inferences - knowing only
-   that certain inferences ARE present, but leaving open
-   the possibility that more inferences will be added. *)
-Definition MetaInferences
-  KnownRules
-  (p c : StandardFormula) : Prop :=
-  ∀ P, MeansProp (∅2) p P -> 
-    ∃ C, MeansProp (∅2) c C ∧
-      ∀ infs, KnownRules infs -> P infs -> C infs.
-
-(* An increasing progression of inferences that are known to be 
-  required, each one adding the ones that describe the last. *)
-Fixpoint KnownInferences n : InfSet :=
-  match n with
-    | 0 => ∅2
-    | S pred => MetaInferences (λ infs, infs ⊇2 KnownInferences pred)
-    end.
-
-
-
-
 Fixpoint embed_formula
   Ext1 Ext2 (embed : Ext1 -> Ext2)
   (f : (@Formula Ext1)) : (@Formula Ext2)
@@ -181,6 +121,82 @@ Fixpoint embed_formula
     | f_ext a => f_ext (embed a)
     | f_apl a b => [(embed_formula embed a) (embed_formula embed b)]
     end.
+
+Inductive MeansProp [EExt] [J]
+  (MeansQuoted : (@Formula EExt) -> J -> Prop)
+  : @Meanings EExt J :=
+  | mi_implies qp p qc c :
+      MeansQuoted qp p -> MeansQuoted qc c -> 
+      MeansProp MeansQuoted [qp -> qc] (λ J2 e infs,
+        infs (e p) (e c))
+  | mi_unfold a b B :
+      UnfoldStep a b ->
+      MeansProp MeansQuoted b B ->
+      MeansProp MeansQuoted a B
+  | mi_and a A b B :
+      MeansProp MeansQuoted a A ->
+      MeansProp MeansQuoted b B ->
+      MeansProp MeansQuoted [a & b] (A ∧3 B)
+  (* | mi_forall_quoted_formulas f 
+    (F : ∀ J2, (J -> J2) -> J2 -> Rule J2) :
+    (∀ EExt2 J2 qx x e_embed j_embed
+        (MQ : (@Formula EExt2) -> J2 -> Prop),
+      (∀ e i, MeansQuoted e i -> MQ (e_embed e) (j_embed i)) ->
+      MQ qx x -> 
+      MeansProp MQ [(e_embed f) qx] (F J2 j_embed x)
+    ) -> 
+    MeansProp
+      MeansQuoted
+      [f_forall_quoted_formulas f]
+      (λ J2 e infs,
+        ∀ J3
+          (e13 : (J -> J3))
+          (e32 : (J3 -> J2))
+          (compat : ∀ j, e32 (e13 j) = e j)
+          x,
+          (F J3 e13 x)
+          J2 e32 (λ p c, infs p c)). *)
+  | mi_forall_quoted_formulas f 
+    (F : ∀ J2, (J -> J2) -> J2 -> InfSet J2 -> Prop) :
+    (∀ EExt2 J2 qx x e_embed j_embed
+        (MQ : (@Formula EExt2) -> J2 -> Prop),
+      (∀ e i, MeansQuoted e i -> MQ (e_embed e) (j_embed i)) ->
+      MQ qx x -> 
+      MeansProp MQ [(e_embed f) qx] (λ J3 e infs,
+        (F J3 (λ v, e (j_embed v)) (e x) infs))
+    ) -> 
+    MeansProp
+      MeansQuoted
+      [f_forall_quoted_formulas f]
+      (λ J2 e infs,
+        ∀ x, F J2 e x infs).
+
+
+(* The inferences that are guaranteed to be true on formulas that
+   speak _about_ an earlier set of inferences - knowing only
+   that certain inferences ARE present, but leaving open
+   the possibility that more inferences will be added. *)
+Definition MetaInferences
+  J
+  (KnownRules : Rule J)
+  (p c : StandardFormula) : Prop :=
+  ∀ P, MeansProp (∅2) p P -> 
+    ∃ C, MeansProp (∅2) c C ∧
+      ∀ J2 (e : J -> J2) infs,
+        KnownRules J2 e infs -> P J2 e infs -> C J2 e infs.
+
+(* An increasing progression of inferences that are known to be 
+  required, each one adding the ones that describe the last. *)
+Fixpoint KnownInferences n : InfSet StandardFormula :=
+  match n with
+    | 0 => ∅2
+    | S pred => MetaInferences
+      (λ J2 e infs, ∀ p c, KnownInferences pred p c -> infs (e p) (e c))
+    end.
+
+
+
+
 
 
 Fixpoint unfold_step_result [Ext] f : option (@Formula Ext) :=
@@ -283,22 +299,15 @@ Lemma specialize_embed [OldExt] (f: @Formula OldExt) x :
   induction f; cbn; [| |rewrite IHf1; rewrite IHf2]; reflexivity.
 Qed.
 
-Inductive UnreifiedAssumed [Ext]
+(* Inductive UnreifiedAssumed [Ext]
   (propvars : Ext -> Prop)
   (pv_meanings : ∀ e, propvars e -> Rule)
   : Meanings :=
   | unreified_assumed e (ae : propvars e) :
   UnreifiedAssumed propvars pv_meanings
-    (f_ext e) (pv_meanings e ae).
+    (f_ext e) (pv_meanings e ae). *)
         
-Definition MiSearchResult [Ext]
-    (quotvars : Ext -> Prop)
-    (propvars : Ext -> Prop)
-    (f : @Formula Ext) : Type :=
-    ∀ (qv_meanings : ∀ e, quotvars e -> StandardFormula)
-      (pv_meanings : ∀ e, propvars e -> Rule),
-    Rule.
-Definition MiSearchSuccess [Ext]
+(* Definition MiSearchSuccess [Ext]
     (quotvars : Ext -> Prop)
     (propvars : Ext -> Prop)
     (f : @Formula Ext) : Type :=
@@ -306,22 +315,22 @@ Definition MiSearchSuccess [Ext]
       (pv_meanings : ∀ e, propvars e -> Rule),
     {F | MeansProp
       (UnreifiedAssumed propvars pv_meanings)
-      f F}.
+      f F}. *)
 
-Definition embed_assumed 
+(* Definition embed_assumed 
     [OldExt]
     (assumed_meanings : @Meanings OldExt)
     : @Meanings (@OneMoreAtom OldExt) :=
-  λ f F, (∃ fp, f = embed_onemore fp /\ assumed_meanings fp F).
+  λ f F, (∃ fp, f = embed_onemore fp /\ assumed_meanings fp F). *)
 
-Definition assume_one_more
+(* Definition assume_one_more
     [OldExt]
     (assumed_meanings : @Meanings OldExt)
     (new_meaning : Rule)
     : @Meanings (@OneMoreAtom OldExt) :=
-  (embed_assumed assumed_meanings) ∪2 (Singleton2 (f_ext (onemore_new)) new_meaning).
+  (embed_assumed assumed_meanings) ∪2 (Singleton2 (f_ext (onemore_new)) new_meaning). *)
 
-Definition one_more_var
+(* Definition one_more_var
     [OldExt]
     (vars : OldExt -> Prop)
     : (@OneMoreAtom OldExt) -> Prop :=
@@ -336,14 +345,6 @@ Definition embed_vars
   λ a, match a with
     | onemore_old a => vars a
     | onemore_new => False
-    end.
-Definition one_more_revar
-    [OldExt]
-    (vars : OldExt -> bool)
-    : (@OneMoreAtom OldExt) -> bool :=
-  λ a, match a with
-    | onemore_old a => vars a
-    | onemore_new => true 
     end.
 Definition embed_revars
     [OldExt]
@@ -374,38 +375,11 @@ Definition embed_var_meanings
   λ e, match e return (embed_vars vars) e -> VarType with
     | onemore_old a => meanings a
     | onemore_new => λ f, match f with end
-    end.
+    end. *)
 
 
-Lemma qf_convert [Ext1 Ext2]
-  (qf : @Formula Ext1) f :
-  MeansQuoted qf f -> {qf2 : @Formula Ext2 | MeansQuoted qf2 f}.
-  (* "qf can't have f_ext anywhere in it" *)
-  admit.
 
-  (* intros. dependent induction qf.
-
-  apply exist with (f_atm a).
-  dependent induction H. apply IHMeansQuoted. dependent induction H.
-  
-  exfalso.
-  dependent induction H. apply IHMeansQuoted with e. dependent induction H.
-
-  dependent induction f.
-  apply exist with [f_quote (f_atm a)]. constructor.
-
-  exfalso. dependent induction H.
-  (* ugh now I have to convince Coq that you can't unfold to a quoted f_ext? *)
-  admit.
-
-  specialize (IHf1 H).
-
-  apply quoted_apply.
-  dependent induction H.
-  specialize IHqf1 with  *)
-Qed.
-
-Lemma mi_monotonic [Ext]
+(* Lemma mi_monotonic [Ext]
   (assumed1 : @Meanings Ext)
   (assumed2 : @Meanings Ext)
   : (assumed1 ⊆2 assumed2) ->
@@ -454,11 +428,11 @@ Lemma mi_monotonic [Ext]
     specialize (fxFXimp x qx H).
     apply recurse with assumed1; assumption.
   }
-Qed.
+Qed. *)
     
   
 
-Lemma specialize_MeansProp [OldExt] 
+(* Lemma specialize_MeansProp [OldExt] 
     (assumed_meanings : @Meanings OldExt) f F x X :
   MeansProp (assume_one_more assumed_meanings X) f F ->
   MeansProp assumed_meanings x X ->
@@ -566,10 +540,10 @@ Lemma specialize_MeansProp [OldExt]
     rewrite <- H in recurse.
     apply recurse; assumption.
   }
-Qed.
+Qed. *)
   
 
-Definition specialize_MiSearchSuccess_prop
+(* Definition specialize_MiSearchSuccess_prop
     [OldExt] f
     (quotvars : OldExt -> Prop)
     (propvars : OldExt -> Prop)
@@ -606,15 +580,24 @@ Definition specialize_MiSearchSuccess_prop
   constructor. apply or_intror. constructor; trivial.
   assumption.
   apply xXimp.
-Qed.
+Qed. *)
 
 
-Definition unreify_vars  [Ext]
-  (propvars : Ext -> bool)
-  :Ext -> Prop :=
-  λ e, true = (propvars e).
+Definition unreify_vars [Ext]
+  (vars : Ext -> bool)
+  : Ext -> Prop :=
+  λ e, true = (vars e).
 
-Definition embed_revar_meanings
+Definition one_more_revar
+    [OldExt]
+    (vars : OldExt -> bool)
+    : (@OneMoreAtom OldExt) -> bool :=
+  λ a, match a with
+    | onemore_old a => vars a
+    | onemore_new => true 
+    end.
+
+(* Definition embed_revar_meanings
     [OldExt]
     [VarType]
     (vars : OldExt -> bool)
@@ -623,60 +606,55 @@ Definition embed_revar_meanings
   λ e, match e with
     | onemore_old a => meanings a
     | onemore_new => λ f, match f with end
-    end.
+    end. *)
+
+Definition revar_meanings [Ext] (vars : Ext -> bool) J :=
+  ∀ J2 v, (J -> J2) -> (unreify_vars vars v) -> Rule J2.
+
+Definition embed_revar_meanings [Ext] J J2 (vars : Ext -> bool)
+    (e12 : (J -> J2))
+    (meanings : revar_meanings vars J)
+    : revar_meanings vars J2 :=
+   λ J3 v e23,
+     meanings J3 v (λ x, (e23 (e12 x))).
+
+Definition embed_rule J J2 (e12 : J -> J2) (rule : Rule J) : Rule J2 :=
+  λ J3 e23 infs,
+    rule J3 (λ x, (e23 (e12 x))) infs.
+
 Definition one_more_revar_meaning
-    [OldExt]
-    [VarType]
+    [OldExt] J
     (vars : OldExt -> bool)
-    (meanings : ∀ e, (unreify_vars vars e) -> VarType)
-    (new_meaning : VarType)
-    : (∀ e, (unreify_vars (one_more_revar vars) e) -> VarType) :=
-  λ e, match e with
-    | onemore_old a => meanings a
+    (meanings : revar_meanings vars J)
+    (new_meaning : Rule J)
+    : revar_meanings (one_more_revar vars) J :=
+  λ J2 v e, match v return
+      (unreify_vars (one_more_revar vars) v)
+        -> Rule J2 with
+    | onemore_old a => λ ve, meanings J2 a e ve
+    | onemore_new => λ _, embed_rule e new_meaning
+    end.
+
+Definition revar_meanings2 [OldExt] (vars : OldExt -> bool) J :=
+  ∀ v, (unreify_vars vars v) -> J.
+Definition one_more_revar_meaning2
+    [OldExt] J
+    (vars : OldExt -> bool)
+    (meanings : revar_meanings2 vars J)
+    (new_meaning : J)
+    : revar_meanings2 (one_more_revar vars) J :=
+  λ v, match v return
+      (unreify_vars (one_more_revar vars) v)
+        -> J with
+    | onemore_old a => λ ve, meanings a ve
     | onemore_new => λ _, new_meaning
     end.
 
-Lemma unreify_embed1 [Ext] (vars : Ext -> bool) e :
-  unreify_vars (embed_revars vars) e ->
-  embed_vars (unreify_vars vars) e.
-  unfold unreify_vars, embed_vars, embed_revars.
-  intros. destruct e.
-  assumption. dependent destruction H.
-Defined.  
-
-Lemma unreify_embed2 [Ext] R (vars : Ext -> bool) :
-  (∀ e, embed_vars (unreify_vars vars) e -> R) ->
-  (∀ e, unreify_vars (embed_revars vars) e -> R).
-  unfold unreify_vars, embed_vars, embed_revars.
-  intros.
-  specialize (X e).
-  exact (X (unreify_embed1 H)).
-Defined.  
-
-Lemma unreify_onemore1 [Ext] (vars : Ext -> bool) e :
-  unreify_vars (one_more_revar vars) e ->
-  one_more_var (unreify_vars vars) e.
-  unfold unreify_vars, embed_vars, embed_revars.
-  intros. destruct e.
-  assumption.
-  cbn. trivial.
-  Show Proof.
-Qed. 
-
-Lemma unreify_onemore2 [Ext] R (vars : Ext -> bool) :
-  (∀ e, one_more_var (unreify_vars vars) e -> R) ->
-  (∀ e, unreify_vars (one_more_revar vars) e -> R).
-  unfold unreify_vars, embed_vars, embed_revars.
-  intros.
-  specialize (X e).
-  exact (X (unreify_onemore1 H)).
-  Show Proof.
-Defined.  
 
 Definition QfResult [Ext] (quotvars : Ext -> bool) :=
-  (∀ qv_meanings : 
-    (∀ e, (unreify_vars quotvars) e -> StandardFormula),
-    StandardFormula).
+  (∀ JExt (qv_meanings : 
+    (∀ e, (unreify_vars quotvars) e -> @Formula JExt)),
+    @Formula JExt).
 
 Fixpoint get_quoted_formula [Ext]
   (quotvars : Ext -> bool) n qf
@@ -686,14 +664,14 @@ Fixpoint get_quoted_formula [Ext]
       | Some qg => get_quoted_formula quotvars pred qg
       | None => match qf with
           | f_apl (f_atm atom_quote) (f_atm a) =>
-              success (λ _, (f_atm a))
+              success (λ _ _, (f_atm a))
           | f_apl (f_apl (f_atm atom_quote) qa) qb =>
             ? a <- get_quoted_formula quotvars pred qa ; 
             ? b <- get_quoted_formula quotvars pred qb ;
-            success (λ qv_meanings, [(a qv_meanings) (b qv_meanings)])
+            success (λ JExt qv_meanings, [(a JExt qv_meanings) (b JExt qv_meanings)])
           | f_ext e => match quotvars e as qe
             return qe = quotvars e -> GetResult (QfResult quotvars) with
-            | true => λ eq, success (λ qv_meanings, qv_meanings e eq)
+            | true => λ eq, success (λ JExt qv_meanings, qv_meanings e eq)
             | false => λ _, error _ ("non-variable extension in quote", e, quotvars e)
             end eq_refl
           | _ => error _ ("not a quoted formula:", qf)
@@ -701,7 +679,7 @@ Fixpoint get_quoted_formula [Ext]
       end
   end.
 
-Fixpoint get_MeansQuoted [Ext] n qf
+(* Fixpoint get_MeansQuoted [Ext] n qf
   : GetResult {f : StandardFormula | MeansQuoted qf f} :=
   match n with 0 => timed_out _ | S pred =>
     match unfold_step qf with
@@ -718,80 +696,85 @@ Fixpoint get_MeansQuoted [Ext] n qf
           | _ => error _
           end
       end
-  end.
-Eval cbv beta iota delta -[embed_onemore embed_vars embed_revars] in
-  ( λ quotvars qv_meanings, unreify_embed2 (embed_var_meanings
-                    (unreify_vars quotvars) qv_meanings)).
+  end. *)
+
+Inductive MPSearchResult [Ext]
+    (vars : Ext -> bool)
+    : @Formula Ext -> Type :=
+  | msr_implies qp p qc c :
+      MeansQuoted qp p -> MeansQuoted qc c -> 
+      MPSearchResult vars [qp -> qc]
+  | msr_and a b :
+      MPSearchResult vars a ->
+      MPSearchResult vars b ->
+      MPSearchResult vars [a & b]
+  | msr_forall_quoted_formulas f :
+    MPSearchResult (one_more_revar vars)
+      [(embed_formula onemore_old f) (f_ext onemore_new)] ->
+    MPSearchResult vars [f_forall_quoted_formulas f].
+
+Fixpoint msr_specialize [Ext]
+  (vars : Ext -> bool)
+  p
+  (r : MPSearchResult (one_more_revar vars) p)
+  J e x
+  : MPSearchResult vars (specialize_onemore p x) :=
+  match r
+      in MPSearchResult _ p0
+      return MPSearchResult vars (specialize_onemore p0 x) with
+  | msr_implies qp p qc c qpp qcc => _
+  | msr_and a b ra rb => msr_and
+      (msr_specialize ra J e x)
+      (msr_specialize rb J e x)
+  | msr_forall_quoted_formulas f rfx =>
+      msr_forall_quoted_formulas
+        f
+        (msr_specialize rfx J e (embed_onemore x))
+    end.
+
+
+Fixpoint msr_finish (r : MPSearchResult vars) : Rule.
+
+Definition MiSearchResult [Ext]
+    (vars : Ext -> bool)
+    (f : @Formula Ext) : Type :=
+    ∀ JExt (qv_meanings :
+        revar_meanings2 vars (@Formula JExt)),
+      (* Rule StandardFormula. *)
+      InfSet (@Formula JExt) -> Prop.
+
 Fixpoint get_prop_meaning (n:nat) [Ext]
   (f : @Formula Ext)
-  (quotvars : Ext -> bool)
-  (propvars : Ext -> bool)
-  : GetResult (MiSearchResult
-    (unreify_vars quotvars) (unreify_vars propvars) f) :=
+  (vars : Ext -> bool)
+  : GetResult (MiSearchResult vars f) :=
   match n with 0 => timed_out _ | S pred =>
     match unfold_step_result f with
-      | Some g => get_prop_meaning pred g quotvars propvars
+      | Some g => get_prop_meaning pred g vars
       | None => match f with
-        | f_ext a => match propvars a as pa return
-          (pa = propvars a) -> GetResult
-  (MiSearchResult (unreify_vars quotvars)
-  (unreify_vars propvars) f) with
-              | true => λ eq, success (λ qv_meanings pv_meanings,
-                 pv_meanings a eq)
-              | false => λ _ , error _ ("not a propvar:", f, propvars, a)
-              end eq_refl
+        (* [qp -> qc] *)
         | f_apl (f_apl (f_atm atom_implies) qp) qc =>
-          ? p <- (get_quoted_formula quotvars pred qp) ;
-          ? c <- (get_quoted_formula quotvars pred qc) ;
-          success (λ qv_meanings _,
-            (λ infs, infs (p qv_meanings) (c qv_meanings)))
-             
-        (* 
-    refine (? PQ <- (get_MeansQuoted pred qp) ; _).
-    refine (? CQ <- (get_MeansQuoted pred qc) ; _).
-    apply success; intros qv_meanings pv_meanings.
-    destruct PQ as (p, qqp).
-    destruct CQ as (c, qqc).
-    apply exist with (Singleton2 p c). *)
+          ? p <- (get_quoted_formula vars pred qp) ;
+          ? c <- (get_quoted_formula vars pred qc) ;
+          success (λ JExt qv_meanings infs,
+            (infs (p JExt qv_meanings) (c JExt qv_meanings)))
+        
+        (* [a & b] *)
         | f_apl (f_apl (f_atm atom_and) a) b =>
-          ? A <- (get_prop_meaning pred a quotvars propvars) ;
-          ? B <- (get_prop_meaning pred b quotvars propvars) ;
-          success (λ qv_meanings pv_meanings,
-            ((A qv_meanings pv_meanings) ∧1 (B qv_meanings pv_meanings)))
-        | f_apl (f_atm atom_forall_valid_propositions) f =>
-          ? FX <- (get_prop_meaning pred
-              [(embed_formula (λ a, onemore_old a) f)
-                  (f_ext onemore_new)]
-                  (embed_revars quotvars)
-                  (one_more_revar propvars)) ; 
-            success (λ qv_meanings pv_meanings,
-              (λ infs, ∀ X : Rule,
-                 FX
-                 (embed_revar_meanings qv_meanings)
-                 (one_more_revar_meaning pv_meanings X)
-                 (* (unreify_embed2 (embed_var_meanings
-                    (unreify_vars quotvars) qv_meanings)) *)
-                (* (unreify_onemore2 (one_more_var_meaning
-                    (unreify_vars propvars) pv_meanings X)) *)
-                infs
-                ))
+          ? A <- (get_prop_meaning pred a vars) ;
+          ? B <- (get_prop_meaning pred b vars) ;
+          success (A ∧3 B)
+
+        (* [forall_quoted_formulas f] *)
         | f_apl (f_atm atom_forall_quoted_formulas) f =>
           ? Fx <- (get_prop_meaning pred
               [(embed_formula (λ a, onemore_old a) f)
                   (f_ext onemore_new)]
-                  (one_more_revar quotvars)
-                  (embed_revars propvars)) ; 
-            success (λ qv_meanings pv_meanings,
-              (λ infs, ∀ x : StandardFormula,
-                 Fx
-                 (one_more_revar_meaning qv_meanings x)
-                 (embed_revar_meanings pv_meanings)
-                 (* (unreify_onemore2 (one_more_var_meaning
-                    (unreify_vars quotvars) qv_meanings x))
-                (unreify_embed2 (embed_var_meanings
-                    (unreify_vars propvars) pv_meanings)) *)
-                infs
-                ))
+                  (one_more_revar vars)) ; 
+            success (
+              λ JExt (qv_meanings : (revar_meanings2 vars (@Formula JExt))) infs,
+                ∀ (x : @Formula JExt),
+                  Fx JExt (one_more_revar_meaning2 qv_meanings x) infs
+                )
         | _ => error _ ("not a proposition:", f)
       end
     end
@@ -801,7 +784,7 @@ Fixpoint get_prop_meaning (n:nat) [Ext]
 
 
 
-Definition get_MeansProp (n:nat) [Ext]
+(* Definition get_MeansProp (n:nat) [Ext]
   (f : @Formula Ext)
   (quotvars : Ext -> bool)
   (propvars : Ext -> bool)
@@ -947,9 +930,9 @@ Definition get_MeansProp (n:nat) [Ext]
     apply exist with (A ∪2 B).
     apply mi_and; assumption.
   }
-Defined.
+Defined. *)
 
-Eval lazy in 2 + 2.
+(* Eval lazy in 2 + 2.
 Eval lazy in get_MeansProp (Ext := False) 0 [[f_quote f_quote] -> [f_quote f_quote]] 
   (λ _, false) (λ _, false)
   .
@@ -958,7 +941,7 @@ Lemma uhh : False.
   (λ _, false) (λ _, false)) as x.
   cbn in x.
   unfold get_MeansProp in x.
-Qed.
+Qed. *)
 
 Fixpoint NMoreAtoms [Ext] n :=
   match n with
@@ -1060,26 +1043,31 @@ Eval lazy in foo.
 Eval cbv beta iota delta -[f_id const fuse] in foo. *)
 
 Definition no_vars (e:False) := false.
-Definition no_meanings R (e:False) : (true = false) -> R.
-  intro. dependent destruction H.
+Definition no_meanings R
+ : revar_meanings2 no_vars R.
+  unfold revar_meanings2, unreify_vars.
+  intros. dependent destruction H.
 Defined.
+
+(* Definition no_meanings R (e:False) : (true = false) -> R.
+  intro. dependent destruction H.
+Defined. *)
 
 Definition with_no_meanings
   f
-  (g : GetResult (MiSearchResult
-    (unreify_vars no_vars) (unreify_vars no_vars) f)) :
-  GetResult Rule :=
+  (g : GetResult (MiSearchResult no_vars f)) :
+  GetResult (Rule StandardFormula) :=
   ? g <- g ;
-  success (g
-        (no_meanings StandardFormula) (no_meanings Rule)).
+  success (λ J e infs, g
+        (no_meanings StandardFormula)).
 
 Definition test0 : StandardFormula :=
   [[f_quote const] -> [f_quote const]].
-Eval compute in (with_no_meanings (get_prop_meaning 90 test0 no_vars no_vars)).
+Eval compute in (with_no_meanings (get_prop_meaning 90 test0 no_vars)).
 
 Definition test05 : StandardFormula :=
   [∀a:P, a].
-Eval compute in (with_no_meanings (get_prop_meaning 90 test05 no_vars no_vars)).
+Eval compute in (with_no_meanings (get_prop_meaning 90 test05 no_vars)).
 
 Lemma uhh2 :
   success (λ p c, ∃ X : Rule, X p c)
@@ -1109,7 +1097,7 @@ Fixpoint embed_nmore n [Ext] (f : @Formula Ext)
 Notation "f @ n" := (embed_nmore n f) (at level 0).
 
 Definition simple_get_prop_meaning n f :=
-  (with_no_meanings (get_prop_meaning n f no_vars no_vars)).
+  (with_no_meanings (get_prop_meaning n f no_vars)).
 
 (* Definition test1 : StandardFormula :=
   (eliminate_abstraction (f_with_variable (λ a, [a -> a]))). *)
