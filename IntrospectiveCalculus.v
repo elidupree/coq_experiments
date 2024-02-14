@@ -8,6 +8,150 @@ Require Import Coq.Program.Equality.
 Require Import Ascii String.
 Open Scope string_scope.
 
+Class FunctionConstructors F := {
+    const : F
+  ; fuse : F
+  ; f_apl : F -> F -> F
+  }.
+
+(* Definition const {F} {fc : FunctionConstructors F} : F :=
+  fc_const fc.
+Definition fuse {F} {fc : FunctionConstructors F} : F :=
+  fc_fuse fc.
+Definition f_apl [F] [fc : FunctionConstructors F]
+  : F -> F -> F := fc_apply fc. *)
+
+Notation "[ x y .. z ]" := (f_apl .. (f_apl x y) .. z)
+ (at level 0, x at next level, y at next level).
+
+Inductive UnfoldStep {F} `{FunctionConstructors F} : F -> F -> Prop :=
+  | unfold_const a b : UnfoldStep [const a b] a
+  | unfold_fuse a b c : UnfoldStep [fuse a b c] [[a c] [b c]]
+  | unfold_in_lhs a b c : UnfoldStep a b -> UnfoldStep [a c] [b c].
+
+Definition UnfoldStepI
+  (a b : ∀ {F} `{FunctionConstructors F}, F)
+  : Prop :=
+  ∀ F `(FunctionConstructors F), UnfoldStep a b.
+
+Class PropositionConstructors F `{FunctionConstructors F} := {
+    f_implies : F -> F -> F
+  ; f_and : F -> F -> F
+  ; f_forall_quoted_formulas : F -> F
+  }.
+
+Notation "[ x -> y ]" := (f_implies x y) (at level 0, x at next level, y at next level).
+Notation "[ x & y ]" := (f_and x y)
+  (at level 0, x at next level, y at next level).
+Notation "[ ⋀ x ]" := (f_forall_quoted_formulas x)
+  (at level 0, x at next level).
+
+Notation "R ∧1 S" := (λ x, R x ∧ S x) (at level 70).
+Notation "R ⊆ S" := (∀ x, R x -> S x) (at level 70).
+(* Definition Construction Constructors := ∀ {T} `{Constructors T}, T. *)
+
+Definition InfSet F := F -> F -> Prop.
+
+(* Parameter make_T : ∀ {P} {T} `{P T}, T.
+Definition use_make_T {P} {T} `{P T} : T := make_T.
+
+Parameter P : Type -> Type.
+Existing Class P.
+Parameter make_T : ∀ {T} `{P T}, T.
+Definition use_make_T {T} `{P T} : T := make_T.
+Existing Class VExt. *)
+
+Definition OneMoreConstructor Constrs F := prod (Constrs F) F.
+
+Definition MQT VExt TCons :=
+  ∀ V T `(PropositionConstructors V)
+        `(VExt V) `(TCons T), V -> T -> Prop.
+
+Definition MQCT VExt TCons :=
+  ∀ VExt2 TCons2,
+    (VExt2 ⊆ VExt) ->
+    (TCons2 ⊆ TCons) ->
+        MQT VExt2 TCons2 -> Prop.
+
+Definition OneMoreQuotvar VC TC
+  (MQC : MQCT VC TC)
+  : MQCT (OneMoreConstructor VC) (OneMoreConstructor TC)
+  :=
+  λ
+  oVC2 oTC2 (eoV : oVC2 ⊆ (OneMoreConstructor VC)) eoT
+  (MQ : MQT oVC2 oTC2),
+    (@MQC oVC2 oTC2
+      (λ _ o, fst (eoV _ o)) (λ _ o, fst (eoT _ o)) MQ) ∧
+    (∀ V T `(PropositionConstructors V)
+      `(oVC2 V) `(oTC2 T),
+
+      MQ _ _ _ _ oVC3 oTC3
+        (snd (eoV _ oVC3)) 
+        (snd (eoT _ oTC3)))
+  .
+
+Inductive MeansProp {VExt} {TCons} {MQCons : MQCT VExt TCons}
+  : (∀ {V} `{PropositionConstructors V} `{VExt V}, V) ->
+    (∀ {T} `{TCons T}, (InfSet T -> Prop)) ->
+    Prop :=
+  | mi_implies
+      (qp qc : ∀ {V} `{PropositionConstructors V} `{VExt V}, V)
+      (p c : ∀ {T} `{TCons T}, T)
+      :
+      (∀ V T MQ `{PropositionConstructors V}
+        `{VExt V} `{TCons T}
+        `{@MQCons VExt TCons (λ _ b, b) (λ _ b, b) MQ},
+        MQ _ _ _ _ VExt0 TCons0 (qp (VExt0 := VExt0)) (p (TCons0 := TCons0))) ->
+      (∀ V T MQ `{PropositionConstructors V}
+        `{VExt V} `{TCons T}
+        `{@MQCons VExt TCons (λ _ b, b) (λ _ b, b) MQ},
+        MQ _ _ _ _ VExt0 TCons0 (qc (VExt0 := VExt0)) (c (TCons0 := TCons0))) ->
+      MeansProp (VExt := VExt) (TCons := TCons) (λ V
+        `(PropositionConstructors V) VExt0,
+        [(qp (VExt0 := VExt0)) -> (qc (VExt0 := VExt0))])
+        (λ T TCons0 infs,
+          infs (p (TCons0 := TCons0)) (c (TCons0 := TCons0)))
+  | mi_unfold
+      (a b : (∀ {V} `{PropositionConstructors V} `{VExt V}, V))
+      B :
+      (∀ {V} `{PropositionConstructors V} `{VExt V},
+        UnfoldStep (a(VExt0 := VExt0)) (b(VExt0 := VExt0))) ->
+      MeansProp (VExt := VExt) (TCons := TCons) (@b) B ->
+      MeansProp (VExt := VExt) (TCons := TCons) (@a) B
+  | mi_and
+      (a b : (∀ {V} `{PropositionConstructors V} `{VExt V}, V))
+      (A B : (∀ {T} `{TCons T}, (InfSet T -> Prop))) :
+      MeansProp (VExt := VExt) (TCons := TCons) (@a) (@A) ->
+      MeansProp (VExt := VExt) (TCons := TCons) (@b) (@B) ->
+      MeansProp (VExt := VExt) (TCons := TCons) (λ V
+          `(PropositionConstructors V) VExt0,
+          [(a(VExt0 := VExt0)) & (b(VExt0 := VExt0))])
+        (λ T TCons0 infs,
+          A(TCons0 := TCons0) infs ∧ B(TCons0 := TCons0) infs)
+   | mi_forall_quoted_formulas
+      (f : (∀ {V} `{PropositionConstructors V} `{VExt V}, V))
+      (F : (∀ {T} `{TCons T}, T -> (InfSet T -> Prop)))
+      :
+      (
+          MeansProp
+            (VExt := OneMoreConstructor VExt)
+            (TCons := OneMoreConstructor TCons)
+            (MQCons := @OneMoreQuotvar VExt TCons MQCons)
+            (λ V
+                `(PropositionConstructors V) VExt0,
+                [(f(VExt0 := fst VExt0)) (snd VExt0)])
+            (λ T TCons0 infs,
+                F(TCons0 := fst TCons0) (snd TCons0) infs)) ->
+    MeansProp (VExt := VExt) (TCons := TCons)
+      (λ V
+          `(PropositionConstructors V) VExt0,
+          [⋀ (f(VExt0 := VExt0))])
+      (λ T TCons0 infs,
+          ∀x, F(TCons0 := TCons0) x infs)
+  .
+
+
+
 (* Parameter Ext : Set. *)
 Inductive Atom :=
   | atom_const
