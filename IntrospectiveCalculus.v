@@ -8,6 +8,11 @@ Require Import Coq.Program.Equality.
 Require Import Ascii String.
 Open Scope string_scope.
 
+
+(****************************************************
+   Relations between internal and external meaning
+****************************************************)
+
 Class FunctionConstructors F := {
     const : F
   ; fuse : F
@@ -29,11 +34,6 @@ Inductive UnfoldStep {F} `{FunctionConstructors F} : F -> F -> Prop :=
   | unfold_fuse a b c : UnfoldStep [fuse a b c] [[a c] [b c]]
   | unfold_in_lhs a b c : UnfoldStep a b -> UnfoldStep [a c] [b c].
 
-Definition UnfoldStepI
-  (a b : ∀ {F} `{FunctionConstructors F}, F)
-  : Prop :=
-  ∀ F `(FunctionConstructors F), UnfoldStep a b.
-
 Class PropositionConstructors F `{FunctionConstructors F} := {
     f_implies : F -> F -> F
   ; f_and : F -> F -> F
@@ -47,6 +47,7 @@ Notation "[ ⋀ x ]" := (f_forall_quoted_formulas x)
   (at level 0, x at next level).
 
 Notation "R ∧1 S" := (λ x, R x ∧ S x) (at level 70).
+Notation "R ∧3 S" := (λ x y z, R x y z ∧ S x y z) (at level 70).
 Notation "R ⊆ S" := (∀ x, R x -> S x) (at level 70).
 (* Definition Construction Constructors := ∀ {T} `{Constructors T}, T. *)
 
@@ -89,6 +90,11 @@ Definition OneMoreQuotvar VC TC
         (snd (eoV _ oVC3)) 
         (snd (eoT _ oTC3)))
   .
+
+Definition Vi VExt := ∀ {V} `{PropositionConstructors V} `{VExt V}, V.
+Definition MeansQuoted VExt TCons (MQCons : MQCT VExt TCons).
+
+Print Vi.
 
 Inductive MeansProp {VExt} {TCons} {MQCons : MQCT VExt TCons}
   : (∀ {V} `{PropositionConstructors V} `{VExt V}, V) ->
@@ -152,22 +158,253 @@ Inductive MeansProp {VExt} {TCons} {MQCons : MQCT VExt TCons}
 
 
 
-(* Parameter Ext : Set. *)
+
+(****************************************************
+       Definitions of concrete formula types
+****************************************************)
+
 Inductive Atom :=
   | atom_const
   | atom_fuse
   | atom_implies
   | atom_and
-  | atom_forall_valid_propositions
   | atom_forall_quoted_formulas
   | atom_quote
-  (* | atom_extra : Ext -> Atom *)
   .
 
 Inductive Formula {Ext} :=
   | f_atm : Atom -> Formula
   | f_ext : Ext -> Formula
-  | f_apl : Formula -> Formula -> Formula.
+  | fo_apl : Formula -> Formula -> Formula.
+
+Definition StandardFormula := @Formula False.
+
+Instance f_fn {Ext} : FunctionConstructors (@Formula Ext) := {
+    const := f_atm atom_const
+  ; fuse := f_atm atom_fuse
+  ; f_apl := fo_apl
+  }.
+
+Instance f_prop {Ext} : PropositionConstructors (F:=@Formula Ext) := {
+    f_implies := λ p c, [(f_atm atom_implies) p c]
+  ; f_and := λ a b, [(f_atm atom_and) a b]
+  ; f_forall_quoted_formulas := λ p, [(f_atm atom_forall_quoted_formulas) p]
+  }.
+
+Definition f_quote {Ext} := @f_atm Ext atom_quote.
+Definition f_qaply {Ext} f x : @Formula Ext := [f_quote f x].
+
+Fixpoint embed_formula
+  Ext1 Ext2 (embed : Ext1 -> Ext2)
+  (f : (@Formula Ext1)) : (@Formula Ext2)
+  := match f with
+    | f_atm a => f_atm a
+    | f_ext a => f_ext (embed a)
+    | fo_apl a b => [(embed_formula embed a) (embed_formula embed b)]
+    end.
+
+Inductive UnfoldsToKind [Ext] [T]
+    (kind : (@Formula Ext) -> T -> Prop) :
+    (@Formula Ext) -> T -> Prop :=
+  | utk_done f t : kind f t -> UnfoldsToKind kind f t
+  | utk_step a b t :
+      UnfoldStep a b ->
+      UnfoldsToKind kind b t ->
+      UnfoldsToKind kind a t.
+
+Inductive IsAtom [Ext]
+    : (@Formula Ext) -> Atom -> Prop :=
+  | is_atom a : IsAtom (f_atm a) a.
+
+Inductive MeansQuoted [Ext]
+    (* (Ext -> StandardFormula -> Prop) *)
+    : (@Formula Ext) -> StandardFormula -> Prop :=
+  | quoted_atom f a :
+    UnfoldsToKind (@IsAtom Ext) f a ->
+    MeansQuoted [f_quote f] (f_atm a)
+  | quoted_apply qa a qb b :
+    UnfoldsToKind (@MeansQuoted Ext) qa a ->
+    UnfoldsToKind (@MeansQuoted Ext) qb b ->
+    MeansQuoted [f_quote qa qb] [a b].
+
+
+(****************************************************
+      Search for meanings of reified formulas
+****************************************************)
+
+Inductive GetResult t :=
+  | success : t -> GetResult t
+  | timed_out : GetResult t
+  | error T : T -> GetResult t.
+
+Notation "? x <- m1 ; m2" :=
+  (match m1 with
+    | success x => m2
+    | timed_out => timed_out _
+    | error T s => error _ s
+    end) (right associativity, at level 70, x pattern).
+
+
+Fixpoint unfold_step_result [Ext] f : option (@Formula Ext) :=
+  match f with
+    (* Atoms never unfold *)
+    | f_atm _ => None
+    | f_ext _ => None
+    (* Unfold in the LHS until you're done... *)
+    | fo_apl f x => match unfold_step_result f with
+      | Some g => Some [g x]
+      (* Then if you're done with the LHS, check its form... *)
+      | None => match f with
+        | fo_apl (f_atm atom_const) a =>
+            Some a
+        | fo_apl (fo_apl (f_atm atom_fuse) a) b =>
+            Some [[a x] [b x]]
+        | _ => None
+        end
+      end
+    end.
+Fixpoint unfold_step [Ext] f : option {g : (@Formula Ext) | UnfoldStep f g} :=
+  match f with
+    (* Atoms never unfold *)
+    | f_atm _ => None
+    | f_ext _ => None
+    (* Unfold in the LHS until you're done... *)
+    | fo_apl f x => match unfold_step f with
+      | Some (exist g u) => Some (exist _ [g x] (unfold_in_lhs x u)) 
+      (* Then if you're done with the LHS, check its form... *)
+      | None => match f with
+        | fo_apl (f_atm atom_const) a =>
+            Some (exist _ a (unfold_const a x))
+        | fo_apl (fo_apl (f_atm atom_fuse) a) b =>
+            Some (exist _ [[a x] [b x]] (unfold_fuse a b x))
+        | _ => None
+        end
+      end
+    end.
+
+
+Definition unreify_vars [Ext]
+  (vars : Ext -> bool)
+  : Ext -> Prop :=
+  λ e, true = (vars e).
+
+Definition QfResult [Ext] (quotvars : Ext -> bool) :=
+  (∀ JExt (qv_meanings : 
+    (∀ e, (unreify_vars quotvars) e -> @Formula JExt)),
+    @Formula JExt).
+
+Fixpoint get_quoted_formula [Ext]
+  (quotvars : Ext -> bool) n qf
+  : GetResult (QfResult quotvars) :=
+  match n with 0 => timed_out _ | S pred =>
+    match unfold_step_result (Ext:=Ext) qf with
+      | Some qg => get_quoted_formula quotvars pred qg
+      | None => match qf with
+          | fo_apl (f_atm atom_quote) (f_atm a) =>
+              success (λ _ _, (f_atm a))
+          | fo_apl (fo_apl (f_atm atom_quote) qa) qb =>
+            ? a <- get_quoted_formula quotvars pred qa ; 
+            ? b <- get_quoted_formula quotvars pred qb ;
+            success (λ JExt qv_meanings, [(a JExt qv_meanings) (b JExt qv_meanings)])
+          | f_ext e => match quotvars e as qe
+            return qe = quotvars e -> GetResult (QfResult quotvars) with
+            | true => λ eq, success (λ JExt qv_meanings, qv_meanings e eq)
+            | false => λ _, error _ ("non-variable extension in quote", e, quotvars e)
+            end eq_refl
+          | _ => error _ ("not a quoted formula:", qf)
+          end
+      end
+  end.
+
+Inductive OneMoreAtom {OldExt} :=
+  | onemore_old : OldExt -> OneMoreAtom
+  | onemore_new : OneMoreAtom.
+
+Definition one_more_revar
+    [OldExt]
+    (vars : OldExt -> bool)
+    : (@OneMoreAtom OldExt) -> bool :=
+  λ a, match a with
+    | onemore_old a => vars a
+    | onemore_new => true 
+    end.
+
+Definition revar_meanings [OldExt] (vars : OldExt -> bool) J :=
+  ∀ v, (unreify_vars vars v) -> J.
+Definition one_more_revar_meaning
+    [OldExt] J
+    (vars : OldExt -> bool)
+    (meanings : revar_meanings vars J)
+    (new_meaning : J)
+    : revar_meanings (one_more_revar vars) J :=
+  λ v, match v return
+      (unreify_vars (one_more_revar vars) v)
+        -> J with
+    | onemore_old a => λ ve, meanings a ve
+    | onemore_new => λ _, new_meaning
+    end.
+
+Definition MiSearchResult [Ext]
+    (vars : Ext -> bool)
+    (f : @Formula Ext) : Type :=
+    ∀ JExt (qv_meanings :
+        revar_meanings vars (@Formula JExt)),
+      (* Rule StandardFormula. *)
+      InfSet (@Formula JExt) -> Prop.
+
+Fixpoint get_prop_meaning (n:nat) [Ext]
+  (f : @Formula Ext)
+  (vars : Ext -> bool)
+  : GetResult (MiSearchResult vars f) :=
+  match n with 0 => timed_out _ | S pred =>
+    match unfold_step_result f with
+      | Some g => get_prop_meaning pred g vars
+      | None => match f with
+        (* [qp -> qc] *)
+        | fo_apl (fo_apl (f_atm atom_implies) qp) qc =>
+          ? p <- (get_quoted_formula vars pred qp) ;
+          ? c <- (get_quoted_formula vars pred qc) ;
+          success (λ JExt qv_meanings infs,
+            (infs (p JExt qv_meanings) (c JExt qv_meanings)))
+        
+        (* [a & b] *)
+        | fo_apl (fo_apl (f_atm atom_and) a) b =>
+          ? A <- (get_prop_meaning pred a vars) ;
+          ? B <- (get_prop_meaning pred b vars) ;
+          success (A ∧3 B)
+
+        (* [forall_quoted_formulas f] *)
+        | fo_apl (f_atm atom_forall_quoted_formulas) f =>
+          ? Fx <- (get_prop_meaning pred
+              [(embed_formula (λ a, onemore_old a) f)
+                  (f_ext onemore_new)]
+                  (one_more_revar vars)) ; 
+            success (
+              λ JExt (qv_meanings : (revar_meanings vars (@Formula JExt))) infs,
+                ∀ (x : @Formula JExt),
+                  Fx JExt (one_more_revar_meaning qv_meanings x) infs
+                )
+        | _ => error _ ("not a proposition:", f)
+      end
+    end
+  end.
+
+
+
+
+(****************************************************
+
+
+
+
+
+                  Obsolete code
+
+
+
+
+
+****************************************************)
 
 Notation "[ x y .. z ]" := (f_apl .. (f_apl x y) .. z)
  (at level 0, x at next level, y at next level).
@@ -233,29 +470,7 @@ Inductive UnfoldStep [Ext] : (@Formula Ext) -> (@Formula Ext) -> Prop :=
   | unfold_in_lhs a b c : UnfoldStep a b -> UnfoldStep [a c] [b c].
 (* 
 Definition QuotedJudgment qf := StandardFormula -> Prop *)
-Inductive UnfoldsToKind [Ext] [T]
-    (kind : (@Formula Ext) -> T -> Prop) :
-    (@Formula Ext) -> T -> Prop :=
-  | utk_done f t : kind f t -> UnfoldsToKind kind f t
-  | utk_step a b t :
-      UnfoldStep a b ->
-      UnfoldsToKind kind b t ->
-      UnfoldsToKind kind a t.
 
-Inductive IsAtom [Ext]
-    : (@Formula Ext) -> Atom -> Prop :=
-  | is_atom a : IsAtom (f_atm a) a.
-
-Inductive MeansQuoted [Ext]
-    (* (Ext -> StandardFormula -> Prop) *)
-    : (@Formula Ext) -> StandardFormula -> Prop :=
-  | quoted_atom f a :
-    UnfoldsToKind (@IsAtom Ext) f a ->
-    MeansQuoted [f_quote f] (f_atm a)
-  | quoted_apply qa a qb b :
-    UnfoldsToKind (@MeansQuoted Ext) qa a ->
-    UnfoldsToKind (@MeansQuoted Ext) qb b ->
-    MeansQuoted [f_quote qa qb] [a b].
 
 Fixpoint embed_formula
   Ext1 Ext2 (embed : Ext1 -> Ext2)
@@ -343,58 +558,11 @@ Fixpoint KnownInferences n : InfSet StandardFormula :=
 
 
 
-Fixpoint unfold_step_result [Ext] f : option (@Formula Ext) :=
-  match f with
-    (* Atoms never unfold *)
-    | f_atm _ => None
-    | f_ext _ => None
-    (* Unfold in the LHS until you're done... *)
-    | f_apl f x => match unfold_step_result f with
-      | Some g => Some [g x]
-      (* Then if you're done with the LHS, check its form... *)
-      | None => match f with
-        | f_apl (f_atm atom_const) a =>
-            Some a
-        | f_apl (f_apl (f_atm atom_fuse) a) b =>
-            Some [[a x] [b x]]
-        | _ => None
-        end
-      end
-    end.
-Fixpoint unfold_step [Ext] f : option {g : (@Formula Ext) | UnfoldStep f g} :=
-  match f with
-    (* Atoms never unfold *)
-    | f_atm _ => None
-    | f_ext _ => None
-    (* Unfold in the LHS until you're done... *)
-    | f_apl f x => match unfold_step f with
-      | Some (exist g u) => Some (exist _ [g x] (unfold_in_lhs x u)) 
-      (* Then if you're done with the LHS, check its form... *)
-      | None => match f with
-        | f_apl (f_atm atom_const) a =>
-            Some (exist _ a (unfold_const a x))
-        | f_apl (f_apl (f_atm atom_fuse) a) b =>
-            Some (exist _ [[a x] [b x]] (unfold_fuse a b x))
-        | _ => None
-        end
-      end
-    end.
   
 
 
 
 
-Inductive GetResult t :=
-  | success : t -> GetResult t
-  | timed_out : GetResult t
-  | error T : T -> GetResult t.
-
-Notation "? x <- m1 ; m2" :=
-  (match m1 with
-    | success x => m2
-    | timed_out => timed_out _
-    | error T s => error _ s
-    end) (right associativity, at level 70, x pattern).
 
 (* Fixpoint unfold_until (t : Type) n
   (body : (Formula -> GetResult t) -> Formula -> GetResult t)
@@ -419,7 +587,7 @@ Fixpoint embed_onemore OldExt
   (f : @Formula OldExt)
   : @Formula (@OneMoreAtom OldExt) :=
   match f with
-    | f_apl a b => [(embed_onemore a) (embed_onemore b)] 
+    | fo_apl a b => [(embed_onemore a) (embed_onemore b)] 
     | f_atm a => f_atm a
     | f_ext a => f_ext (onemore_old a)
     end.
@@ -430,7 +598,7 @@ Fixpoint specialize_onemore OldExt
   (x : @Formula OldExt)
   : @Formula OldExt :=
   match f with
-    | f_apl a b => [(specialize_onemore a x) (specialize_onemore b x)] 
+    | fo_apl a b => [(specialize_onemore a x) (specialize_onemore b x)] 
     | f_atm a => f_atm a
     | f_ext a => match a with
         | onemore_old a => f_ext a
@@ -727,10 +895,6 @@ Qed. *)
 Qed. *)
 
 
-Definition unreify_vars [Ext]
-  (vars : Ext -> bool)
-  : Ext -> Prop :=
-  λ e, true = (vars e).
 
 Definition one_more_revar
     [OldExt]
@@ -795,33 +959,6 @@ Definition one_more_revar_meaning2
     end.
 
 
-Definition QfResult [Ext] (quotvars : Ext -> bool) :=
-  (∀ JExt (qv_meanings : 
-    (∀ e, (unreify_vars quotvars) e -> @Formula JExt)),
-    @Formula JExt).
-
-Fixpoint get_quoted_formula [Ext]
-  (quotvars : Ext -> bool) n qf
-  : GetResult (QfResult quotvars) :=
-  match n with 0 => timed_out _ | S pred =>
-    match unfold_step_result (Ext:=Ext) qf with
-      | Some qg => get_quoted_formula quotvars pred qg
-      | None => match qf with
-          | f_apl (f_atm atom_quote) (f_atm a) =>
-              success (λ _ _, (f_atm a))
-          | f_apl (f_apl (f_atm atom_quote) qa) qb =>
-            ? a <- get_quoted_formula quotvars pred qa ; 
-            ? b <- get_quoted_formula quotvars pred qb ;
-            success (λ JExt qv_meanings, [(a JExt qv_meanings) (b JExt qv_meanings)])
-          | f_ext e => match quotvars e as qe
-            return qe = quotvars e -> GetResult (QfResult quotvars) with
-            | true => λ eq, success (λ JExt qv_meanings, qv_meanings e eq)
-            | false => λ _, error _ ("non-variable extension in quote", e, quotvars e)
-            end eq_refl
-          | _ => error _ ("not a quoted formula:", qf)
-          end
-      end
-  end.
 
 (* Fixpoint get_MeansQuoted [Ext] n qf
   : GetResult {f : StandardFormula | MeansQuoted qf f} :=
@@ -879,50 +1016,6 @@ Fixpoint msr_specialize [Ext]
 
 Fixpoint msr_finish (r : MPSearchResult vars) : Rule.
 
-Definition MiSearchResult [Ext]
-    (vars : Ext -> bool)
-    (f : @Formula Ext) : Type :=
-    ∀ JExt (qv_meanings :
-        revar_meanings2 vars (@Formula JExt)),
-      (* Rule StandardFormula. *)
-      InfSet (@Formula JExt) -> Prop.
-
-Fixpoint get_prop_meaning (n:nat) [Ext]
-  (f : @Formula Ext)
-  (vars : Ext -> bool)
-  : GetResult (MiSearchResult vars f) :=
-  match n with 0 => timed_out _ | S pred =>
-    match unfold_step_result f with
-      | Some g => get_prop_meaning pred g vars
-      | None => match f with
-        (* [qp -> qc] *)
-        | f_apl (f_apl (f_atm atom_implies) qp) qc =>
-          ? p <- (get_quoted_formula vars pred qp) ;
-          ? c <- (get_quoted_formula vars pred qc) ;
-          success (λ JExt qv_meanings infs,
-            (infs (p JExt qv_meanings) (c JExt qv_meanings)))
-        
-        (* [a & b] *)
-        | f_apl (f_apl (f_atm atom_and) a) b =>
-          ? A <- (get_prop_meaning pred a vars) ;
-          ? B <- (get_prop_meaning pred b vars) ;
-          success (A ∧3 B)
-
-        (* [forall_quoted_formulas f] *)
-        | f_apl (f_atm atom_forall_quoted_formulas) f =>
-          ? Fx <- (get_prop_meaning pred
-              [(embed_formula (λ a, onemore_old a) f)
-                  (f_ext onemore_new)]
-                  (one_more_revar vars)) ; 
-            success (
-              λ JExt (qv_meanings : (revar_meanings2 vars (@Formula JExt))) infs,
-                ∀ (x : @Formula JExt),
-                  Fx JExt (one_more_revar_meaning2 qv_meanings x) infs
-                )
-        | _ => error _ ("not a proposition:", f)
-      end
-    end
-  end.
 
   
 
