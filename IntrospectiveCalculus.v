@@ -55,6 +55,7 @@ Notation "[ ⋀ x ]" := (f_forall_quoted_formulas x)
   (at level 0, x at next level).
 
 Notation "R ∧1 S" := (λ x, R x ∧ S x) (at level 70).
+Notation "R ×1 S" := (λ x, prod (R x) (S x)) (at level 70).
 Notation "R ∧3 S" := (λ x y z, R x y z ∧ S x y z) (at level 70).
 Notation "R ⊆ S" := (∀ x, R x -> S x) (at level 70).
 (* Definition Construction Constructors := ∀ {T} `{Constructors T}, T. *)
@@ -72,18 +73,38 @@ Existing Class VExt. *)
 
 Definition OneMoreConstructor Constrs F := prod (Constrs F) F.
 
-Definition VClass := Type.
+(* Definition VClass := Type.
 Existing Class VClass.
 Definition TClass := Type.
+Existing Class TClass. *)
+
+Notation "∀ '∀:P×' Ext T , body" :=
+  (∀ (∀ T `{(PropositionConstructors ×1 Ext) T}, body)
+  (at level 200, Ext at next level, T binder, right associativity)
+  : type_scope.
+
+(* Definition VClass := Type.
+Existing Class VClass. *)
+Definition VConsClass := Type -> Type.
+Existing Class VConsClass.
+Definition TConsClass := Type -> Type.
+Existing Class TConsClass.
+Definition VClass (VC:VConsClass) := VC.
+Existing Class VClass.
+Definition TClass (TC:TConsClass) := TC.
 Existing Class TClass.
 
 Definition MQT VC TC :=
-  ∀ V T `(VC V) `(TC T), V -> T -> Prop.
+  ∀ V T (_:VClass VC V) (_:TClass TC T), V -> T -> Prop.
 
-Notation "'fr' ( MQ '::' 'MQT' VC ; TC ) , body" := 
-  (∀ MQ : (∀ {V} {T} {cv:Class VC V} {ct:Class TC T}, V -> T -> Prop),
+(* Definition TheTC TC : TConsClass := TC.
+Definition TheVC VC : VConsClass := VC. *)
+
+
+Notation "'fr' ( MQ '::' 'MQT' ) , body" := 
+  (∀ MQ : (∀ {V} {T} {cv:VClass _ V} {ct:TClass _ T}, V -> T -> Prop),
     body)
-  (at level 50, MQ at next level, VC at next level, TC at next level,
+  (at level 50, MQ at next level,
     body at next level).
 (* Notation "'gfh' (  ':fg:' 'MdQT' VC TC ) body" := 
   (∀ MQ : (∀ V T {cv:Class VC V} {ct:Class TC T}, V -> T -> Prop),
@@ -125,27 +146,40 @@ Definition MeansQuoted VExt TCons (MQCons : MQCT VExt TCons).
 
 Print Vi.
 
-Inductive MeansProp {VExt} {TCons} {MQCons : MQCT (λ V, prod (PropositionConstructors V) (VExt V)) TCons}
-  : (∀ {V} `{PropositionConstructors V} `{Class VExt V}, V) ->
-    (∀ {T} `{Class TCons T}, (InfSet T -> Prop)) ->
+Notation "'P×' Ext" :=
+  (VClass (PropositionConstructors ×1 Ext))
+  (at level 0).
+
+Notation "'λ:P×' T , body" :=
+  (λ T (c : VClass (PropositionConstructors ×1 _) T),
+    let _ : PropositionConstructors T
+          := fst c in body)
+  (at level 200, T binder, right associativity).
+
+Inductive MeansProp {VExt} {TCons:TConsClass}
+  {MQCons : MQCT (P×VExt) TCons}
+  : (∀ {V} {_:P×VExt V}, V) ->
+    (∀ {T} {_:TClass TCons T}, (InfSet T -> Prop)) ->
     Prop :=
   | mi_implies
-      (qp qc : ∀ {V} `{PropositionConstructors V} `{Class VExt V}, V)
-      (p c : ∀ {T} `{Class TCons T}, T)
+      (qp qc : ∀ {V} {_:P×VExt V}, V)
+      (p c : ∀ {T} {_:TClass TCons T}, T)
       :
-      let VC := (λ V, prod (PropositionConstructors V) (VExt V)) in
-      (∀ V T `{PropositionConstructors V} `{PropositionConstructors T} `{Class VExt V} `{Class TCons T},
-        let _ : Class VC V := (_, use_class _) in
-        fr (MQ :: MQT VC ; TCons), (∀
+      (* let VC := (PropositionConstructors ×1 VExt) in *)
+      (* let _ : VConsClass := VC in *)
+      (∀ V T {v:P×VExt V} {t:TClass TCons T},
+        let _ : P×VExt V := v in
+        ∀ MQ : (∀ {V} {T} {cv:P×VExt V} {ct:TClass TCons T},
+          V -> T -> Prop), (∀
+        (_:MQCons _ _ (λ _ b, b) (λ _ b, b) (@MQ)),
+        MQ qp p)) ->
+      (* (∀ V T `{P×VExt V} `{Class TCons T},
+        (* let _ : Class VC V := (_, use_class _) in *)
+        fr (MQ :: MQT), (∀
         `(MQCons _ _ (λ _ b, b) (λ _ b, b) MQ),
-        MQ _ _ _ _ qp p)) ->
-      (∀ V T `{PropositionConstructors V} `{PropositionConstructors T} `{Class VExt V} `{Class TCons T},
-        let _ : Class VC V := (_, use_class _) in
-        fr (MQ :: MQT VC ; TCons), (∀
-        `(MQCons _ _ (λ _ b, b) (λ _ b, b) MQ),
-        MQ _ _ _ _ qc c)) ->
+        MQ _ _ _ _ qc c)) -> *)
       MeansProp
-        (λ _ _ _, [qp -> qc])
+        (λ:P× _,  [qp -> qc])
         (λ _ _ infs, infs p c)
   (* | mi_unfold
       (a b : (∀ {V} `{PropositionConstructors V} `{VExt V}, V))
@@ -155,12 +189,12 @@ Inductive MeansProp {VExt} {TCons} {MQCons : MQCT (λ V, prod (PropositionConstr
       MeansProp (VExt := VExt) (TCons := TCons) (@b) B ->
       MeansProp (VExt := VExt) (TCons := TCons) (@a) B *)
   | mi_and
-      (a b : (∀ {V} `{PropositionConstructors V} `{Class VExt V}, V))
-      (A B : (∀ {T} `{Class TCons T}, (InfSet T -> Prop))) :
+      (a b : (∀ {V} `{P×VExt V}, V))
+      (A B : (∀ {T} {_:TClass TCons T}, (InfSet T -> Prop))) :
       MeansProp (@a) (@A) ->
       MeansProp (@b) (@B) ->
       MeansProp
-        (λ _ _ _, [a & b])
+        (λ:P× _, [a & b])
         (λ _ _, A ∧1 B)
    (* | mi_forall_quoted_formulas
       (f : (∀ {V} `{PropositionConstructors V} `{VExt V}, V))
