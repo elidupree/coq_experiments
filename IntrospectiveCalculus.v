@@ -20,11 +20,18 @@ Definition use_class {P T} (c:Class P T) : P T := c.
    Relations between internal and external meaning
 ****************************************************)
 
+Class ApplyConstructor F := {
+    f_apl : F -> F -> F
+  }.
+
 Class FunctionConstructors F := {
     const : F
   ; fuse : F
-  ; f_apl : F -> F -> F
+  ; fc_ac : ApplyConstructor F
   }.
+
+Instance fc_ac_i F {_:FunctionConstructors F} : ApplyConstructor F
+  := fc_ac.
 
 (* Definition const {F} {fc : FunctionConstructors F} : F :=
   fc_const fc.
@@ -47,6 +54,10 @@ Class PropositionConstructors F := {
   ; f_and : F -> F -> F
   ; f_forall_quoted_formulas : F -> F
   }.
+
+Instance pc_fc_i F {_:PropositionConstructors F}
+  : FunctionConstructors F
+  := pc_fc.
 
 Notation "[ x -> y ]" := (f_implies x y) (at level 0, x at next level, y at next level).
 Notation "[ x & y ]" := (f_and x y)
@@ -71,17 +82,20 @@ Parameter make_T : ∀ {T} `{P T}, T.
 Definition use_make_T {T} `{P T} : T := make_T.
 Existing Class VExt. *)
 
-Definition OneMoreConstructor Constrs F := prod (Constrs F) F.
+Class OneMoreConstructor Constrs F := {
+    onemore_embed : Constrs F
+  ; onemore_cons : F
+  }.
 
 (* Definition VClass := Type.
 Existing Class VClass.
 Definition TClass := Type.
 Existing Class TClass. *)
 
-Notation "∀ '∀:P×' Ext T , body" :=
+(* Notation "∀ '∀:P×' Ext T , body" :=
   (∀ (∀ T `{(PropositionConstructors ×1 Ext) T}, body)
   (at level 200, Ext at next level, T binder, right associativity)
-  : type_scope.
+  : type_scope. *)
 
 (* Definition VClass := Type.
 Existing Class VClass. *)
@@ -94,6 +108,34 @@ Existing Class VClass.
 Definition TClass (TC:TConsClass) := TC.
 Existing Class TClass.
 
+(* Instance forgetV V VC (v:VClass VC V) : Class VC V := v.
+Instance forgetT T TC (t:TClass TC T) : Class TC T := t.
+Instance forgetClass_onemore F FC
+  (f:Class (OneMoreConstructor FC) F) :
+  OneMoreConstructor FC F := f. *)
+
+Instance vc_onemore_transpose {V} {VC:VConsClass}
+  {_p:VClass (OneMoreConstructor VC) V}
+  : OneMoreConstructor (VClass VC) V
+  := _p.
+Instance tc_onemore_transpose {T} {TC:TConsClass}
+  {_p:TClass (OneMoreConstructor TC) T}
+  : OneMoreConstructor (TClass TC) T
+  := _p.
+Instance tc_onemore_forget {T} {TC:TConsClass}
+  {_p:TClass (OneMoreConstructor TC) T}
+  : OneMoreConstructor TC T
+  := _p.
+
+Instance vclass_proj_onemore {V} {VC:VConsClass}
+  {_p:VClass (OneMoreConstructor VC) V}
+  : VClass VC V
+  := onemore_embed.
+Instance tclass_proj_onemore {T} {TC:TConsClass}
+  {_p:TClass (OneMoreConstructor TC) T}
+  : TClass TC T
+  := onemore_embed.
+
 Definition MQT {VC:VConsClass} {TC:TConsClass} :=
   ∀ V (_:VClass VC V) T (_:TClass TC T), V -> T -> Prop.
 
@@ -101,11 +143,12 @@ Definition MQT {VC:VConsClass} {TC:TConsClass} :=
 Definition TheVC VC : VConsClass := VC. *)
 
 
-Notation "'fr' ( MQ '::' 'MQT' ) , body" := 
+(* Notation "'fr' ( MQ '::' 'MQT' ) , body" := 
   (∀ MQ : (∀ {V} {T} {cv:VClass _ V} {ct:TClass _ T}, V -> T -> Prop),
     body)
   (at level 50, MQ at next level,
-    body at next level).
+    body at next level). *)
+
 (* Notation "'gfh' (  ':fg:' 'MdQT' VC TC ) body" := 
   (∀ MQ : (∀ V T {cv:Class VC V} {ct:Class TC T}, V -> T -> Prop),
     body)
@@ -128,38 +171,49 @@ Definition OneMoreQuotvar {VC:VConsClass} {TC:TConsClass}
   oVC2 oTC2 (eoV : oVC2 ⊆ (OneMoreConstructor VC)) eoT
   (MQ : @MQT oVC2 oTC2),
     (@MQC oVC2 oTC2
-      (λ _ o, fst (eoV _ o)) (λ _ o, fst (eoT _ o)) MQ) ∧
+      (λ _ o, @onemore_embed _ _ (eoV _ o))
+      (λ _ o, @onemore_embed _ _ (eoT _ o))
+      MQ) ∧
     (∀ V T `(PropositionConstructors V)
       `(oVC2 V) `(oTC2 T),
 
       MQ _ oVC3 _ oTC3
-        (snd (eoV _ oVC3)) 
-        (snd (eoT _ oTC3)))
+        (@onemore_cons _ _ (eoV _ oVC3)) 
+        (@onemore_cons _ _ (eoT _ oTC3)))
   .
 
-Parameter make_T : ∀ {P} {T} `{Class P T}, T.
-Definition use_make_T {P} {T} `{Class P T} : T := make_T.
+(* Parameter make_T : ∀ {P} {T} `{Class P T}, T.
+Definition use_make_T {P} {T} `{Class P T} : T := make_T. *)
 
 
-Definition Vi VExt := ∀ {V} `{PropositionConstructors V} `{VExt V}, V.
-Definition MeansQuoted VExt TCons (MQCons : MQCT VExt TCons).
+(* Definition Vi VExt := ∀ {V} `{PropositionConstructors V} `{VExt V}, V.
+Definition MeansQuoted VExt TCons (MQCons : MQCT VExt TCons). *)
 
-Print Vi.
+(* Print Vi. *)
 
 Notation "'P×' Ext" :=
   (PropositionConstructors ×1 Ext)
   (at level 0).
 
+Instance pcprod_pc_i {V} {VExt} {_p:VClass P×VExt V}
+  : PropositionConstructors V
+  := fst _p.
+
+Instance pcprod_forget_onemore_i {V} {VExt}
+  {_p:VClass P×(OneMoreConstructor VExt) V}
+  : VClass P×VExt V
+  := let (p, ev) := _p in (p, onemore_embed).
+
 Definition VCAssociative {VExt} {V}
-  (_v: P×(OneMoreConstructor VExt) V)
+  (_v: VClass P×(OneMoreConstructor VExt) V)
   : OneMoreConstructor P×VExt V
   :=
         let (a, bc) := _v in
         let (b, c) := bc in
-          ((a, b), c).
+          {| onemore_embed := (a, b) ; onemore_cons := onemore_cons |}.
     
 
-Definition MQCAssociative {VExt} {TC:TConsClass}
+Instance MQCAssociative {VExt} {TC:TConsClass}
   (MQC : @MQCT (OneMoreConstructor P×VExt) (OneMoreConstructor TC))
   : @MQCT P×(OneMoreConstructor VExt) (OneMoreConstructor TC)
   :=
@@ -174,7 +228,7 @@ Definition MQCAssociative {VExt} {TC:TConsClass}
   
 
 
-Notation "∀+ ( arg ':∀:P×' Ext ; T , body ) , rest" :=
+(* Notation "∀+ ( arg ':∀:P×' Ext ; T , body ) , rest" :=
   (∀ arg : (∀ T (c : P×Ext T),
     let _ : PropositionConstructors T := fst c in
     let _ : FunctionConstructors T := pc_fc in
@@ -194,14 +248,12 @@ Notation "( '∀:P×' Ext ; T , body ) -> rest" :=
 
 Notation "( '∀T' T , body ) -> rest" :=
   ((∀ {T} {_:TClass _ T}, body) -> rest)
-  (at level 200, T name, right associativity).
+  (at level 200, T name, right associativity). *)
 
-Notation "'λ:P×' T , body" :=
+(* Notation "'λ:P×' T , body" :=
   (λ T (c : VClass P×_ T),
-    let _ : PropositionConstructors T := fst c in
-    let _ : FunctionConstructors T := pc_fc in
       body)
-  (at level 200, T name, right associativity).
+  (at level 200, T name, right associativity). *)
 
 (* Lemma test {TCons:TConsClass} :  (∀! T, False) -> Prop.
   intro.
@@ -244,12 +296,11 @@ Inductive MeansProp {VExt} {TCons:TConsClass}
       (MeansQuoted (@qp) (@p)) ->
       (MeansQuoted (@qc) (@c)) ->
       MeansProp
-        (λ:P× _,  [qp -> qc])
+        (λ _ _, [qp -> qc])
         (λ _ _ infs, infs p c)
   | mi_unfold
-      (a b : ∀ {V} {_:VClass P×VExt V}, V)
-      B : (∀ {V} {_v:VClass P×VExt V},
-        @UnfoldStep V (@pc_fc V (fst _v)) a b) ->
+      (a b : ∀ {V} {_:VClass P×VExt V}, V) B :
+      (∀ {V} {_v:VClass P×VExt V}, UnfoldStep a b) ->
       MeansProp (@b) (@B) ->
       MeansProp (@a) (@B)
   | mi_and
@@ -258,7 +309,7 @@ Inductive MeansProp {VExt} {TCons:TConsClass}
       MeansProp (@a) (@A) ->
       MeansProp (@b) (@B) ->
       MeansProp
-        (λ:P× _, [a & b])
+        (λ _ _, [a & b])
         (λ _ _, A ∧1 B)
    | mi_forall_quoted_formulas
       (f : ∀ {V} {_:VClass P×VExt V}, V)
@@ -269,15 +320,14 @@ Inductive MeansProp {VExt} {TCons:TConsClass}
             (MQCons := MQCAssociative
               (@OneMoreQuotvar P×VExt TCons MQCons))
             (λ V (_v : VClass P×_ V),
-              let (_p, _e) := _v in
-              let (_e, x) := _e in
-              let _ : FunctionConstructors V := pc_fc in
-                [(@f _ (_p, _e)) x])
+                let (_p, _e) := _v in
+                [f onemore_cons])
             (λ T _t infs,
-                @F _ (fst _t) (snd _t) infs)
+                let _ : OneMoreConstructor TCons T := _ in
+                F onemore_cons infs)
         ) ->
     MeansProp
-        (λ:P× _, [⋀ f])
+        (λ _ _, [⋀ f])
         (λ _ _ infs, (∀x, F x infs))
   .
 
