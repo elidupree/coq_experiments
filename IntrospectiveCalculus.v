@@ -137,7 +137,6 @@ Definition OneMoreQuotvar {VC:VConsClass} {TC:TConsClass}
         (snd (eoT _ oTC3)))
   .
 
-
 Parameter make_T : ∀ {P} {T} `{Class P T}, T.
 Definition use_make_T {P} {T} `{Class P T} : T := make_T.
 
@@ -150,6 +149,30 @@ Print Vi.
 Notation "'P×' Ext" :=
   (PropositionConstructors ×1 Ext)
   (at level 0).
+
+Definition VCAssociative {VExt} {V}
+  (_v: P×(OneMoreConstructor VExt) V)
+  : OneMoreConstructor P×VExt V
+  :=
+        let (a, bc) := _v in
+        let (b, c) := bc in
+          ((a, b), c).
+    
+
+Definition MQCAssociative {VExt} {TC:TConsClass}
+  (MQC : @MQCT (OneMoreConstructor P×VExt) (OneMoreConstructor TC))
+  : @MQCT P×(OneMoreConstructor VExt) (OneMoreConstructor TC)
+  :=
+  λ VC2 TC2 (eV : VC2 ⊆ P×(OneMoreConstructor VExt)) eT
+    (MQ : @MQT VC2 TC2),
+    MQC VC2 TC2
+      (λ V _v,
+        VCAssociative (eV V _v))
+      eT
+      MQ.
+      
+  
+
 
 Notation "∀+ ( arg ':∀:P×' Ext ; T , body ) , rest" :=
   (∀ arg : (∀ T (c : P×Ext T),
@@ -201,16 +224,18 @@ Definition MeansQuoted
     MQCons _ _ (λ _ b, b) (λ _ b, b) (@MQ) ->
     MQ _ _ _ _ qx x.
 
-Parameter adapt : ∀ VExt (qx : ∀ {V} {_:P×VExt V}, V),
+(* Parameter adapt : ∀ VExt (qx : ∀ {V} {_:P×VExt V}, V),
   let VC : VConsClass := P×VExt in
-  ∀ {V} {_vf:VClass VC V}, V.
+  ∀ {V} {_vf:VClass VC V}, V. *)
 
-Parameter cheat : ∀ {A}, A.
+(* Parameter cheat : ∀ {A}, A. *)
+
+(* Definition the T (t:T) := t. *)
 
 Inductive MeansProp {VExt} {TCons:TConsClass}
   {MQCons : @MQCT P×VExt _}
   : (∀ {V} {_:VClass P×VExt V}, V) ->
-    (∀ {T} {_:TClass _ T}, (InfSet T -> Prop)) ->
+    (∀ {T} {_:TClass _ T}, InfSet T -> Prop) ->
     Prop :=
   | mi_implies
       (qp qc : ∀ {V} {_:VClass P×VExt V}, V)
@@ -221,42 +246,39 @@ Inductive MeansProp {VExt} {TCons:TConsClass}
       MeansProp
         (λ:P× _,  [qp -> qc])
         (λ _ _ infs, infs p c)
-  (* | mi_unfold
-      (a b : (∀ {V} `{PropositionConstructors V} `{VExt V}, V))
-      B :
-      (∀ {V} `{PropositionConstructors V} `{VExt V},
-        UnfoldStep (a(VExt0 := VExt0)) (b(VExt0 := VExt0))) ->
-      MeansProp (VExt := VExt) (TCons := TCons) (@b) B ->
-      MeansProp (VExt := VExt) (TCons := TCons) (@a) B *)
+  | mi_unfold
+      (a b : ∀ {V} {_:VClass P×VExt V}, V)
+      B : (∀ {V} {_v:VClass P×VExt V},
+        @UnfoldStep V (@pc_fc V (fst _v)) a b) ->
+      MeansProp (@b) (@B) ->
+      MeansProp (@a) (@B)
   | mi_and
-      (a b : (∀ {V} {_:VClass P×VExt V}, V))
-      (A B : (∀ {T} {_:TClass _ T}, (InfSet T -> Prop))) :
+      (a b : ∀ {V} {_:VClass P×VExt V}, V)
+      (A B : ∀ {T} {_:TClass _ T}, InfSet T -> Prop) :
       MeansProp (@a) (@A) ->
       MeansProp (@b) (@B) ->
       MeansProp
         (λ:P× _, [a & b])
         (λ _ _, A ∧1 B)
-   (* | mi_forall_quoted_formulas
-      (f : (∀ {V} `{PropositionConstructors V} `{VExt V}, V))
-      (F : (∀ {T} `{TCons T}, T -> (InfSet T -> Prop)))
+   | mi_forall_quoted_formulas
+      (f : ∀ {V} {_:VClass P×VExt V}, V)
+      (F : (∀ {T} {_:TClass TCons T}, T -> InfSet T -> Prop))
       :
-      let VC := (λ V, prod (PropositionConstructors V) (VExt V)) in
       (
           MeansProp
-            (VExt := OneMoreConstructor VExt)
-            (TCons := OneMoreConstructor TCons)
-            (MQCons := @OneMoreQuotvar VC TCons MQCons)
-            (λ V
-                `(PropositionConstructors V) VExt0,
-                [(f(VExt0 := fst VExt0)) (snd VExt0)])
-            (λ T TCons0 infs,
-                F(TCons0 := fst TCons0) (snd TCons0) infs)) ->
-    MeansProp (VExt := VExt) (TCons := TCons)
-      (λ V
-          `(PropositionConstructors V) VExt0,
-          [⋀ (f(VExt0 := VExt0))])
-      (λ T TCons0 infs,
-          ∀x, F(TCons0 := TCons0) x infs) *)
+            (MQCons := MQCAssociative
+              (@OneMoreQuotvar P×VExt TCons MQCons))
+            (λ V (_v : VClass P×_ V),
+              let (_p, _e) := _v in
+              let (_e, x) := _e in
+              let _ : FunctionConstructors V := pc_fc in
+                [(@f _ (_p, _e)) x])
+            (λ T _t infs,
+                @F _ (fst _t) (snd _t) infs)
+        ) ->
+    MeansProp
+        (λ:P× _, [⋀ f])
+        (λ _ _ infs, (∀x, F x infs))
   .
 
 
