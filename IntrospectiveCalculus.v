@@ -94,8 +94,8 @@ Existing Class VClass.
 Definition TClass (TC:TConsClass) := TC.
 Existing Class TClass.
 
-Definition MQT VC TC :=
-  ∀ V T (_:VClass VC V) (_:TClass TC T), V -> T -> Prop.
+Definition MQT {VC:VConsClass} {TC:TConsClass} :=
+  ∀ V (_:VClass VC V) T (_:TClass TC T), V -> T -> Prop.
 
 (* Definition TheTC TC : TConsClass := TC.
 Definition TheVC VC : VConsClass := VC. *)
@@ -113,25 +113,26 @@ Notation "'fr' ( MQ '::' 'MQT' ) , body" :=
 (* Definition test :=
   fr ( MQ :: MQT _ ; _ ), False. *)
 
-Definition MQCT VC TC :=
-  ∀ VC2 TC2,
+Definition MQCT {VC:VConsClass} {TC:TConsClass} :=
+  ∀ (VC2:VConsClass) (TC2:TConsClass),
     (VC2 ⊆ VC) ->
     (TC2 ⊆ TC) ->
-        MQT VC2 TC2 -> Prop.
+        @MQT VC2 TC2 -> Prop.
+Existing Class MQCT.
 
-Definition OneMoreQuotvar VC TC
-  (MQC : MQCT VC TC)
-  : MQCT (OneMoreConstructor VC) (OneMoreConstructor TC)
+Definition OneMoreQuotvar {VC:VConsClass} {TC:TConsClass}
+  (MQC : MQCT)
+  : @MQCT (OneMoreConstructor VC) (OneMoreConstructor TC)
   :=
   λ
   oVC2 oTC2 (eoV : oVC2 ⊆ (OneMoreConstructor VC)) eoT
-  (MQ : MQT oVC2 oTC2),
+  (MQ : @MQT oVC2 oTC2),
     (@MQC oVC2 oTC2
       (λ _ o, fst (eoV _ o)) (λ _ o, fst (eoT _ o)) MQ) ∧
     (∀ V T `(PropositionConstructors V)
       `(oVC2 V) `(oTC2 T),
 
-      MQ _ _ oVC3 oTC3
+      MQ _ oVC3 _ oTC3
         (snd (eoV _ oVC3)) 
         (snd (eoT _ oTC3)))
   .
@@ -147,37 +148,76 @@ Definition MeansQuoted VExt TCons (MQCons : MQCT VExt TCons).
 Print Vi.
 
 Notation "'P×' Ext" :=
-  (VClass (PropositionConstructors ×1 Ext))
+  (PropositionConstructors ×1 Ext)
   (at level 0).
 
-Notation "'λ:P×' T , body" :=
-  (λ T (c : VClass (PropositionConstructors ×1 _) T),
-    let _ : PropositionConstructors T
-          := fst c in body)
+Notation "∀+ ( arg ':∀:P×' Ext ; T , body ) , rest" :=
+  (∀ arg : (∀ T (c : P×Ext T),
+    let _ : PropositionConstructors T := fst c in
+    let _ : FunctionConstructors T := pc_fc in
+      body), rest)
   (at level 200, T binder, right associativity).
 
+Notation "( '∀:P×' Ext ; T , body ) -> rest" :=
+  (∀ arg : (∀ T (c : P×Ext T),
+    let _ : PropositionConstructors T := fst c in
+    let _ : FunctionConstructors T := pc_fc in
+      body), rest)
+  (at level 200, T binder, right associativity).
+  
+Notation "( '∀:P×' Ext ; T , body ) -> rest" :=
+  (∀ ( arg : ∀:P× Ext ; T , body ), rest)
+  (at level 200, T name, right associativity).
+
+Notation "( '∀T' T , body ) -> rest" :=
+  ((∀ {T} {_:TClass _ T}, body) -> rest)
+  (at level 200, T name, right associativity).
+
+Notation "'λ:P×' T , body" :=
+  (λ T (c : VClass P×_ T),
+    let _ : PropositionConstructors T := fst c in
+    let _ : FunctionConstructors T := pc_fc in
+      body)
+  (at level 200, T name, right associativity).
+
+(* Lemma test {TCons:TConsClass} :  (∀! T, False) -> Prop.
+  intro.
+  refine ((∀! T, _) -> False).
+  exact T.
+  Show Proof.
+  refine ((∀! T, T) -> False). *)
+
+Definition MeansQuoted
+  {VC:VConsClass}
+  {TC:TConsClass}
+  {MQCons : MQCT}
+  (qx : ∀ {V} {_vf:VClass VC V}, V)
+  (x : ∀ {T} {_tf:TClass TC T}, T)
+  :=
+  ∀
+    V (_v:VClass VC V)
+    T (_t:TClass TC T)
+    (MQ : MQT),
+    MQCons _ _ (λ _ b, b) (λ _ b, b) (@MQ) ->
+    MQ _ _ _ _ qx x.
+
+Parameter adapt : ∀ VExt (qx : ∀ {V} {_:P×VExt V}, V),
+  let VC : VConsClass := P×VExt in
+  ∀ {V} {_vf:VClass VC V}, V.
+
+Parameter cheat : ∀ {A}, A.
+
 Inductive MeansProp {VExt} {TCons:TConsClass}
-  {MQCons : MQCT (P×VExt) TCons}
-  : (∀ {V} {_:P×VExt V}, V) ->
-    (∀ {T} {_:TClass TCons T}, (InfSet T -> Prop)) ->
+  {MQCons : @MQCT P×VExt _}
+  : (∀ {V} {_:VClass P×VExt V}, V) ->
+    (∀ {T} {_:TClass _ T}, (InfSet T -> Prop)) ->
     Prop :=
   | mi_implies
-      (qp qc : ∀ {V} {_:P×VExt V}, V)
-      (p c : ∀ {T} {_:TClass TCons T}, T)
+      (qp qc : ∀ {V} {_:VClass P×VExt V}, V)
+      (p c : ∀ {T} {_:TClass _ T}, T)
       :
-      (* let VC := (PropositionConstructors ×1 VExt) in *)
-      (* let _ : VConsClass := VC in *)
-      (∀ V T {v:P×VExt V} {t:TClass TCons T},
-        let _ : P×VExt V := v in
-        ∀ MQ : (∀ {V} {T} {cv:P×VExt V} {ct:TClass TCons T},
-          V -> T -> Prop), (∀
-        (_:MQCons _ _ (λ _ b, b) (λ _ b, b) (@MQ)),
-        MQ qp p)) ->
-      (* (∀ V T `{P×VExt V} `{Class TCons T},
-        (* let _ : Class VC V := (_, use_class _) in *)
-        fr (MQ :: MQT), (∀
-        `(MQCons _ _ (λ _ b, b) (λ _ b, b) MQ),
-        MQ _ _ _ _ qc c)) -> *)
+      (MeansQuoted (@qp) (@p)) ->
+      (MeansQuoted (@qc) (@c)) ->
       MeansProp
         (λ:P× _,  [qp -> qc])
         (λ _ _ infs, infs p c)
@@ -189,8 +229,8 @@ Inductive MeansProp {VExt} {TCons:TConsClass}
       MeansProp (VExt := VExt) (TCons := TCons) (@b) B ->
       MeansProp (VExt := VExt) (TCons := TCons) (@a) B *)
   | mi_and
-      (a b : (∀ {V} `{P×VExt V}, V))
-      (A B : (∀ {T} {_:TClass TCons T}, (InfSet T -> Prop))) :
+      (a b : (∀ {V} {_:VClass P×VExt V}, V))
+      (A B : (∀ {T} {_:TClass _ T}, (InfSet T -> Prop))) :
       MeansProp (@a) (@A) ->
       MeansProp (@b) (@B) ->
       MeansProp
