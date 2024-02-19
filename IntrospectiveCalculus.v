@@ -204,10 +204,10 @@ Notation "'P×' Ext" :=
   : PropositionConstructors V
   := fst _p. *)
 
-Instance pcprod_forget_onemore_i {V} {VExt}
+(* Instance pcprod_forget_onemore_i {V} {VExt}
   {_p:P×(OneMoreConstructor VExt) V}
   : P×VExt V
-  := let (p, ev) := _p in {| pca_ext := onemore_embed |}.
+  := let (p, ev) := _p in {| pca_ext := onemore_embed |}. *)
 
 Instance pcprod_proj_onemore_i {V} {VExt}
   {_p:P×(OneMoreConstructor VExt) V}
@@ -292,7 +292,7 @@ Definition MeansQuoted
   let VC : VConsClass := P×VExt in
   ∀ {V} {_vf:VClass VC V}, V. *)
 
-Parameter cheat : ∀ {A}, A.
+(* Parameter cheat : ∀ {A}, A. *)
 
 (* Definition the T (t:T) := t. *)
 (* Set Typeclasses Debug Verbosity 2. *)
@@ -331,10 +331,9 @@ Inductive MeansProp {VExt} {TCons:TConsClass}
           MeansProp
             (MQCons := MQCAssociative
               (@OneMoreQuotvar P×VExt TCons MQCons))
-              (* cheat *)
             (λ V (_v : P×_ V),
+                let _ : P×VExt V := {| pca_ext := onemore_embed |} in
                 [f onemore_cons])
-              (* cheat *)
             (λ T _t infs,
                 @F T _ (@onemore_cons (TCons) T _) infs)
         ) ->
@@ -705,6 +704,7 @@ Definition test0 : StandardFormula :=
   [[f_quote const] -> [f_quote const]].
 Eval compute in (with_no_meanings (get_prop_meaning 90 test0 no_vars)).
 
+Set Typeclasses Debug Verbosity 2.
 Definition test05 : StandardFormula := [∀ a, [a -> a]].
 Eval compute in (with_no_meanings (get_prop_meaning 90 test05 no_vars)).
 
