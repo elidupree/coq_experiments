@@ -27,11 +27,11 @@ Class ApplyConstructor F := {
 Class FunctionConstructors F := {
     const : F
   ; fuse : F
-  ; fc_ac : ApplyConstructor F
+  ; fc_ac :: ApplyConstructor F
   }.
 
-Instance fc_ac_i F {_:FunctionConstructors F} : ApplyConstructor F
-  := fc_ac.
+(* Instance fc_ac_i F {_:FunctionConstructors F} : ApplyConstructor F
+  := fc_ac. *)
 
 (* Definition const {F} {fc : FunctionConstructors F} : F :=
   fc_const fc.
@@ -49,15 +49,15 @@ Inductive UnfoldStep {F} `{FunctionConstructors F} : F -> F -> Prop :=
   | unfold_in_lhs a b c : UnfoldStep a b -> UnfoldStep [a c] [b c].
 
 Class PropositionConstructors F := {
-    pc_fc : FunctionConstructors F
+    pc_fc :: FunctionConstructors F
   ; f_implies : F -> F -> F
   ; f_and : F -> F -> F
   ; f_forall_quoted_formulas : F -> F
   }.
 
-Instance pc_fc_i F {_:PropositionConstructors F}
+(* Instance pc_fc_i F {_:PropositionConstructors F}
   : FunctionConstructors F
-  := pc_fc.
+  := pc_fc. *)
 
 Notation "[ x -> y ]" := (f_implies x y) (at level 0, x at next level, y at next level).
 Notation "[ x & y ]" := (f_and x y)
@@ -67,7 +67,7 @@ Notation "[ ⋀ x ]" := (f_forall_quoted_formulas x)
 
 Notation "R ∧1 S" := (λ x, R x ∧ S x) (at level 70).
 Notation "R ×1 S" := (λ x, prod (R x) (S x)) (at level 70).
-Notation "R ∧3 S" := (λ x y z, R x y z ∧ S x y z) (at level 70).
+Notation "R ∧4 S" := (λ x y z, R x y z ∧ S x y z) (at level 70).
 Notation "R ⊆ S" := (∀ x, R x -> S x) (at level 70).
 (* Definition Construction Constructors := ∀ {T} `{Constructors T}, T. *)
 
@@ -114,27 +114,27 @@ Instance forgetClass_onemore F FC
   (f:Class (OneMoreConstructor FC) F) :
   OneMoreConstructor FC F := f. *)
 
-Instance vc_onemore_transpose {V} {VC:VConsClass}
+(* Instance vc_onemore_transpose {V} {VC:VConsClass}
   {_p:VClass (OneMoreConstructor VC) V}
   : OneMoreConstructor (VClass VC) V
   := _p.
 Instance tc_onemore_transpose {T} {TC:TConsClass}
   {_p:TClass (OneMoreConstructor TC) T}
   : OneMoreConstructor (TClass TC) T
-  := _p.
+  := _p. *)
 Instance tc_onemore_forget {T} {TC:TConsClass}
   {_p:TClass (OneMoreConstructor TC) T}
   : OneMoreConstructor TC T
   := _p.
 
-Instance vclass_proj_onemore {V} {VC:VConsClass}
+(*Instance vclass_proj_onemore {V} {VC:VConsClass}
   {_p:VClass (OneMoreConstructor VC) V}
   : VClass VC V
-  := onemore_embed.
+  := onemore_embed. *)
 Instance tclass_proj_onemore {T} {TC:TConsClass}
   {_p:TClass (OneMoreConstructor TC) T}
   : TClass TC T
-  := onemore_embed.
+  := @onemore_embed _ _ _p.
 
 Definition MQT {VC:VConsClass} {TC:TConsClass} :=
   ∀ V (_:VClass VC V) T (_:TClass TC T), V -> T -> Prop.
@@ -191,29 +191,41 @@ Definition MeansQuoted VExt TCons (MQCons : MQCT VExt TCons). *)
 
 (* Print Vi. *)
 
+Class PropositionConstructorsAnd VExt V := {
+    pca_pc :: PropositionConstructors V
+  ; pca_ext : VExt V
+  }.
+
 Notation "'P×' Ext" :=
-  (PropositionConstructors ×1 Ext)
+  (PropositionConstructorsAnd Ext)
   (at level 0).
 
-Instance pcprod_pc_i {V} {VExt} {_p:VClass P×VExt V}
+(* Instance pcprod_pc_i {V} {VExt} {_p:VClass P×VExt V}
   : PropositionConstructors V
-  := fst _p.
+  := fst _p. *)
 
 Instance pcprod_forget_onemore_i {V} {VExt}
-  {_p:VClass P×(OneMoreConstructor VExt) V}
-  : VClass P×VExt V
-  := let (p, ev) := _p in (p, onemore_embed).
+  {_p:P×(OneMoreConstructor VExt) V}
+  : P×VExt V
+  := let (p, ev) := _p in {| pca_ext := onemore_embed |}.
+
+Instance pcprod_proj_onemore_i {V} {VExt}
+  {_p:P×(OneMoreConstructor VExt) V}
+  : OneMoreConstructor VExt V
+  := pca_ext.
 
 Definition VCAssociative {VExt} {V}
   (_v: VClass P×(OneMoreConstructor VExt) V)
   : OneMoreConstructor P×VExt V
   :=
-        let (a, bc) := _v in
-        let (b, c) := bc in
-          {| onemore_embed := (a, b) ; onemore_cons := onemore_cons |}.
+    let (a, bc) := _v in
+    {|
+        onemore_embed := {| pca_ext := onemore_embed |}
+      ; onemore_cons := onemore_cons
+    |}.
     
 
-Instance MQCAssociative {VExt} {TC:TConsClass}
+Definition MQCAssociative {VExt} {TC:TConsClass}
   (MQC : @MQCT (OneMoreConstructor P×VExt) (OneMoreConstructor TC))
   : @MQCT P×(OneMoreConstructor VExt) (OneMoreConstructor TC)
   :=
@@ -280,17 +292,17 @@ Definition MeansQuoted
   let VC : VConsClass := P×VExt in
   ∀ {V} {_vf:VClass VC V}, V. *)
 
-(* Parameter cheat : ∀ {A}, A. *)
+Parameter cheat : ∀ {A}, A.
 
 (* Definition the T (t:T) := t. *)
-
+(* Set Typeclasses Debug Verbosity 2. *)
 Inductive MeansProp {VExt} {TCons:TConsClass}
   {MQCons : @MQCT P×VExt _}
-  : (∀ {V} {_:VClass P×VExt V}, V) ->
+  : (∀ {V} {_:P×VExt V}, V) ->
     (∀ {T} {_:TClass _ T}, InfSet T -> Prop) ->
     Prop :=
   | mi_implies
-      (qp qc : ∀ {V} {_:VClass P×VExt V}, V)
+      (qp qc : ∀ {V} {_:P×VExt V}, V)
       (p c : ∀ {T} {_:TClass _ T}, T)
       :
       (MeansQuoted (@qp) (@p)) ->
@@ -299,12 +311,12 @@ Inductive MeansProp {VExt} {TCons:TConsClass}
         (λ _ _, [qp -> qc])
         (λ _ _ infs, infs p c)
   | mi_unfold
-      (a b : ∀ {V} {_:VClass P×VExt V}, V) B :
-      (∀ {V} {_v:VClass P×VExt V}, UnfoldStep a b) ->
+      (a b : ∀ {V} {_:P×VExt V}, V) B :
+      (∀ {V} {_v:P×VExt V}, UnfoldStep a b) ->
       MeansProp (@b) (@B) ->
       MeansProp (@a) (@B)
   | mi_and
-      (a b : ∀ {V} {_:VClass P×VExt V}, V)
+      (a b : ∀ {V} {_:P×VExt V}, V)
       (A B : ∀ {T} {_:TClass _ T}, InfSet T -> Prop) :
       MeansProp (@a) (@A) ->
       MeansProp (@b) (@B) ->
@@ -312,19 +324,19 @@ Inductive MeansProp {VExt} {TCons:TConsClass}
         (λ _ _, [a & b])
         (λ _ _, A ∧1 B)
    | mi_forall_quoted_formulas
-      (f : ∀ {V} {_:VClass P×VExt V}, V)
+      (f : ∀ {V} {_:P×VExt V}, V)
       (F : (∀ {T} {_:TClass TCons T}, T -> InfSet T -> Prop))
       :
       (
           MeansProp
             (MQCons := MQCAssociative
               (@OneMoreQuotvar P×VExt TCons MQCons))
-            (λ V (_v : VClass P×_ V),
-                let (_p, _e) := _v in
+              (* cheat *)
+            (λ V (_v : P×_ V),
                 [f onemore_cons])
+              (* cheat *)
             (λ T _t infs,
-                let _ : OneMoreConstructor TCons T := _ in
-                F onemore_cons infs)
+                @F T _ (@onemore_cons (TCons) T _) infs)
         ) ->
     MeansProp
         (λ _ _, [⋀ f])
@@ -354,20 +366,36 @@ Inductive Formula {Ext} :=
 
 Definition StandardFormula := @Formula False.
 
-Instance f_fn {Ext} : FunctionConstructors (@Formula Ext) := {
-    const := f_atm atom_const
-  ; fuse := f_atm atom_fuse
-  ; f_apl := fo_apl
+Class FormulaConstructors F := {
+      fc_atm : Atom -> F
+    ; fc_apl : F -> F -> F
   }.
 
-Instance f_prop {Ext} : PropositionConstructors (F:=@Formula Ext) := {
-    f_implies := λ p c, [(f_atm atom_implies) p c]
-  ; f_and := λ a b, [(f_atm atom_and) a b]
-  ; f_forall_quoted_formulas := λ p, [(f_atm atom_forall_quoted_formulas) p]
+Instance f_fc {Ext} : FormulaConstructors (@Formula Ext) := {
+      fc_atm := f_atm
+    ; fc_apl := fo_apl
   }.
 
-Definition f_quote {Ext} := @f_atm Ext atom_quote.
-Definition f_qaply {Ext} f x : @Formula Ext := [f_quote f x].
+Instance fc_aplc F : FormulaConstructors F ->
+  ApplyConstructor F := {
+    f_apl := fc_apl
+  }.
+
+Instance fc_fn F : FormulaConstructors F ->
+  FunctionConstructors F := {
+    const := fc_atm atom_const
+  ; fuse := fc_atm atom_fuse
+  }.
+
+Instance fc_prop F : FormulaConstructors F ->
+  PropositionConstructors F := {
+    f_implies := λ p c, [(fc_atm atom_implies) p c]
+  ; f_and := λ a b, [(fc_atm atom_and) a b]
+  ; f_forall_quoted_formulas := λ p, [(fc_atm atom_forall_quoted_formulas) p]
+  }.
+
+Definition f_quote {F} `{FormulaConstructors F} := fc_atm atom_quote.
+Definition f_qaply {F} `{FormulaConstructors F} f x := [f_quote f x].
 
 Fixpoint embed_formula
   Ext1 Ext2 (embed : Ext1 -> Ext2)
@@ -378,29 +406,29 @@ Fixpoint embed_formula
     | fo_apl a b => [(embed_formula embed a) (embed_formula embed b)]
     end.
 
-Inductive UnfoldsToKind [Ext] [T]
-    (kind : (@Formula Ext) -> T -> Prop) :
-    (@Formula Ext) -> T -> Prop :=
+Inductive UnfoldsToKind F `{FormulaConstructors F} [T]
+    (kind : F -> T -> Prop) :
+    F -> T -> Prop :=
   | utk_done f t : kind f t -> UnfoldsToKind kind f t
   | utk_step a b t :
       UnfoldStep a b ->
       UnfoldsToKind kind b t ->
       UnfoldsToKind kind a t.
 
-Inductive IsAtom [Ext]
-    : (@Formula Ext) -> Atom -> Prop :=
-  | is_atom a : IsAtom (f_atm a) a.
+Inductive IsAtom F `{FormulaConstructors F}
+    : F -> Atom -> Prop :=
+  | is_atom a : IsAtom (fc_atm a) a.
 
-Inductive MeansQuoted [Ext]
+Inductive FcMeansQuoted {F} `{FormulaConstructors F}
     (* (Ext -> StandardFormula -> Prop) *)
-    : (@Formula Ext) -> StandardFormula -> Prop :=
+    : F -> StandardFormula -> Prop :=
   | quoted_atom f a :
-    UnfoldsToKind (@IsAtom Ext) f a ->
-    MeansQuoted [f_quote f] (f_atm a)
+    @UnfoldsToKind F _ _ (@IsAtom F _) f a ->
+    FcMeansQuoted [f_quote f] (f_atm a)
   | quoted_apply qa a qb b :
-    UnfoldsToKind (@MeansQuoted Ext) qa a ->
-    UnfoldsToKind (@MeansQuoted Ext) qb b ->
-    MeansQuoted [f_quote qa qb] [a b].
+    UnfoldsToKind FcMeansQuoted qa a ->
+    UnfoldsToKind FcMeansQuoted qb b ->
+    FcMeansQuoted [f_quote qa qb] [a b].
 
 
 (****************************************************
@@ -464,9 +492,9 @@ Definition unreify_vars [Ext]
   λ e, true = (vars e).
 
 Definition QfResult [Ext] (quotvars : Ext -> bool) :=
-  (∀ JExt (qv_meanings : 
-    (∀ e, (unreify_vars quotvars) e -> @Formula JExt)),
-    @Formula JExt).
+  (∀ F `(FormulaConstructors F) (qv_meanings : 
+    (∀ e, (unreify_vars quotvars) e -> F)),
+    F).
 
 Fixpoint get_quoted_formula [Ext]
   (quotvars : Ext -> bool) n qf
@@ -476,14 +504,14 @@ Fixpoint get_quoted_formula [Ext]
       | Some qg => get_quoted_formula quotvars pred qg
       | None => match qf with
           | fo_apl (f_atm atom_quote) (f_atm a) =>
-              success (λ _ _, (f_atm a))
+              success (λ _ _ _, (fc_atm a))
           | fo_apl (fo_apl (f_atm atom_quote) qa) qb =>
             ? a <- get_quoted_formula quotvars pred qa ; 
             ? b <- get_quoted_formula quotvars pred qb ;
-            success (λ JExt qv_meanings, [(a JExt qv_meanings) (b JExt qv_meanings)])
+            success (λ _ _ qv_meanings, [(a _ _ qv_meanings) (b _ _ qv_meanings)])
           | f_ext e => match quotvars e as qe
             return qe = quotvars e -> GetResult (QfResult quotvars) with
-            | true => λ eq, success (λ JExt qv_meanings, qv_meanings e eq)
+            | true => λ eq, success (λ _ _ qv_meanings, qv_meanings e eq)
             | false => λ _, error _ ("non-variable extension in quote", e, quotvars e)
             end eq_refl
           | _ => error _ ("not a quoted formula:", qf)
@@ -522,10 +550,10 @@ Definition one_more_revar_meaning
 Definition MiSearchResult [Ext]
     (vars : Ext -> bool)
     (f : @Formula Ext) : Type :=
-    ∀ JExt (qv_meanings :
-        revar_meanings vars (@Formula JExt)),
+    ∀ F `(FormulaConstructors F) (qv_meanings :
+        revar_meanings vars F),
       (* Rule StandardFormula. *)
-      InfSet (@Formula JExt) -> Prop.
+      InfSet F -> Prop.
 
 Fixpoint get_prop_meaning (n:nat) [Ext]
   (f : @Formula Ext)
@@ -539,14 +567,16 @@ Fixpoint get_prop_meaning (n:nat) [Ext]
         | fo_apl (fo_apl (f_atm atom_implies) qp) qc =>
           ? p <- (get_quoted_formula vars pred qp) ;
           ? c <- (get_quoted_formula vars pred qc) ;
-          success (λ JExt qv_meanings infs,
-            (infs (p JExt qv_meanings) (c JExt qv_meanings)))
+          success (λ F _ qv_meanings infs,
+            (infs (p F _ qv_meanings) (c F _ qv_meanings)))
         
         (* [a & b] *)
         | fo_apl (fo_apl (f_atm atom_and) a) b =>
           ? A <- (get_prop_meaning pred a vars) ;
           ? B <- (get_prop_meaning pred b vars) ;
-          success (A ∧3 B)
+          (* success (A ∧4 B) *)
+          success (λ F _ qv_meanings infs,
+            (A F _ qv_meanings infs) ∧ (B F _ qv_meanings infs))
 
         (* [forall_quoted_formulas f] *)
         | fo_apl (f_atm atom_forall_quoted_formulas) f =>
@@ -555,15 +585,128 @@ Fixpoint get_prop_meaning (n:nat) [Ext]
                   (f_ext onemore_new)]
                   (one_more_revar vars)) ; 
             success (
-              λ JExt (qv_meanings : (revar_meanings vars (@Formula JExt))) infs,
-                ∀ (x : @Formula JExt),
-                  Fx JExt (one_more_revar_meaning qv_meanings x) infs
+              λ F _ (qv_meanings : (revar_meanings vars F)) infs,
+                ∀ (x : F),
+                  Fx F _ (one_more_revar_meaning qv_meanings x) infs
                 )
         | _ => error _ ("not a proposition:", f)
       end
     end
   end.
 
+(****************************************************
+   Practicalities of concrete formula construction
+****************************************************)
+
+Definition f_id {F} `{FunctionConstructors F} : F := [fuse const const].
+
+Definition f_with_variable [Ext]
+  (fgen : @Formula (@OneMoreAtom Ext) ->
+          @Formula (@OneMoreAtom Ext)) : Formula :=
+  (fgen (f_ext onemore_new)).
+
+Fixpoint eliminate_abstraction
+  [Ext]
+  (f : @Formula (@OneMoreAtom Ext))
+  : @Formula Ext :=
+  match f with
+    | f_atm a => [const (f_atm a)]
+    | f_ext e => match e with
+      | onemore_new => f_id
+      | onemore_old e => [const (f_ext e)]
+      end
+    | fo_apl a b => [fuse (eliminate_abstraction a) (eliminate_abstraction b)]
+    end.
+
+Fixpoint quote_f [Ext] f : @Formula Ext :=
+  match f with
+    | f_atm _ => [f_quote f]
+    (* assume this is a variable that represents a quoted formula: *)
+    | f_ext _ => f
+    | fo_apl a b => [f_quote (quote_f a) (quote_f b)]
+    end.
+
+Inductive ParensState := ps_default | ps_apply_chain | ps_fuse_chain.
+Fixpoint display_f_impl ps [Ext] (f : @Formula Ext) : string :=
+  match f with
+    | f_ext _ => "@"
+    | fo_apl (fo_apl (f_atm atom_fuse)
+      (f_atm atom_const))
+      (f_atm atom_const) => "id"
+    | fo_apl (fo_apl (f_atm atom_fuse) a) b => 
+      let 
+        b := display_f_impl ps_default b in
+      let items := match a with
+        | fo_apl (f_atm atom_const) (f_atm atom_implies) => b ++ " ->" 
+         | _ =>
+         display_f_impl ps_fuse_chain a ++ " " ++ b
+         end in
+      match ps with
+        | ps_fuse_chain => items
+        | _ => "[" ++ items ++ "]"
+        end
+    | fo_apl a b => 
+      let 
+        b := display_f_impl ps_default b in
+      let items := match a with
+        | f_atm atom_implies => b ++ " ->" 
+        | _ =>
+         display_f_impl ps_fuse_chain a ++ " " ++ b
+         end in
+      match ps with
+        | ps_apply_chain => items
+        | _ => "(" ++ items ++ ")"
+        end
+    | f_atm a => match a with
+      | atom_const => "c"
+      | atom_fuse => "fuse"
+      | atom_implies => "implies"
+      | atom_and => "and"
+      | atom_forall_quoted_formulas => "∀Q"
+      | atom_quote => "quote"
+      end
+    end.
+  
+Definition display_f := display_f_impl ps_default.
+
+Notation "[ x => y ]" :=
+  (eliminate_abstraction (f_with_variable (λ x, y)))
+  (at level 0, x at next level, y at next level).
+  
+Notation "[ ∀ x , y ]" :=
+  [f_forall_quoted_formulas [x => y]]
+  (at level 0, x at next level, y at next level).
+
+(* Definition foo : StandardFormula := [x => [x & x]].
+Print foo.
+Eval lazy in foo.
+Eval cbv beta iota delta -[f_id const fuse] in foo. *)
+
+Definition no_vars (e:False) := false.
+Definition no_meanings R
+ : revar_meanings no_vars R.
+  unfold revar_meanings, unreify_vars.
+  intros. dependent destruction H.
+Defined.
+
+(* Definition no_meanings R (e:False) : (true = false) -> R.
+  intro. dependent destruction H.
+Defined. *)
+
+Definition with_no_meanings
+  f
+  (g : GetResult (MiSearchResult no_vars f)) :
+  GetResult (∀ F `(FormulaConstructors F), InfSet F -> Prop) :=
+  ? g <- g ;
+  success (λ F _ infs, g F _
+        (no_meanings _) infs).
+
+Definition test0 : StandardFormula :=
+  [[f_quote const] -> [f_quote const]].
+Eval compute in (with_no_meanings (get_prop_meaning 90 test0 no_vars)).
+
+Definition test05 : StandardFormula := [∀ a, [a -> a]].
+Eval compute in (with_no_meanings (get_prop_meaning 90 test05 no_vars)).
 
 
 
@@ -1368,118 +1511,9 @@ Fixpoint last_more_atom [Ext] n : (@NMoreAtoms Ext (S n)) :=
     end.
   
 
-Definition f_with_variable [Ext]
-  (fgen : @Formula (@OneMoreAtom Ext) ->
-          @Formula (@OneMoreAtom Ext)) : Formula :=
-  (fgen (f_ext onemore_new)).
 
-Fixpoint eliminate_abstraction
-  [Ext]
-  (f : @Formula (@OneMoreAtom Ext))
-  : @Formula Ext :=
-  match f with
-    | f_atm a => [const (f_atm a)]
-    | f_ext e => match e with
-      | onemore_new => f_id
-      | onemore_old e => [const (f_ext e)]
-      end
-    | f_apl a b => [fuse (eliminate_abstraction a) (eliminate_abstraction b)]
-    end.
 
-Fixpoint quote_f [Ext] f : @Formula Ext :=
-  match f with
-    | f_atm _ => [f_quote f]
-    (* assume this is a variable that represents a quoted formula: *)
-    | f_ext _ => f
-    | f_apl a b => [f_quote (quote_f a) (quote_f b)]
-    end.
 
-Inductive ParensState := ps_default | ps_apply_chain | ps_fuse_chain.
-Fixpoint display_f_impl ps [Ext] (f : @Formula Ext) : string :=
-  match f with
-    | f_ext _ => "@"
-    | f_apl (f_apl (f_atm atom_fuse)
-      (f_atm atom_const))
-      (f_atm atom_const) => "id"
-    | f_apl (f_apl (f_atm atom_fuse) a) b => 
-      let 
-        b := display_f_impl ps_default b in
-      let items := match a with
-        | f_apl (f_atm atom_const) (f_atm atom_implies) => b ++ " ->" 
-         | _ =>
-         display_f_impl ps_fuse_chain a ++ " " ++ b
-         end in
-      match ps with
-        | ps_fuse_chain => items
-        | _ => "[" ++ items ++ "]"
-        end
-    | f_apl a b => 
-      let 
-        b := display_f_impl ps_default b in
-      let items := match a with
-        | f_atm atom_implies => b ++ " ->" 
-        | _ =>
-         display_f_impl ps_fuse_chain a ++ " " ++ b
-         end in
-      match ps with
-        | ps_apply_chain => items
-        | _ => "(" ++ items ++ ")"
-        end
-    | f_atm a => match a with
-      | atom_const => "c"
-      | atom_fuse => "fuse"
-      | atom_implies => "implies"
-      | atom_and => "and"
-      | atom_forall_quoted_formulas => "∀Q"
-      | atom_forall_valid_propositions => "∀P"
-      | atom_quote => "quote"
-      end
-    end.
-  
-Definition display_f := display_f_impl ps_default.
-
-Notation "[ x => y ]" :=
-  (eliminate_abstraction (f_with_variable (λ x, y)))
-  (at level 0, x at next level, y at next level).
-  
-Notation "[ ∀ x : 'P' , y ]" :=
-  [f_forall_valid_propositions [x => y]]
-  (at level 0, x at next level, y at next level).
-Notation "[ ∀ x : 'Q' , y ]" :=
-  [f_forall_quoted_formulas [x => y]]
-  (at level 0, x at next level, y at next level).
-
-(* Definition foo : StandardFormula := [x => [x & x]].
-Print foo.
-Eval lazy in foo.
-Eval cbv beta iota delta -[f_id const fuse] in foo. *)
-
-Definition no_vars (e:False) := false.
-Definition no_meanings R
- : revar_meanings2 no_vars R.
-  unfold revar_meanings2, unreify_vars.
-  intros. dependent destruction H.
-Defined.
-
-(* Definition no_meanings R (e:False) : (true = false) -> R.
-  intro. dependent destruction H.
-Defined. *)
-
-Definition with_no_meanings
-  f
-  (g : GetResult (MiSearchResult no_vars f)) :
-  GetResult (Rule StandardFormula) :=
-  ? g <- g ;
-  success (λ J e infs, g
-        (no_meanings StandardFormula)).
-
-Definition test0 : StandardFormula :=
-  [[f_quote const] -> [f_quote const]].
-Eval compute in (with_no_meanings (get_prop_meaning 90 test0 no_vars)).
-
-Definition test05 : StandardFormula :=
-  [∀a:P, a].
-Eval compute in (with_no_meanings (get_prop_meaning 90 test05 no_vars)).
 
 Lemma uhh2 :
   success (λ p c, ∃ X : Rule, X p c)
