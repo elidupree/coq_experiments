@@ -65,9 +65,10 @@ Notation "[ x & y ]" := (f_and x y)
 Notation "[ ⋀ x ]" := (f_forall_quoted_formulas x)
   (at level 0, x at next level).
 
-Notation "R ∧1 S" := (λ x, R x ∧ S x) (at level 70).
+(* Notation "R ∧1 S" := (λ x, R x ∧ S x) (at level 70). *)
 Notation "R ×1 S" := (λ x, prod (R x) (S x)) (at level 70).
-Notation "R ∧4 S" := (λ x y z, R x y z ∧ S x y z) (at level 70).
+Notation "R ∧3 S" := (λ x y z, R x y z ∧ S x y z) (at level 70).
+(* Notation "R ∧4 S" := (λ x y z w, R x y z w ∧ S x y z w) (at level 70). *)
 Notation "R ⊆ S" := (∀ x, R x -> S x) (at level 70).
 (* Definition Construction Constructors := ∀ {T} `{Constructors T}, T. *)
 
@@ -215,13 +216,13 @@ Instance pcprod_proj_onemore_i {V} {VExt}
   := pca_ext.
 
 Definition VCAssociative {VExt} {V}
-  (_v: VClass P×(OneMoreConstructor VExt) V)
+  (_v: P×(OneMoreConstructor VExt) V)
   : OneMoreConstructor P×VExt V
   :=
-    let (a, bc) := _v in
+    (* let (a, bc) := _v in *)
     {|
-        onemore_embed := {| pca_ext := onemore_embed |}
-      ; onemore_cons := onemore_cons
+        onemore_embed := {| pca_ext := @onemore_embed VExt _ _ |}
+      ; onemore_cons := @onemore_cons VExt _ _
     |}.
     
 
@@ -292,7 +293,7 @@ Definition MeansQuoted
   let VC : VConsClass := P×VExt in
   ∀ {V} {_vf:VClass VC V}, V. *)
 
-(* Parameter cheat : ∀ {A}, A. *)
+Parameter cheat : ∀ {A}, A.
 
 (* Definition the T (t:T) := t. *)
 (* Set Typeclasses Debug Verbosity 2. *)
@@ -322,7 +323,7 @@ Inductive MeansProp {VExt} {TCons:TConsClass}
       MeansProp (@b) (@B) ->
       MeansProp
         (λ _ _, [a & b])
-        (λ _ _, A ∧1 B)
+        (λ _ _ infs, A infs ∧ B infs)
    | mi_forall_quoted_formulas
       (f : ∀ {V} {_:P×VExt V}, V)
       (F : (∀ {T} {_:TClass TCons T}, T -> InfSet T -> Prop))
@@ -331,11 +332,11 @@ Inductive MeansProp {VExt} {TCons:TConsClass}
           MeansProp
             (MQCons := MQCAssociative
               (@OneMoreQuotvar P×VExt TCons MQCons))
-            (λ V (_v : P×_ V),
-                let _ : P×VExt V := {| pca_ext := onemore_embed |} in
+            (λ _ _,
+                let _ : P×VExt _ := {| pca_ext := onemore_embed |} in
                 [f onemore_cons])
-            (λ T _t infs,
-                @F T _ (@onemore_cons (TCons) T _) infs)
+            (λ _ _ infs,
+                F (@onemore_cons TCons _ _) infs)
         ) ->
     MeansProp
         (λ _ _, [⋀ f])
@@ -375,6 +376,9 @@ Instance f_fc {Ext} : FormulaConstructors (@Formula Ext) := {
     ; fc_apl := fo_apl
   }.
 
+Instance f_tclass {T} {_t : FormulaConstructors T}
+  : TClass FormulaConstructors T := _t.
+
 Instance fc_aplc F : FormulaConstructors F ->
   ApplyConstructor F := {
     f_apl := fc_apl
@@ -392,6 +396,15 @@ Instance fc_prop F : FormulaConstructors F ->
   ; f_and := λ a b, [(fc_atm atom_and) a b]
   ; f_forall_quoted_formulas := λ p, [(fc_atm atom_forall_quoted_formulas) p]
   }.
+
+Instance fc_prop_and F
+  : FormulaConstructors F -> P×FormulaConstructors F
+  := λ _, {| pca_ext := _ |}.
+
+(* Instance fc_subset F P
+  (t:P F) (e : P ⊆ FormulaConstructors)
+  : FormulaConstructors F
+  := e F t. *)
 
 Definition f_quote {F} `{FormulaConstructors F} := fc_atm atom_quote.
 Definition f_qaply {F} `{FormulaConstructors F} f x := [f_quote f x].
@@ -429,6 +442,12 @@ Inductive FcMeansQuoted {F} `{FormulaConstructors F}
     UnfoldsToKind FcMeansQuoted qb b ->
     FcMeansQuoted [f_quote qa qb] [a b].
 
+Definition FcMQC : @MQCT FormulaConstructors FormulaConstructors :=
+  λ VC2 TC2 _ _ MQ,
+    (* ∀ V (_:VC2 V) T (_:TC2 T), *)
+      ∀ f a,
+        @UnfoldsToKind V _ _ (@IsAtom V _) f a ->
+        MQ V _ T _ [f_quote f] (fc_atm a).
 
 (****************************************************
       Search for meanings of reified formulas
@@ -495,15 +514,29 @@ Definition QfResult [Ext] (quotvars : Ext -> bool) :=
     (∀ e, (unreify_vars quotvars) e -> F)),
     F).
 
+Fixpoint get_folded_atom [Ext] n f :=
+  match n with 0 => timed_out _ | S pred =>
+    match unfold_step_result (Ext:=Ext) f with
+      | Some g => get_folded_atom pred g
+      | None => match f with
+        | f_atm a => success a
+        | _ => error _ ("not a folded atom:")
+        end
+      end
+    end.   
+  
+
 Fixpoint get_quoted_formula [Ext]
   (quotvars : Ext -> bool) n qf
   : GetResult (QfResult quotvars) :=
   match n with 0 => timed_out _ | S pred =>
+    (* TODO : get quoted atom *)
     match unfold_step_result (Ext:=Ext) qf with
       | Some qg => get_quoted_formula quotvars pred qg
       | None => match qf with
-          | fo_apl (f_atm atom_quote) (f_atm a) =>
-              success (λ _ _ _, (fc_atm a))
+          | fo_apl (f_atm atom_quote) a =>
+            ? a <- get_folded_atom pred a ; 
+            success (λ _ _ _, (fc_atm a))
           | fo_apl (fo_apl (f_atm atom_quote) qa) qb =>
             ? a <- get_quoted_formula quotvars pred qa ; 
             ? b <- get_quoted_formula quotvars pred qb ;
@@ -554,13 +587,13 @@ Definition MiSearchResult [Ext]
       (* Rule StandardFormula. *)
       InfSet F -> Prop.
 
-Fixpoint get_prop_meaning (n:nat) [Ext]
+Fixpoint get_prop_meaning_impl (n:nat) [Ext]
   (f : @Formula Ext)
   (vars : Ext -> bool)
   : GetResult (MiSearchResult vars f) :=
   match n with 0 => timed_out _ | S pred =>
     match unfold_step_result f with
-      | Some g => get_prop_meaning pred g vars
+      | Some g => get_prop_meaning_impl pred g vars
       | None => match f with
         (* [qp -> qc] *)
         | fo_apl (fo_apl (f_atm atom_implies) qp) qc =>
@@ -571,15 +604,15 @@ Fixpoint get_prop_meaning (n:nat) [Ext]
         
         (* [a & b] *)
         | fo_apl (fo_apl (f_atm atom_and) a) b =>
-          ? A <- (get_prop_meaning pred a vars) ;
-          ? B <- (get_prop_meaning pred b vars) ;
+          ? A <- (get_prop_meaning_impl pred a vars) ;
+          ? B <- (get_prop_meaning_impl pred b vars) ;
           (* success (A ∧4 B) *)
           success (λ F _ qv_meanings infs,
             (A F _ qv_meanings infs) ∧ (B F _ qv_meanings infs))
 
         (* [forall_quoted_formulas f] *)
         | fo_apl (f_atm atom_forall_quoted_formulas) f =>
-          ? Fx <- (get_prop_meaning pred
+          ? Fx <- (get_prop_meaning_impl pred
               [(embed_formula (λ a, onemore_old a) f)
                   (f_ext onemore_new)]
                   (one_more_revar vars)) ; 
@@ -661,8 +694,8 @@ Fixpoint display_f_impl ps [Ext] (f : @Formula Ext) : string :=
       | atom_fuse => "fuse"
       | atom_implies => "implies"
       | atom_and => "and"
-      | atom_forall_quoted_formulas => "∀Q"
-      | atom_quote => "quote"
+      | atom_forall_quoted_formulas => "⋀"
+      | atom_quote => "“"
       end
     end.
   
@@ -673,7 +706,7 @@ Notation "[ x => y ]" :=
   (at level 0, x at next level, y at next level).
   
 Notation "[ ∀ x , y ]" :=
-  [f_forall_quoted_formulas [x => y]]
+  [⋀ [x => y]]
   (at level 0, x at next level, y at next level).
 
 (* Definition foo : StandardFormula := [x => [x & x]].
@@ -700,15 +733,139 @@ Definition with_no_meanings
   success (λ F _ infs, g F _
         (no_meanings _) infs).
 
+Definition get_prop_meaning n f :=
+  (with_no_meanings (get_prop_meaning_impl n f no_vars)).
+
+Parameter Infs : InfSet StandardFormula.
+Definition simplify_meaning
+  (meaning : ∀ F `(FormulaConstructors F), InfSet F -> Prop)
+  := meaning StandardFormula _ Infs.
+Definition get_prop_meaning_simplified n f :=
+  ? g <- get_prop_meaning n f ;
+  success (simplify_meaning g).
+
 Definition test0 : StandardFormula :=
   [[f_quote const] -> [f_quote const]].
-Eval compute in (with_no_meanings (get_prop_meaning 90 test0 no_vars)).
+Eval compute in (get_prop_meaning_simplified 90 test0).
 
-Set Typeclasses Debug Verbosity 2.
+(* Set Typeclasses Debug Verbosity 2. *)
 Definition test05 : StandardFormula := [∀ a, [a -> a]].
-Eval compute in (with_no_meanings (get_prop_meaning 90 test05 no_vars)).
+Eval compute in (get_prop_meaning_simplified 90 test05).
 
 
+Fixpoint NMore n Ext :=
+  match n with
+    | 0 => Ext
+    | S pred => @OneMoreAtom (NMore pred Ext)
+    end.
+
+Fixpoint embed_nmore n [Ext] (f : @Formula Ext)
+  : (@Formula (NMore n Ext)) :=
+  match n with
+    | 0 => f
+    | S pred => embed_formula onemore_old (embed_nmore pred f)
+    end.
+Notation "f @ n" := (embed_nmore n f) (at level 0).
+
+
+(****************************************************
+              Concrete axioms of IC
+****************************************************)
+
+Definition dup : StandardFormula :=
+  [∀a,
+    [a -> (quote_f [a & a])]
+  ].
+Eval compute in display_f dup.
+Eval compute in (get_prop_meaning_simplified 90 dup).
+
+Definition drop : StandardFormula :=
+  [∀a, [∀b,
+    [(quote_f [(a@1) & b]) -> b]
+  ]].
+
+Definition and_sym : StandardFormula :=
+  [∀a, [∀b,
+    [(quote_f [(a@1) & b])
+    -> (quote_f [b & (a@1)])]
+  ]].
+Eval compute in display_f and_sym.
+(* Eval cbv beta iota delta in and_sym. *)
+Eval compute in (get_prop_meaning_simplified 90 and_sym).
+
+Definition and_assoc_left : StandardFormula :=
+  [∀a, [∀b, [∀c,
+    [(quote_f [(a@2) & [(b@1) & c]])
+    -> (quote_f [[(a@2) & (b@1)] & c])]
+  ]]].
+Eval compute in (get_prop_meaning_simplified 1890 and_assoc_left).
+
+Definition and_assoc_right : StandardFormula :=
+  [∀a, [∀b, [∀c,
+    [(quote_f [[(a@2) & (b@1)] & c])
+    -> (quote_f [(a@2) & [(b@1) & c]])]
+  ]]].
+
+(****************************************************
+              Definitions of inference
+****************************************************)
+
+Definition Rule {TC:TConsClass} := ∀ T (_:TClass TC T), InfSet T-> Prop.
+Definition default_rule {TC:TConsClass} : Rule := λ _ _ _, False.
+Definition reflexivity {TC:TConsClass} : Rule
+  := λ _ _ infs, ∀ a, infs a a.
+Definition transitivity {TC:TConsClass} : Rule
+  := λ _ _ infs, ∀ a b c, infs a b -> infs b c -> infs a c.
+
+Definition infs_provable_from {TC:TConsClass} (rules : Rule) :
+  ∀ T (_:TClass TC T), InfSet T
+  := λ _ _ p c, ∀ infs,
+    (rules _ _ infs
+    ∧ reflexivity _ infs
+    ∧ transitivity _ infs) -> infs p c.
+
+(****************************************************
+          Putting together the axioms of IC
+****************************************************)
+
+Fixpoint to_construction (f : StandardFormula) F `(FormulaConstructors F)
+  : F
+  := match f with
+    | f_atm a => fc_atm a
+    | f_ext e => match e with end
+    | fo_apl a b => [(@to_construction a F _) (@to_construction b F _)]
+    end.
+
+Definition IC_axioms : StandardFormula := 
+  [and_sym & and_assoc_left].
+Definition IC_external_rules : Rule :=
+  match get_prop_meaning 900 IC_axioms with
+  | success r => r
+  | _ => default_rule
+  end.
+Eval compute in (simplify_meaning IC_external_rules).
+
+Definition IC_provable_infs := infs_provable_from IC_external_rules.
+Definition IC_provable_props := IC_provable_infs _ IC_axioms.
+
+
+Lemma IC_implements_inference_universal :
+  ∀ (axioms : ∀ {V} `{FormulaConstructors V}, V) (Axioms : _),
+    MeansProp
+      (TCons := FormulaConstructors)
+      (MQCons := FcMeansQuoted)
+      (λ V _v, @axioms V (@pca_ext FormulaConstructors V _v)) cheat -> False.
+    (* ∀ p P, MeansProp p P ->
+      P _ _ (infs_provable_from Axioms _)
+      -> (* <-> *)
+      IC_provable_infs _ axioms p. *)
+  intros.
+  induction H0; [admit | admit | admit | admit | admit |].
+
+  unfold IC_provable_infs, infs_provable_from. intros.
+  5: {
+  }
+Qed.
 
 (****************************************************
 
@@ -716,7 +873,19 @@ Eval compute in (with_no_meanings (get_prop_meaning 90 test05 no_vars)).
 
 
 
+
+
+
+
+
+
                   Obsolete code
+
+
+
+
+
+
 
 
 
@@ -1528,38 +1697,22 @@ Lemma uhh2 :
   cbv.
 Qed.
 
-Fixpoint NMore n Ext :=
-  match n with
-    | 0 => Ext
-    | S pred => @OneMoreAtom (NMore pred Ext)
-    end.
-
-Fixpoint embed_nmore n [Ext] (f : @Formula Ext)
-  : (@Formula (NMore n Ext)) :=
-  match n with
-    | 0 => f
-    | S pred => embed_formula onemore_old (embed_nmore pred f)
-    end.
-Notation "f @ n" := (embed_nmore n f) (at level 0).
-
-Definition simple_get_prop_meaning n f :=
-  (with_no_meanings (get_prop_meaning n f no_vars)).
 
 (* Definition test1 : StandardFormula :=
   (eliminate_abstraction (f_with_variable (λ a, [a -> a]))). *)
 Definition test1 : StandardFormula :=
-  [∀a:Q, [a -> a]].
+  [∀a, [a -> a]].
 Eval compute in display_f test1.
-Eval compute in (simple_get_prop_meaning 90 test1).
+Eval compute in (get_prop_meaning_simplified 90 test1).
 
 Definition test2 : StandardFormula :=
-  [∀a:Q, [∀b:Q, [(a@1) -> b]]].
+  [∀a, [∀b, [(a@1) -> b]]].
 Eval compute in display_f test2.
-Eval lazy in (simple_get_prop_meaning 90 test2).
+Eval lazy in (get_prop_meaning_simplified 90 test2).
 Definition test3 : StandardFormula :=
-  [∀a:Q, [(quote_f [a const]) -> a]].
+  [∀a, [(quote_f [a const]) -> a]].
 Eval compute in display_f test3.
-Eval lazy in (simple_get_prop_meaning 90 test3).
+Eval lazy in (get_prop_meaning_simplified 90 test3).
 
 (* 
   (λ (_ : False → true = false → Formula)
@@ -1569,52 +1722,9 @@ Eval lazy in (simple_get_prop_meaning 90 test3).
  *)
 
 
-Definition dup : StandardFormula :=
-  [∀a:Q,
-    [a -> (quote_f [a & a])]
-  ].
 
-Definition drop : StandardFormula :=
-  [∀a:Q, [∀b:Q,
-    [(quote_f [(a@1) & b]) -> b]
-  ]].
+Definition f_false : StandardFormula := [∀p, p].
 
-Definition and_sym : StandardFormula :=
-  [∀a:Q, [∀b:Q,
-    [(quote_f [(a@1) & b])
-    -> (quote_f [b & (a@1)])]
-  ]].
-Eval compute in display_f and_sym.
-(* Eval cbv beta iota delta in and_sym. *)
-Eval compute in (simple_get_prop_meaning 90 and_sym).
-
-Definition and_assoc_left : StandardFormula :=
-  [∀a:Q, [∀b:Q, [∀c:Q,
-    [(quote_f [(a@2) & [(b@1) & c]])
-    -> (quote_f [[(a@2) & (b@1)] & c])]
-  ]]].
-
-Definition and_assoc_right : StandardFormula :=
-  [∀a:Q, [∀b:Q, [∀c:Q,
-    [(quote_f [[(a@2) & (b@1)] & c])
-    -> (quote_f [(a@2) & [(b@1) & c]])]
-  ]]].
-
-Definition f_false : StandardFormula := [∀p:Q, p].
-
-Definition IC_axioms : StandardFormula := and_sym.
-Definition IC_external_rules : Rule :=
-  match simple_get_prop_meaning 90 IC_axioms with
-  | success r => r
-  | _ => ∅
-  end.
-Definition transitivity : Rule := λ infs, ∀ a b c, infs a b -> infs b c -> infs a c.
-Definition IC_rules : Rule := IC_external_rules ∧1 transitivity.
-
-Definition infs_provable_from (rules : Rule) : InfSet :=
-  λ p c, ∀ infs, rules infs -> infs p c.
-Definition IC_provable_infs := infs_provable_from IC_rules.
-Definition IC_provable_props := IC_provable_infs IC_axioms.
 
 (* Definition IC_introspective :=
   ∀ p c, IC_provable_infs p c -> IC_provable_props [p -> c]. *)
@@ -1656,13 +1766,13 @@ Definition IC_consistent :=
 Fixpoint forall_n n :=
   match n with
     | 0 => f_id
-    | S pred => [p => [(forall_n pred) [l => [∀x:Q, [p (f_pair x l)]]]]]
+    | S pred => [p => [(forall_n pred) [l => [∀x, [p (f_pair x l)]]]]]
     end.
 
 Definition and_sym : StandardFormula :=
   [(forall_n 2) [[@0 & @1] -> [@1 & @0]]].
 
-Eval lazy in (simple_get_prop_meaning 90 and_sym).
+Eval lazy in (get_prop_meaning_simplified 90 and_sym).
 
 (* Definition TrueOf2 Infs f : Prop :=
   InfsAssertedBy f ⊆2 Infs.
