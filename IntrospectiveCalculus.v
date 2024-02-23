@@ -1034,12 +1034,15 @@ Lemma IC_implements_inference_universal :
         (MQCons := FcMQC)
         (@p)
         (@P) ->
-      P (infs_provable_from (@Axioms) _)
-      ->
-      (* <-> *)
-      (* IC_provable_infs _ axioms p *)
-      cheat
-      .
+
+      (∀ {T} {_t:Class FormulaConstructors T} (infs : InfSet T),
+        Axioms infs -> P infs)
+        ->
+        (* <-> *)
+      ∀ {T} {_t:Class FormulaConstructors T},
+        IC_provable_infs _ axioms p
+        (* cheat *)
+        .
   intros.
   induction H0; [admit | admit | admit | admit | admit |].
 
