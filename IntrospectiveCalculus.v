@@ -155,11 +155,13 @@ Existing Class TClass. *)
 (* Definition VClass := Type.
 Existing Class VClass. *)
 Definition VConsClass := Type -> Type.
-Existing Class VConsClass.
-Hint Unfold VConsClass : typeclass_instances.
 Definition TConsClass := Type -> Type.
+Existing Class VConsClass.
 Existing Class TConsClass.
+Hint Unfold VConsClass : typeclass_instances.
 Hint Unfold TConsClass : typeclass_instances.
+Implicit Type VC : VConsClass.
+Implicit Type TC : TConsClass.
 (* Definition VClass (VC:VConsClass) := VC.
 Existing Class VClass.
 Definition TClass (TC:TConsClass) := TC.
@@ -271,7 +273,7 @@ Instance tc_onemore_transpose {T} {TC:TConsClass}
   : TClass TC T
   := @onemore_embed _ _ _p. *)
 
-Definition MQT {VC:VConsClass} {TC:TConsClass} :=
+Definition MQT {VC TC} :=
   ∀ V (_:Class VC V) T (_:Class TC T), V -> T -> Prop.
 
 (* Definition TheTC TC : TConsClass := TC.
@@ -291,13 +293,13 @@ Definition TheVC VC : VConsClass := VC. *)
 (* Definition test :=
   fr ( MQ :: MQT _ ; _ ), False. *)
 
-Definition MQCT {VC:VConsClass} {TC:TConsClass} :=
+Definition MQCT {VC TC} :=
   ∀ (VC2:VConsClass) (TC2:TConsClass),
     (VC2 ⊆ VC) -> (TC2 ⊆ TC) ->
         @MQT VC2 TC2 -> Prop.
 Existing Class MQCT.
 
-Definition OneMoreQuotvar {VC:VConsClass} {TC:TConsClass}
+Definition OneMoreQuotvar {VC TC}
   (MQC : MQCT)
   : @MQCT (OneMoreConstructor VC) (OneMoreConstructor TC)
   :=
@@ -427,7 +429,7 @@ Definition MeansQuoted
 
 (* Definition the T (t:T) := t. *)
 (* Set Typeclasses Debug Verbosity 2. *)
-Inductive MeansProp {VC:VConsClass} {TC:TConsClass} {MQCons : MQCT}
+Inductive MeansProp {VC TC} {MQCons : MQCT}
   {_vp:VC ⊆ PropositionConstructors}
   : (∀ {V} {_:Class VC V}, V) ->
     (∀ {T} {_:Class TC T}, InfSet T -> Prop) ->
@@ -987,9 +989,9 @@ Definition transitivity {TC:TConsClass} : Rule
 Definition infs_provable_from {TC:TConsClass} (rules : Rule) :
   ∀ T (_:Class TC T), InfSet T
   := λ _ _ p c, ∀ infs,
-    (rules _ _ infs
-    ∧ reflexivity _ infs
-    ∧ transitivity _ infs) -> infs p c.
+    (reflexivity _ infs
+    ∧ transitivity _ infs
+    ∧ rules _ _ infs) -> infs p c.
 
 (****************************************************
           Putting together the axioms of IC
@@ -1021,6 +1023,80 @@ Definition IC_provable_props := IC_provable_infs _ IC_axioms.
 
       P (infs_provable_from (@Axioms) _). *)
 
+Section IC_implements_inference.
+
+Variable axioms : ∀ {V} {_:Class FormulaConstructors V},
+  V.
+Variable Axioms : ∀ {T} {_:Class FormulaConstructors T},
+  InfSet T -> Prop.
+Variable aA : MeansProp (MQCons := FcMQC) (@axioms) (@Axioms).
+
+Section IC_implements_inference_cases.
+
+(* Implicit Type VC : VConsClass.
+Implicit Type TC : TConsClass.
+Implicit Type MQC : @MQCT VC TC. *)
+
+Variable VC : VConsClass.
+Variable TC : TConsClass.
+Existing Instance VC.
+Existing Instance TC.
+Variable MQC : MQCT.
+Variable vcf : VC ⊆ FormulaConstructors.
+Variable tcf : TC ⊆ FormulaConstructors.
+Existing Instance MQC.
+Existing Instance vcf.
+Existing Instance tcf.
+Variable mqcf :
+  ∀ VC2 TC2 (_ : VC2 ⊆ VC) (_ : TC2 ⊆ TC) MQ,
+    MQC _ _ MQ -> FcMQC _ _ MQ.
+
+Instance vcp : VC ⊆ PropositionConstructors := consume _.
+
+Variable p : ∀ {V} {_:Class VC V}, V.
+Variable P : ∀ {T} {_:Class TC T}, InfSet T -> Prop.
+Variable pP : MeansProp (@p) (@P).
+
+Definition p_proven := ∀ {T} {_t:Class TC T} (infs : InfSet T),
+        let _ : Class FormulaConstructors T := consume _ in
+        reflexivity _ infs ->
+        transitivity _ infs ->
+        Axioms infs -> P infs.
+
+Definition IH := p_proven -> ∀ V (_v:Class VC V),
+        let _f : Class FormulaConstructors V := consume _ in
+        IC_provable_infs _f axioms p.
+
+End IC_implements_inference_cases.
+
+Print IH.
+Lemma implies_case {VC TC} {MQCons : MQCT}
+      {vcf:VC ⊆ FormulaConstructors}
+      {tcf:TC ⊆ FormulaConstructors} 
+      (qp qc : ∀ {V} {_:Class VC V}, V)
+      (p c : ∀ {T} {_:Class TC T}, T)
+      :
+      (MeansQuoted (@qp) (@p)) ->
+      (MeansQuoted (@qc) (@c)) ->
+      let _ : VC ⊆ PropositionConstructors := consume _ in
+      IH vcf tcf
+        (λ V _,
+          let _ : Class PropositionConstructors V := consume _ in
+          [qp -> qc])
+        (λ _ _ infs, infs p c).
+  intros.
+  unfold IH, IC_provable_infs, infs_provable_from.
+  intros. destruct H2 as (refl, (trans, ic)).
+  cbv in refl. cbv in trans.
+  cbv in H1.
+
+  specialize H1 with (infs :=
+    λ p c, infs axioms (f_implies (qp V _v) (qc V _v))).
+        
+          : IH [qp -> qc] (λ _ _ infs, infs p c).
+
+End IC_implements_inference.
+
 Lemma IC_implements_inference_universal :
   ∀ (axioms : ∀ {V} {_:Class FormulaConstructors V}, V)
     (Axioms : ∀ {T} {_:Class FormulaConstructors T}, InfSet T -> Prop),
@@ -1044,7 +1120,29 @@ Lemma IC_implements_inference_universal :
         (* cheat *)
         .
   intros.
-  induction H0; [admit | admit | admit | admit | admit |].
+  
+  refine ((fix recurse 
+    
+    Ext (assumed1 : @Meanings Ext) assumed2 a1_a2 f F mf
+      {struct mf}
+      : MeansProp (MQC:=MQC) f F
+    := match mf
+        in MeansProp _ f F
+        return MeansProp assumed2 f F
+        with
+    | mi_assumed a A aAassumed => _
+    | mi_implies qp p qc c x y => _
+    | mi_unfold a b B unf bBimp => _
+    | mi_and a A b B aAimp bBimp => _
+    | mi_forall_valid_propositions f F fxFXimp => _
+    | mi_forall_quoted_formulas f F fxFXimp => _
+    end) Ext assumed1 assumed2 a1_a2 f F mf);
+      [refine ?[assumed] | refine ?[implies] |
+        refine ?[unfold] | refine ?[and] |
+        refine ?[forall_prop] | refine ?[forall_quote]];
+      clear assumed3 assumed4 f0 F0 a1_a3 mf0.
+  refine
+  induction H0. ; [admit | admit | admit | admit | admit |].
 
   unfold IC_provable_infs, infs_provable_from. intros.
   5: {
