@@ -1023,6 +1023,28 @@ Definition IC_provable_props := IC_provable_infs _ IC_axioms.
 
       P (infs_provable_from (@Axioms) _). *)
 
+Fixpoint FCWithNVars n : Type -> Type :=
+  match n with
+    | 0 => FormulaConstructors
+    | S p => OneMoreConstructor (FCWithNVars p)
+    end.
+
+Fixpoint FcMQCWithNVars n : @MQCT (FCWithNVars n) (FCWithNVars n) :=
+  match n with
+    | 0 => FcMQC
+    | S p => OneMoreQuotvar (FcMQCWithNVars p)
+    end.
+
+Fixpoint fcn_fc n
+  : FCWithNVars n ⊆ FormulaConstructors
+  := match n with
+    | 0 => subclass_refl
+    | S p => subclass_trans OneMoreConstructor_subclass (fcn_fc p)
+    end.
+Existing Instance fcn_fc.
+Instance fcn_pc n : FCWithNVars n ⊆ PropositionConstructors
+  := consume _.
+
 Section IC_implements_inference.
 
 Variable axioms : ∀ {V} {_:Class FormulaConstructors V},
@@ -1033,11 +1055,16 @@ Variable aA : MeansProp (MQCons := FcMQC) (@axioms) (@Axioms).
 
 Section IC_implements_inference_cases.
 
+Variable n : nat.
+(* Local Instance VC : VConsClass := FCWithNVars n.
+Local Instance TC : TConsClass := FCWithNVars n.
+Local Instance MQC : MQCT := FcMQCWithNVars n. *)
+
 (* Implicit Type VC : VConsClass.
 Implicit Type TC : TConsClass.
 Implicit Type MQC : @MQCT VC TC. *)
 
-Variable VC : VConsClass.
+(* Variable VC : VConsClass.
 Variable TC : TConsClass.
 Existing Instance VC.
 Existing Instance TC.
@@ -1046,40 +1073,52 @@ Variable vcf : VC ⊆ FormulaConstructors.
 Variable tcf : TC ⊆ FormulaConstructors.
 Existing Instance MQC.
 Existing Instance vcf.
-Existing Instance tcf.
-Variable mqcf :
+Existing Instance tcf. *)
+(* Variable mqcf :
   ∀ VC2 TC2 (_ : VC2 ⊆ VC) (_ : TC2 ⊆ TC) MQ,
-    MQC _ _ MQ -> FcMQC _ _ MQ.
+    MQC _ _ MQ -> FcMQC _ _ MQ. *)
 
-Instance vcp : VC ⊆ PropositionConstructors := consume _.
+(* Local Instance vcp : VC ⊆ PropositionConstructors := consume _. *)
 
-Variable p : ∀ {V} {_:Class VC V}, V.
-Variable P : ∀ {T} {_:Class TC T}, InfSet T -> Prop.
-Variable pP : MeansProp (@p) (@P).
+Variable p : ∀ {V} {_:Class (FCWithNVars n) V}, V.
+Variable P : ∀ {T} {_:Class (FCWithNVars n) T}, InfSet T -> Prop.
+Variable pP : MeansProp (MQCons := FcMQCWithNVars n) (@p) (@P).
 
-Definition p_proven := ∀ {T} {_t:Class TC T} (infs : InfSet T),
+Definition p_proven := ∀ {T} {_t:Class (FCWithNVars n) T} (infs : InfSet T),
+        let _ : TConsClass := FCWithNVars n in
         let _ : Class FormulaConstructors T := consume _ in
         reflexivity _ infs ->
         transitivity _ infs ->
         Axioms infs -> P infs.
 
-Definition IH := p_proven -> ∀ V (_v:Class VC V),
+Definition IH := p_proven -> ∀ V (_v:Class (FCWithNVars n) V),
         let _f : Class FormulaConstructors V := consume _ in
         IC_provable_infs _f axioms p.
 
 End IC_implements_inference_cases.
 
 Print IH.
-Lemma implies_case {VC TC} {MQCons : MQCT}
-      {vcf:VC ⊆ FormulaConstructors}
-      {tcf:TC ⊆ FormulaConstructors} 
-      (qp qc : ∀ {V} {_:Class VC V}, V)
-      (p c : ∀ {T} {_:Class TC T}, T)
+
+Definition AxIH [n] {V} {_v: Class (FCWithNVars n) V} (infs : InfSet V)
+  (p c : ∀ {T} {_:Class (FCWithNVars n) T}, T)  := 
+      let _ : VConsClass := FCWithNVars n in
+      let _ : TConsClass := FCWithNVars n in
+      let _ : MQCT := FcMQCWithNVars n in
+  ∀ (qp qc : ∀ V, Class (FCWithNVars n) V → V),
+        MeansQuoted qp (@p (FCWithNVars n) _) -> MeansQuoted qc c ->
+        infs axioms (f_implies (qp V _v) (qc V _v)).
+
+(* Print VC. *)
+Lemma implies_case {n}
+      (qp qc : ∀ {V} {_:Class (FCWithNVars n) V}, V)
+      (p c : ∀ {T} {_:Class (FCWithNVars n) T}, T)
       :
+      let _ : VConsClass := FCWithNVars n in
+      let _ : TConsClass := FCWithNVars n in
+      let _ : MQCT := FcMQCWithNVars n in
       (MeansQuoted (@qp) (@p)) ->
       (MeansQuoted (@qc) (@c)) ->
-      let _ : VC ⊆ PropositionConstructors := consume _ in
-      IH vcf tcf
+      IH n
         (λ V _,
           let _ : Class PropositionConstructors V := consume _ in
           [qp -> qc])
@@ -1088,10 +1127,14 @@ Lemma implies_case {VC TC} {MQCons : MQCT}
   unfold IH, IC_provable_infs, infs_provable_from.
   intros. destruct H2 as (refl, (trans, ic)).
   cbv in refl. cbv in trans.
+  unfold p_proven, reflexivity, transitivity in H1.
   cbv in H1.
 
   specialize H1 with (infs :=
-    λ p c, infs axioms (f_implies (qp V _v) (qc V _v))).
+    λ p c,
+      ∀ (qp qc : ∀ V, Class (FCWithNVars n) V → V),
+        MeansQuoted qp p -> MeansQuoted qc c ->
+        infs axioms (f_implies (qp V _v) (qc V _v))).
         
           : IH [qp -> qc] (λ _ _ infs, infs p c).
 
