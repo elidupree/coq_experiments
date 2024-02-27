@@ -12,7 +12,7 @@ Open Scope string_scope.
                 uhhh
 ****************************************************)
 
-Implicit Type F T V P J Ext OldExt : Prop.
+Implicit Type F T V P : Prop.
 
 Parameter cheat : ∀ {A}, A.
 
@@ -457,17 +457,15 @@ Inductive MeansProp {VC TC} {MQCons : MQCT}
       (qp qc : ∀ {V} {_:Class VC V}, V)
       (p c : ∀ {T} {_:Class TC T}, T)
       :
-      (* (MeansQuoted (@qp) (@p)) ->
-      (MeansQuoted (@qc) (@c)) -> *)
+      (MeansQuoted (@qp) (@p)) ->
+      (MeansQuoted (@qc) (@c)) ->
       MeansProp 
         (λ V _,
           let _ : Class PropositionConstructors V := consume _ in
-          (* [qp -> qc] *)
-          cheat
+          [qp -> qc]
           )
-          cheat.
         (λ _ _ infs, infs p c) 
-  (* | mi_unfold
+  | mi_unfold
       (a b : ∀ {V} {_:Class VC V}, V) B :
       (∀ {V} {_v:Class VC V},
         let _ : Class PropositionConstructors V := consume _ in
@@ -506,7 +504,7 @@ Inductive MeansProp {VC TC} {MQCons : MQCT}
         (λ V _,
           let _ : Class PropositionConstructors V := consume _ in
           [⋀ f])
-        (λ _ _ infs, (∀x, F x infs)) *)
+        (λ _ _ infs, (∀x, F x infs))
   .
 
 
@@ -514,7 +512,7 @@ Inductive MeansProp {VC TC} {MQCons : MQCT}
        Definitions of concrete formula types
 ****************************************************)
 
-Inductive Atom : Prop :=
+Inductive Atom :=
   | atom_const
   | atom_fuse
   | atom_implies
@@ -523,7 +521,7 @@ Inductive Atom : Prop :=
   | atom_quote
   .
 
-Inductive Formula {Ext} : Prop :=
+Inductive Formula {Ext} :=
   | f_atm : Atom -> Formula
   | f_ext : Ext -> Formula
   | fo_apl : Formula -> Formula -> Formula.
@@ -655,7 +653,6 @@ Notation "? x <- m1 ; m2" :=
     | error T s => error _ s
     end) (right associativity, at level 70, x pattern).
 
-Inductive bool : Prop := true | false.
 
 Fixpoint unfold_step_result [Ext] f : GetResult (@Formula Ext) :=
   match f with
@@ -739,7 +736,7 @@ Fixpoint get_quoted_formula [Ext]
       end
   end.
 
-Inductive OneMoreAtom {OldExt} : Prop :=
+Inductive OneMoreAtom {OldExt} :=
   | onemore_old : OldExt -> OneMoreAtom
   | onemore_new : OneMoreAtom.
 
@@ -751,7 +748,7 @@ Definition one_more_revar
     | onemore_old a => vars a
     | onemore_new => true 
     end.
-    
+
 Definition revar_meanings [OldExt] (vars : OldExt -> bool) J :=
   ∀ v, (unreify_vars vars v) -> J.
 Definition one_more_revar_meaning
@@ -846,49 +843,44 @@ Fixpoint quote_f [Ext] f : @Formula Ext :=
     | fo_apl a b => [f_quote (quote_f a) (quote_f b)]
     end.
 
-Inductive pstring : Prop := | ps : string -> pstring.
-Notation "x ++? y" :=
-  (match x with ps _x => match y with ps _y => ps (_x ++ _y) end end)
-  (right associativity, at level 60).
-
 Inductive ParensState := ps_default | ps_apply_chain | ps_fuse_chain.
-Fixpoint display_f_impl parens [Ext] (f : @Formula Ext) : pstring :=
+Fixpoint display_f_impl ps [Ext] (f : @Formula Ext) : string :=
   match f with
-    | f_ext _ => ps "@"
+    | f_ext _ => "@"
     | fo_apl (fo_apl (f_atm atom_fuse)
       (f_atm atom_const))
-      (f_atm atom_const) => ps "id"
+      (f_atm atom_const) => "id"
     | fo_apl (fo_apl (f_atm atom_fuse) a) b => 
       let 
         b := display_f_impl ps_default b in
       let items := match a with
-        | fo_apl (f_atm atom_const) (f_atm atom_implies) => b ++? (ps " ->") 
-        | _ =>
-         display_f_impl ps_fuse_chain a ++? (ps " ") ++? b
+        | fo_apl (f_atm atom_const) (f_atm atom_implies) => b ++ " ->" 
+         | _ =>
+         display_f_impl ps_fuse_chain a ++ " " ++ b
          end in
-      match parens with
+      match ps with
         | ps_fuse_chain => items
-        | _ => (ps "[") ++? items ++? (ps "]")
+        | _ => "[" ++ items ++ "]"
         end
     | fo_apl a b => 
       let 
         b := display_f_impl ps_default b in
       let items := match a with
-        | f_atm atom_implies => b ++? (ps " ->")
+        | f_atm atom_implies => b ++ " ->" 
         | _ =>
-         display_f_impl ps_fuse_chain a ++? (ps " ") ++? b
+         display_f_impl ps_fuse_chain a ++ " " ++ b
          end in
-      match parens with
+      match ps with
         | ps_apply_chain => items
-        | _ => (ps "(") ++? items ++? (ps ")")
+        | _ => "(" ++ items ++ ")"
         end
     | f_atm a => match a with
-      | atom_const => ps "c"
-      | atom_fuse => ps "fuse"
-      | atom_implies => ps "implies"
-      | atom_and => ps "and"
-      | atom_forall_quoted_formulas => ps "⋀"
-      | atom_quote => ps "“"
+      | atom_const => "c"
+      | atom_fuse => "fuse"
+      | atom_implies => "implies"
+      | atom_and => "and"
+      | atom_forall_quoted_formulas => "⋀"
+      | atom_quote => "“"
       end
     end.
   
@@ -910,7 +902,8 @@ Eval cbv beta iota delta -[f_id const fuse] in foo. *)
 Definition no_vars (e:False) := false.
 Definition no_meanings R
  : revar_meanings no_vars R.
-  unfold revar_meanings. intro. contradiction.
+  unfold revar_meanings, unreify_vars.
+  intros. dependent destruction H.
 Defined.
 
 (* Definition no_meanings R (e:False) : (true = false) -> R.
