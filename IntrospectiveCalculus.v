@@ -39,12 +39,12 @@ Existing Class Consumer. *)
   := id. *)
 
 (* Set Typeclasses Debug Verbosity 2. *)
-Instance subclass_refl T (A : T -> Type)
+Instance subclass_refl {T} {A : T -> Type}
   : (A ⊆ A)
   := {|
     superclass_instance := λ x xA, xA
     |}.
-Instance subclass_trans T (A B C : T -> Type)
+Instance subclass_trans {T} {A B C : T -> Type}
   : (A ⊆ B) ->
     (B ⊆ C) ->
     Consumable (A ⊆ C)
@@ -53,7 +53,7 @@ Instance subclass_trans T (A B C : T -> Type)
       @superclass_instance _ _ _ _ x (@superclass_instance _ _ _ _ x xA)
     |}.
 
-Instance subclass_apply T (A B : T -> Type) t
+Instance subclass_apply {T} {A B : T -> Type} {t}
   : (A ⊆ B) ->
     Class A t ->
     Consumable (Class B t)
@@ -175,7 +175,7 @@ Instance onemore_tclass_unwrap :
          OneMoreConstructor Constrs F := λ _ _ c, c. *)
 
 (* Set Typeclasses Debug Verbosity 2. *)
-Instance OneMoreConstructor_subclass C
+Instance OneMoreConstructor_subclass {C}
   : OneMoreConstructor C ⊆ C
   := {|
     superclass_instance := λ _ _, onemore_embed
@@ -1023,6 +1023,8 @@ Definition IC_provable_props := IC_provable_infs _ IC_axioms.
 
       P (infs_provable_from (@Axioms) _). *)
 
+Definition FormulaWithNVars n : Type := @Formula (NMore n False).
+
 Fixpoint FCWithNVars n : Type -> Type :=
   match n with
     | 0 => FormulaConstructors
@@ -1039,11 +1041,29 @@ Fixpoint fcn_fc n
   : FCWithNVars n ⊆ FormulaConstructors
   := match n with
     | 0 => subclass_refl
-    | S p => subclass_trans OneMoreConstructor_subclass (fcn_fc p)
+    | S p => subclass_trans _ (fcn_fc p)
     end.
 Existing Instance fcn_fc.
 Instance fcn_pc n : FCWithNVars n ⊆ PropositionConstructors
   := consume _.
+
+(* Set Printing Implicit. *)
+Fixpoint fn_fcn n i : Class
+  (FCWithNVars i)
+  (FormulaWithNVars
+  n) := match i return Class
+  (FCWithNVars i)
+  (FormulaWithNVars
+  n) with
+    | 0 => f_fc
+    | S p => {|
+        onemore_embed := fn_fcn n p ;
+        onemore_cons := 
+        cheat
+        (* f_ext (@onemore_new (NMore n False)) *)
+         |}
+    end.
+Existing Instance fn_fcn.
 
 Section IC_implements_inference.
 
@@ -1099,14 +1119,24 @@ End IC_implements_inference_cases.
 
 Print IH.
 
-Definition AxIH [n] {V} {_v: Class (FCWithNVars n) V} (infs : InfSet V)
+(* Set Typeclasses Debug Verbosity 2. *)
+Definition implies_case_AxIH [n] {V} {_v: Class (FCWithNVars n) V}
+  (infs : InfSet V)
   (p c : ∀ {T} {_:Class (FCWithNVars n) T}, T)  := 
-      let _ : VConsClass := FCWithNVars n in
-      let _ : TConsClass := FCWithNVars n in
+      (* let _ : VConsClass := FCWithNVars n in *)
+      (* let _ : TConsClass := FCWithNVars n in *)
       let _ : MQCT := FcMQCWithNVars n in
+      let _ : Class FormulaConstructors V := consume _ in
+      (* let _ : Class PropositionConstructors V := consume _ in *)
+      (* cheat. *)
   ∀ (qp qc : ∀ V, Class (FCWithNVars n) V → V),
-        MeansQuoted qp (@p (FCWithNVars n) _) -> MeansQuoted qc c ->
+        MeansQuoted qp (@p) -> MeansQuoted qc (@c) ->
         infs axioms (f_implies (qp V _v) (qc V _v)).
+
+(* Definition testfcn n : Class
+  (FCWithNVars n)
+  (FormulaWithNVars
+  n) := _. *)
 
 (* Print VC. *)
 Lemma implies_case {n}
@@ -1128,6 +1158,11 @@ Lemma implies_case {n}
   intros. destruct H2 as (refl, (trans, ic)).
   cbv in refl. cbv in trans.
   unfold p_proven, reflexivity, transitivity in H1.
+  
+  specialize (H1 (FormulaWithNVars n)).
+  specialize (H1 _).
+  specialize (H1 (implies_case_AxIH infs)).
+
   cbv in H1.
 
   specialize H1 with (infs :=
