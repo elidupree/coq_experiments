@@ -125,9 +125,6 @@ Inductive UnfoldStep {F} `{FunctionConstructors F} : F -> F -> Prop :=
   | unfold_in_lhs a b c : UnfoldStep a b -> UnfoldStep [a c] [b c].
 
 
-Definition InfSet F := F -> F -> Prop.
-
-
 (* Notation "R ∧1 S" := (λ x, R x ∧ S x) (at level 70). *)
 (* Notation "R ×1 S" := (λ x, prod (R x) (S x)) (at level 70). *)
 (* Notation "R ∧3 S" := (λ x y z, R x y z ∧ S x y z) (at level 70). *)
@@ -223,13 +220,23 @@ Definition MeansQuoted {VC TC} {MQC : MQCT}
     MQ _ _ _ _ qx x.
 
 
+
+(* Propositions represent rules of inference. A Rule is a constraint on what inferences may be valid: for example, the rule (A & B) |- (B & A) says that for all values of B and A, the inference (A & B) |- (B & A) must be valid.
+
+In practice, we don't use the full generality of arbitrary constraints. Our only recursive rule is transitivity ((A |- B) and (B |- C) imply (A |- C)), and there isn't a proposition that represents it, it's just always true. All propositions represent simple positive constraints, which just say that certain inferences must be valid.
+
+Nevertheless, the simplest way to define Rule is as a predicate on InfSets, which are predicates on inferences. (An InfSet takes two formulas P,C and says whether it holds inference P |- C as valid.)
+
+We must ask what the actual type of Rule is. A Rule must be agnostic to grammar-extensions, but you may express a rule that assumes particular constructors exist (otherwise, our example rule wouldn't be able to express &). Therefore: *)
+
+Definition InfSet T := T -> T -> Prop.
+Definition Rule {TC} := ∀ T (_:Class TC T), InfSet T -> Prop.
+
 (* We can now make the big definition of what propositions mean. *)
 (* Set Typeclasses Debug Verbosity 2. *)
 Inductive MeansProp {VC TC} {MQC : MQCT}
   {_vp:VC ⊆ PropositionConstructors}
-  : (∀ {V} {_:Class VC V}, V) ->
-    (∀ {T} {_:Class TC T}, InfSet T -> Prop) ->
-    Prop :=
+  : (∀ {V} {_:Class VC V}, V) -> Rule -> Prop :=
 
   | mi_implies
       (qp qc : ∀ {V} {_:Class VC V}, V)
