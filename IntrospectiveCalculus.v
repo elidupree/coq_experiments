@@ -8,24 +8,68 @@ Require Import Coq.Program.Equality.
 Require Import Ascii String.
 Open Scope string_scope.
 
-(****************************************************
-                uhhh
-****************************************************)
-
+(* Hack - remove later *)
 Parameter cheat : ∀ {A}, A.
 
+(****************************************************
+              Typeclass practicalities
+****************************************************)
+
+(* We often want to view IC formulas as "extensible". That is, we know that the formula type has certain constructors, but don't guarantee that those are the ONLY constructors.
+
+Theoretically, this is "simpler" than Coq's `Inductive` types (constructors come _before_ inductive instances), but in Coq, it's not elementary. So to represent a "set of constructors", we use a typeclass, where the typeclass methods are the constructors. Thus, anytime we have a type F with an instance of FormulaConstructors, we can view F as a legitimate "extension" of the concept of formulas.
+
+Here we must do some bureaucracy about how we'll use typeclasses. *)
+
+(* Sometimes we need to pass a typeclass as a function argument. This is fine because a typeclass is an ordinary value, but Coq's features for using typeclasses _implicitly_ don't have a built-in way to treat a local variable as a typeclass. To work around this, we make a wrapper class "Class", which is technically the identity function but is always treated as a typeclass. So when we want a local variable `C` to be treated as a typeclass, we say `Class C` instead. This is the same thing, but counts as a typeclass for implicits. *)
 Definition Class [P] (p:P) := p.
 Existing Class Class.
 (* Hint Unfold Class : typeclass_instances. *)
 (* Definition use_class {P T} (c:Class P T) : P T := c. *)
 
+(* We also often want to extend a typeclass with additional constructors, while still leaving it open to still-further constructors. This gives us a _second typeclass_ that is a subclass of the first. It's useful to represent the subclass relation explicitly: *)
 Class SubclassOf {T} (Superclass Subclass : T -> Type) := {
   superclass_instance : ∀ {T} {_:Class Subclass T}, Class Superclass T
   }.
 Notation "R ⊆ S" := (SubclassOf S R) (at level 70).
+Instance subclass_refl {T} {A : T -> Type}
+  : (A ⊆ A)
+  := {|
+    superclass_instance := λ x xA, xA
+    |}.
 
-Definition Consumable C (c : C) := c.
-Existing Class Consumable.
+(* We would like to make an instance for subclass transitivity (A ⊆ B -> B ⊆ C -> A ⊆ C), but unfortunately this makes instance-search diverge: The subgoal looking for (A ⊆ B) tries looking for some additional transitivity-instance (A ⊆ X) and (X ⊆ B), ad infinitum. So we cannot declare this as an Instance: *)
+Definition subclass_trans {T} {A B C : T -> Type}
+  : (A ⊆ B) ->
+    (B ⊆ C) ->
+    (A ⊆ C)
+  := λ ab bc, {|
+    superclass_instance := λ x xA,
+      @superclass_instance _ _ _ _ x (@superclass_instance _ _ _ _ x xA)
+    |}.
+
+(* ...but we can put it into the typeclass_instances database as a Hint Immediate, to apply transitivity only when the pieces are already present as hypotheses. *)
+Hint Immediate subclass_trans : typeclass_instances.
+
+Definition subclass_trans_test {T} {A B C : T -> Type}
+  : (A ⊆ B) -> (B ⊆ C) -> (A ⊆ C) := _.
+Fail Definition subclass_trans_fail {T} {A B C D : T -> Type}
+  : (A ⊆ B) -> (B ⊆ C) -> (C ⊆ D) -> (A ⊆ D) := _.
+
+(* We can do the same for subclass application (A ⊆ B -> A T -> B T). *)
+Definition subclass_apply {T} {A B : T -> Type} {t}
+  : (A ⊆ B) -> Class A t -> Class B t
+  := λ _ _, superclass_instance.
+Hint Immediate subclass_apply : typeclass_instances.
+
+(* We also sometimes want to implicitly use transitivity and then apply (or equivalently, apply twice); allow this as another Immediate. *)
+Definition subclass_apply_trans {T} {A B C : T -> Type} {t}
+  : (A ⊆ B) -> (B ⊆ C) -> Class A t -> Class C t
+  := λ _ _ _, let _ : (A ⊆ C) := _ in _.
+Hint Immediate subclass_apply_trans : typeclass_instances.
+
+(* Definition Consumable C (c : C) := c.
+Existing Class Consumable. *)
 
 (* Definition Consumer (n : nat) C (c : C) := c.
 Existing Class Consumer. *)
@@ -38,28 +82,7 @@ Existing Class Consumer. *)
   : Consumer n (R ⊆ S) -> (R ⊆ S)
   := id. *)
 
-(* Set Typeclasses Debug Verbosity 2. *)
-Instance subclass_refl {T} {A : T -> Type}
-  : (A ⊆ A)
-  := {|
-    superclass_instance := λ x xA, xA
-    |}.
-Instance subclass_trans {T} {A B C : T -> Type}
-  : (A ⊆ B) ->
-    (B ⊆ C) ->
-    Consumable (A ⊆ C)
-  := λ ab bc, {|
-    superclass_instance := λ x xA,
-      @superclass_instance _ _ _ _ x (@superclass_instance _ _ _ _ x xA)
-    |}.
-
-Instance subclass_apply {T} {A B : T -> Type} {t}
-  : (A ⊆ B) ->
-    Class A t ->
-    Consumable (Class B t)
-  := λ _ _, superclass_instance.
-
-Definition consume T : Consumable T -> T := id.
+(* Definition consume T : Consumable T -> T := id. *)
 
 (****************************************************
    Relations between internal and external meaning
@@ -75,230 +98,103 @@ Class FunctionConstructors F := {
   ; fc_ac :: ApplyConstructor F
   }.
 
-(* Instance fc_ac_i F {_:FunctionConstructors F} : ApplyConstructor F
-  := fc_ac. *)
-
-(* Definition const {F} {fc : FunctionConstructors F} : F :=
-  fc_const fc.
-Definition fuse {F} {fc : FunctionConstructors F} : F :=
-  fc_fuse fc.
-Definition f_apl [F] [fc : FunctionConstructors F]
-  : F -> F -> F := fc_apply fc. *)
-
-Notation "[ x y .. z ]" := (f_apl .. (f_apl x y) .. z)
- (at level 0, x at next level, y at next level).
-
-Inductive UnfoldStep {F} `{FunctionConstructors F} : F -> F -> Prop :=
-  | unfold_const a b : UnfoldStep [const a b] a
-  | unfold_fuse a b c : UnfoldStep [fuse a b c] [[a c] [b c]]
-  | unfold_in_lhs a b c : UnfoldStep a b -> UnfoldStep [a c] [b c].
-
 Class PropositionConstructors F := {
     pc_fc :: FunctionConstructors F
   ; f_implies : F -> F -> F
   ; f_and : F -> F -> F
   ; f_forall_quoted_formulas : F -> F
   }.
+
+(* When we want to use PropositionConstructors methods, but only have our wrapper Class PropositionConstructors, we need to be able to unwrap it: *)
 Instance onemore_pc_unwrap :
   ∀ {F}, Class PropositionConstructors F ->
          PropositionConstructors F := λ _ b, b.
 
-(* Instance pc_fc_i F {_:PropositionConstructors F}
-  : FunctionConstructors F
-  := pc_fc. *)
 
+Notation "[ x y .. z ]" := (f_apl .. (f_apl x y) .. z)
+ (at level 0, x at next level, y at next level).
 Notation "[ x -> y ]" := (f_implies x y) (at level 0, x at next level, y at next level).
 Notation "[ x & y ]" := (f_and x y)
   (at level 0, x at next level, y at next level).
 Notation "[ ⋀ x ]" := (f_forall_quoted_formulas x)
   (at level 0, x at next level).
 
-(* Notation "R ∧1 S" := (λ x, R x ∧ S x) (at level 70). *)
-Notation "R ×1 S" := (λ x, prod (R x) (S x)) (at level 70).
-Notation "R ∧3 S" := (λ x y z, R x y z ∧ S x y z) (at level 70).
-(* Notation "R ∧4 S" := (λ x y z w, R x y z w ∧ S x y z w) (at level 70). *)
-(* Notation "R ⊆ S" := (∀ x, R x -> S x) (at level 70). *)
-(* Definition Construction Constructors := ∀ {T} `{Constructors T}, T. *)
+Inductive UnfoldStep {F} `{FunctionConstructors F} : F -> F -> Prop :=
+  | unfold_const a b : UnfoldStep [const a b] a
+  | unfold_fuse a b c : UnfoldStep [fuse a b c] [[a c] [b c]]
+  | unfold_in_lhs a b c : UnfoldStep a b -> UnfoldStep [a c] [b c].
+
 
 Definition InfSet F := F -> F -> Prop.
 
-(* Parameter make_T : ∀ {P} {T} `{P T}, T.
-Definition use_make_T {P} {T} `{P T} : T := make_T.
 
-Parameter P : Type -> Type.
-Existing Class P.
-Parameter make_T : ∀ {T} `{P T}, T.
-Definition use_make_T {T} `{P T} : T := make_T.
-Existing Class VExt. *)
+(* Notation "R ∧1 S" := (λ x, R x ∧ S x) (at level 70). *)
+(* Notation "R ×1 S" := (λ x, prod (R x) (S x)) (at level 70). *)
+(* Notation "R ∧3 S" := (λ x y z, R x y z ∧ S x y z) (at level 70). *)
+(* Notation "R ∧4 S" := (λ x y z w, R x y z w ∧ S x y z w) (at level 70). *)
+(* Notation "R ⊆ S" := (∀ x, R x -> S x) (at level 70). *)
+(* Definition Construction Constructors := ∀ {T} `{Constructors T}, T. *)
 
 Class OneMoreConstructor Constrs F := {
     onemore_embed : Class Constrs F
   ; onemore_cons : F
   }.
+
 Instance onemore_class_unwrap :
   ∀ {Constrs F}, Class (OneMoreConstructor Constrs) F ->
          OneMoreConstructor Constrs F := λ _ _ c, c.
-Instance onemore_embed_uhh :
-  ∀ {Constrs F}, Class (OneMoreConstructor Constrs) F ->
-         Consumable (Class Constrs F) := λ _ _ _, onemore_embed.
-
-(* Definition VClass := Type.
-Existing Class VClass.
-Definition TClass := Type.
-Existing Class TClass. *)
-
-(* Notation "∀ '∀:P×' Ext T , body" :=
-  (∀ (∀ T `{(PropositionConstructors ×1 Ext) T}, body)
-  (at level 200, Ext at next level, T binder, right associativity)
-  : type_scope. *)
-
-(* Definition VClass := Type.
-Existing Class VClass. *)
-Definition VConsClass := Type -> Type.
-Definition TConsClass := Type -> Type.
-Existing Class VConsClass.
-Existing Class TConsClass.
-Hint Unfold VConsClass : typeclass_instances.
-Hint Unfold TConsClass : typeclass_instances.
-Implicit Type VC : VConsClass.
-Implicit Type TC : TConsClass.
-(* Definition VClass (VC:VConsClass) := VC.
-Existing Class VClass.
-Definition TClass (TC:TConsClass) := TC.
-Existing Class TClass. *)
-
-(* Instance onemore_vclass_unwrap :
-  ∀ {Constrs:VConsClass} {F}, Class (OneMoreConstructor Constrs) F ->
-         OneMoreConstructor Constrs F := λ _ _ c, c.
-Instance onemore_tclass_unwrap :
-  ∀ {Constrs:TConsClass} {F}, Class (OneMoreConstructor Constrs) F ->
-         OneMoreConstructor Constrs F := λ _ _ c, c. *)
-
-(* Set Typeclasses Debug Verbosity 2. *)
+         
 Instance OneMoreConstructor_subclass {C}
   : OneMoreConstructor C ⊆ C
   := {|
     superclass_instance := λ _ _, onemore_embed
   |}.
+  
+
+(* Propositions are formulas that say things about other formulas, but there's no intrinsic reason those formulas have to use the _same grammar_. So we will often be passing around _two_ formula-constructor-classes, which I call the "viewing type" (conventionally named V, with constructors named VC) and the "target type" (conventionally named T, with constructors named TC).
+
+The gotcha: We don't want one of them to be accidentally passed where the other is expected (especially implicitly!)... but they are the same type!
+
+So, we make the types different _in name_, which means Coq will implicitly pass them only in the correct role. *)
+Definition VConsClass := Type -> Type.
+Definition TConsClass := Type -> Type.
+Implicit Type VC : VConsClass.
+Implicit Type TC : TConsClass.
+Existing Class VConsClass.
+Existing Class TConsClass.
+(* ...but when a Type -> Type is needed in a context that can disambiguate which one, we do want Coq to know that a VConsClass or TConsClass will suffice: *)
+Hint Unfold VConsClass : typeclass_instances.
+Hint Unfold TConsClass : typeclass_instances.
+
 
 (* Set Typeclasses Debug Verbosity 2. *)
+Definition test_subclass_apply_with_VConsClass
+  {VC oVC2:VConsClass} {V} (v:Class oVC2 V) `{oVC2 ⊆ VC}
+  : Class VC V := _.
 
-(* Instance subclass_trans_vc (A B C : VConsClass)
-  : (A ⊆ B) -> (B ⊆ C) -> Consumable (A ⊆ C)
-  := @subclass_trans _ _ _ _.
-Instance subclass_trans_tc (A B C : TConsClass)
-  : (A ⊆ B) -> (B ⊆ C) -> Consumable (A ⊆ C)
-  := @subclass_trans _ _ _ _. *)
-
-Parameter Cl : Type -> Type.
-Existing Class Cl.
-Parameter t1 : ∀ {T} {U}, Cl (U -> T) -> Cl U -> Cl T.
-Definition t2 {T} {U} `{Cl U} `{Cl (U -> T)} : Cl T := t1 _ _. 
-
-Parameter testinst : ∀ {Superclass Subclass : VConsClass}
-  {_:Subclass ⊆ Superclass} {T0 : Type} {st:Class Subclass T0},
-  Class Superclass T0 . 
-Definition test
-  {VC oVC2:VConsClass}
-  {V} (v:Class oVC2 V) {_:oVC2 ⊆ VC}
-  := 
-    (* let _a : VConsClass := VClass oVC2 in
-    let _b : VConsClass := VClass VC in
-    let _c : VClass _a V := v in *)
-    let _ : Class VC V := testinst in
-    (* let _ : V := 
-        (@onemore_cons _ _ (@superclass_instance _ _ _ _ _ _v)) in *)
-         False.
-(* Definition UnfoldVCC : VConsClass -> (Type -> Type) := cheat. *)
-(* Hint Resolve UnfoldVCC : typeclass_instances. *)
-Definition test5
-  {VC oVC2:VConsClass}
-  {V} (v:Class oVC2 V) `{oVC2 ⊆ VC}
-  := 
-    (* let _ : Class VC V := superclass_instance in *)
-    let _ : Class VC V := consume _ in
-    (* let _ : V := 
-        (@onemore_cons _ _ (@superclass_instance _ _ _ _ _ _v)) in *)
-         False.
-Definition test9
+Definition test_OneMoreConstructor_apply_and_unwrap_with_VConsClass
   {VC oVC2:VConsClass} `{oVC2 ⊆ OneMoreConstructor VC}
   {V} (_v:Class oVC2 V)
-  := 
-    (* let _j : (OneMoreConstructor VC ⊆ VC) := _ in *)
-    (* let _ : VClass oVC2 V := _ in *)
-    let _ : (oVC2 ⊆ VC) := consume _ in
-    let _ : OneMoreConstructor VC V := 
-        (@superclass_instance _ _ _ _ _ _) in
-    let _ : Class (OneMoreConstructor VC) V := consume _ in
-    (* let _ : V := 
-        (@onemore_cons _ _ (@superclass_instance _ _ _ _ _ _v)) in *)
-         False.
-(* Definition test
-  {VC oVC2:VConsClass} `{VClass oVC2 ⊆ OneMoreConstructor VC}
-  {V} (_v:VClass oVC2 V)
-  := 
-    (* let _j : (OneMoreConstructor VC ⊆ VC) := _ in *)
-    let _ : (VClass oVC2 ⊆ VClass VC) := consume _ in
-    (* let _ : OneMoreConstructor VC V := 
-        (@superclass_instance _ _ _ _ _ _) in *)
-    (* let _ : V := 
-        (@onemore_cons _ _ (@superclass_instance _ _ _ _ _ _v)) in *)
-         False. *)
+  : OneMoreConstructor VC V := _.
 
-(* Instance forgetV V VC (v:VClass VC V) : Class VC V := v.
-Instance forgetT T TC (t:TClass TC T) : Class TC T := t.
-Instance forgetClass_onemore F FC
-  (f:Class (OneMoreConstructor FC) F) :
-  OneMoreConstructor FC F := f. *)
+(* Boilerplate: An awfully specific lemma that we'd like to be able to use implicitly in a later definition, but has a transitivity step that my prior Hint Immediates don't cover. *)
+Definition OneMoreConstructor_pc_trans_apply {VC} {_vp : VC ⊆ PropositionConstructors} {V} {_v : Class (OneMoreConstructor VC) V}
+  : Class PropositionConstructors V := let _ : Class VC V := _ in _.
+Hint Immediate OneMoreConstructor_pc_trans_apply : typeclass_instances.
 
-(* Instance vc_onemore_transpose {V} {VC:VConsClass}
-  {_p:VClass (OneMoreConstructor VC) V}
-  : OneMoreConstructor (VClass VC) V
-  := _p.
-Instance tc_onemore_transpose {T} {TC:TConsClass}
-  {_p:TClass (OneMoreConstructor TC) T}
-  : OneMoreConstructor (TClass TC) T
-  := _p. *)
-(* Instance tc_onemore_forget {T} {TC:TConsClass}
-  {_p:TClass (OneMoreConstructor TC) T}
-  : OneMoreConstructor TC T
-  := _p. *)
 
-(*Instance vclass_proj_onemore {V} {VC:VConsClass}
-  {_p:VClass (OneMoreConstructor VC) V}
-  : VClass VC V
-  := onemore_embed. *)
-(* Instance tclass_proj_onemore {T} {TC:TConsClass}
-  {_p:TClass (OneMoreConstructor TC) T}
-  : TClass TC T
-  := @onemore_embed _ _ _p. *)
-
+(* We also deal with "quoted formulas". To say that a V-formula is a quoted version of a T-formula, we need to define the MeansQuoted relation (MQ for short). This relation is only well-defined once you first specify the V and T constructors: *)
 Definition MQT {VC TC} :=
   ∀ V (_:Class VC V) T (_:Class TC T), V -> T -> Prop.
 
-(* Definition TheTC TC : TConsClass := TC.
-Definition TheVC VC : VConsClass := VC. *)
-
-
-(* Notation "'fr' ( MQ '::' 'MQT' ) , body" := 
-  (∀ MQ : (∀ {V} {T} {cv:VClass _ V} {ct:TClass _ T}, V -> T -> Prop),
-    body)
-  (at level 50, MQ at next level,
-    body at next level). *)
-
-(* Notation "'gfh' (  ':fg:' 'MdQT' VC TC ) body" := 
-  (∀ MQ : (∀ V T {cv:Class VC V} {ct:Class TC T}, V -> T -> Prop),
-    body)
-  (at level 50). *)
-(* Definition test :=
-  fr ( MQ :: MQT _ ; _ ), False. *)
-
+(* ...and usually, we need to be talking about _constructors_ (MQC) for that relation, because it must be just as extensible as the formula types: *)
 Definition MQCT {VC TC} :=
   ∀ (VC2:VConsClass) (TC2:TConsClass),
     (VC2 ⊆ VC) -> (TC2 ⊆ TC) ->
         @MQT VC2 TC2 -> Prop.
 Existing Class MQCT.
 
+(* ...the main case of which is to add one additional variable to each of V and T, and say that the new V-variable is a quoted version of the new T-variable. *)
 Definition OneMoreQuotvar {VC TC}
   (MQC : MQCT)
   : @MQCT (OneMoreConstructor VC) (OneMoreConstructor TC)
@@ -307,183 +203,70 @@ Definition OneMoreQuotvar {VC TC}
   oVC2 oTC2
     (eoV : oVC2 ⊆ (OneMoreConstructor VC)) eoT
   (MQ : @MQT oVC2 oTC2),
-    let _ : (oVC2 ⊆ VC) := consume _ in
-    let _ : (oTC2 ⊆ TC) := consume _ in
+    let _ : (oVC2 ⊆ VC) := _ in
+    let _ : (oTC2 ⊆ TC) := _ in
     (MQC _ _ _ _ MQ)
     ∧
     (∀ V T (_v:Class oVC2 V) (_t:Class oTC2 T),
-      let _ : Class (OneMoreConstructor VC) V := consume _ in
-      let _ : Class (OneMoreConstructor TC) T := consume _ in
+      let _ : Class (OneMoreConstructor VC) V := _ in
+      let _ : Class (OneMoreConstructor TC) T := _ in
       MQ _ _ _ _ onemore_cons onemore_cons).
 
 
-(* Parameter make_T : ∀ {P} {T} `{Class P T}, T.
-Definition use_make_T {P} {T} `{Class P T} : T := make_T. *)
-
-
-(* Definition Vi VExt := ∀ {V} `{PropositionConstructors V} `{VExt V}, V.
-Definition MeansQuoted VExt TC (MQCons : MQCT VExt TC). *)
-
-(* Print Vi. *)
-
-Class PropositionConstructorsAnd VExt V := {
-    pca_pc :: PropositionConstructors V
-  ; pca_ext : VExt V
-  }.
-
-Notation "'P×' Ext" :=
-  (PropositionConstructorsAnd Ext)
-  (at level 0).
-
-(* Instance pcprod_pc_i {V} {VExt} {_p:VClass P×VExt V}
-  : PropositionConstructors V
-  := fst _p. *)
-
-(* Instance pcprod_forget_onemore_i {V} {VExt}
-  {_p:P×(OneMoreConstructor VExt) V}
-  : P×VExt V
-  := let (p, ev) := _p in {| pca_ext := onemore_embed |}. *)
-
-Instance pcprod_proj_onemore_i {V} {VExt}
-  {_p:P×(OneMoreConstructor VExt) V}
-  : OneMoreConstructor VExt V
-  := pca_ext.
-
-(* Definition VCAssociative {VExt} {V}
-  (_v: P×(OneMoreConstructor VExt) V)
-  : OneMoreConstructor P×VExt V
-  :=
-    (* let (a, bc) := _v in *)
-    {|
-        onemore_embed := {| pca_ext := @onemore_embed VExt _ _ |}
-      ; onemore_cons := @onemore_cons VExt _ _
-    |}.
-    
-
-Definition MQCAssociative {VExt} {TC:TConsClass}
-  (MQC : @MQCT (OneMoreConstructor P×VExt) (OneMoreConstructor TC))
-  : @MQCT P×(OneMoreConstructor VExt) (OneMoreConstructor TC)
-  :=
-  λ VC2 TC2 (eV : VC2 ⊆ P×(OneMoreConstructor VExt)) eT
-    (MQ : @MQT VC2 TC2),
-    MQC VC2 TC2
-      (λ V _v,
-        VCAssociative (eV V _v))
-      eT
-      MQ. *)
-      
-  
-
-
-(* Notation "∀+ ( arg ':∀:P×' Ext ; T , body ) , rest" :=
-  (∀ arg : (∀ T (c : P×Ext T),
-    let _ : PropositionConstructors T := fst c in
-    let _ : FunctionConstructors T := pc_fc in
-      body), rest)
-  (at level 200, T binder, right associativity).
-
-Notation "( '∀:P×' Ext ; T , body ) -> rest" :=
-  (∀ arg : (∀ T (c : P×Ext T),
-    let _ : PropositionConstructors T := fst c in
-    let _ : FunctionConstructors T := pc_fc in
-      body), rest)
-  (at level 200, T binder, right associativity).
-  
-Notation "( '∀:P×' Ext ; T , body ) -> rest" :=
-  (∀ ( arg : ∀:P× Ext ; T , body ), rest)
-  (at level 200, T name, right associativity).
-
-Notation "( '∀T' T , body ) -> rest" :=
-  ((∀ {T} {_:TClass _ T}, body) -> rest)
-  (at level 200, T name, right associativity). *)
-
-(* Notation "'λ:P×' T , body" :=
-  (λ T (c : VClass P×_ T),
-      body)
-  (at level 200, T name, right associativity). *)
-
-(* Lemma test {TC:TConsClass} :  (∀! T, False) -> Prop.
-  intro.
-  refine ((∀! T, _) -> False).
-  exact T.
-  Show Proof.
-  refine ((∀! T, T) -> False). *)
-
-Definition MeansQuoted
-  {VC:VConsClass}
-  {TC:TConsClass}
-  {MQCons : MQCT}
+(* ...and finally, we define how an MQCT relates _inductive instances_ of VC and TC. *)
+Definition MeansQuoted {VC TC} {MQC : MQCT}
   (qx : ∀ {V} {_vf:Class VC V}, V)
   (x : ∀ {T} {_tf:Class TC T}, T)
   :=
-  ∀
-    V (_v:Class VC V)
-    T (_t:Class TC T)
-    (MQ : MQT),
-    MQCons _ _ _ _ MQ ->
+  ∀ V (_v:Class VC V) T (_t:Class TC T) (MQ : MQT),
+    MQC _ _ _ _ MQ ->
     MQ _ _ _ _ qx x.
 
-(* Parameter adapt : ∀ VExt (qx : ∀ {V} {_:P×VExt V}, V),
-  let VC : VConsClass := P×VExt in
-  ∀ {V} {_vf:VClass VC V}, V. *)
 
-(* Definition the T (t:T) := t. *)
+(* We can now make the big definition of what propositions mean. *)
 (* Set Typeclasses Debug Verbosity 2. *)
-Inductive MeansProp {VC TC} {MQCons : MQCT}
+Inductive MeansProp {VC TC} {MQC : MQCT}
   {_vp:VC ⊆ PropositionConstructors}
   : (∀ {V} {_:Class VC V}, V) ->
     (∀ {T} {_:Class TC T}, InfSet T -> Prop) ->
     Prop :=
+
   | mi_implies
       (qp qc : ∀ {V} {_:Class VC V}, V)
       (p c : ∀ {T} {_:Class TC T}, T)
       :
-      (MeansQuoted (@qp) (@p)) ->
-      (MeansQuoted (@qc) (@c)) ->
+      MeansQuoted (@qp) (@p) ->
+      MeansQuoted (@qc) (@c) ->
       MeansProp  
-        (λ V _,
-          let _ : Class PropositionConstructors V := consume _ in
-          [qp -> qc])
+        (λ _ _, [qp -> qc])
         (λ _ _ infs, infs p c) 
+
   | mi_unfold
       (a b : ∀ {V} {_:Class VC V}, V) B :
-      (∀ {V} {_v:Class VC V},
-        let _ : Class PropositionConstructors V := consume _ in
-        UnfoldStep a b) ->
+      (∀ {V} {_v:Class VC V}, UnfoldStep a b) ->
       MeansProp (@b) (@B) ->
       MeansProp (@a) (@B)
+
   | mi_and
       (a b : ∀ {V} {_:Class VC V}, V)
       (A B : ∀ {T} {_:Class TC T}, InfSet T -> Prop) :
       MeansProp (@a) (@A) ->
       MeansProp (@b) (@B) ->
       MeansProp
-        (λ V _,
-          let _ : Class PropositionConstructors V := consume _ in
-          [a & b])
+        (λ _ _, [a & b])
         (λ _ _ infs, A infs ∧ B infs)
+
    | mi_forall_quoted_formulas
       (f : ∀ {V} {_:Class VC V}, V)
       (F : (∀ {T} {_:Class TC T}, T -> InfSet T -> Prop))
       :
       (
-        MeansProp
-          (MQCons := (@OneMoreQuotvar VC TC MQCons))
-          (_vp := consume _)
-          (λ V _v,
-            let _ : OneMoreConstructor VC ⊆ PropositionConstructors := consume _ in
-            let _ : Class PropositionConstructors V := consume _ in
-            let _ : Class VC V := consume _ in
-            [f (@onemore_cons VC V _v)]
-          )
-          (λ T _t infs,
-            let _ : Class TC T := consume _ in
-            F (@onemore_cons TC T _t) infs)
+        MeansProp (MQC := OneMoreQuotvar MQC)
+          (λ _ _, [f onemore_cons])
+          (λ _ _ infs, F onemore_cons infs)
       ) ->
       MeansProp
-        (λ V _,
-          let _ : Class PropositionConstructors V := consume _ in
-          [⋀ f])
+        (λ _ _, [⋀ f])
         (λ _ _ infs, (∀x, F x infs))
   .
 
@@ -1071,7 +854,7 @@ Variable axioms : ∀ {V} {_:Class FormulaConstructors V},
   V.
 Variable Axioms : ∀ {T} {_:Class FormulaConstructors T},
   InfSet T -> Prop.
-Variable aA : MeansProp (MQCons := FcMQC) (@axioms) (@Axioms).
+Variable aA : MeansProp (MQC := FcMQC) (@axioms) (@Axioms).
 
 Section IC_implements_inference_cases.
 
@@ -1102,7 +885,7 @@ Existing Instance tcf. *)
 
 Variable p : ∀ {V} {_:Class (FCWithNVars n) V}, V.
 Variable P : ∀ {T} {_:Class (FCWithNVars n) T}, InfSet T -> Prop.
-Variable pP : MeansProp (MQCons := FcMQCWithNVars n) (@p) (@P).
+Variable pP : MeansProp (MQC := FcMQCWithNVars n) (@p) (@P).
 
 Definition p_proven := ∀ {T} {_t:Class (FCWithNVars n) T} (infs : InfSet T),
         let _ : TConsClass := FCWithNVars n in
@@ -1179,13 +962,13 @@ Lemma IC_implements_inference_universal :
   ∀ (axioms : ∀ {V} {_:Class FormulaConstructors V}, V)
     (Axioms : ∀ {T} {_:Class FormulaConstructors T}, InfSet T -> Prop),
     MeansProp
-      (MQCons := FcMQC)
+      (MQC := FcMQC)
       (@axioms)
       (@Axioms) -> 
     ∀ (p : ∀ {V} {_:Class FormulaConstructors V}, V)
       (P : ∀ {T} {_:Class FormulaConstructors T}, InfSet T -> Prop),
       MeansProp
-        (MQCons := FcMQC)
+        (MQC := FcMQC)
         (@p)
         (@P) ->
 
