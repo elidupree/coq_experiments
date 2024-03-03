@@ -39,7 +39,9 @@ Instance subclass_refl {T} {A : T -> Type}
     |}.
 
 (* We would like to make an instance for subclass transitivity (A ⊆ B -> B ⊆ C -> A ⊆ C), but unfortunately this makes instance-search diverge: The subgoal looking for (A ⊆ B) tries looking for some additional transitivity-instance (A ⊆ X) and (X ⊆ B), ad infinitum. So we cannot declare this as an Instance: *)
-Definition subclass_trans {T} {A B C : T -> Type}
+Set Typeclasses Iterative Deepening.
+Set Typeclasses Depth 6.
+Instance subclass_trans {T} {A B C : T -> Type}
   : (A ⊆ B) ->
     (B ⊆ C) ->
     (A ⊆ C)
@@ -49,40 +51,56 @@ Definition subclass_trans {T} {A B C : T -> Type}
     |}.
 
 (* ...but we can put it into the typeclass_instances database as a Hint Immediate, to apply transitivity only when the pieces are already present as hypotheses. *)
-Hint Immediate subclass_trans : typeclass_instances.
+(* Hint Immediate subclass_trans : typeclass_instances. *)
+(* ...except Hint Immediate doesn't work if there's other classes of the same type in scope, maybe due to ambiguity. Thus: *)
+(* Create HintDb subclass_reasoning.
 
+Hint Extern 3 (_ ⊆ _) => (
+  solve [typeclasses eauto 1 with
+     subclass_reasoning; trivial with typeclass_instances] ||
+  solve [typeclasses eauto 2 with
+     subclass_reasoning; trivial with typeclass_instances])
+  : typeclass_instances. *)
+(* Hint Extern 1 (_ ⊆ _) => match goal with
+  | AB : (?A ⊆ ?B), BC : (?B ⊆ ?C) |- (?A ⊆ ?C) => exact (subclass_trans AB BC)
+  end : typeclass_instances. *)
+  
+(* Hint Resolve subclass_trans : subclass_instances. *)
+
+(* Set Typeclasses Debug Verbosity 2. *)
 Definition subclass_trans_test {T} {A B C : T -> Type}
   : (A ⊆ B) -> (B ⊆ C) -> (A ⊆ C) := _.
+(* Definition subclass_trans_fail {T} {A B C D : T -> Type}
+  : (A ⊆ B) -> (B ⊆ C) -> (C ⊆ D) -> (A ⊆ D).
+  (* intros. *)
+  typeclasses eauto 5.
 Fail Definition subclass_trans_fail {T} {A B C D : T -> Type}
-  : (A ⊆ B) -> (B ⊆ C) -> (C ⊆ D) -> (A ⊆ D) := _.
+  : (A ⊆ B) -> (B ⊆ C) -> (C ⊆ D) -> (A ⊆ D) := _. *)
 
 (* We can do the same for subclass application (A ⊆ B -> A T -> B T). *)
-Definition subclass_apply {T} {A B : T -> Type} {t}
+Instance subclass_apply {T} {A B : T -> Type} {t}
   : (A ⊆ B) -> Class A t -> Class B t
   := λ _ _, superclass_instance.
-Hint Immediate subclass_apply : typeclass_instances.
+(* Hint Immediate subclass_apply : typeclass_instances. *)
+(* Hint Extern 1 (Class _ _) => match goal with
+  | AB : (?A ⊆ ?B), At : (Class ?A ?t) |- (Class ?B ?t) => exact (subclass_apply AB At)
+  end : typeclass_instances. *)
 
 (* We also sometimes want to implicitly use transitivity and then apply (or equivalently, apply twice); allow this as another Immediate. *)
-Definition subclass_apply_trans {T} {A B C : T -> Type} {t}
+(* Definition subclass_apply_trans {T} {A B C : T -> Type} {t}
   : (A ⊆ B) -> (B ⊆ C) -> Class A t -> Class C t
-  := λ _ _ _, let _ : (A ⊆ C) := _ in _.
-Hint Immediate subclass_apply_trans : typeclass_instances.
+  := λ _ _ _, let _ : (A ⊆ C) := _ in _. *)
 
-(* Definition Consumable C (c : C) := c.
-Existing Class Consumable. *)
+(* Hint Immediate subclass_apply_trans : typeclass_instances. *)
+(* Use a higher cost so it's not used with subclass_refl when subclass_apply works by itself. *)
+(* Hint Extern 2 (Class _ _) => match goal with
+  | AB : (?A ⊆ ?B), BC : (?B ⊆ ?C), At : (Class ?A ?t) |- (Class ?C ?t) => exact (subclass_apply_trans AB BC At)
+  end : typeclass_instances. *)
 
-(* Definition Consumer (n : nat) C (c : C) := c.
-Existing Class Consumer. *)
-
-(* Instance subclass_provided n T (R S : T -> Type) 
-  : Consumer n (R ⊆ S) -> (R ⊆ S)
-  := id. *)
-
-(* Instance subclass_consumable n T (R S : T -> Type) 
-  : Consumer n (R ⊆ S) -> (R ⊆ S)
-  := id. *)
-
-(* Definition consume T : Consumable T -> T := id. *)
+(* The definitions above treat a class as an arbitrary constraint, but *constructor* classes also have a positivity requirement, which we sometimes need to require explicitly: *)
+(* Class ConstructorClass (C : Type -> Type) := {
+    cc_embed : ∀ {a b} {_:C a}, (a -> b) -> C b
+  }. *)
 
 (****************************************************
    Relations between internal and external meaning
@@ -133,8 +151,8 @@ Inductive UnfoldStep {F} `{FunctionConstructors F} : F -> F -> Prop :=
 (* Definition Construction Constructors := ∀ {T} `{Constructors T}, T. *)
 
 Class OneMoreConstructor Constrs F := {
-    onemore_embed : Class Constrs F
-  ; onemore_cons : F
+    omc_embed : Class Constrs F
+  ; omc_new : F
   }.
 
 Instance onemore_class_unwrap :
@@ -144,7 +162,7 @@ Instance onemore_class_unwrap :
 Instance OneMoreConstructor_subclass {C}
   : OneMoreConstructor C ⊆ C
   := {|
-    superclass_instance := λ _ _, onemore_embed
+    superclass_instance := λ _ _, omc_embed
   |}.
   
 
@@ -166,18 +184,23 @@ Hint Unfold TConsClass : typeclass_instances.
 
 (* Set Typeclasses Debug Verbosity 2. *)
 Definition test_subclass_apply_with_VConsClass
-  {VC oVC2:VConsClass} {V} (v:Class oVC2 V) `{oVC2 ⊆ VC}
+  {VC VC2:VConsClass} {V} (v:Class VC2 V) `{VC2 ⊆ VC}
   : Class VC V := _.
+  
+Definition test_subclass_apply_with_VConsClass_2
+  {C : Type -> Type} {VC2 : VConsClass} {V:Type} (v:@Class VConsClass VC2 V) `{VC2 ⊆ C}
+  : @Class (Type -> Type) C V := _.
 
 Definition test_OneMoreConstructor_apply_and_unwrap_with_VConsClass
   {VC oVC2:VConsClass} `{oVC2 ⊆ OneMoreConstructor VC}
   {V} (_v:Class oVC2 V)
   : OneMoreConstructor VC V := _.
 
+
 (* Boilerplate: An awfully specific lemma that we'd like to be able to use implicitly in a later definition, but has a transitivity step that my prior Hint Immediates don't cover. *)
-Definition OneMoreConstructor_pc_trans_apply {VC} {_vp : VC ⊆ PropositionConstructors} {V} {_v : Class (OneMoreConstructor VC) V}
+(* Definition OneMoreConstructor_pc_trans_apply {VC} {_vp : VC ⊆ PropositionConstructors} {V} {_v : Class (OneMoreConstructor VC) V}
   : Class PropositionConstructors V := let _ : Class VC V := _ in _.
-Hint Immediate OneMoreConstructor_pc_trans_apply : typeclass_instances.
+Hint Immediate OneMoreConstructor_pc_trans_apply : typeclass_instances. *)
 
 
 (* We also deal with "quoted formulas". To say that a V-formula is a quoted version of a T-formula, we need to define the MeansQuoted relation (MQ for short). This relation is only well-defined once you first specify the V and T constructors: *)
@@ -192,33 +215,29 @@ Definition MQCT {VC TC} :=
 Existing Class MQCT.
 
 (* ...the main case of which is to add one additional variable to each of V and T, and say that the new V-variable is a quoted version of the new T-variable. *)
-Definition OneMoreQuotvar {VC TC}
-  (MQC : MQCT)
+Definition OneMoreQuotvar {VC TC} (MQC : MQCT)
   : @MQCT (OneMoreConstructor VC) (OneMoreConstructor TC)
   :=
-  λ
-  oVC2 oTC2
-    (eoV : oVC2 ⊆ (OneMoreConstructor VC)) eoT
-  (MQ : @MQT oVC2 oTC2),
-    let _ : (oVC2 ⊆ VC) := _ in
-    let _ : (oTC2 ⊆ TC) := _ in
-    (MQC _ _ _ _ MQ)
-    ∧
-    (∀ V T (_v:Class oVC2 V) (_t:Class oTC2 T),
-      let _ : Class (OneMoreConstructor VC) V := _ in
-      let _ : Class (OneMoreConstructor TC) T := _ in
-      MQ _ _ _ _ onemore_cons onemore_cons).
+  λ oVC2 oTC2 _v _t MQ,
+    (MQC _ _ _ _ MQ) ∧
+    (∀ V (_v:Class oVC2 V) T (_t:Class oTC2 T),
+      (* why do we need this line and not a matching one for T? it's a mystery. *)
+      let _ : OneMoreConstructor VC V := _ in 
+      MQ _ _ _ _ omc_new omc_new).
 
+
+(* Given any constructor-class, we may also be interested in the inductive type with those constructors. We will be using this a lot, so it gets a short name.
+
+Unfortunately, we can't express the statement `C (Ind C)`, because it results in universe inconsistency. This would work fine in the Prop universe; I think I could theoretically rewrite most of the code here to use Prop instead of Type, and have it work. But Coq generally expects you to be working in the predicative hierarchy instead, and can't abstract over Prop vs Type in the way we'd need. But, I think it turns out to be unnecessary to express `C (Ind C)` anyway (we can just convert to other forms). *)
+Definition Ind C := ∀ T (_:Class C T), T.
 
 (* ...and finally, we define how an MQCT relates _inductive instances_ of VC and TC. *)
 Definition MeansQuoted {VC TC} {MQC : MQCT}
-  (qx : ∀ {V} {_vf:Class VC V}, V)
-  (x : ∀ {T} {_tf:Class TC T}, T)
+  (qx : Ind VC) (x : Ind TC)
   :=
   ∀ V (_v:Class VC V) T (_t:Class TC T) (MQ : MQT),
     MQC _ _ _ _ MQ ->
-    MQ _ _ _ _ qx x.
-
+    MQ _ _ _ _ (qx _ _) (x _ _).
 
 
 (* Propositions represent rules of inference. A Rule is a constraint on what inferences may be valid: for example, the rule (A & B) |- (B & A) says that for all values of B and A, the inference (A & B) |- (B & A) must be valid.
@@ -230,57 +249,59 @@ Nevertheless, the simplest way to define Rule is as a predicate on InfSets, whic
 We must ask what the actual type of Rule is. A Rule must be agnostic to grammar-extensions, but you may express a rule that assumes particular constructors exist (otherwise, our example rule wouldn't be able to express &). Therefore: *)
 
 Definition InfSet T := T -> T -> Prop.
+Existing Class InfSet.
+Definition _proves {T} {infs:InfSet T} p c := infs p c.
+Notation "p ⊢ c" := (_proves p c) (at level 70).
+
 Definition Rule {TC} := ∀ T (_:Class TC T), InfSet T -> Prop.
 
 (* We can now make the big definition of what propositions mean. *)
 (* Set Typeclasses Debug Verbosity 2. *)
 Inductive MeansProp {VC TC} {MQC : MQCT}
   {_vp:VC ⊆ PropositionConstructors}
-  : (∀ {V} {_:Class VC V}, V) -> Rule -> Prop :=
+  : Ind VC -> Rule -> Prop :=
 
-  | mi_implies
-      (qp qc : ∀ {V} {_:Class VC V}, V)
-      (p c : ∀ {T} {_:Class TC T}, T)
+  | mi_implies (qp qc : Ind VC) (p c : Ind TC)
       :
-      MeansQuoted (@qp) (@p) ->
-      MeansQuoted (@qc) (@c) ->
+      MeansQuoted qp p ->
+      MeansQuoted qc c ->
       MeansProp  
-        (λ _ _, [qp -> qc])
-        (λ _ _ infs, infs p c) 
+        (λ _ _, [(qp _ _) -> (qc _ _)])
+        (λ _ _ _, (p _ _) ⊢ (c _ _)) 
 
-  | mi_unfold
-      (a b : ∀ {V} {_:Class VC V}, V) B :
-      (∀ {V} {_v:Class VC V}, UnfoldStep a b) ->
-      MeansProp (@b) (@B) ->
-      MeansProp (@a) (@B)
+  | mi_unfold (a b : Ind VC) B :
+      (∀ V (_v:Class VC V), UnfoldStep (a _ _) (b _ _)) ->
+      MeansProp b B ->
+      MeansProp a B
 
-  | mi_and
-      (a b : ∀ {V} {_:Class VC V}, V)
-      (A B : ∀ {T} {_:Class TC T}, InfSet T -> Prop) :
-      MeansProp (@a) (@A) ->
-      MeansProp (@b) (@B) ->
+  | mi_and (a b : Ind VC) (A B : Rule) :
+      MeansProp a A ->
+      MeansProp b B ->
       MeansProp
-        (λ _ _, [a & b])
-        (λ _ _ infs, A infs ∧ B infs)
+        (λ _ _, [(a _ _) & (b _ _)])
+        (λ _ _ _, A _ _ _ ∧ B _ _ _)
 
    | mi_forall_quoted_formulas
-      (f : ∀ {V} {_:Class VC V}, V)
+      (f : Ind VC)
       (F : (∀ {T} {_:Class TC T}, T -> InfSet T -> Prop))
       :
-      (
-        MeansProp (MQC := OneMoreQuotvar MQC)
-          (λ _ _, [f onemore_cons])
-          (λ _ _ infs, F onemore_cons infs)
-      ) ->
+      MeansProp (MQC := OneMoreQuotvar MQC)
+        (λ _ _, [(f _ _) omc_new])
+        (λ _ _ _, F omc_new _)
+      ->
       MeansProp
-        (λ _ _, [⋀ f])
-        (λ _ _ infs, (∀x, F x infs))
+        (λ _ _, [⋀ (f _ _)])
+        (λ _ _ _, (∀x, F x _))
   .
 
 
 (****************************************************
        Definitions of concrete formula types
 ****************************************************)
+
+(* The above has been very abstract. We now proceed to the concrete formulas of IC. These belong to the Set universe, for convenience of programming.
+
+All formulas of IC are apply-trees where the leaves are standard atoms... *)
 
 Inductive Atom :=
   | atom_const
@@ -291,6 +312,8 @@ Inductive Atom :=
   | atom_quote
   .
 
+(* ...but our metatheorems may also extend the formula type with additional constructors, which represent metavariables. Each such variable is essentially an additional constructor, so our formula type is parameterized with the extension type. *)
+
 Inductive Formula {Ext} :=
   | f_atm : Atom -> Formula
   | f_ext : Ext -> Formula
@@ -298,23 +321,57 @@ Inductive Formula {Ext} :=
 
 Definition StandardFormula := @Formula False.
 
+Inductive OneMoreExt {OldExt} :=
+  | ome_embed : OldExt -> OneMoreExt
+  | ome_new : OneMoreExt.
+
+(* We'll also need to "be able to talk to" the abstract definitions above, so we make an equivalent definition out of typeclasses. *)
+
 Class FormulaConstructors F := {
       fc_atm : Atom -> F
     ; fc_apl : F -> F -> F
   }.
+  
+  (* Set Printing Implicit.
+Set Typeclasses Debug Verbosity 2.
+Definition test_subclass_apply_with_VConsClass_FormulaConstructors
+  {VC2 : (Type -> Type)} {TC2:(Type -> Type)} {V:Type} (v:@Class (Type -> Type) VC2 V) {_:VC2 ⊆ FormulaConstructors} {_:TC2 ⊆ FormulaConstructors}
+  : @Class (Type -> Type) FormulaConstructors V.
+  (* clear X0. *)
+  typeclasses eauto.
+  eauto with typeclass_instances. *)
+  
+(* Definition test_subclass_apply_with_VConsClass_FormulaConstructors
+  {VC2 : VConsClass} {TC2:TConsClass} {V:Type} (v:@Class VConsClass VC2 V) {_:VC2 ⊆ FormulaConstructors} {_:TC2 ⊆ FormulaConstructors}
+  : @Class (Type -> Type) FormulaConstructors V := _.
+
+Definition test_subclass_apply_with_VConsClass_FormulaConstructors_2 :∀ (VC2:VConsClass) (TC2:TConsClass),
+    (VC2 ⊆ FormulaConstructors) -> (TC2 ⊆ FormulaConstructors) ->
+        Prop :=
+  λ VC2 TC2 eV eT,
+    ∀ V (_v:Class VC2 V)
+     (* T (_t:Class TC2 T) *)
+     ,
+      let _ : Class FormulaConstructors V := _ in
+      (* let _ : Class FormulaConstructors T := _ in
+      let MQ := MQ V _ T _ in *)
+      False. *)
 
 Instance f_unwrap :
   ∀ {F}, Class FormulaConstructors F ->
          FormulaConstructors F := λ _ b, b.
 
-Instance f_fc {Ext} : FormulaConstructors (@Formula Ext) := {
+(* Instance fc_cc : ConstructorClass (Class FormulaConstructors) := {
+    cc_embed := λ a b FCa ab, {|
+        fc_atm := λ a, ab (fc_atm a)
+      ; fc_apl := λ a b, ab (fc_apl a b)
+    |}
+  }. *)
+
+Instance f_fc {Ext} : Class FormulaConstructors (@Formula Ext) := {|
       fc_atm := f_atm
     ; fc_apl := fo_apl
-  }.
-Instance f_fcc {Ext} : Class FormulaConstructors (@Formula Ext) := f_fc.
-
-(* Instance f_tclass {T} {_t : FormulaConstructors T}
-  : Class FormulaConstructors T := _t. *)
+  |}.
 
 Instance fc_aplc F : FormulaConstructors F ->
   ApplyConstructor F := {
@@ -338,34 +395,116 @@ Instance fc_subset_prop
   : FormulaConstructors ⊆ PropositionConstructors
   := {| superclass_instance := fc_prop |}.
 
-Instance fc_prop_and F
-  : FormulaConstructors F -> P×FormulaConstructors F
-  := λ _, {| pca_ext := _ |}.
+Definition OneMoreConstructor_fc_trans_apply {C} {_vp : C ⊆ FormulaConstructors} {V} {_v : Class (OneMoreConstructor C) V}
+  : Class FormulaConstructors V := let _ : Class C V := _ in _.
+Hint Immediate OneMoreConstructor_fc_trans_apply : typeclass_instances.
 
-(*
-these caused diverging search:
 
-Instance fc_subset_v F P
-  (_v:VClass P F) (e : P ⊆ FormulaConstructors)
-  : FormulaConstructors F
-  := e F _v.
+Fixpoint sf_to_ind (f : StandardFormula)
+  : Ind FormulaConstructors
+  := λ T _t, match f return T with
+    | f_atm a => fc_atm a
+    | f_ext a => match a with end
+    | fo_apl a b => [(sf_to_ind a _) (sf_to_ind b _)]
+    end.
 
-Instance fc_subset_t F P
-  (_t:TClass P F) (e : P ⊆ FormulaConstructors)
-  : FormulaConstructors F
-  := e F _t. *)
+(* Definition ind_to_sf (i : Ind FormulaConstructors)
+  : StandardFormula := i _ _. *)
 
-Definition f_quote {F} `{FormulaConstructors F} := fc_atm atom_quote.
-Definition f_qaply {F} `{FormulaConstructors F} f x := [f_quote f x].
 
-Fixpoint embed_formula
+(* Set Typeclasses Debug Verbosity 2. *)
+Fixpoint onemoref_to_ind {Ext} {Constrs}
+  {_:Constrs ⊆ FormulaConstructors}
+  (embed : Ext -> Ind Constrs)
+  (f : @Formula (@OneMoreExt Ext))
+  : Ind (OneMoreConstructor Constrs)
+  := λ _ _, match f with
+    | f_atm a => fc_atm a
+    | f_ext e => match e with
+      | ome_embed e => (embed e _ _)
+      | ome_new => omc_new
+      end
+    | fo_apl a b => [
+      (onemoref_to_ind embed a _)
+      (onemoref_to_ind embed b _)
+    ]
+    end.
+
+
+Fixpoint NMoreConstructors n Constrs :=
+  match n with 
+    | 0 => Constrs
+    | S pred => OneMoreConstructor (NMoreConstructors pred Constrs)
+    end.
+
+Fixpoint NMoreExt n Ext :=
+  match n with
+    | 0 => Ext
+    | S pred => (NMoreExt pred (@OneMoreExt Ext))
+    end.
+
+
+Instance fplus_fcplus {Ext} : Class (OneMoreConstructor FormulaConstructors) (@Formula (@OneMoreExt Ext)) :=
+  {|
+      omc_embed := _
+    ; omc_new := f_ext ome_new
+  |}.
+
+Instance fplus2_fcplus2 {Ext} : Class (OneMoreConstructor (OneMoreConstructor FormulaConstructors)) (@Formula (@OneMoreExt (@OneMoreExt Ext))) :=
+  {|
+      omc_embed := _
+    ; omc_new := f_ext (ome_embed ome_new)
+  |}.
+
+Print fplus2_fcplus2.
+Definition test1 : @Formula (@OneMoreExt (@OneMoreExt False))
+  := @omc_new (OneMoreConstructor FormulaConstructors) _ _.
+Definition test2 : @Formula (@OneMoreExt (@OneMoreExt False))
+  := @omc_new (FormulaConstructors) _ _.
+Eval compute in (test1, test2).
+
+(* Set Printing Implicit. *)
+Fixpoint nth_new_ext {Ext} n : (@NMoreExt (S n) Ext) := 
+  match n return (@NMoreExt (S n) Ext) with
+    | 0 => ome_new
+    | S pred => nth_new_ext pred
+    end.
+
+Fixpoint fplusn_fcplusn n {Ext} : 
+  Class (NMoreConstructors n FormulaConstructors)
+        (@Formula (@NMoreExt n Ext)) :=
+  match n return Class (NMoreConstructors n FormulaConstructors)
+        (@Formula (@NMoreExt n Ext)) with
+    | 0 => f_fc
+    | S pred => 
+      {|
+          omc_embed := fplusn_fcplusn pred
+        ; omc_new := f_ext (nth_new_ext pred)
+      |}
+    end.
+Existing Instance fplusn_fcplusn.
+Print fplusn_fcplusn.
+
+
+(* Fixpoint embed_formula
   Ext1 Ext2 (embed : Ext1 -> Ext2)
   (f : (@Formula Ext1)) : (@Formula Ext2)
   := match f with
     | f_atm a => f_atm a
     | f_ext a => f_ext (embed a)
     | fo_apl a b => [(embed_formula embed a) (embed_formula embed b)]
-    end.
+    end. *)
+
+(* Set Printing Implicit.
+Definition ome_extend_constrs Constrs Ext :
+  ConstructorClass (Class Constrs) ->
+  Class Constrs (@Formula Ext) ->
+  Class Constrs (@Formula (@OneMoreExt Ext))
+  := λ _ _, cc_embed (embed_formula ome_embed). *)
+
+
+Definition f_quote {F} `{FormulaConstructors F} := fc_atm atom_quote.
+Definition f_qaply {F} `{FormulaConstructors F} f x := [f_quote f x].
 
 Inductive UnfoldsToKind F `{FormulaConstructors F} [T]
     (kind : F -> T -> Prop) :
@@ -391,11 +530,12 @@ Inductive IsAtom F `{FormulaConstructors F}
     UnfoldsToKind FcMeansQuoted qb b ->
     FcMeansQuoted [f_quote qa qb] [a b]. *)
 
+Set Printing Implicit.
 Definition FcMQC : @MQCT FormulaConstructors FormulaConstructors :=
   λ VC2 TC2 eV eT MQ,
     ∀ V (_v:Class VC2 V) T (_t:Class TC2 T),
-      let _ : Class FormulaConstructors V := consume _ in
-      let _ : Class FormulaConstructors T := consume _ in
+      (* let _ : Class FormulaConstructors V := _ in *)
+      (* let _ : Class FormulaConstructors T := _ in *)
       let MQ := MQ V _ T _ in
         (∀ f a,
           @UnfoldsToKind V _ _ (@IsAtom V _) f a ->
@@ -509,17 +649,13 @@ Fixpoint get_quoted_formula [Ext]
       end
   end.
 
-Inductive OneMoreAtom {OldExt} :=
-  | onemore_old : OldExt -> OneMoreAtom
-  | onemore_new : OneMoreAtom.
-
 Definition one_more_revar
     [OldExt]
     (vars : OldExt -> bool)
-    : (@OneMoreAtom OldExt) -> bool :=
+    : (@OneMoreExt OldExt) -> bool :=
   λ a, match a with
-    | onemore_old a => vars a
-    | onemore_new => true 
+    | ome_embed a => vars a
+    | ome_new => true 
     end.
 
 Definition revar_meanings [OldExt] (vars : OldExt -> bool) J :=
@@ -533,8 +669,8 @@ Definition one_more_revar_meaning
   λ v, match v return
       (unreify_vars (one_more_revar vars) v)
         -> J with
-    | onemore_old a => λ ve, meanings a ve
-    | onemore_new => λ _, new_meaning
+    | ome_embed a => λ ve, meanings a ve
+    | ome_new => λ _, new_meaning
     end.
 
 Definition MiSearchResult [Ext]
@@ -571,8 +707,8 @@ Fixpoint get_prop_meaning_impl (n:nat) [Ext]
         (* [forall_quoted_formulas f] *)
         | fo_apl (f_atm atom_forall_quoted_formulas) f =>
           ? Fx <- (get_prop_meaning_impl pred
-              [(embed_formula (λ a, onemore_old a) f)
-                  (f_ext onemore_new)]
+              [(embed_formula (λ a, ome_embed a) f)
+                  (f_ext ome_new)]
                   (one_more_revar vars)) ; 
             success (
               λ F _ (qv_meanings : (revar_meanings vars F)) infs,
@@ -591,19 +727,19 @@ Fixpoint get_prop_meaning_impl (n:nat) [Ext]
 Definition f_id {F} `{FunctionConstructors F} : F := [fuse const const].
 
 Definition f_with_variable [Ext]
-  (fgen : @Formula (@OneMoreAtom Ext) ->
-          @Formula (@OneMoreAtom Ext)) : Formula :=
-  (fgen (f_ext onemore_new)).
+  (fgen : @Formula (@OneMoreExt Ext) ->
+          @Formula (@OneMoreExt Ext)) : Formula :=
+  (fgen (f_ext ome_new)).
 
 Fixpoint eliminate_abstraction
   [Ext]
-  (f : @Formula (@OneMoreAtom Ext))
+  (f : @Formula (@OneMoreExt Ext))
   : @Formula Ext :=
   match f with
     | f_atm a => [const (f_atm a)]
     | f_ext e => match e with
-      | onemore_new => f_id
-      | onemore_old e => [const (f_ext e)]
+      | ome_new => f_id
+      | ome_embed e => [const (f_ext e)]
       end
     | fo_apl a b => [fuse (eliminate_abstraction a) (eliminate_abstraction b)]
     end.
@@ -714,14 +850,14 @@ Eval compute in (get_prop_meaning_simplified 90 test05).
 Fixpoint NMore n Ext :=
   match n with
     | 0 => Ext
-    | S pred => @OneMoreAtom (NMore pred Ext)
+    | S pred => @OneMoreExt (NMore pred Ext)
     end.
 
 Fixpoint embed_nmore n [Ext] (f : @Formula Ext)
   : (@Formula (NMore n Ext)) :=
   match n with
     | 0 => f
-    | S pred => embed_formula onemore_old (embed_nmore pred f)
+    | S pred => embed_formula ome_embed (embed_nmore pred f)
     end.
 Notation "f @ n" := (embed_nmore n f) (at level 0).
 
@@ -847,10 +983,10 @@ Fixpoint fn_fcn n i : Class
   n) with
     | 0 => f_fc
     | S p => {|
-        onemore_embed := fn_fcn n p ;
-        onemore_cons := 
+        omc_embed := fn_fcn n p ;
+        omc_new := 
         cheat
-        (* f_ext (@onemore_new (NMore n False)) *)
+        (* f_ext (@ome_new (NMore n False)) *)
          |}
     end.
 Existing Instance fn_fcn.
@@ -1216,30 +1352,30 @@ Notation "'unfold_or' body" :=
 Print MeansProp.
 (* Definition Meaning : Meanings := MeansProp (∅2). *)
 
-Inductive OneMoreAtom {OldExt} :=
-  | onemore_old : OldExt -> OneMoreAtom
-  | onemore_new : OneMoreAtom.
+Inductive OneMoreExt {OldExt} :=
+  | ome_embed : OldExt -> OneMoreExt
+  | ome_new : OneMoreExt.
 
 Fixpoint embed_onemore OldExt
   (f : @Formula OldExt)
-  : @Formula (@OneMoreAtom OldExt) :=
+  : @Formula (@OneMoreExt OldExt) :=
   match f with
     | fo_apl a b => [(embed_onemore a) (embed_onemore b)] 
     | f_atm a => f_atm a
-    | f_ext a => f_ext (onemore_old a)
+    | f_ext a => f_ext (ome_embed a)
     end.
 
 
 Fixpoint specialize_onemore OldExt
-  (f : @Formula (@OneMoreAtom OldExt))
+  (f : @Formula (@OneMoreExt OldExt))
   (x : @Formula OldExt)
   : @Formula OldExt :=
   match f with
     | fo_apl a b => [(specialize_onemore a x) (specialize_onemore b x)] 
     | f_atm a => f_atm a
     | f_ext a => match a with
-        | onemore_old a => f_ext a
-        | onemore_new => x
+        | ome_embed a => f_ext a
+        | ome_new => x
       end
     end.
 
@@ -1269,39 +1405,39 @@ Qed.
 (* Definition embed_assumed 
     [OldExt]
     (assumed_meanings : @Meanings OldExt)
-    : @Meanings (@OneMoreAtom OldExt) :=
+    : @Meanings (@OneMoreExt OldExt) :=
   λ f F, (∃ fp, f = embed_onemore fp /\ assumed_meanings fp F). *)
 
 (* Definition assume_one_more
     [OldExt]
     (assumed_meanings : @Meanings OldExt)
     (new_meaning : Rule)
-    : @Meanings (@OneMoreAtom OldExt) :=
-  (embed_assumed assumed_meanings) ∪2 (Singleton2 (f_ext (onemore_new)) new_meaning). *)
+    : @Meanings (@OneMoreExt OldExt) :=
+  (embed_assumed assumed_meanings) ∪2 (Singleton2 (f_ext (ome_new)) new_meaning). *)
 
 (* Definition one_more_var
     [OldExt]
     (vars : OldExt -> Prop)
-    : (@OneMoreAtom OldExt) -> Prop :=
+    : (@OneMoreExt OldExt) -> Prop :=
   λ a, match a with
-    | onemore_old a => vars a
-    | onemore_new => True 
+    | ome_embed a => vars a
+    | ome_new => True 
     end.
 Definition embed_vars
     [OldExt]
     (vars : OldExt -> Prop)
-    : (@OneMoreAtom OldExt) -> Prop :=
+    : (@OneMoreExt OldExt) -> Prop :=
   λ a, match a with
-    | onemore_old a => vars a
-    | onemore_new => False
+    | ome_embed a => vars a
+    | ome_new => False
     end.
 Definition embed_revars
     [OldExt]
     (vars : OldExt -> bool)
-    : (@OneMoreAtom OldExt) -> bool :=
+    : (@OneMoreExt OldExt) -> bool :=
   λ a, match a with
-    | onemore_old a => vars a
-    | onemore_new => false
+    | ome_embed a => vars a
+    | ome_new => false
     end.
 
 Definition one_more_var_meaning
@@ -1312,8 +1448,8 @@ Definition one_more_var_meaning
     (new_meaning : VarType)
     : (∀ e, (one_more_var vars) e -> VarType) :=
   λ e, match e return (one_more_var vars) e -> VarType with
-    | onemore_old a => meanings a
-    | onemore_new => λ _, new_meaning
+    | ome_embed a => meanings a
+    | ome_new => λ _, new_meaning
     end.
 Definition embed_var_meanings
     [OldExt]
@@ -1322,8 +1458,8 @@ Definition embed_var_meanings
     (meanings : ∀ e, vars e -> VarType)
     : (∀ e, (embed_vars vars) e -> VarType) :=
   λ e, match e return (embed_vars vars) e -> VarType with
-    | onemore_old a => meanings a
-    | onemore_new => λ f, match f with end
+    | ome_embed a => meanings a
+    | ome_new => λ f, match f with end
     end. *)
 
 
@@ -1471,7 +1607,7 @@ Qed. *)
   [forall_quote] : {
     apply mi_forall_quoted_formulas.
     intros y qy qqy.
-    destruct (qf_convert (Ext2:=(@OneMoreAtom OldExt)) qqy) as [qy_ qqy_].
+    destruct (qf_convert (Ext2:=(@OneMoreExt OldExt)) qqy) as [qy_ qqy_].
     specialize (fxFXimp y qy_ qqy_).
     specialize (recurse
       OldExt
@@ -1536,10 +1672,10 @@ Qed. *)
 Definition one_more_revar
     [OldExt]
     (vars : OldExt -> bool)
-    : (@OneMoreAtom OldExt) -> bool :=
+    : (@OneMoreExt OldExt) -> bool :=
   λ a, match a with
-    | onemore_old a => vars a
-    | onemore_new => true 
+    | ome_embed a => vars a
+    | ome_new => true 
     end.
 
 (* Definition embed_revar_meanings
@@ -1549,8 +1685,8 @@ Definition one_more_revar
     (meanings : ∀ e, (unreify_vars vars e) -> VarType)
     : (∀ e, (unreify_vars (embed_revars vars)) e -> VarType) :=
   λ e, match e with
-    | onemore_old a => meanings a
-    | onemore_new => λ f, match f with end
+    | ome_embed a => meanings a
+    | ome_new => λ f, match f with end
     end. *)
 
 Definition revar_meanings [Ext] (vars : Ext -> bool) J :=
@@ -1576,8 +1712,8 @@ Definition one_more_revar_meaning
   λ J2 v e, match v return
       (unreify_vars (one_more_revar vars) v)
         -> Rule J2 with
-    | onemore_old a => λ ve, meanings J2 a e ve
-    | onemore_new => λ _, embed_rule e new_meaning
+    | ome_embed a => λ ve, meanings J2 a e ve
+    | ome_new => λ _, embed_rule e new_meaning
     end.
 
 Definition revar_meanings2 [OldExt] (vars : OldExt -> bool) J :=
@@ -1591,8 +1727,8 @@ Definition one_more_revar_meaning2
   λ v, match v return
       (unreify_vars (one_more_revar vars) v)
         -> J with
-    | onemore_old a => λ ve, meanings a ve
-    | onemore_new => λ _, new_meaning
+    | ome_embed a => λ ve, meanings a ve
+    | ome_new => λ _, new_meaning
     end.
 
 
@@ -1628,7 +1764,7 @@ Inductive MPSearchResult [Ext]
       MPSearchResult vars [a & b]
   | msr_forall_quoted_formulas f :
     MPSearchResult (one_more_revar vars)
-      [(embed_formula onemore_old f) (f_ext onemore_new)] ->
+      [(embed_formula ome_embed f) (f_ext ome_new)] ->
     MPSearchResult vars [f_forall_quoted_formulas f].
 
 Fixpoint msr_specialize [Ext]
@@ -1708,8 +1844,8 @@ Fixpoint msr_finish (r : MPSearchResult vars) : Rule.
   }
 
   [forall_prop]: {
-    refine (? FXS <- (get_MeansProp (@OneMoreAtom Ext)
-      [(embed_formula (λ a, onemore_old a) f) (f_ext onemore_new)]
+    refine (? FXS <- (get_MeansProp (@OneMoreExt Ext)
+      [(embed_formula (λ a, ome_embed a) f) (f_ext ome_new)]
       (embed_revars quotvars)
       (one_more_revar propvars)) ; _).
     apply success; intros qv_meanings pv_meanings.
@@ -1739,7 +1875,7 @@ Fixpoint msr_finish (r : MPSearchResult vars) : Rule.
     (* pose (@specialize_MeansProp
       Ext
       (assumed_meanings pv_meanings)
-      [(embed_formula onemore_old f) (f_ext onemore_new)]
+      [(embed_formula ome_embed f) (f_ext ome_new)]
       FX
       x
       X
@@ -1764,8 +1900,8 @@ Fixpoint msr_finish (r : MPSearchResult vars) : Rule.
   }
 
   [forall_quote]: {
-    refine (? FXS <- (get_MeansProp (@OneMoreAtom Ext)
-      [(embed_formula (λ a, onemore_old a) f) (f_ext onemore_new)]
+    refine (? FXS <- (get_MeansProp (@OneMoreExt Ext)
+      [(embed_formula (λ a, ome_embed a) f) (f_ext ome_new)]
       (one_more_revar quotvars)
       (embed_revars propvars)) ; _).
     apply success; intros qv_meanings pv_meanings.
@@ -1820,13 +1956,13 @@ Qed. *)
 Fixpoint NMoreAtoms [Ext] n :=
   match n with
     | 0 => Ext
-    | S n => @OneMoreAtom (@NMoreAtoms Ext n)
+    | S n => @OneMoreExt (@NMoreAtoms Ext n)
     end.
 
 Fixpoint last_more_atom [Ext] n : (@NMoreAtoms Ext (S n)) :=
   match n with
-    | 0 => onemore_new
-    | S n => onemore_old (@last_more_atom Ext n)
+    | 0 => ome_new
+    | S n => ome_embed (@last_more_atom Ext n)
     end.
   
 
