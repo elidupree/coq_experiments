@@ -24,7 +24,8 @@ Here we must do some bureaucracy about how we'll use typeclasses. *)
 (* Sometimes we need to pass a typeclass as a function argument. This is fine because a typeclass is an ordinary value, but Coq's features for using typeclasses _implicitly_ don't have a built-in way to treat a local variable as a typeclass. To work around this, we make a wrapper class "Class", which is technically the identity function but is always treated as a typeclass. So when we want a local variable `C` to be treated as a typeclass, we say `Class C` instead. This is the same thing, but counts as a typeclass for implicits. *)
 Definition Class [P] (p:P) := p.
 Existing Class Class.
-(* Hint Unfold Class : typeclass_instances. *)
+Hint Unfold Class : typeclass_instances.
+Definition use_class {T P t} (c:@Class (T -> Type) P t) : P t := c.
 (* Definition use_class {P T} (c:Class P T) : P T := c. *)
 
 (* We also often want to extend a typeclass with additional constructors, while still leaving it open to still-further constructors. This gives us a _second typeclass_ that is a subclass of the first. It's useful to represent the subclass relation explicitly: *)
@@ -38,64 +39,26 @@ Instance subclass_refl {T} {A : T -> Type}
     superclass_instance := λ x xA, xA
     |}.
 
-(* We would like to make an instance for subclass transitivity (A ⊆ B -> B ⊆ C -> A ⊆ C), but unfortunately this makes instance-search diverge: The subgoal looking for (A ⊆ B) tries looking for some additional transitivity-instance (A ⊆ X) and (X ⊆ B), ad infinitum. So we cannot declare this as an Instance: *)
+(* Once we make an instance for subclass transitivity (A ⊆ B -> B ⊆ C -> A ⊆ C), we risk making instance-search diverge: The subgoal looking for (A ⊆ B) tries looking for some additional transitivity-instance (A ⊆ X) and (X ⊆ B), ad infinitum. So we have to set a limit on typeclass search: *)
 Set Typeclasses Iterative Deepening.
-Set Typeclasses Depth 6.
+Set Typeclasses Depth 3.
 Instance subclass_trans {T} {A B C : T -> Type}
   : (A ⊆ B) ->
     (B ⊆ C) ->
     (A ⊆ C)
   := λ ab bc, {|
     superclass_instance := λ x xA,
-      @superclass_instance _ _ _ _ x (@superclass_instance _ _ _ _ x xA)
+      @superclass_instance _ _ _ _ _ superclass_instance
     |}.
 
-(* ...but we can put it into the typeclass_instances database as a Hint Immediate, to apply transitivity only when the pieces are already present as hypotheses. *)
-(* Hint Immediate subclass_trans : typeclass_instances. *)
-(* ...except Hint Immediate doesn't work if there's other classes of the same type in scope, maybe due to ambiguity. Thus: *)
-(* Create HintDb subclass_reasoning.
-
-Hint Extern 3 (_ ⊆ _) => (
-  solve [typeclasses eauto 1 with
-     subclass_reasoning; trivial with typeclass_instances] ||
-  solve [typeclasses eauto 2 with
-     subclass_reasoning; trivial with typeclass_instances])
-  : typeclass_instances. *)
-(* Hint Extern 1 (_ ⊆ _) => match goal with
-  | AB : (?A ⊆ ?B), BC : (?B ⊆ ?C) |- (?A ⊆ ?C) => exact (subclass_trans AB BC)
-  end : typeclass_instances. *)
-  
-(* Hint Resolve subclass_trans : subclass_instances. *)
-
-(* Set Typeclasses Debug Verbosity 2. *)
-Definition subclass_trans_test {T} {A B C : T -> Type}
+Definition test_subclass_trans {T} {A B C : T -> Type}
   : (A ⊆ B) -> (B ⊆ C) -> (A ⊆ C) := _.
-(* Definition subclass_trans_fail {T} {A B C D : T -> Type}
-  : (A ⊆ B) -> (B ⊆ C) -> (C ⊆ D) -> (A ⊆ D).
-  (* intros. *)
-  typeclasses eauto 5.
-Fail Definition subclass_trans_fail {T} {A B C D : T -> Type}
-  : (A ⊆ B) -> (B ⊆ C) -> (C ⊆ D) -> (A ⊆ D) := _. *)
+Definition test_subclass_trans_2 {T} {A B C D : T -> Type}
+  : (A ⊆ B) -> (B ⊆ C) -> (C ⊆ D) -> (A ⊆ D) := λ _ _ _, _.
 
-(* We can do the same for subclass application (A ⊆ B -> A T -> B T). *)
 Instance subclass_apply {T} {A B : T -> Type} {t}
   : (A ⊆ B) -> Class A t -> Class B t
   := λ _ _, superclass_instance.
-(* Hint Immediate subclass_apply : typeclass_instances. *)
-(* Hint Extern 1 (Class _ _) => match goal with
-  | AB : (?A ⊆ ?B), At : (Class ?A ?t) |- (Class ?B ?t) => exact (subclass_apply AB At)
-  end : typeclass_instances. *)
-
-(* We also sometimes want to implicitly use transitivity and then apply (or equivalently, apply twice); allow this as another Immediate. *)
-(* Definition subclass_apply_trans {T} {A B C : T -> Type} {t}
-  : (A ⊆ B) -> (B ⊆ C) -> Class A t -> Class C t
-  := λ _ _ _, let _ : (A ⊆ C) := _ in _. *)
-
-(* Hint Immediate subclass_apply_trans : typeclass_instances. *)
-(* Use a higher cost so it's not used with subclass_refl when subclass_apply works by itself. *)
-(* Hint Extern 2 (Class _ _) => match goal with
-  | AB : (?A ⊆ ?B), BC : (?B ⊆ ?C), At : (Class ?A ?t) |- (Class ?C ?t) => exact (subclass_apply_trans AB BC At)
-  end : typeclass_instances. *)
 
 (* The definitions above treat a class as an arbitrary constraint, but *constructor* classes also have a positivity requirement, which we sometimes need to require explicitly: *)
 (* Class ConstructorClass (C : Type -> Type) := {
@@ -124,10 +87,13 @@ Class PropositionConstructors F := {
   }.
 
 (* When we want to use PropositionConstructors methods, but only have our wrapper Class PropositionConstructors, we need to be able to unwrap it: *)
-Instance onemore_pc_unwrap :
+Instance pc_class_unwrap :
   ∀ {F}, Class PropositionConstructors F ->
          PropositionConstructors F := λ _ b, b.
 
+(* And because we use a low depth limit, we need to provide some "shortcuts": *)
+Instance shortcut_cpc_fnc F : Class PropositionConstructors F -> FunctionConstructors F := _.
+Instance shortcut_cpc_aplc F : Class PropositionConstructors F -> ApplyConstructor F := λ _, _.
 
 Notation "[ x y .. z ]" := (f_apl .. (f_apl x y) .. z)
  (at level 0, x at next level, y at next level).
@@ -165,6 +131,13 @@ Instance OneMoreConstructor_subclass {C}
     superclass_instance := λ _ _, omc_embed
   |}.
   
+Instance shortcut_omc_trans A B
+  : (A ⊆ B) -> (OneMoreConstructor A ⊆ B)
+  := _.
+  
+Instance shortcut_omc_trans_apply A B T
+  : (A ⊆ B) -> (Class (OneMoreConstructor A) T) -> Class B T
+  := λ _ _, _.
 
 (* Propositions are formulas that say things about other formulas, but there's no intrinsic reason those formulas have to use the _same grammar_. So we will often be passing around _two_ formula-constructor-classes, which I call the "viewing type" (conventionally named V, with constructors named VC) and the "target type" (conventionally named T, with constructors named TC).
 
@@ -195,12 +168,6 @@ Definition test_OneMoreConstructor_apply_and_unwrap_with_VConsClass
   {VC oVC2:VConsClass} `{oVC2 ⊆ OneMoreConstructor VC}
   {V} (_v:Class oVC2 V)
   : OneMoreConstructor VC V := _.
-
-
-(* Boilerplate: An awfully specific lemma that we'd like to be able to use implicitly in a later definition, but has a transitivity step that my prior Hint Immediates don't cover. *)
-(* Definition OneMoreConstructor_pc_trans_apply {VC} {_vp : VC ⊆ PropositionConstructors} {V} {_v : Class (OneMoreConstructor VC) V}
-  : Class PropositionConstructors V := let _ : Class VC V := _ in _.
-Hint Immediate OneMoreConstructor_pc_trans_apply : typeclass_instances. *)
 
 
 (* We also deal with "quoted formulas". To say that a V-formula is a quoted version of a T-formula, we need to define the MeansQuoted relation (MQ for short). This relation is only well-defined once you first specify the V and T constructors: *)
@@ -257,6 +224,7 @@ Definition Rule {TC} := ∀ T (_:Class TC T), InfSet T -> Prop.
 
 (* We can now make the big definition of what propositions mean. *)
 (* Set Typeclasses Debug Verbosity 2. *)
+(* Set Typeclasses Depth 4. *)
 Inductive MeansProp {VC TC} {MQC : MQCT}
   {_vp:VC ⊆ PropositionConstructors}
   : Ind VC -> Rule -> Prop :=
@@ -395,14 +363,18 @@ Instance fc_subset_prop
   : FormulaConstructors ⊆ PropositionConstructors
   := {| superclass_instance := fc_prop |}.
 
-Definition OneMoreConstructor_fc_trans_apply {C} {_vp : C ⊆ FormulaConstructors} {V} {_v : Class (OneMoreConstructor C) V}
+(* Definition OneMoreConstructor_fc_trans_apply {C} {_vp : C ⊆ FormulaConstructors} {V} {_v : Class (OneMoreConstructor C) V}
   : Class FormulaConstructors V := let _ : Class C V := _ in _.
-Hint Immediate OneMoreConstructor_fc_trans_apply : typeclass_instances.
+Hint Immediate OneMoreConstructor_fc_trans_apply : typeclass_instances. *)
+
+Instance shortcut_cfc_pc F : Class FormulaConstructors F -> PropositionConstructors F := _.
+Instance shortcut_cfc_fnc F : Class FormulaConstructors F -> FunctionConstructors F := _.
+Instance shortcut_cfc_aplc F : Class FormulaConstructors F -> ApplyConstructor F := _.
 
 
 Fixpoint sf_to_ind (f : StandardFormula)
   : Ind FormulaConstructors
-  := λ T _t, match f return T with
+  := λ _ _, match f with
     | f_atm a => fc_atm a
     | f_ext a => match a with end
     | fo_apl a b => [(sf_to_ind a _) (sf_to_ind b _)]
@@ -411,6 +383,14 @@ Fixpoint sf_to_ind (f : StandardFormula)
 (* Definition ind_to_sf (i : Ind FormulaConstructors)
   : StandardFormula := i _ _. *)
 
+Definition ome_to_ind {Ext} {Constrs}
+  (embed : Ext -> Ind Constrs)
+  (e : @OneMoreExt Ext)
+  : Ind (OneMoreConstructor Constrs)
+  := λ _ _, match e with
+      | ome_embed e => (embed e _ _)
+      | ome_new => omc_new
+      end.
 
 (* Set Typeclasses Debug Verbosity 2. *)
 Fixpoint onemoref_to_ind {Ext} {Constrs}
@@ -420,10 +400,7 @@ Fixpoint onemoref_to_ind {Ext} {Constrs}
   : Ind (OneMoreConstructor Constrs)
   := λ _ _, match f with
     | f_atm a => fc_atm a
-    | f_ext e => match e with
-      | ome_embed e => (embed e _ _)
-      | ome_new => omc_new
-      end
+    | f_ext e => 
     | fo_apl a b => [
       (onemoref_to_ind embed a _)
       (onemoref_to_ind embed b _)
@@ -434,7 +411,7 @@ Fixpoint onemoref_to_ind {Ext} {Constrs}
 Fixpoint NMoreConstructors n Constrs :=
   match n with 
     | 0 => Constrs
-    | S pred => OneMoreConstructor (NMoreConstructors pred Constrs)
+    | S pred => (NMoreConstructors pred (OneMoreConstructor Constrs))
     end.
 
 Fixpoint NMoreExt n Ext :=
@@ -443,6 +420,13 @@ Fixpoint NMoreExt n Ext :=
     | S pred => (NMoreExt pred (@OneMoreExt Ext))
     end.
 
+Fixpoint nme_to_ind {Ext} {Constrs} n
+  (embed : Ext -> Ind Constrs)
+  : NMoreExt n Ext -> Ind (NMoreConstructors n Constrs)
+  := match n return NMoreExt n Ext -> Ind (NMoreConstructors n Constrs) with
+    | 0 => embed
+    | S pred => λ e _ _, nme_to_ind pred (ome_to_ind embed) e _ _
+    end.
 
 Instance fplus_fcplus {Ext} : Class (OneMoreConstructor FormulaConstructors) (@Formula (@OneMoreExt Ext)) :=
   {|
@@ -463,7 +447,7 @@ Definition test2 : @Formula (@OneMoreExt (@OneMoreExt False))
   := @omc_new (FormulaConstructors) _ _.
 Eval compute in (test1, test2).
 
-(* Set Printing Implicit. *)
+Set Printing Implicit.
 Fixpoint nth_new_ext {Ext} n : (@NMoreExt (S n) Ext) := 
   match n return (@NMoreExt (S n) Ext) with
     | 0 => ome_new
@@ -486,14 +470,14 @@ Existing Instance fplusn_fcplusn.
 Print fplusn_fcplusn.
 
 
-(* Fixpoint embed_formula
+Fixpoint embed_formula
   Ext1 Ext2 (embed : Ext1 -> Ext2)
   (f : (@Formula Ext1)) : (@Formula Ext2)
   := match f with
     | f_atm a => f_atm a
     | f_ext a => f_ext (embed a)
     | fo_apl a b => [(embed_formula embed a) (embed_formula embed b)]
-    end. *)
+    end.
 
 (* Set Printing Implicit.
 Definition ome_extend_constrs Constrs Ext :
@@ -504,7 +488,7 @@ Definition ome_extend_constrs Constrs Ext :
 
 
 Definition f_quote {F} `{FormulaConstructors F} := fc_atm atom_quote.
-Definition f_qaply {F} `{FormulaConstructors F} f x := [f_quote f x].
+Definition f_qaply {Ext F} `{FormulaConstructors F} f x : @Formula Ext := [f_quote f x].
 
 Inductive UnfoldsToKind F `{FormulaConstructors F} [T]
     (kind : F -> T -> Prop) :
@@ -530,7 +514,7 @@ Inductive IsAtom F `{FormulaConstructors F}
     UnfoldsToKind FcMeansQuoted qb b ->
     FcMeansQuoted [f_quote qa qb] [a b]. *)
 
-Set Printing Implicit.
+(* Set Printing Implicit. *)
 Definition FcMQC : @MQCT FormulaConstructors FormulaConstructors :=
   λ VC2 TC2 eV eT MQ,
     ∀ V (_v:Class VC2 V) T (_t:Class TC2 T),
@@ -847,17 +831,11 @@ Definition test05 : StandardFormula := [∀ a, [a -> a]].
 Eval compute in (get_prop_meaning_simplified 90 test05).
 
 
-Fixpoint NMore n Ext :=
-  match n with
-    | 0 => Ext
-    | S pred => @OneMoreExt (NMore pred Ext)
-    end.
-
 Fixpoint embed_nmore n [Ext] (f : @Formula Ext)
-  : (@Formula (NMore n Ext)) :=
-  match n with
+  : (@Formula (NMoreExt n Ext)) :=
+  match n return @Formula (NMoreExt n Ext) with
     | 0 => f
-    | S pred => embed_formula ome_embed (embed_nmore pred f)
+    | S pred => embed_nmore pred (embed_formula ome_embed f)
     end.
 Notation "f @ n" := (embed_nmore n f) (at level 0).
 
@@ -904,16 +882,14 @@ Definition and_assoc_right : StandardFormula :=
               Definitions of inference
 ****************************************************)
 
-Definition Rule {TC:TConsClass} :=
-  ∀ T (_:Class TC T), InfSet T -> Prop.
-Definition default_rule {TC:TConsClass} : Rule := λ _ _ _, False.
-Definition reflexivity {TC:TConsClass} : Rule
+Definition default_rule {TC} : Rule := λ _ _ _, False.
+Definition reflexivity {TC} : Rule
   := λ _ _ infs, ∀ a, infs a a.
-Definition transitivity {TC:TConsClass} : Rule
+Definition transitivity {TC} : Rule
   := λ _ _ infs, ∀ a b c, infs a b -> infs b c -> infs a c.
 
 Definition infs_provable_from {TC:TConsClass} (rules : Rule) :
-  ∀ T (_:Class TC T), InfSet T
+  ∀ T {_:Class TC T}, InfSet T
   := λ _ _ p c, ∀ infs,
     (reflexivity _ infs
     ∧ transitivity _ infs
@@ -923,13 +899,13 @@ Definition infs_provable_from {TC:TConsClass} (rules : Rule) :
           Putting together the axioms of IC
 ****************************************************)
 
-Fixpoint to_construction (f : StandardFormula) F `(FormulaConstructors F)
+(* Fixpoint to_construction (f : StandardFormula) {F} `{FormulaConstructors F}
   : F
   := match f with
     | f_atm a => fc_atm a
     | f_ext e => match e with end
-    | fo_apl a b => [(@to_construction a F _) (@to_construction b F _)]
-    end.
+    | fo_apl a b => [(to_construction a) (to_construction b)]
+    end. *)
 
 Definition IC_axioms : StandardFormula := 
   [and_sym & and_assoc_left].
@@ -941,7 +917,8 @@ Definition IC_external_rules : Rule :=
 Eval compute in (simplify_meaning IC_external_rules).
 
 Definition IC_provable_infs := infs_provable_from IC_external_rules.
-Definition IC_provable_props := IC_provable_infs _ IC_axioms.
+Arguments IC_provable_infs {T _}.
+Definition IC_provable_props := IC_provable_infs IC_axioms.
 
 (* Definition tejhst : 
   ∀ (Axioms : ∀ {T} {_:Class FormulaConstructors T}, InfSet T -> Prop)
@@ -949,13 +926,15 @@ Definition IC_provable_props := IC_provable_infs _ IC_axioms.
 
       P (infs_provable_from (@Axioms) _). *)
 
-Definition FormulaWithNVars n : Type := @Formula (NMore n False).
+Definition FormulaWithNVars n : Type := @Formula (NMoreExt n False).
+Definition FCWithNVars n : Type -> Type := NMoreConstructors n FormulaConstructors.
 
-Fixpoint FCWithNVars n : Type -> Type :=
+
+(* Fixpoint FCWithNVars n : Type -> Type :=
   match n with
     | 0 => FormulaConstructors
     | S p => OneMoreConstructor (FCWithNVars p)
-    end.
+    end. *)
 
 Fixpoint FcMQCWithNVars n : @MQCT (FCWithNVars n) (FCWithNVars n) :=
   match n with
@@ -971,10 +950,15 @@ Fixpoint fcn_fc n
     end.
 Existing Instance fcn_fc.
 Instance fcn_pc n : FCWithNVars n ⊆ PropositionConstructors
-  := consume _.
+  := _.
+
+Instance fn_fcn n : Class
+  (FCWithNVars n)
+  (FormulaWithNVars n)
+  := _.
 
 (* Set Printing Implicit. *)
-Fixpoint fn_fcn n i : Class
+(* Fixpoint fn_fcn n i : Class
   (FCWithNVars i)
   (FormulaWithNVars
   n) := match i return Class
@@ -989,7 +973,7 @@ Fixpoint fn_fcn n i : Class
         (* f_ext (@ome_new (NMore n False)) *)
          |}
     end.
-Existing Instance fn_fcn.
+Existing Instance fn_fcn. *)
 
 Section IC_implements_inference.
 
@@ -1030,16 +1014,14 @@ Variable p : ∀ {V} {_:Class (FCWithNVars n) V}, V.
 Variable P : ∀ {T} {_:Class (FCWithNVars n) T}, InfSet T -> Prop.
 Variable pP : MeansProp (MQC := FcMQCWithNVars n) (@p) (@P).
 
-Definition p_proven := ∀ {T} {_t:Class (FCWithNVars n) T} (infs : InfSet T),
+Definition p_proven := ∀ T (_t:Class (FCWithNVars n) T) (infs : InfSet T),
         let _ : TConsClass := FCWithNVars n in
-        let _ : Class FormulaConstructors T := consume _ in
         reflexivity _ infs ->
         transitivity _ infs ->
         Axioms infs -> P infs.
 
 Definition IH := p_proven -> ∀ V (_v:Class (FCWithNVars n) V),
-        let _f : Class FormulaConstructors V := consume _ in
-        IC_provable_infs _f axioms p.
+        IC_provable_infs axioms p.
 
 End IC_implements_inference_cases.
 
@@ -1052,7 +1034,7 @@ Definition implies_case_AxIH [n] {V} {_v: Class (FCWithNVars n) V}
       (* let _ : VConsClass := FCWithNVars n in *)
       (* let _ : TConsClass := FCWithNVars n in *)
       let _ : MQCT := FcMQCWithNVars n in
-      let _ : Class FormulaConstructors V := consume _ in
+      (* let _ : Class FormulaConstructors V := consume _ in *)
       (* let _ : Class PropositionConstructors V := consume _ in *)
       (* cheat. *)
   ∀ (qp qc : ∀ V, Class (FCWithNVars n) V → V),
@@ -1076,7 +1058,6 @@ Lemma implies_case {n}
       (MeansQuoted (@qc) (@c)) ->
       IH n
         (λ V _,
-          let _ : Class PropositionConstructors V := consume _ in
           [qp -> qc])
         (λ _ _ infs, infs p c).
   intros.
@@ -1087,7 +1068,7 @@ Lemma implies_case {n}
   
   specialize (H1 (FormulaWithNVars n)).
   specialize (H1 _).
-  specialize (H1 (implies_case_AxIH infs)).
+  specialize (H1 (λ p c, (implies_case_AxIH infs), )).
 
   cbv in H1.
 
