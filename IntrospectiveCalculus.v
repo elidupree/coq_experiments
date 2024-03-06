@@ -595,13 +595,13 @@ Notation "? x <- m1 ; m2" :=
     end) (right associativity, at level 70, x pattern).
 
 
-Fixpoint unfold_step_result [Ext] f : option (@Formula Ext) :=
-  match f with
+Fixpoint unfold_step [Ext] a : option (@Formula Ext) :=
+  match a with
     (* Atoms never unfold *)
     | f_atm _ => None
     | f_ext _ => None
     (* Unfold in the LHS until you're done... *)
-    | fo_apl f x => match unfold_step_result f with
+    | fo_apl f x => match unfold_step f with
       | Some g => Some [g x]
       (* Then if you're done with the LHS, check its form... *)
       | None => match f with
@@ -613,7 +613,7 @@ Fixpoint unfold_step_result [Ext] f : option (@Formula Ext) :=
         end
       end
     end.
-Fixpoint unfold_step [Ext] f : option {g : (@Formula Ext) | UnfoldStep f g} :=
+(* Fixpoint unfold_step [Ext] f : option {g : (@Formula Ext) | UnfoldStep f g} :=
   match f with
     (* Atoms never unfold *)
     | f_atm _ => None
@@ -630,7 +630,49 @@ Fixpoint unfold_step [Ext] f : option {g : (@Formula Ext) | UnfoldStep f g} :=
         | _ => None
         end
       end
-    end.
+    end. *)
+
+Lemma unfold_step_correct [Ext] (a b : @Formula Ext) :
+  unfold_step a = Some b -> UnfoldStep a b.
+  (* intro e. *)
+
+  refine ((fix r a b : unfold_step a = Some b -> UnfoldStep a b := match a as a0 return (a = a0 -> _) with
+    (* Atoms never unfold *)
+    | f_atm _ => _
+    | f_ext _ => _
+    (* Unfold in the LHS until you're done... *)
+    | fo_apl f x => _
+    end eq_refl) a b); clear a0 b0; intros e fe; [discriminate | discriminate | ].
+
+  refine (match unfold_step f as og return (unfold_step f = og -> _) with
+      | Some g => _
+      (* Then if you're done with the LHS, check its form... *)
+      | None => _
+      end eq_refl); intro fog; [refine ?[unfold_in_lhs]|refine ?[lhs_done]].
+ 
+  [unfold_in_lhs]: {
+    cbn in fe. rewrite fog in fe. injection fe as <-.
+    apply (unfold_in_lhs x (r f g fog)).
+  }
+  [lhs_done] : {
+    clear r.
+    cbn in fe. rewrite fog in fe.
+    refine (match f as f0 return (f = f0) -> _ with
+          | fo_apl (f_atm atom_const) a => _
+          | fo_apl (fo_apl (f_atm atom_fuse) a) b => _
+          | _ => _
+          end eq_refl); intro ff; rewrite ff in fe; discriminate || idtac; [refine ?[const_case] | refine ?[fuse_case]].
+    
+    [const_case]: {
+      injection fe as <-.
+      exact (unfold_const a x).
+    }
+    [fuse_case]: {
+      injection fe as <-.
+      exact (unfold_fuse a b x).
+    }
+  }
+Qed.
 
 
 Definition unreify_vars [Ext]
@@ -643,9 +685,9 @@ Definition QfResult [Ext] (quotvars : Ext -> bool) :=
     (∀ e, (unreify_vars quotvars) e -> F)),
     F).
 
-Fixpoint get_folded_atom [Ext] n f :=
+Fixpoint get_folded_atom [Ext] n (f : @Formula Ext) :=
   match n with 0 => timed_out _ | S pred =>
-    match unfold_step_result (Ext:=Ext) f with
+    match unfold_step f with
       | Some g => get_folded_atom pred g
       | None => match f with
         | f_atm a => success a
@@ -653,14 +695,42 @@ Fixpoint get_folded_atom [Ext] n f :=
         end
       end
     end.   
+
+Lemma get_folded_atom_correct [Ext] n (f : @Formula Ext) a :
+  get_folded_atom n f = success a -> UnfoldsToKind (@IsAtom _ _) f a.
+
+  refine ((fix r n f : (get_folded_atom n f = success a -> UnfoldsToKind (@IsAtom _ _) f a) :=
+    match n as n0 return (n = n0) -> _ with 0 => _ | S pred => _ end eq_refl) n f)
+    ; intros ne e; [discriminate|].
   
+   refine (match unfold_step f as og return (unfold_step f = og -> _) with
+      | Some g => _
+      (* Then if you're done with the LHS, check its form... *)
+      | None => _
+      end eq_refl); intro fog; [refine ?[unfold]|refine ?[flat]].
+ 
+  [unfold]: {
+    cbn in e. rewrite fog in e.
+    exact (utk_step (unfold_step_correct _ fog) (r pred g e)).
+  }
+  [flat]: {
+    clear r.
+    cbn in e; rewrite fog in e.
+    refine (match f as f0 return (f = f0) -> _ with
+      | f_atm a => _
+      | _ => _
+      end eq_refl); intro fe; rewrite fe in e; discriminate || idtac.
+    
+    injection e as <-. apply utk_done. apply is_atom.
+  }
+Qed.
 
 Fixpoint get_quoted_formula [Ext]
-  (quotvars : Ext -> bool) n qf
+  (quotvars : Ext -> bool) n (qf : @Formula Ext)
   : GetResult (QfResult quotvars) :=
   match n with 0 => timed_out _ | S pred =>
     (* TODO : get quoted atom *)
-    match unfold_step_result (Ext:=Ext) qf with
+    match unfold_step qf with
       | Some qg => get_quoted_formula quotvars pred qg
       | None => match qf with
           | fo_apl (f_atm atom_quote) a =>
@@ -679,6 +749,13 @@ Fixpoint get_quoted_formula [Ext]
           end
       end
   end.
+
+Lemma get_quoted_formula_correct
+  [Ext] (quotvars : Ext -> bool) n (qf : @Formula Ext) result :
+  get_quoted_formula quotvars n qf = success result ->
+    (∀ F `(FormulaConstructors F) (qv_meanings : 
+      (∀ e, (unreify_vars quotvars) e -> F)),
+      (qf ) (result F _ qv_meanings)).
 
 Definition one_more_revar
     [OldExt]
@@ -717,7 +794,7 @@ Fixpoint get_prop_meaning_impl (n:nat) [Ext]
   (vars : Ext -> bool)
   : GetResult (MiSearchResult vars f) :=
   match n with 0 => timed_out _ | S pred =>
-    match unfold_step_result f with
+    match unfold_step f with
       | Some g => get_prop_meaning_impl pred g vars
       | None => match f with
         (* [qp -> qc] *)
@@ -970,6 +1047,7 @@ Definition IC_external_rules : Rule :=
   end.
 Eval compute in (simplify_meaning IC_external_rules).
 
+
 Definition IC_provable_infs := infs_provable_from IC_external_rules.
 Arguments IC_provable_infs {T _}.
 Definition IC_provable_props := IC_provable_infs IC_axioms.
@@ -1014,6 +1092,34 @@ Instance fn_fcn n : Class
   (FCWithNVars n)
   (FormulaWithNVars n)
   := _.
+
+
+Lemma MeansProp_induction_with_meaning_only
+  (IH : ∀ {TC}, Rule → Prop)
+  (implies_case :
+    (∀ TC (p c : Ind TC), IH (λ _ _ _, p _ _ ⊢ c _ _)))
+  (and_case : ∀ TC A B, IH A -> IH B ->
+    IH (λ _ _ _, A _ _ _ ∧ B _ _ _))
+  (forall_case : ∀ TC (F : ∀ T, Class TC T → T → InfSet T → Prop),
+    @IH (OneMoreConstructor TC) (λ _ _ _,  F _ _ omc_new _) →
+    IH (λ _ _ _, ∀ x, F _ _ x _))
+  :
+  ∀ VC TC (MQC : MQCT) (_vp : VC ⊆ PropositionConstructors) i r,
+    MeansProp i r → IH r.
+  
+  intros.
+  induction H; [
+    refine ?[implies_case] |
+    refine ?[unfold_case] |
+    refine ?[and_case] |
+    refine ?[forall_case]].
+  
+  [implies_case]: { apply implies_case. }
+  [unfold_case]: { assumption. }
+  [and_case]: { apply and_case; assumption. }
+  [forall_case]: { apply forall_case; assumption. }
+Qed.
+
 
 Lemma fwn_ind_roundtrip n (x : Ind (FCWithNVars n)) T _t : 
 (fwn_to_ind (x (FormulaWithNVars n) _) T _t).
