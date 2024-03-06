@@ -392,40 +392,28 @@ Definition ome_to_ind {Ext} {Constrs}
       | ome_new => omc_new
       end.
 
-(* Set Typeclasses Debug Verbosity 2. *)
-Fixpoint onemoref_to_ind {Ext} {Constrs}
-  {_:Constrs ⊆ FormulaConstructors}
-  (embed : Ext -> Ind Constrs)
-  (f : @Formula (@OneMoreExt Ext))
-  : Ind (OneMoreConstructor Constrs)
-  := λ _ _, match f with
-    | f_atm a => fc_atm a
-    | f_ext e => 
-    | fo_apl a b => [
-      (onemoref_to_ind embed a _)
-      (onemoref_to_ind embed b _)
-    ]
-    end.
 
 
 Fixpoint NMoreConstructors n Constrs :=
   match n with 
     | 0 => Constrs
-    | S pred => (NMoreConstructors pred (OneMoreConstructor Constrs))
+    | S pred => OneMoreConstructor (NMoreConstructors pred Constrs)
     end.
 
 Fixpoint NMoreExt n Ext :=
   match n with
     | 0 => Ext
-    | S pred => (NMoreExt pred (@OneMoreExt Ext))
+    | S pred => @OneMoreExt (NMoreExt pred Ext)
     end.
 
+(* Hint Unfold NMoreConstructors : typeclass_instances. *)
+(* Set Printing Implicit. *)
 Fixpoint nme_to_ind {Ext} {Constrs} n
   (embed : Ext -> Ind Constrs)
   : NMoreExt n Ext -> Ind (NMoreConstructors n Constrs)
   := match n return NMoreExt n Ext -> Ind (NMoreConstructors n Constrs) with
     | 0 => embed
-    | S pred => λ e _ _, nme_to_ind pred (ome_to_ind embed) e _ _
+    | S pred => λ e _ _, ome_to_ind (nme_to_ind pred embed) e _
     end.
 
 Instance fplus_fcplus {Ext} : Class (OneMoreConstructor FormulaConstructors) (@Formula (@OneMoreExt Ext)) :=
@@ -447,27 +435,86 @@ Definition test2 : @Formula (@OneMoreExt (@OneMoreExt False))
   := @omc_new (FormulaConstructors) _ _.
 Eval compute in (test1, test2).
 
-Set Printing Implicit.
+(* Set Printing Implicit. *)
 Fixpoint nth_new_ext {Ext} n : (@NMoreExt (S n) Ext) := 
-  match n return (@NMoreExt (S n) Ext) with
+  match n with
     | 0 => ome_new
-    | S pred => nth_new_ext pred
+    | S pred => ome_embed (nth_new_ext pred)
     end.
 
-Fixpoint fplusn_fcplusn n {Ext} : 
+Instance fplus__eq_add_S {n m Ext} :
   Class (NMoreConstructors n FormulaConstructors)
-        (@Formula (@NMoreExt n Ext)) :=
+        (@Formula (@NMoreExt (n + S m) Ext))
+  ->
+  Class (NMoreConstructors n FormulaConstructors)
+        (@Formula (@NMoreExt (S n + m) Ext)).
+  intro.
+  change (S n + m) with (S (n + m)).
+  rewrite (plus_n_Sm n m).
+  assumption.
+Defined.
+
+Fixpoint fplusnm_fcplusn n m {Ext} : 
+  Class (NMoreConstructors n FormulaConstructors)
+        (@Formula (@NMoreExt (n + m) Ext)) :=
   match n return Class (NMoreConstructors n FormulaConstructors)
-        (@Formula (@NMoreExt n Ext)) with
+        (@Formula (@NMoreExt (n + m) Ext)) with
     | 0 => f_fc
     | S pred => 
       {|
-          omc_embed := fplusn_fcplusn pred
-        ; omc_new := f_ext (nth_new_ext pred)
+          omc_embed := 
+            (* we can technically get away with writing just `_` for this, but that's too magical *)
+            fplus__eq_add_S (fplusnm_fcplusn pred (S m))
+        ; omc_new := f_ext (nth_new_ext (pred + m))
       |}
     end.
-Existing Instance fplusn_fcplusn.
-Print fplusn_fcplusn.
+Existing Instance fplusnm_fcplusn.
+Print fplusnm_fcplusn.
+
+Print fplus__eq_add_S.
+Instance fplus__plus_n_0 n {Ext} :
+  Class (NMoreConstructors n FormulaConstructors)
+        (@Formula (@NMoreExt (n + 0) Ext))
+  ->
+  Class (NMoreConstructors n FormulaConstructors)
+        (@Formula (@NMoreExt n Ext)).
+  intro.
+  refine (eq_rect_r (λ m, Class (NMoreConstructors n FormulaConstructors)
+        (@Formula (@NMoreExt m Ext))) X _).
+  apply plus_n_O.
+Defined.
+Print fplus__plus_n_0.
+
+Fixpoint NMoreConstructor_subclass n C
+  : NMoreConstructors n C ⊆ C
+  := match n with
+    | 0 => subclass_refl
+    | S p => subclass_trans _ (NMoreConstructor_subclass p C)
+    end.
+Existing Instance NMoreConstructor_subclass.
+
+(* Set Printing Implicit. *)
+Instance nmore_fc n Constrs T : (Constrs ⊆ FormulaConstructors) -> Class (NMoreConstructors n Constrs) T -> Class FormulaConstructors T := λ _ _, _.
+
+
+Instance fplusn_fcplusn n {Ext} : 
+  Class (NMoreConstructors n FormulaConstructors)
+        (@Formula (@NMoreExt n Ext)) := _.
+
+(* Set Typeclasses Debug Verbosity 2. *)
+Fixpoint nmf_to_ind {Ext} {Constrs} n
+  {_:Constrs ⊆ FormulaConstructors}
+  (embed : Ext -> Ind Constrs)
+  (f : @Formula (@NMoreExt n Ext))
+  : Ind (NMoreConstructors n Constrs)
+  := λ _ _, match f with
+    | f_atm a => fc_atm a
+    | f_ext e => nme_to_ind n embed e _ _
+    | fo_apl a b => [
+      (nmf_to_ind n embed a _ _)
+      (nmf_to_ind n embed b _ _)
+    ]
+    end.
 
 
 Fixpoint embed_formula
@@ -835,7 +882,7 @@ Fixpoint embed_nmore n [Ext] (f : @Formula Ext)
   : (@Formula (NMoreExt n Ext)) :=
   match n return @Formula (NMoreExt n Ext) with
     | 0 => f
-    | S pred => embed_nmore pred (embed_formula ome_embed f)
+    | S pred => embed_formula ome_embed (embed_nmore pred f)
     end.
 Notation "f @ n" := (embed_nmore n f) (at level 0).
 
@@ -843,6 +890,11 @@ Notation "f @ n" := (embed_nmore n f) (at level 0).
 (****************************************************
               Concrete axioms of IC
 ****************************************************)
+
+Definition ax_refl : StandardFormula :=
+  [∀a, [a -> a]].
+(* Definition ax_trans : StandardFormula :=
+  [∀a, [a -> a]]. *)
 
 Definition dup : StandardFormula :=
   [∀a,
@@ -908,7 +960,9 @@ Definition infs_provable_from {TC:TConsClass} (rules : Rule) :
     end. *)
 
 Definition IC_axioms : StandardFormula := 
-  [and_sym & and_assoc_left].
+  [
+    [ax_refl & [dup & drop]]
+    & [and_sym & [and_assoc_left & and_assoc_right]]].
 Definition IC_external_rules : Rule :=
   match get_prop_meaning 900 IC_axioms with
   | success r => r
@@ -929,6 +983,10 @@ Definition IC_provable_props := IC_provable_infs IC_axioms.
 Definition FormulaWithNVars n : Type := @Formula (NMoreExt n False).
 Definition FCWithNVars n : Type -> Type := NMoreConstructors n FormulaConstructors.
 
+Definition fwn_to_ind n
+  : FormulaWithNVars n -> Ind (FCWithNVars n)
+  :=
+  nmf_to_ind n (λ absurd : False, match absurd with end).
 
 (* Fixpoint FCWithNVars n : Type -> Type :=
   match n with
@@ -956,6 +1014,74 @@ Instance fn_fcn n : Class
   (FCWithNVars n)
   (FormulaWithNVars n)
   := _.
+
+Lemma fwn_ind_roundtrip n (x : Ind (FCWithNVars n)) T _t : 
+(fwn_to_ind (x (FormulaWithNVars n) _) T _t).
+
+(* Set Printing Implicit. *)
+Lemma mq_fwn_ind_roundtrip n :
+    let VC : VConsClass := FCWithNVars n in
+    let TC : TConsClass := FCWithNVars n in
+    let MQC : MQCT := FcMQCWithNVars n in
+    ∀ qx x,
+      MeansQuoted qx x ->
+      MeansQuoted qx
+        (fwn_to_ind
+        (x (FormulaWithNVars n) _)).
+  admit.
+  unfold MeansQuoted.
+  intros.
+  (* induction n. *)
+  (* cbn in *. *)
+  (* unfold FcMQCWithNVars in *. *)
+
+  specialize (H V _).
+  specialize (H (FormulaWithNVars n) _).
+  (* Set Printing Implicit. *)
+  unfold MQT in H.
+
+  pose (λ V _v T2 _t2 qxVv xFn,
+      ∀ eq : ((FormulaWithNVars n) = T2),
+        match eq in _ = Fn return (Class (FCWithNVars n)
+  Fn -> Fn -> Prop) with
+        | eq_refl => λ _t2_fixed xFn_fixed, ∀ _eq : (_t2_fixed = (fn_fcn n)), match _eq with
+          | eq_refl => MQ V _v T _t qxVv (fwn_to_ind xFn_fixed T _t)
+          end
+        end _t2 xFn) as MQ2.
+  specialize (H MQ2).
+  assert (FcMQCWithNVars _ _ _ MQ2); [refine ?[prove_MQ2_cases] | refine ?[use_MQ2]].
+  [use_MQ2]: {
+    specialize (H H1).
+    unfold MQ2 in H1.
+    apply H2.
+    admit.
+  }
+  [prove_MQ2_cases]: {
+    clear H.
+    unfold MQ2. clear MQ2.
+    induction n.
+    cbn in *.
+    unfold FcMQC. intuition cbn.
+    substitute <- eq.
+
+    unfold FcMQCWithNVars, FCWithNVars, FormulaWithNVars in *.
+  }
+
+  cbn in H.
+
+  pose ((λ V _v T _t qx x, MQ V _v T _t (qx V _v)
+  (fwn_to_ind
+  (x (FormulaWithNVars n)
+  (fn_fcn n))
+  T
+  _t)) : MQT) as MQ2.
+
+  unfold FcMQC in *.
+  specialize (H V _v T _t MQ H0).
+
+  apply H.
+  induction H.
+Qed.
 
 (* Set Printing Implicit. *)
 (* Fixpoint fn_fcn n i : Class
@@ -1068,17 +1194,109 @@ Lemma implies_case {n}
   
   specialize (H1 (FormulaWithNVars n)).
   specialize (H1 _).
-  specialize (H1 (λ p c, (implies_case_AxIH infs), )).
+  specialize (H1 (λ p c, (implies_case_AxIH infs) (fwn_to_ind p) (fwn_to_ind c))).
 
-  cbv in H1.
+  cbn in H1.
+  (* Set Printing Implicit. *)
+  unfold FormulaWithNVars in *.
 
-  specialize H1 with (infs :=
+  assert (implies_case_AxIH infs
+    (fwn_to_ind
+    (p Formula
+    (fn_fcn n)))
+    (fwn_to_ind
+    (c Formula
+    (fn_fcn n)))); [refine ?[axih_cases]|refine ?[use_proven_axih]].
+
+  [use_proven_axih]: {
+    unfold implies_case_AxIH in H2.
+    specialize (H2 qp qc).
+    specialize (H2 (mq_fwn_ind_roundtrip n H)).
+    specialize (H2 (mq_fwn_ind_roundtrip n H0)).
+    exact H2.
+    admit.
+  }
+
+  [axih_cases]: {
+    apply H1; clear H1;
+      [refine ?[refl_case]|refine ?[trans_case]|refine ?[rules_case]].
+
+    [refl_case]: {
+      unfold implies_case_AxIH. intros.
+      (* TODO: axiom fetching tactic *)
+      compute in ic. destruct ic.
+    }
+
+    [rules_case]: { 
+        unfold implies_case_AxIH.
+      refine (
+        match aA in (MeansProp a A) return (A _ _
+  (λ p0 c0 : Formula,
+  ∀ qp0
+ qc0 : ∀ V0 : Type,
+  Class (FCWithNVars n)
+  V0
+→ V0,
+  MeansQuoted qp0
+  (fwn_to_ind p0)
+→ MeansQuoted qc0
+  (fwn_to_ind c0)
+→ infs (a _ _)
+  (f_implies
+  (qp0 Formula
+  (fn_fcn n))
+  (qc0 Formula
+  (fn_fcn n))))) with 
+          | mi_implies qp qc p c x y => _
+          | mi_unfold a b B unf bB => _
+          | mi_and a A b B aA bB => _
+          | mi_forall_quoted_formulas f F fxFX => _
+          end
+      ); clear axioms Axioms aA; [
+        refine ?[implies_case]
+        |refine ?[unfold_case]
+        |refine ?[and_case]
+        |refine ?[forall_case]].
+
+      [implies_case]: {
+        clear qp0 qc0 H H0.
+        clear f f0 f1.
+        clear V _v.
+        unfold _proves.
+        intros.
+
+        (* qp0/qc0 and qp/qc are quoted versions of the same thing (p/c)
+           within FcMQC, where that implies qp0=qp and qc0=qc
+           so this is just reflexivity *)
+        admit.
+      }
+      [unfold_case]: {
+        unfold implies_case_AxIH; intros.
+      }
+      [and_case]: {
+
+      }
+      [forall_case]: {
+        clear qp qc H H0.
+        clear f2 f0 f1.
+        clear V _v.
+        
+      }
+    }
+  }
+
+
+
+  (* cbv in H1. *)
+
+  (* specialize H1 with (infs :=
     λ p c,
       ∀ (qp qc : ∀ V, Class (FCWithNVars n) V → V),
         MeansQuoted qp p -> MeansQuoted qc c ->
         infs axioms (f_implies (qp V _v) (qc V _v))).
         
-          : IH [qp -> qc] (λ _ _ infs, infs p c).
+          : IH [qp -> qc] (λ _ _ infs, infs p c). *)
+Qed.
 
 End IC_implements_inference.
 
