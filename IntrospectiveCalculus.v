@@ -491,13 +491,7 @@ Fixpoint NMoreQuotvars_without_new_MQCs n {VC} {TC} (MQC : @MQCT VC TC) : @MQCT 
 Definition FormulaWithNVars n : Type := @Formula (NMoreExt n False).
 Definition FCWithNVars n : Type -> Type := NMoreConstructors n FormulaConstructors.
 
-(* Fixpoint FCWithNVars n : Type -> Type :=
-  match n with
-    | 0 => FormulaConstructors
-    | S p => OneMoreConstructor (FCWithNVars p)
-    end. *)
 
-(* Hint Unfold NMoreConstructors : typeclass_instances. *)
 (* Set Printing Implicit. *)
 Fixpoint nme_to_ind {Ext} {Constrs} [n]
   (embed : Ext -> Ind Constrs)
@@ -565,7 +559,7 @@ Fixpoint fplusnm_fcplusn n m {Ext} :
 Existing Instance fplusnm_fcplusn.
 Print fplusnm_fcplusn.
 
-Print fplus__eq_add_S.
+(* Print fplus__eq_add_S.
 Instance fplus__plus_n_0 n {Ext} :
   Class (NMoreConstructors n FormulaConstructors)
         (@Formula (@NMoreExt (n + 0) Ext))
@@ -577,7 +571,7 @@ Instance fplus__plus_n_0 n {Ext} :
         (@Formula (@NMoreExt m Ext))) X _).
   apply plus_n_O.
 Defined.
-Print fplus__plus_n_0.
+Print fplus__plus_n_0. *)
 
 Fixpoint NMoreConstructors_subclass n C
   : NMoreConstructors n C ⊆ C
@@ -586,52 +580,12 @@ Fixpoint NMoreConstructors_subclass n C
     | S p => subclass_trans _ (NMoreConstructors_subclass p C)
     end.
 Existing Instance NMoreConstructors_subclass.
-Lemma NMoreConstructors_flop n C : NMoreConstructors (S n) C = NMoreConstructors n (OneMoreConstructor C).
+(* Lemma NMoreConstructors_flop n C : NMoreConstructors (S n) C = NMoreConstructors n (OneMoreConstructor C).
   induction n; [trivial|].
   cbn in *.
   rewrite <- IHn.
   reflexivity.
-Qed.
-
-Lemma herkerhjdf A B C Q (f : A Q -> B) (g : ∀ T, A T) :
-  A Q = C -> B.
-  f  
-  
-Lemma NMoreConstructors_RL n : ∀ C, NMoreConstructors n C = NMoreConstructorsL n C.
-  induction n; [trivial|].
-  unfold NMoreConstructors, NMoreConstructorsL in *.
-  fold NMoreConstructors in *. fold NMoreConstructorsL in *.
-  intro.
-  rewrite <- (IHn (OneMoreConstructor C)).
-  apply NMoreConstructors_flop.
-Qed.
-
-(* Instance NMoreConstructors_n n C : NMoreConstructors n C ⊆ C.
-  induction n; [exact subclass_refl | exact (subclass_trans _ _)].
-Defined. *)
-
-(* Instance NMoreConstructors_nm n m C : NMoreConstructors (n + m) C ⊆ NMoreConstructors n C.
-  (* We want this to be exactly (NMoreConstructors_n m C) *)
-  (* exact (NMoreConstructors_n m C). *)
-
-  induction n. unfold plus.
-  apply NMoreConstructors_n.
-  cbn. unfold SubclassOf; intros.
-  destruct X as (embed, new).
-  exact {|
-    omc_embed := (IHn _ embed)
-    ; omc_new := new
-  |}.
-Defined.
-Print NMoreConstructors_nm . *)
-
-(* Fixpoint NMoreConstructorsL_subclass n C
-  : NMoreConstructorsL n C ⊆ C
-  := match n return NMoreConstructorsL n C ⊆ C with
-    | 0 => subclass_refl
-    | S p => subclass_trans OneMoreConstructor_subclass (NMoreConstructorsL_subclass p C)
-    end.
-Existing Instance NMoreConstructorsL_subclass. *)
+Qed. *)
 
 (* Set Printing Implicit. *)
 Instance nmore_fc n Constrs T : (Constrs ⊆ FormulaConstructors) -> Class (NMoreConstructors n Constrs) T -> Class FormulaConstructors T := λ _ _, _.
@@ -664,13 +618,8 @@ Definition fwn_to_ind n
 
 Instance fcn_fc n
   : FCWithNVars n ⊆ FormulaConstructors
-  := NMoreConstructors_subclass n _
-  (* match n with
-    | 0 => subclass_refl
-    | S p => subclass_trans _ (fcn_fc p)
-    end *)
-    .
-(* Existing Instance fcn_fc. *)
+  := NMoreConstructors_subclass n _.
+
 Instance fcn_pc n : FCWithNVars n ⊆ PropositionConstructors
   := _.
 
@@ -742,53 +691,6 @@ Definition FcMQC : @MQCT FormulaConstructors FormulaConstructors :=
 
 Definition FcMQCWithNVars n := NMoreQuotvars n FcMQC.
 
-(* Lemma FcMQCn_pred [n] MQ :
-  @FcMQCWithNVars (S n) _ _ _ _ MQ ->
-  @FcMQCWithNVars (  n) _ _ _ _ MQ.
-  
-  intro; exact (OneMoreQuotvar_embed H).
-Qed. *)
-(* 
-Instance FCn_nplusm_m n m : FCWithNVars (n + m) ⊆ FCWithNVars m.
-  induction n; [exact subclass_refl|exact (subclass_trans _ _)].
-Defined. *)
-
-(* Instance FCn_nplusm_n n m : FCWithNVars (n + m) ⊆ FCWithNVars n.
-  notypeclasses refine ((fix r n m :  (FCWithNVars (n + m) ⊆ FCWithNVars n) :=
-    match n with
-      | 0 => fcn_fc m
-      | S n => _
-      end) n m); clear n0 m0.
-  
-  unfold SubclassOf. intros T (embed, new).
-  exact {| omc_embed := r _ _ _ embed ; omc_new := new |}.
-
-(*
-  rewrite <- (plus_n_O n); exact subclass_refl.
-  change (S n + m) with (S (n + m)).
-  rewrite <- (plus_n_Sm n m).
-  exact (subclass_trans _ _). *)
-Defined. *)
-
-(* Lemma FCn_nplusm_n_yguhh : (FCn_nplusm_n 0 0) = subclass_refl.
-  cbn.
-  unfold eq_rect.
-  cbv. *)
-Print fcn_fc.
-Lemma FcMQC_uhh1 MQ : 
-  FcMQCWithNVars 1 subclass_refl subclass_refl MQ ->
-  FcMQC (FCn_nplusm_n 0 1) (FCn_nplusm_n 0 1) MQ.
-  cbn.
-  intro.
-  (* rewrite subclass_trans_refl2. *)
-  destruct H.
-  (* unfold MQCOnStricterFormulaTypes in H. *)
-  unfold FcMQC.
-  intros.
-  specialize (H V _v T _t).
-  destruct H; split; assumption.
-  Show Proof.
-Qed.
 Lemma just_uhh1 VC TC MQC MQ : 
   OneMoreQuotvar MQC subclass_refl subclass_refl MQ ->
   MQC _ _ (subclass_trans _ subclass_refl) (subclass_trans _ subclass_refl) MQ.
@@ -802,20 +704,6 @@ Lemma just_uhh1 VC TC MQC MQ :
   (* rewrite subclass_trans_refl1 in H. *)
   assumption.
 Qed.
-Lemma just_uhh1_generalized VC TC VC2 TC2
-  (eV : VC ⊆ VC2) (eT: TC ⊆ TC2) (MQC : @MQCT VC TC) (MQC2 : @MQCT VC2 TC2) (MQs : MQCSubclassOf MQC MQC2) MQ : 
-  OneMoreQuotvar MQC subclass_refl subclass_refl MQ ->
-  MQC2 _ _ (subclass_trans OneMoreConstructor_subclass eV) (subclass_trans OneMoreConstructor_subclass eT) MQ.
-  (* cbn. *)
-  intro.
-  (* rewrite subclass_trans_refl2. *)
-  (* rewrite subclass_trans_refl2. *)
-  destruct H.
-  unfold MQCOnStricterFormulaTypes in H.
-  rewrite subclass_trans_refl1 in H.
-  rewrite subclass_trans_refl1 in H.
-  assumption.
-Qed.
 Lemma just_uhh3 VC TC MQC MQ : 
   NMoreQuotvars 3 MQC subclass_refl subclass_refl MQ ->
   MQC _ _ _ _ MQ.
@@ -826,16 +714,12 @@ Lemma just_uhh3 VC TC MQC MQ :
   destruct H.
   destruct H.
   destruct H.
-  Check (subclass_trans
-  (subclass_trans subclass_refl OneMoreConstructor_subclass)
-  OneMoreConstructor_subclass).
   (* unfold MQCOnStricterFormulaTypes in H. *)
   (* rewrite subclass_trans_refl1 in H. *)
   (* rewrite subclass_trans_refl1 in H. *)
-  (* unfold NMoreQuotvars, NMoreConstructors, NMoreConstructor_subclass in *. *)
+  (* unfold NMoreQuotvars, NMoreConstructors, NMoreConstructors_subclass in *. *)
   (* rewrite subclass_trans_refl2. *)
   (* rewrite subclass_trans_refl2. *)
-  (* apply just_uhh1. *)
   assumption.
 Qed.
 
@@ -889,235 +773,6 @@ Lemma FcMQCn_FcMQC [n] MQ :
   intros.
   refine (stricter_unpack_n n FcMQC _ _ MQ _).
   exact (FcMQC_subset_n n _ _ _ H).
-Qed.
-
-
-Lemma just_uhh_n n m VC TC  : 
-  ∀ MQC (MQ : @MQT (NMoreConstructors (n + m) VC) (NMoreConstructors (n + m) TC)),
-  @MQCOnStricterFormulaTypes
-    (NMoreConstructors n VC) (NMoreConstructors n TC)
-    (NMoreConstructors (n+m) VC) (NMoreConstructors (n+m) TC)
-    _ _
-    (@NMoreQuotvars n VC TC MQC) _ _ _ _ MQ ->
-  MQC (NMoreConstructors (n+m) VC) (NMoreConstructors (n+m) TC) _ _ MQ.
-  (* cbn. *)
-  refine ((fix r n m := match n return (∀ MQC (MQ : @MQT (NMoreConstructors (n + m) VC) (NMoreConstructors (n + m) TC)),@MQCOnStricterFormulaTypes
-    (NMoreConstructors n VC) (NMoreConstructors n TC)
-    (NMoreConstructors (n+m) VC) (NMoreConstructors (n+m) TC)
-    _ _
-    (@NMoreQuotvars n VC TC MQC) _ _ _ _ MQ ->
-  MQC (NMoreConstructors (n+m) VC) (NMoreConstructors (n+m) TC) _ _ MQ) with 
-    | 0 => _
-    | S n => _
-    end) n m); clear n0 m0; [trivial|].
-  
-  (* induction n; [trivial|]. *)
-  specialize (r n (S m)).
-  Set Printing Implicit.
-  (* change (S n + m) with (S (n + m)).
-  rewrite (plus_n_Sm n m). *)
-  (* rewrite plus_S in r. *)
-  intros.
-  (* rewrite subclass_trans_refl2.
-  rewrite subclass_trans_refl2. *)
-  destruct H.
-  unfold MQCOnStricterFormulaTypes in H.
-  rewrite subclass_trans_refl1 in *.
-  rewrite subclass_trans_refl1 in *.
-  (* rewrite subclass_trans_refl2 in *. *)
-  (* rewrite subclass_trans_refl2 in *. *)
-
-  assumption.
-Qed.
-
-Lemma FcMQC_uhh m MQ : 
-  FcMQCWithNVars m subclass_refl subclass_refl MQ ->
-  FcMQC (FCn_nplusm_n 0 m) (FCn_nplusm_n 0 m) MQ.
-  induction m; [trivial | ].
-  
-  cbn.
-  intro.
-  (* change (subclass_trans OneMoreConstructor_subclass (fcn_fc m)) with (fcn_fc (S m)). *)
-  (* fold fcn_fc. *)
-  (* unfold OneMoreQuotvar, OneMoreMQConstructor  in H. *)
-  destruct H.
-  unfold FcMQC.
-  intros.
-  unfold MQCOnStricterFormulaTypes in H.
-  rewrite subclass_trans_refl1 in H.
-  specialize (IHm (λ V _v T _t qx x, MQ V _ T _ qx x)).
-  specialize (H0 V _v T _t).
-  split; destruct H0; assumption.
-  
-
-  change (FCn_nplusm_n 0 m) with (fcn_fc m) in IHm.
-  (* pose (@MQC_stricter_unwrap _ _ (FcMQCWithNVars m) _ _ _ H). *)
-  (* apply (MQC_stricter_unwrap (FcMQCWithNVars m)) in H. *)
-  pose (MQC_stricter_unwrap (FcMQCWithNVars m) subclass_refl subclass_refl _ H).
-  rewrite subclass_trans_refl1 in H.
-  unfold FcMQCWithNVars in H. fold FcMQCWithNVars in H.
-  cbn in IHm.
-  change (FCn_nplusm_n 0 m) with (fcn_fc m) in IHm.
-  change
-  unfold FcMQC. intuition idtac.
-
-  change (eq_rect 0 (λ n : nat, FCWithNVars n ⊆ FormulaConstructors)
-  subclass_refl 0 (plus_n_O 0)) with (@subclass_refl Type _).
-  
-  exact H.
-
-
-Lemma FcMQCnm [n m] :
-  ∀ (MQ : @MQT (FCWithNVars (n + m)) (FCWithNVars (n + m))),
-    (FcMQCWithNVars (n + m)) _ _ _ _ MQ
-    →
-    (@MQCOnStricterFormulaTypes _ _ (FCWithNVars (n + m)) (FCWithNVars (n + m)) _ _ (FcMQCWithNVars n)) _ _ _ _ MQ.
-  
-  refine (
-    
-    (fix r (n m : nat) 
-      := 
-      match n return (∀ (MQ : @MQT (FCWithNVars (n + m)) (FCWithNVars (n + m))),
-    (FcMQCWithNVars (n + m)) _ _ _ _ MQ
-    →
-    (@MQCOnStricterFormulaTypes _ _ (FCWithNVars (n + m)) (FCWithNVars (n + m)) _ _ (FcMQCWithNVars n)) _ _ _ _ MQ) with
-    0 => _ | S n => _ end
-      ) n m); clear n0 m0.
-
-  unfold MQCOnStricterFormulaTypes.
-  rewrite subclass_trans_refl1.
-  intros. cbn in *. unfold subclass_trans. cbn.
-
-
-  unfold FcMQCWithNVars in H.
-
-  intros. exact H.
-
-  Set Printing Implicit.
-  unfold FCn_nplusm.
-  (* , nat_rect. *)
-  rewrite <- (plus_n_O n).
-  intros. rewr
-  intros; exact H.
-
-  clear n.
-  specialize (r n (S m)).
-  change (S n + m) with (S (n + m)).
-  Set Printing Implicit.
-  rewrite (plus_n_Sm n m).
-  rewrite <- (plus_n_Sm n m) in r.
-
-
-  induction n; [intros; exact H | ].
-
-  intros.
-
-  
-  refine (
-    
-    (fix r (n m : nat)
-      
-      : ∀ MQ, (
-         (@MQCOnStricterFormulaTypes _ _ (FCWithNVars (n + m)) (FCWithNVars (n + m)) _ _ (FcMQCWithNVars m)) _ _ _ _ MQ
-      →
-      FcMQC (fcn_fc (n + m)) (fcn_fc (n + m)) MQ
-      )
-      := _) n m); clear n0 m0.
-  
-  
-(* 
-  refine (match n as n0 return (n = n0) -> _ with
-    0 => _ | S pred => _ end eq_refl).
-  
-  intros.
-  generalize MQ H0.
-  dependent rewrite H in MQ.
-   rewrite H in H0. *)
-  
-  refine (match n return (∀ MQ,  (@MQCOnStricterFormulaTypes _ _ (FCWithNVars (n + m)) (FCWithNVars (n + m)) _ _ (FcMQCWithNVars m)) _ _ _ _ MQ
-      →
-      FcMQC (fcn_fc (n + m)) (fcn_fc (n + m)) MQ) with
-    0 => _ | S pred => _ end).
-  
-
-
-  unfold MQCOnStricterFormulaTypes.
-  intros. 
-  
-  cbn in H. unfold subclass_trans, subclass_refl in H. 
-  change (λ (x : Type) (xA : Class
-  (NMoreConstructors m
-  FormulaConstructors)
-  x),
-  xA) with (@subclass_refl Type (Class
-  (NMoreConstructors m
-  FormulaConstructors)) ) in H.
-  unfold plus.
-
-  
-  unfold fcn_fc.
-
-
-  fold (@subclass_refl) in H.
-  exact H.
-
-
-  induction n.
-  
-   unfold subclass_trans in H. unfold subclass_refl in H. unfold plus in *.
-  unfold FCn_nplusm in H.
-  unfold nat_rect in H. unfold subclass_refl in H. 
-  
-  cbn in H.
-  exact H.
-Qed.
-
-Lemma FcMQCn_FcMQC [n] MQ :
-  @FcMQCWithNVars n _ _ _ _ MQ ->
-  @FcMQC            _ _ _ _ MQ.
-  intros.
-  FcMQC_subset_n
-(* fcn_fc *)
-  (* Set Printing Implicit. *)
-  
-  induction n using nat_ind with (P := 
-    λ m : nat,
-      (@MQCOnStricterFormulaTypes _ _ (FCWithNVars n) (FCWithNVars n) _ _ (FcMQCWithNVars m)) _ _ _ _ MQ
-      →
-      FcMQC (fcn_fc n) (fcn_fc n) MQ).
-  induction n; [trivial|].
-  Show Proof.
-  intro.
-  unfold FcMQCWithNVars in H; fold FcMQCWithNVars in H.
-  unfold OneMoreQuotvar in H.
-  apply OneMoreMQConstructor_embed in H.
-
-
-  pose (MQC_stricter_unwrap (FcMQCWithNVars n) _ _ _ H).
-
-  specialize (IHn MQ f).
-  unfold OneMoreConstructor_subclass in f.
-  unfold subclass_refl in IHn.
-  unfold FCWithNVars, NMoreConstructors in f; fold NMoreConstructors in f; fold FCWithNVars in f.
-
-
-  destruct n; [trivial|].
-  unfold FcMQCWithNVars in IHn; fold FcMQCWithNVars in IHn.
-
-  unfold FcMQCWithNVars in H; fold FcMQCWithNVars in H.
-  pose (MQC_stricter_unwrap (FcMQCWithNVars (S n)) _ _ _ H).
-  unfold OneMoreQuotvar in H.
-  apply (MQC_embed_under_stricter (
-    @OneMoreMQConstructor_embed _ _
-      (@omc_new (FCWithNVars n)) (@omc_new (FCWithNVars n))
-      _)) in H.
-
-  unfold FcMQCWithNVars in IHn; fold FcMQCWithNVars in IHn.
-  pose (MQC_stricter_unwrap (FcMQCWithNVars (S n)) _ _ _ H).
-  apply MQC_stricter_unwrap in H.
-  apply MQC_stricter_unwrap in H.
-  apply OneMoreQuotvar_embed in H.
-
 Qed.
 
 
