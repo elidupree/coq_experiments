@@ -73,7 +73,7 @@ Instance subclass_apply {T} {A B : T -> Type} {t}
 ****************************************************)
 
 Class ApplyConstructor F := {
-    f_apl : F -> F -> F
+    apply : F -> F -> F
   }.
 
 Class FunctionConstructors F := {
@@ -93,12 +93,15 @@ Class PropositionConstructors F := {
 Instance pc_class_unwrap :
   ∀ {F}, Class PropositionConstructors F ->
          PropositionConstructors F := λ _ b, b.
+Instance aplc_class_unwrap :
+  ∀ {F}, Class ApplyConstructor F ->
+         ApplyConstructor F := λ _ b, b.
 
 (* And because we use a low depth limit, we need to provide some "shortcuts": *)
 Instance shortcut_cpc_fnc F : Class PropositionConstructors F -> FunctionConstructors F := _.
 Instance shortcut_cpc_aplc F : Class PropositionConstructors F -> ApplyConstructor F := λ _, _.
 
-Notation "[ x y .. z ]" := (f_apl .. (f_apl x y) .. z)
+Notation "[ x y .. z ]" := (apply .. (apply x y) .. z)
  (at level 0, x at next level, y at next level).
 Notation "[ x -> y ]" := (f_implies x y) (at level 0, x at next level, y at next level).
 Notation "[ x & y ]" := (f_and x y)
@@ -302,7 +305,7 @@ Inductive MeansProp {VC TC} {MQC : MQCT}
         (λ _ _, [(qp _ _) -> (qc _ _)])
         (λ _ _ _, (p _ _) ⊢ (c _ _)) 
 
-  | mi_unfold (a b : Ind VC) B :
+  | mi_unfold [a b : Ind VC] B :
       (∀ V (_v:Class VC V), UnfoldStep (a _ _) (b _ _)) ->
       MeansProp b B ->
       MeansProp a B
@@ -362,7 +365,7 @@ Inductive OneMoreExt {OldExt} :=
 
 Class FormulaConstructors F := {
       fc_atm : Atom -> F
-    ; fc_apl : F -> F -> F
+    ; fc_apl :: ApplyConstructor F
   }.
   
   (* Set Printing Implicit.
@@ -401,15 +404,12 @@ Instance f_unwrap :
     |}
   }. *)
 
+Instance f_apli {Ext} : Class ApplyConstructor (@Formula Ext) := {|
+    apply := fo_apl
+  |}.
 Instance f_fc {Ext} : Class FormulaConstructors (@Formula Ext) := {|
       fc_atm := f_atm
-    ; fc_apl := fo_apl
   |}.
-
-Instance fc_aplc F : FormulaConstructors F ->
-  ApplyConstructor F := {
-    f_apl := fc_apl
-  }.
 
 Instance fc_fn F : FormulaConstructors F ->
   FunctionConstructors F := {
@@ -559,7 +559,7 @@ Fixpoint fplusnm_fcplusn n m {Ext} :
 Existing Instance fplusnm_fcplusn.
 Print fplusnm_fcplusn.
 
-(* Print fplus__eq_add_S.
+Print fplus__eq_add_S.
 Instance fplus__plus_n_0 n {Ext} :
   Class (NMoreConstructors n FormulaConstructors)
         (@Formula (@NMoreExt (n + 0) Ext))
@@ -571,7 +571,7 @@ Instance fplus__plus_n_0 n {Ext} :
         (@Formula (@NMoreExt m Ext))) X _).
   apply plus_n_O.
 Defined.
-Print fplus__plus_n_0. *)
+Print fplus__plus_n_0.
 
 Fixpoint NMoreConstructors_subclass n C
   : NMoreConstructors n C ⊆ C
@@ -613,7 +613,7 @@ Fixpoint nmf_to_ind {Ext} {Constrs} n
 Definition fwn_to_ind n
   : FormulaWithNVars n -> Ind (FCWithNVars n)
   :=
-  nmf_to_ind n (λ absurd : False, match absurd with end).
+  nmf_to_ind n (False_rect _).
 
 
 Instance fcn_fc n
@@ -627,6 +627,14 @@ Instance fn_fcn n : Class
   (FCWithNVars n)
   (FormulaWithNVars n)
   := _.
+
+Lemma unfold_rewrap [n] (qf qg : FormulaWithNVars n) :
+  UnfoldStep qf qg ->
+  ∀ V _v, UnfoldStep (fwn_to_ind qf V _v) (fwn_to_ind qg V _v).
+  intros.
+  induction H; [constructor|constructor|].
+  exact (unfold_in_lhs (fwn_to_ind c V _v) IHUnfoldStep).
+Qed.
 
 Fixpoint embed_formula
   Ext1 Ext2 (embed : Ext1 -> Ext2)
@@ -661,6 +669,21 @@ Inductive IsAtom F `{FormulaConstructors F}
     : F -> Atom -> Prop :=
   | is_atom a : IsAtom (fc_atm a) a.
 
+Lemma IsAtom_rewrap [n] (f : FormulaWithNVars n) a :
+  IsAtom f a ->
+  ∀ V _v, IsAtom (fwn_to_ind f V _v) a.
+  intro. destruct H. constructor.
+Qed.
+
+Lemma utk_rewrap [n] (f : FormulaWithNVars n) a :
+  UnfoldsToKind (@IsAtom _ _) f a ->
+  ∀ V _v, UnfoldsToKind (@IsAtom _ _) (fwn_to_ind f V _v) a.
+  intros.
+  induction H.
+  { constructor. apply IsAtom_rewrap. assumption. }  
+  exact (utk_step (unfold_rewrap H _ _) IHUnfoldsToKind).
+Qed.
+
 (* Inductive FcMeansQuoted {F} `{FormulaConstructors F}
     (* (Ext -> StandardFormula -> Prop) *)
     : F -> StandardFormula -> Prop :=
@@ -683,15 +706,30 @@ Definition FcMQC : @MQCT FormulaConstructors FormulaConstructors :=
           @UnfoldsToKind V _ _ (@IsAtom V _) f a ->
           MQ [f_quote f] (fc_atm a))
         ∧
-        (∀ qa a qb b,
-          @UnfoldsToKind V _ _ MQ qa a ->
-          @UnfoldsToKind V _ _ MQ qb b ->
+        (∀ qa qb b, UnfoldStep qa qb -> MQ qb b -> MQ qa b)
+        ∧
+        (∀ qa a qb b, MQ qa a -> MQ qb b ->
           MQ [f_quote qa qb] [a b])
         .
 
+(*
+(* Same as MQInd, but delivers UnfoldsToKind MQ instead of just MQ. *)
+Definition UTKInd {VC TC} (qx : Ind VC) (x : Ind TC) {MQC : MQCT}
+  {_:VC ⊆ FormulaConstructors}
+  :=
+  ∀ V (_v:Class VC V) T (_t:Class TC T) (MQ : MQT),
+    MQC _ _ _ _ MQ ->
+    @UnfoldsToKind V _ _ (MQ V _v T _t) (qx _ _) (x _ _). *)
+
+(* Definition FcMQC_ind_apply (qa a qb b : Ind FormulaConstructors) :
+  let _ := FcMQC in
+  UTKInd qa a -> UTKInd qb b ->
+  @MQInd _ _ (λ _ _, [f_quote (qa _ _) (qb _ _)]) (λ _ _, [(a _ _) (b _ _)]) FcMQC. *)
+  
+
 Definition FcMQCWithNVars n := NMoreQuotvars n FcMQC.
 
-Lemma just_uhh1 VC TC MQC MQ : 
+(* Lemma just_uhh1 VC TC MQC MQ : 
   OneMoreQuotvar MQC subclass_refl subclass_refl MQ ->
   MQC _ _ (subclass_trans _ subclass_refl) (subclass_trans _ subclass_refl) MQ.
   (* cbn. *)
@@ -721,7 +759,7 @@ Lemma just_uhh3 VC TC MQC MQ :
   (* rewrite subclass_trans_refl2. *)
   (* rewrite subclass_trans_refl2. *)
   assumption.
-Qed.
+Qed. *)
 
 Lemma quotvar_unzip_succ VC TC (MQC1 MQC2 : MQCT) :
   MQCSubclassOf MQC1 MQC2 ->
@@ -767,7 +805,7 @@ Lemma FcMQC_subset_n n :
   apply quotvar_unzip_n. apply MQCSubclassOf_refl.
 Defined.
 
-Lemma FcMQCn_FcMQC [n] MQ :
+Lemma FcMQCn_FcMQC [n] [MQ] :
   @FcMQCWithNVars n _ _ _ _ MQ ->
   @FcMQC            _ _ _ _ MQ.
   intros.
@@ -775,6 +813,32 @@ Lemma FcMQCn_FcMQC [n] MQ :
   exact (FcMQC_subset_n n _ _ _ H).
 Qed.
 
+Lemma FcMQC_fold n qf qg f :
+  UnfoldStep qf qg ->
+  MQInd (MQC := FcMQCWithNVars n) (fwn_to_ind qg) f ->
+  MQInd (MQC := FcMQCWithNVars n) (fwn_to_ind qf) f.
+
+  (* intros u r.
+  unfold MQInd in *; intros.
+  induction u.
+
+  (* i.e. "induction on r, with this IH:" *)
+  specialize (r V _v T _t (λ V _v T _t qg f,
+    ∀ qf, (UnfoldStep qf qg) -> MQ V _v T _t qf f)). *)
+
+
+  intros u qg_means_f; unfold MQInd; intros.
+
+  (* "we don't need the variable constructors for this, discard them and take the FcMQC constructors" *)
+  destruct (FcMQCn_FcMQC H V _v T _t) as (atmc, (unfc, aplc)).
+
+  (* use the unfold constructor *)
+  refine (unfc _ _ _ (unfold_rewrap u _ _) _).
+
+  (* now we're basically done *)
+  apply qg_means_f.
+  apply H.
+Qed.
 
 
 (****************************************************
@@ -938,6 +1002,28 @@ Fixpoint get_quoted_formula steps [n] (qf : FormulaWithNVars n)
       end
   end.
 
+Lemma ext_quotvar_rewrap [n] (e : NMoreExt n False)
+  {VC TC} {_v:VC ⊆ (FCWithNVars n)} {_t:TC ⊆ (FCWithNVars n)}
+  (MQ : MQT)
+  (H : FcMQCWithNVars n _ _ MQ)
+  : ∀ V _v T _t, MQ V _v T _t (ewn_to_ind e V _) (ewn_to_ind e T _).
+  (* unfold subclass_apply. *)
+
+  induction n; [contradiction|].
+  intros.
+  destruct e; [refine ?[embed]|refine ?[new]].
+
+  [new]: {
+    destruct H.
+    apply H0.
+  }
+  [embed]: {
+    destruct H.
+    exact (IHn n0 _ _ H V _v0 T _t0).
+  }
+Qed.
+
+
 Lemma get_quoted_formula_correct
   steps [n] (qf : FormulaWithNVars n) f :
   get_quoted_formula steps qf = success f ->
@@ -947,101 +1033,199 @@ Lemma get_quoted_formula_correct
     match steps as n0 return (steps = n0) -> _ with 0 => _ | S pred => _ end eq_refl) steps n qf f)
     ; intros ne e; [discriminate|].
   
-  unfold MQInd; intros.
+  (* unfold MQInd; intros. *)
   refine (match unfold_step qf as oqg return (unfold_step qf = oqg -> _) with
       | Some qg => _
       | None => _
       end eq_refl); intro fog; cbn in e; rewrite fog in e; [refine ?[unfold]|refine ?[flat]].
   
   [unfold]: {
-    
-    exact (utk_step (unfold_step_correct _ fog) (r pred n qg f e)).
+    pose (unfold_step_correct _ fog) as u.
+    specialize (r pred n qg f e).
+    exact (FcMQC_fold u r).
   }
   [flat]: {
-    clear r fog.
-    refine (match f as f0 return (f = f0) -> _ with
-      | f_atm a => _
-      | _ => _
-      end eq_refl); intros ->; discriminate || idtac.
+    clear fog.
     
-    injection e as <-. apply utk_done. apply is_atom.
+    unfold MQInd; intros.
+    destruct (FcMQCn_FcMQC H V _v T _t) as (atmc, (unfc, aplc)).
+
+    refine (match qf as qf0 return (qf = qf0) -> _ with
+      | fo_apl (f_atm atom_quote) a => _
+      | fo_apl (fo_apl (f_atm atom_quote) qa) qb => _
+      | f_ext e => _
+      | _ => _
+      end eq_refl); intros ->; discriminate || idtac;
+      [refine ?[ext] | refine ?[qatm] | refine ?[qaply]].
+    
+    [qatm]: {
+      (* TODO reduce duplicate code ID 3894038493 *)
+      refine (match (get_folded_atom pred a) as a0 return (get_folded_atom pred a = a0) -> _ with
+        | success atm => _
+        | _ => _
+        end eq_refl); intro eq; rewrite eq in e; discriminate || idtac.
+
+        injection e as <-.
+
+        pose (get_folded_atom_correct pred _ eq) as atc.
+        apply atmc.
+        exact (utk_rewrap atc _ _).
+    }
+    [qaply]: {
+      (* TODO reduce duplicate code ID 3894038493 *)
+      refine (match (get_quoted_formula pred qa) as qa0 return (get_quoted_formula pred qa = qa0) -> _ with
+        | success a => _
+        | _ => _
+        end eq_refl); intro eqa; rewrite eqa in e; discriminate || idtac.
+      refine (match (get_quoted_formula pred qb) as qb0 return (get_quoted_formula pred qb = qb0) -> _ with
+        | success b => _
+        | _ => _
+        end eq_refl); intro eqb; rewrite eqb in e; discriminate || idtac.
+
+        injection e as <-.
+
+        pose (r pred _ _ _ eqa) as ar.
+        pose (r pred _ _ _ eqb) as br.
+        apply aplc.
+        exact (ar _ _ _ _ _ H).
+        exact (br _ _ _ _ _ H).
+    }
+    [ext]: {
+      (* clear atmc unfc aplc. *)
+      injection e0 as <-.
+      exact (ext_quotvar_rewrap e MQ H V _v T _t).
+    }
   }
+Qed.
 
 
+Definition MiSearchResult [n] (f : FormulaWithNVars n) : Type :=
+    @Rule (FCWithNVars n).
 
-  
-
-Definition one_more_revar
-    [OldExt]
-    (vars : OldExt -> bool)
-    : (@OneMoreExt OldExt) -> bool :=
-  λ a, match a with
-    | ome_embed a => vars a
-    | ome_new => true 
-    end.
-
-Definition revar_meanings [OldExt] (vars : OldExt -> bool) J :=
-  ∀ v, (unreify_vars vars v) -> J.
-Definition one_more_revar_meaning
-    [OldExt] J
-    (vars : OldExt -> bool)
-    (meanings : revar_meanings vars J)
-    (new_meaning : J)
-    : revar_meanings (one_more_revar vars) J :=
-  λ v, match v return
-      (unreify_vars (one_more_revar vars) v)
-        -> J with
-    | ome_embed a => λ ve, meanings a ve
-    | ome_new => λ _, new_meaning
-    end.
-
-Definition MiSearchResult [Ext]
-    (vars : Ext -> bool)
-    (f : @Formula Ext) : Type :=
-    ∀ F `(FormulaConstructors F) (qv_meanings :
-        revar_meanings vars F),
-      (* Rule StandardFormula. *)
-      InfSet F -> Prop.
-
-Fixpoint get_prop_meaning_impl (n:nat) [Ext]
-  (f : @Formula Ext)
-  (vars : Ext -> bool)
-  : GetResult (MiSearchResult vars f) :=
-  match n with 0 => timed_out _ | S pred =>
+Fixpoint get_prop_meaning_impl steps [n] (f : FormulaWithNVars n)
+  : GetResult (MiSearchResult f) :=
+  match steps with 0 => timed_out _ | S pred =>
     match unfold_step f with
-      | Some g => get_prop_meaning_impl pred g vars
+      | Some g => get_prop_meaning_impl pred g
       | None => match f with
         (* [qp -> qc] *)
         | fo_apl (fo_apl (f_atm atom_implies) qp) qc =>
-          ? p <- (get_quoted_formula vars pred qp) ;
-          ? c <- (get_quoted_formula vars pred qc) ;
-          success (λ F _ qv_meanings infs,
-            (infs (p F _ qv_meanings) (c F _ qv_meanings)))
+          ? p <- (get_quoted_formula pred qp) ;
+          ? c <- (get_quoted_formula pred qc) ;
+          success (λ _ _ infs, infs (p _ _) (c _ _))
         
         (* [a & b] *)
         | fo_apl (fo_apl (f_atm atom_and) a) b =>
-          ? A <- (get_prop_meaning_impl pred a vars) ;
-          ? B <- (get_prop_meaning_impl pred b vars) ;
+          ? A <- (get_prop_meaning_impl pred a) ;
+          ? B <- (get_prop_meaning_impl pred b) ;
           (* success (A ∧4 B) *)
-          success (λ F _ qv_meanings infs,
-            (A F _ qv_meanings infs) ∧ (B F _ qv_meanings infs))
+          success (λ _ _ _, (A _ _ _) ∧ (B _ _ _))
 
         (* [forall_quoted_formulas f] *)
         | fo_apl (f_atm atom_forall_quoted_formulas) f =>
-          ? Fx <- (get_prop_meaning_impl pred
+          ? Fx <- (get_prop_meaning_impl pred (n := S n)
               [(embed_formula (λ a, ome_embed a) f)
-                  (f_ext ome_new)]
-                  (one_more_revar vars)) ; 
+                  (f_ext ome_new)]) ; 
             success (
-              λ F _ (qv_meanings : (revar_meanings vars F)) infs,
-                ∀ (x : F),
-                  Fx F _ (one_more_revar_meaning qv_meanings x) infs
-                )
+              λ _ _ _, ∀ x, Fx _ {| omc_new := x |} _)
         | _ => error _ ("not a proposition:", f)
       end
     end
   end.
 
+
+Lemma get_prop_meaning_impl_correct
+  steps [n] (f : FormulaWithNVars n) rule :
+  get_prop_meaning_impl steps f = success rule ->
+    MeansProp (MQC := FcMQCWithNVars n) (fwn_to_ind f) rule.
+  
+  refine ((fix r steps n (f : FormulaWithNVars n) rule : (get_prop_meaning_impl steps f = success rule -> MeansProp (fwn_to_ind f) rule) :=
+    match steps as n0 return (steps = n0) -> _ with 0 => _ | S pred => _ end eq_refl) steps n f rule)
+    ; intros ne e; [discriminate|].
+  
+  (* unfold MQInd; intros. *)
+  refine (match unfold_step f as oqg return (unfold_step f = oqg -> _) with
+      | Some g => _
+      | None => _
+      end eq_refl); intro fog; cbn in e; rewrite fog in e; [refine ?[unfold]|refine ?[flat]].
+  Print mi_unfold.
+  [unfold]: {
+    pose (unfold_step_correct _ fog) as u.
+    specialize (r pred n g rule e).
+    exact (mi_unfold (λ V _v, unfold_rewrap u V _v) r).
+  }
+  [flat]: {
+    clear fog.
+
+    refine (match f as f0 return (f = f0) -> _ with
+        (* [qp -> qc] *)
+        | fo_apl (fo_apl (f_atm atom_implies) qp) qc => _
+        
+        (* [a & b] *)
+        | fo_apl (fo_apl (f_atm atom_and) a) b => _
+
+        (* [forall_quoted_formulas f] *)
+        | fo_apl (f_atm atom_forall_quoted_formulas) f => _
+        | _ => _
+      end eq_refl); intros ->; discriminate || idtac;
+      [refine ?[forall_case] | refine ?[implies_case] | refine ?[and_case]].
+    
+    [implies_case]: {
+      (* TODO reduce duplicate code ID 3894038493 *)
+      refine (match (get_quoted_formula pred qp) as qp0 return (get_quoted_formula pred qp = qp0) -> _ with
+        | success p => _
+        | _ => _
+        end eq_refl); intro eqp; rewrite eqp in e; discriminate || idtac.
+      refine (match (get_quoted_formula pred qc) as qc0 return (get_quoted_formula pred qc = qc0) -> _ with
+        | success c => _
+        | _ => _
+        end eq_refl); intro eqc; rewrite eqc in e; discriminate || idtac.
+
+        injection e as <-.
+        apply get_quoted_formula_correct in eqp.
+        apply get_quoted_formula_correct in eqc.
+        exact (mi_implies eqp eqc).
+    }
+    [and_case]: {
+      (* TODO reduce duplicate code ID 3894038493 *)
+      refine (match (get_prop_meaning_impl pred a) as a0 return (get_prop_meaning_impl pred a = a0) -> _ with
+        | success a => _
+        | _ => _
+        end eq_refl); intro eqa; rewrite eqa in e; discriminate || idtac.
+      refine (match (get_prop_meaning_impl pred b) as b0 return (get_prop_meaning_impl pred b = b0) -> _ with
+        | success b => _
+        | _ => _
+        end eq_refl); intro eqb; rewrite eqb in e; discriminate || idtac.
+
+        injection e as <-.
+
+        apply r in eqa.
+        apply r in eqb.
+        exact (mi_and eqa eqb).
+    }
+    [forall_case]: {
+      refine (match (get_prop_meaning_impl pred (n := S n)
+              [(embed_formula (λ a, ome_embed a) f)
+                  (f_ext ome_new)]) as fx2 return ((get_prop_meaning_impl pred (n := S n)
+              [(embed_formula (λ a, ome_embed a) f)
+                  (f_ext ome_new)]) = fx2) -> _ with
+        | success Fx => _
+        | _ => _
+        end eq_refl); intro eq; cbn in eq; rewrite eq in e; discriminate || idtac.
+
+      injection e as <-.
+      
+Print mi_forall_quoted_formulas.
+      apply r in eq.
+      
+
+      exact (mi_forall_quoted_formulas (fwn_to_ind f) (λ _ _ x _, Fx _ {| omc_new := x |} _) eq).
+
+      (* clear atmc unfc aplc. *)
+      exact (ext_quotvar_rewrap e MQ H V _v T _t).
+    }
+  }
+Qed.
 (****************************************************
    Practicalities of concrete formula construction
 ****************************************************)
@@ -1663,7 +1847,7 @@ Qed.
 
 ****************************************************)
 
-Notation "[ x y .. z ]" := (f_apl .. (f_apl x y) .. z)
+Notation "[ x y .. z ]" := (apply .. (apply x y) .. z)
  (at level 0, x at next level, y at next level).
 
 Definition const {Ext} := @f_atm Ext atom_const.
@@ -1686,7 +1870,7 @@ Notation "[ x & y ]" := [f_and x y]
 Notation "[ x -> y ]" := [f_implies x y] (at level 0, x at next level, y at next level).
 
 (* Notation "[ x & y & .. & z ]" :=
-  (f_apl (f_apl f_and x) .. (f_apl (f_apl f_and y) z) ..)
+  (apply (apply f_and x) .. (apply (apply f_and y) z) ..)
   (at level 0, x at next level, y at next level).
 Definition foo := [f_const & f_const & f_const]. *)
 
@@ -1735,7 +1919,7 @@ Fixpoint embed_formula
   := match f with
     | f_atm a => f_atm a
     | f_ext a => f_ext (embed a)
-    | f_apl a b => [(embed_formula embed a) (embed_formula embed b)]
+    | apply a b => [(embed_formula embed a) (embed_formula embed b)]
     end.
 
 Inductive MeansProp [EExt] [J]
@@ -2225,9 +2409,9 @@ Definition one_more_revar_meaning2
           ? (exist g gp) <- get_MeansQuoted pred qg ;
           success (exist _ g (quoted_unfold u gp))
       | None => match qf with
-          | f_apl (f_atm atom_quote) (f_atm a) =>
+          | apply (f_atm atom_quote) (f_atm a) =>
               success (exist _ (f_atm a) (quoted_atom a))
-          | f_apl (f_apl (f_atm atom_quote) qa) qb =>
+          | apply (apply (f_atm atom_quote) qa) qb =>
             ? (exist a ap) <- get_MeansQuoted pred qa ; 
             ? (exist b bp) <- get_MeansQuoted pred qb ;
             success (exist _ [a b] (quoted_apply (Ext:=Ext) ap bp))
@@ -2302,10 +2486,10 @@ Fixpoint msr_finish (r : MPSearchResult vars) : Rule.
 
   refine (match f with
           | f_ext a => _
-          | f_apl (f_atm atom_forall_valid_propositions) f => _
-          | f_apl (f_atm atom_forall_quoted_formulas) f => _
-          | f_apl (f_apl (f_atm atom_implies) qp) qc => _
-          | f_apl (f_apl (f_atm atom_and) a) b => _
+          | apply (f_atm atom_forall_valid_propositions) f => _
+          | apply (f_atm atom_forall_quoted_formulas) f => _
+          | apply (apply (f_atm atom_implies) qp) qc => _
+          | apply (apply (f_atm atom_and) a) b => _
           | _ => error _
           end);
       [refine ?[assumed] |
@@ -2631,15 +2815,15 @@ Notation "x <- m1 ; m2" :=
 
 Definition interpret_as_prop recurse f :=
   match f with
-    | f_apl (f_apl f_implies p) c => 
+    | apply (apply f_implies p) c => 
       p <- recurse t_quoted_formula p ;
       c <- recurse t_quoted_formula c ;
       is_member t_proposition (λ x y, (x = p) /\ (y = c))
-    | f_apl (f_apl f_and a) b => 
+    | apply (apply f_and a) b => 
       a <- recurse t_proposition a ;
       b <- recurse t_proposition b ;
       is_member t_proposition (a ∪2 b)
-    | f_apl (f_all) a =>
+    | apply (f_all) a =>
       a <- recurse (t_function t_quoted_formula t_proposition) a ;
       is_member t_proposition (∀x, a x)
     | _ => error
@@ -2668,21 +2852,21 @@ Fixpoint CleanExternalMeaning n f quoted_args : option InfSet :=
   match n with
     | 0 => None
     | S pred => match f with
-      | f_apl (f_apl f_implies p) c => match (
+      | apply (apply f_implies p) c => match (
           unquote_formula p,
           unquote_formula c
           ) with
         | (Some p, Some c) => λ x y, x = p /\ y = c
         | _ => None
       end
-      | f_apl (f_apl f_and a) b => match (
+      | apply (apply f_and a) b => match (
           CleanExternalMeaning pred a,
           CleanExternalMeaning pred b
           ) with
         | (Some a, Some b) => Some (a ∪2 b)
         | _ => None
       end
-      | f_apl (f_all) a => match
+      | apply (f_all) a => match
           CleanExternalMeaning pred a
           with
         | Some a => Some (∀x, a ∪2 b)
@@ -2714,10 +2898,10 @@ Definition InferencesProvenBy Rules : InfSet := RulesProveInference Rules.
     fix FormulaMeaning (f : Formula) :=
       match f with
         (* [and a b] *)
-        | f_apl (f_apl (f_atm atom_and) a) b
+        | apply (apply (f_atm atom_and) a) b
           => FormulaMeaning a /\ FormulaMeaning b
         (* [pred_imp a b] *)
-        | f_apl (f_apl (f_atm atom_pred_imp) a) b
+        | apply (apply (f_atm atom_pred_imp) a) b
           => (∀ x,
             IsMeansQuotedStream x -> ∃ ap bp,
               UnfoldsToMeansQuoted [a x] ap /\
