@@ -292,47 +292,62 @@ Definition Rule {TC} := ∀ T (_:Class TC T), InfSet T -> Prop.
 
 (* We can now make the big definition of what propositions mean. *)
 
-Inductive MeansProp {VC TC} {MQC : MQCT}
+(* definition specific to T, although we will often be dealing in values of type (∀ T (_t:Class TC T), PropMeaning) *)
+Inductive PropMeaning {TC} {T} {_t:Class TC T} :=
+  | meaning_implies : T -> T -> PropMeaning
+  | meaning_and : PropMeaning -> PropMeaning -> PropMeaning
+  | meaning_forall : (∀ T (_t:Class (OneMoreConstructor TC) T), (@PropMeaning (OneMoreConstructor TC) T _t)) -> PropMeaning
+   .
+
+Fixpoint PropMeaning_to_Coq {TC} {T} {_t: Class TC T} (P : PropMeaning) (infs : InfSet T) : Prop :=
+  match P with
+  | meaning_implies p c => p ⊢ c
+  | meaning_and A B => PropMeaning_to_Coq A infs ∧ PropMeaning_to_Coq B infs
+  | meaning_forall F => ∀ x, PropMeaning_to_Coq (F _ {| omc_new := x |}) infs
+  end.
+    
+(* Set Printing Implicit. *)
+Inductive FormulaMeans {VC TC} {MQC : MQCT}
   {_vp:VC ⊆ PropositionConstructors}
   {V} {_v: Class VC V} {T} {_t: Class TC T}
   {MQ : ∀ {V} {_v:Class VC V} {T} {_t:Class TC T}, V -> T -> Prop}
   {_mq : MQC _ _ _ _ (@MQ)}
-  : V -> (InfSet T -> Prop) -> Prop :=
+  : V -> PropMeaning -> Prop :=
 
-  | mi_implies [qp qc : V] [p c : T]
+  | mi_implies [qp qc p c]
       :
       MQ qp p ->
-      MQ qc c ->
-      MeansProp [qp -> qc] (λ _, p ⊢ c) 
+      @MQ V _v T _t qc c ->
+      FormulaMeans [qp -> qc] (meaning_implies p c)
 
-  | mi_unfold [a b : V] B :
+  | mi_unfold [a b B] :
       UnfoldStep a b ->
-      MeansProp b B ->
-      MeansProp a B
+      FormulaMeans b B ->
+      FormulaMeans a B
 
-  | mi_and [a b : V] [A B : InfSet T -> Prop] :
-      MeansProp a A ->
-      MeansProp b B ->
-      MeansProp [a & b] (λ _, A _ ∧ B _)
+  | mi_and [a b A B] :
+      FormulaMeans a A ->
+      FormulaMeans b B ->
+      FormulaMeans [a & b] (meaning_and A B)
 
-   | mi_forall_quoted_formulas
+  | mi_forall_quoted_formulas
       (f : Ind VC)
-      (F : (∀ {T} {_:Class TC T}, T -> InfSet T -> Prop))
+      (F : ∀ T (_t:Class (OneMoreConstructor TC) T), (@PropMeaning (OneMoreConstructor TC) T _t))
       :
       (∀ V _v T _t MQ _mq,
-        @MeansProp _ _ (OneMoreQuotvar MQC) _ V _v T _t MQ _mq
+        @FormulaMeans _ _ (OneMoreQuotvar MQC) _ V _v T _t MQ _mq
           [(f _ _) omc_new]
-          (λ _, F omc_new _))
+          (F _ _))
       ->
-      MeansProp
+      FormulaMeans
         [⋀ (f _ _)]
-        (λ _, (∀x, F x _))
+        (meaning_forall (@F))
   .
 (* Print mi_forall_quoted_formulas. *)
 
 (* Set Typeclasses Debug Verbosity 2. *)
 (* Set Typeclasses Depth 4. *)
-(* Inductive MeansProp {VC TC} {MQC : MQCT}
+(* Inductive FormulaMeans {VC TC} {MQC : MQCT}
   {_vp:VC ⊆ PropositionConstructors}
   : Ind VC -> Rule -> Prop :=
 
@@ -340,19 +355,19 @@ Inductive MeansProp {VC TC} {MQC : MQCT}
       :
       MQInd qp p ->
       MQInd qc c ->
-      MeansProp  
+      FormulaMeans  
         (λ _ _, [(qp _ _) -> (qc _ _)])
         (λ _ _ _, (p _ _) ⊢ (c _ _)) 
 
   | mi_unfold [a b : Ind VC] B :
       (∀ V (_v:Class VC V), UnfoldStep (a _ _) (b _ _)) ->
-      MeansProp b B ->
-      MeansProp a B
+      FormulaMeans b B ->
+      FormulaMeans a B
 
   | mi_and (a b : Ind VC) (A B : Rule) :
-      MeansProp a A ->
-      MeansProp b B ->
-      MeansProp
+      FormulaMeans a A ->
+      FormulaMeans b B ->
+      FormulaMeans
         (λ _ _, [(a _ _) & (b _ _)])
         (λ _ _ _, A _ _ _ ∧ B _ _ _)
 
@@ -360,19 +375,19 @@ Inductive MeansProp {VC TC} {MQC : MQCT}
       (f : Ind VC)
       (F : (∀ {T} {_:Class TC T}, T -> InfSet T -> Prop))
       :
-      MeansProp (MQC := OneMoreQuotvar MQC)
+      FormulaMeans (MQC := OneMoreQuotvar MQC)
         (λ _ _, [(f _ _) omc_new])
         (λ _ _ _, F omc_new _)
       ->
-      MeansProp
+      FormulaMeans
         (λ _ _, [⋀ (f _ _)])
         (λ _ _ _, (∀x, F x _))
   .
 
-Lemma MeansProp_rewrap {VC TC} {MQC : MQCT}
+Lemma FormulaMeans_rewrap {VC TC} {MQC : MQCT}
   {_vp:VC ⊆ PropositionConstructors} f g R :
   ∀ V _v, f V _v = g V _v -> 
-  MeansProp f R -> MeansProp g R.
+  FormulaMeans f R -> FormulaMeans g R.
   intros. induction H0.
   refine (mi_implies _ _).
   constructor. *)
@@ -1228,11 +1243,18 @@ Lemma get_quoted_formula_correct
 Qed.
 
 
-Definition MiSearchResult [n] (f : FormulaWithNVars n) : Type :=
-    @Rule (FCWithNVars n).
+Definition MiSearchResult n : Type :=
+    ∀ T (_t: Class (FCWithNVars n) T), @PropMeaning (FCWithNVars n) T _t.
+
+(* Fixpoint specialize_prop_meaning TC T (P : @PropMeaning (OneMoreConstructor TC) T) (tx : Ind TC): @PropMeaning TC T := 
+  match P with
+  | meaning_implies p c => meaning_implies p c
+  | meaning_and A B => meaning_and (specialize_prop_meaning A tx) (specialize_prop_meaning B tx)
+  | meaning_forall F => meaning_forall (λ T2 _t2 tx2, specialize_prop_meaning (F T2 {| omc_new := tx _ _ |} tx2))
+  end. *)
 
 Fixpoint get_prop_meaning steps [n] (f : FormulaWithNVars n)
-  : GetResult (MiSearchResult f) :=
+  : GetResult (MiSearchResult n) :=
   match steps with 0 => timed_out _ | S pred =>
     match unfold_step f with
       | Some g => get_prop_meaning pred g
@@ -1241,14 +1263,14 @@ Fixpoint get_prop_meaning steps [n] (f : FormulaWithNVars n)
         | fo_apl (fo_apl (f_atm atom_implies) qp) qc =>
           ? p <- (get_quoted_formula pred qp) ;
           ? c <- (get_quoted_formula pred qc) ;
-          success (λ _ _ infs, infs (p _ _) (c _ _))
+          success (λ _ _, meaning_implies (p _ _) (c _ _))
         
         (* [a & b] *)
         | fo_apl (fo_apl (f_atm atom_and) a) b =>
           ? A <- (get_prop_meaning pred a) ;
           ? B <- (get_prop_meaning pred b) ;
           (* success (A ∧4 B) *)
-          success (λ _ _ _, (A _ _ _) ∧ (B _ _ _))
+          success (λ _ _, meaning_and (A _ _) (B _ _))
 
         (* [forall_quoted_formulas f] *)
         | fo_apl (f_atm atom_forall_quoted_formulas) f =>
@@ -1256,15 +1278,14 @@ Fixpoint get_prop_meaning steps [n] (f : FormulaWithNVars n)
               [(embed_formula (λ a, ome_embed a) f)
                   (f_ext ome_new)]) ; 
                   (* TODO: be able to strip off the extra variable BEFORE putting under binding: *)
-            success (
-              λ T _t infs, ∀ x, Fx T {| omc_new := x |} _)
+            success (λ _ _, meaning_forall Fx)
         | _ => error _ ("not a proposition:", f)
       end
     end
   end.
 
 
-Lemma unfold_fx_embed [n] (f : FormulaWithNVars n)
+(* Lemma unfold_fx_embed [n] (f : FormulaWithNVars n)
 (Fx : (MiSearchResult (n := S n) [(embed_formula (λ a, ome_embed a) f)
                   (f_ext ome_new)]))
                   
@@ -1274,7 +1295,7 @@ Lemma unfold_fx_embed [n] (f : FormulaWithNVars n)
   {| omc_embed := OneMoreConstructor_subclass _t; omc_new := omc_new |} H)
 = Fx T _t.
   induction n; cbn.
-  reflexivity.
+  reflexivity. *)
 
   
 
@@ -1284,7 +1305,7 @@ Lemma get_prop_meaning_correct
   steps [n] (f : FormulaWithNVars n) rule :
   get_prop_meaning steps f = success rule ->
     ∀ V _v T _t MQ (_mq : FcMQCWithNVars n _ _ MQ),
-    MeansProp (_mq:=_mq) (fwn_to_ind f V _v) (rule T _t).
+    FormulaMeans (_mq:=_mq) (fwn_to_ind f V _v) (rule T _t).
   
   refine ((fix r steps n (f : FormulaWithNVars n) rule :=
     match steps as n0 return (steps = n0) -> _ with 0 => _ | S pred => _ end eq_refl) steps n f rule)
@@ -1378,7 +1399,8 @@ Print mi_forall_quoted_formulas.
       exact (mi_forall_quoted_formulas (fwn_to_ind f) (λ _ _ _, Fx _ _)
         (λ V _v T _t MQ _mq, r _ _ _ _ eq _ _ _ _ _ _)). *)
       
-      refine (mi_forall_quoted_formulas (fwn_to_ind f) (λ _ _ x infs, Fx _ _ infs) _).
+      (* apply mi_forall_quoted_formulas. *)
+      refine (mi_forall_quoted_formulas (fwn_to_ind f) _ _).
       intros.
       cbn.
       unfold shortcut_omc_trans_apply , subclass_refl, subclass_apply.
@@ -1397,8 +1419,8 @@ Print mi_forall_quoted_formulas.
   
       Set Printing Implicit.
       (* specialize (r pred (S n)  Fx eq). *)
-      notypeclasses refine (r _ _ _ _ eq _ _ _ _ _ _).
-      exact (r _ _ _ _ eq V0 _v0 _ {|
+      exact (r _ _ _ _ eq _ _ _ _ _ _).
+      (* exact (r _ _ _ _ eq V0 _v0 _ {|
   omc_embed := OneMoreConstructor_subclass _t0;
 omc_new := omc_new
 |} _ _).
@@ -1430,7 +1452,7 @@ omc_new := omc_new
       rewrite (embed_formula_rewrap f H).
 
       (* clear atmc unfc aplc. *)
-      exact (ext_quotvar_rewrap e MQ H V _v T _t).
+      exact (ext_quotvar_rewrap e MQ H V _v T _t). *)
     }
   }
 Qed.
@@ -1546,8 +1568,8 @@ Defined. *)
 
 Parameter Infs : InfSet StandardFormula.
 Definition simplify_meaning
-  (meaning : @Rule (FCWithNVars 0))
-  := meaning StandardFormula _ Infs.
+  (meaning : MiSearchResult 0)
+  := PropMeaning_to_Coq (meaning StandardFormula _) Infs.
 Definition get_prop_meaning_simplified n f :=
   ? g <- get_prop_meaning n f ;
   success (simplify_meaning g).
@@ -1665,7 +1687,7 @@ Definition IC_provable_props := IC_provable_infs IC_axioms.
       P (infs_provable_from (@Axioms) _). *)
 
 
-Lemma MeansProp_induction_with_meaning_only
+Lemma FormulaMeans_induction_with_meaning_only
   (IH : ∀ {TC}, Rule → Prop)
   (implies_case :
     (∀ TC (p c : Ind TC), IH (λ _ _ _, p _ _ ⊢ c _ _)))
@@ -1676,7 +1698,7 @@ Lemma MeansProp_induction_with_meaning_only
     IH (λ _ _ _, ∀ x, F _ _ x _))
   :
   ∀ VC TC (MQC : MQCT) (_vp : VC ⊆ PropositionConstructors) i r,
-    MeansProp i r → IH r.
+    FormulaMeans i r → IH r.
   
   intros.
   induction H; [
@@ -1784,7 +1806,7 @@ Variable axioms : ∀ {V} {_:Class FormulaConstructors V},
   V.
 Variable Axioms : ∀ {T} {_:Class FormulaConstructors T},
   InfSet T -> Prop.
-Variable aA : MeansProp (MQC := FcMQC) (@axioms) (@Axioms).
+Variable aA : FormulaMeans (MQC := FcMQC) (@axioms) (@Axioms).
 
 Section IC_implements_inference_cases.
 
@@ -1815,7 +1837,7 @@ Existing Instance tcf. *)
 
 Variable p : ∀ {V} {_:Class (FCWithNVars n) V}, V.
 Variable P : ∀ {T} {_:Class (FCWithNVars n) T}, InfSet T -> Prop.
-Variable pP : MeansProp (MQC := FcMQCWithNVars n) (@p) (@P).
+Variable pP : FormulaMeans (MQC := FcMQCWithNVars n) (@p) (@P).
 
 Definition p_proven := ∀ T (_t:Class (FCWithNVars n) T) (infs : InfSet T),
         let _ : TConsClass := FCWithNVars n in
@@ -1907,7 +1929,7 @@ Lemma implies_case {n}
     [rules_case]: { 
         unfold implies_case_AxIH.
       refine (
-        match aA in (MeansProp a A) return (A _ _
+        match aA in (FormulaMeans a A) return (A _ _
   (λ p0 c0 : Formula,
   ∀ qp0
  qc0 : ∀ V0 : Type,
@@ -1980,13 +2002,13 @@ End IC_implements_inference.
 Lemma IC_implements_inference_universal :
   ∀ (axioms : ∀ {V} {_:Class FormulaConstructors V}, V)
     (Axioms : ∀ {T} {_:Class FormulaConstructors T}, InfSet T -> Prop),
-    MeansProp
+    FormulaMeans
       (MQC := FcMQC)
       (@axioms)
       (@Axioms) -> 
     ∀ (p : ∀ {V} {_:Class FormulaConstructors V}, V)
       (P : ∀ {T} {_:Class FormulaConstructors T}, InfSet T -> Prop),
-      MeansProp
+      FormulaMeans
         (MQC := FcMQC)
         (@p)
         (@P) ->
@@ -2005,10 +2027,10 @@ Lemma IC_implements_inference_universal :
     
     Ext (assumed1 : @Meanings Ext) assumed2 a1_a2 f F mf
       {struct mf}
-      : MeansProp (MQC:=MQC) f F
+      : FormulaMeans (MQC:=MQC) f F
     := match mf
-        in MeansProp _ f F
-        return MeansProp assumed2 f F
+        in FormulaMeans _ f F
+        return FormulaMeans assumed2 f F
         with
     | mi_assumed a A aAassumed => _
     | mi_implies qp p qc c x y => _
@@ -2130,30 +2152,30 @@ Fixpoint embed_formula
     | apply a b => [(embed_formula embed a) (embed_formula embed b)]
     end.
 
-Inductive MeansProp [EExt] [J]
+Inductive FormulaMeans [EExt] [J]
   (MeansQuoted : (@Formula EExt) -> J -> Prop)
   : @Meanings EExt J :=
   | mi_implies qp p qc c :
       MeansQuoted qp p -> MeansQuoted qc c -> 
-      MeansProp MeansQuoted [qp -> qc] (λ J2 e infs,
+      FormulaMeans MeansQuoted [qp -> qc] (λ J2 e infs,
         infs (e p) (e c))
   | mi_unfold a b B :
       UnfoldStep a b ->
-      MeansProp MeansQuoted b B ->
-      MeansProp MeansQuoted a B
+      FormulaMeans MeansQuoted b B ->
+      FormulaMeans MeansQuoted a B
   | mi_and a A b B :
-      MeansProp MeansQuoted a A ->
-      MeansProp MeansQuoted b B ->
-      MeansProp MeansQuoted [a & b] (A ∧3 B)
+      FormulaMeans MeansQuoted a A ->
+      FormulaMeans MeansQuoted b B ->
+      FormulaMeans MeansQuoted [a & b] (A ∧3 B)
   (* | mi_forall_quoted_formulas f 
     (F : ∀ J2, (J -> J2) -> J2 -> Rule J2) :
     (∀ EExt2 J2 qx x e_embed j_embed
         (MQ : (@Formula EExt2) -> J2 -> Prop),
       (∀ e i, MeansQuoted e i -> MQ (e_embed e) (j_embed i)) ->
       MQ qx x -> 
-      MeansProp MQ [(e_embed f) qx] (F J2 j_embed x)
+      FormulaMeans MQ [(e_embed f) qx] (F J2 j_embed x)
     ) -> 
-    MeansProp
+    FormulaMeans
       MeansQuoted
       [f_forall_quoted_formulas f]
       (λ J2 e infs,
@@ -2170,10 +2192,10 @@ Inductive MeansProp [EExt] [J]
         (MQ : (@Formula EExt2) -> J2 -> Prop),
       (∀ e i, MeansQuoted e i -> MQ (e_embed e) (j_embed i)) ->
       MQ qx x -> 
-      MeansProp MQ [(e_embed f) qx] (λ J3 e infs,
+      FormulaMeans MQ [(e_embed f) qx] (λ J3 e infs,
         (F J3 (λ v, e (j_embed v)) (e x) infs))
     ) -> 
-    MeansProp
+    FormulaMeans
       MeansQuoted
       [f_forall_quoted_formulas f]
       (λ J2 e infs,
@@ -2188,8 +2210,8 @@ Definition MetaInferences
   J
   (KnownRules : Rule J)
   (p c : StandardFormula) : Prop :=
-  ∀ P, MeansProp (∅2) p P -> 
-    ∃ C, MeansProp (∅2) c C ∧
+  ∀ P, FormulaMeans (∅2) p P -> 
+    ∃ C, FormulaMeans (∅2) c C ∧
       ∀ J2 (e : J -> J2) infs,
         KnownRules J2 e infs -> P J2 e infs -> C J2 e infs.
 
@@ -2225,8 +2247,8 @@ Notation "'unfold_or' body" :=
     | 0 => timed_out _ | S pred => body end) (at level 40). *)
 
 
-Print MeansProp.
-(* Definition Meaning : Meanings := MeansProp (∅2). *)
+Print FormulaMeans.
+(* Definition Meaning : Meanings := FormulaMeans (∅2). *)
 
 Inductive OneMoreExt {OldExt} :=
   | ome_embed : OldExt -> OneMoreExt
@@ -2274,7 +2296,7 @@ Qed.
     (f : @Formula Ext) : Type :=
     ∀ (qv_meanings : ∀ e, quotvars e -> StandardFormula)
       (pv_meanings : ∀ e, propvars e -> Rule),
-    {F | MeansProp
+    {F | FormulaMeans
       (UnreifiedAssumed propvars pv_meanings)
       f F}. *)
 
@@ -2344,16 +2366,16 @@ Definition embed_var_meanings
   (assumed1 : @Meanings Ext)
   (assumed2 : @Meanings Ext)
   : (assumed1 ⊆2 assumed2) ->
-  (MeansProp assumed1 ⊆2 MeansProp assumed2).
+  (FormulaMeans assumed1 ⊆2 FormulaMeans assumed2).
   intros a1_a2 f F mf.
 
   refine ((fix recurse 
     Ext (assumed1 : @Meanings Ext) assumed2 a1_a2 f F mf
       {struct mf}
-      : MeansProp assumed2 f F
+      : FormulaMeans assumed2 f F
     := match mf
-        in MeansProp _ f F
-        return MeansProp assumed2 f F
+        in FormulaMeans _ f F
+        return FormulaMeans assumed2 f F
         with
     | mi_assumed a A aAassumed => _
     | mi_implies qp p qc c x y => _
@@ -2393,21 +2415,21 @@ Qed. *)
     
   
 
-(* Lemma specialize_MeansProp [OldExt] 
+(* Lemma specialize_FormulaMeans [OldExt] 
     (assumed_meanings : @Meanings OldExt) f F x X :
-  MeansProp (assume_one_more assumed_meanings X) f F ->
-  MeansProp assumed_meanings x X ->
-  MeansProp assumed_meanings (specialize_onemore f x) F.
+  FormulaMeans (assume_one_more assumed_meanings X) f F ->
+  FormulaMeans assumed_meanings x X ->
+  FormulaMeans assumed_meanings (specialize_onemore f x) F.
 
   intros.
 
   refine ((fix recurse 
     OldExt (assumed_meanings : @Meanings OldExt) f F x X mf mx
-      : MeansProp assumed_meanings
+      : FormulaMeans assumed_meanings
         (specialize_onemore f x) F
     := match mf
-        in MeansProp _ f F
-        return MeansProp assumed_meanings
+        in FormulaMeans _ f F
+        return FormulaMeans assumed_meanings
     (specialize_onemore f x) F
         with
     | mi_assumed a A aAassumed => _
@@ -2510,7 +2532,7 @@ Qed. *)
     (propvars : OldExt -> Prop)
     (x : @Formula OldExt)
     (X : Rule)
-    (xXimp : ∀ pv_meanings, MeansProp (UnreifiedAssumed
+    (xXimp : ∀ pv_meanings, FormulaMeans (UnreifiedAssumed
   propvars pv_meanings) x X)
     (missss : MiSearchSuccess
       (embed_vars quotvars) (one_more_var propvars)
@@ -2527,7 +2549,7 @@ Qed. *)
        exist F p => 
         exist _ F _ end).
   
-  apply specialize_MeansProp with X.
+  apply specialize_FormulaMeans with X.
   apply mi_monotonic with (UnreifiedAssumed
   (one_more_var propvars)
   (one_more_var_meaning propvars
@@ -2670,23 +2692,23 @@ Fixpoint msr_finish (r : MPSearchResult vars) : Rule.
 
 
 
-(* Definition get_MeansProp (n:nat) [Ext]
+(* Definition get_FormulaMeans (n:nat) [Ext]
   (f : @Formula Ext)
   (quotvars : Ext -> bool)
   (propvars : Ext -> bool)
   : GetResult (MiSearchSuccess
     (unreify_vars quotvars) (unreify_vars propvars) f).
-  refine ((fix get_MeansProp Ext
+  refine ((fix get_FormulaMeans Ext
     n f quotvars propvars :=
     match n with 0 => timed_out _ | S pred => _ end) Ext n f quotvars propvars)
     ; clear Ext0 n0 f0 quotvars0 propvars0.
-  specialize get_MeansProp with (n := pred).
+  specialize get_FormulaMeans with (n := pred).
   
   (* pose (λ pv_meanings, (UnreifiedAssumed (unreify_vars propvars) pv_meanings)) as assumed_meanings. *)
 
   destruct (unfold_step f) as [(g, unf)|].
   {
-    refine (? GS <- get_MeansProp Ext g quotvars propvars ; _).
+    refine (? GS <- get_FormulaMeans Ext g quotvars propvars ; _).
     apply success; intros qv_meanings pv_meanings.
     destruct (GS qv_meanings pv_meanings) as (G, Gp).
     apply (exist _ G (mi_unfold unf Gp)).
@@ -2720,7 +2742,7 @@ Fixpoint msr_finish (r : MPSearchResult vars) : Rule.
   }
 
   [forall_prop]: {
-    refine (? FXS <- (get_MeansProp (@OneMoreExt Ext)
+    refine (? FXS <- (get_FormulaMeans (@OneMoreExt Ext)
       [(embed_formula (λ a, ome_embed a) f) (f_ext ome_new)]
       (embed_revars quotvars)
       (one_more_revar propvars)) ; _).
@@ -2748,7 +2770,7 @@ Fixpoint msr_finish (r : MPSearchResult vars) : Rule.
     destruct (FXS qv_meanings1 pv_meanings1) as (FX, FXp).
     (* End duplicate code *)
     admit.
-    (* pose (@specialize_MeansProp
+    (* pose (@specialize_FormulaMeans
       Ext
       (assumed_meanings pv_meanings)
       [(embed_formula ome_embed f) (f_ext ome_new)]
@@ -2776,7 +2798,7 @@ Fixpoint msr_finish (r : MPSearchResult vars) : Rule.
   }
 
   [forall_quote]: {
-    refine (? FXS <- (get_MeansProp (@OneMoreExt Ext)
+    refine (? FXS <- (get_FormulaMeans (@OneMoreExt Ext)
       [(embed_formula (λ a, ome_embed a) f) (f_ext ome_new)]
       (one_more_revar quotvars)
       (embed_revars propvars)) ; _).
@@ -2808,8 +2830,8 @@ Fixpoint msr_finish (r : MPSearchResult vars) : Rule.
   }
 
   [and]: {
-    refine (? AS <- (get_MeansProp Ext a quotvars propvars) ; _).
-    refine (? BS <- (get_MeansProp Ext b quotvars propvars) ; _).
+    refine (? AS <- (get_FormulaMeans Ext a quotvars propvars) ; _).
+    refine (? BS <- (get_FormulaMeans Ext b quotvars propvars) ; _).
     apply success; intros qv_meanings pv_meanings.
     destruct (AS qv_meanings pv_meanings) as (A, Ap).
     destruct (BS qv_meanings pv_meanings) as (B, Bp).
@@ -2819,14 +2841,14 @@ Fixpoint msr_finish (r : MPSearchResult vars) : Rule.
 Defined. *)
 
 (* Eval lazy in 2 + 2.
-Eval lazy in get_MeansProp (Ext := False) 0 [[f_quote f_quote] -> [f_quote f_quote]] 
+Eval lazy in get_FormulaMeans (Ext := False) 0 [[f_quote f_quote] -> [f_quote f_quote]] 
   (λ _, false) (λ _, false)
   .
 Lemma uhh : False.
-  pose (get_MeansProp (Ext := False) 0 [[f_quote f_quote] -> [f_quote f_quote]] 
+  pose (get_FormulaMeans (Ext := False) 0 [[f_quote f_quote] -> [f_quote f_quote]] 
   (λ _, false) (λ _, false)) as x.
   cbn in x.
-  unfold get_MeansProp in x.
+  unfold get_FormulaMeans in x.
 Qed. *)
 
 Fixpoint NMoreAtoms [Ext] n :=
@@ -2892,8 +2914,8 @@ Definition f_false : StandardFormula := [∀p, p].
   ∀ p c, IC_provable_infs p c -> IC_provable_props [p -> c]. *)
 
 Lemma IC_implements_inference_universal :
-  ∀ axioms Axioms, MeansProp (∅2) axioms Axioms ->
-    ∀ p P, MeansProp (∅2) p P ->
+  ∀ axioms Axioms, FormulaMeans (∅2) axioms Axioms ->
+    ∀ p P, FormulaMeans (∅2) p P ->
       P (infs_provable_from (Axioms ∧1 transitivity))
       -> (* <-> *)
       IC_provable_infs axioms p.
@@ -2906,7 +2928,7 @@ Lemma IC_implements_inference_universal :
 Qed.
 
 Definition IC_implements_inference :=
-  ∀ axioms Axioms, MeansProp (∅2) axioms Axioms ->
+  ∀ axioms Axioms, FormulaMeans (∅2) axioms Axioms ->
     ∀ qp p qc c, MeansQuoted qp p -> MeansQuoted qc c ->
       infs_provable_from (Axioms ∧1 transitivity) p c
       <->
@@ -2914,10 +2936,10 @@ Definition IC_implements_inference :=
 
 Definition IC_self_describing :=
   ∀ p, IC_provable_props p ->
-    ∃ P, MeansProp (∅2) p P ∧ P IC_provable_infs.
+    ∃ P, FormulaMeans (∅2) p P ∧ P IC_provable_infs.
 
 Definition IC_introspective :=
-  ∀ p P, MeansProp (∅2) p P ∧ P IC_provable_infs    
+  ∀ p P, FormulaMeans (∅2) p P ∧ P IC_provable_infs    
     -> IC_provable_props p.
 
 Definition IC_consistent :=
