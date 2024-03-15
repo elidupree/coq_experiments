@@ -191,6 +191,11 @@ Unfortunately, we can't express the statement `C (Ind C)`, because it results in
 Definition Ind C := ∀ T (_:Class C T), T.
 
 (* We also define how an MQCT relates _inductive instances_ of VC and TC - which is the same thing as saying an inductive instance of those MQ constructors: *)
+Definition MQInd_half {VC TC V} {_v:Class VC V} (qx : V) (x : Ind TC) {MQC : MQCT}
+  :=
+  ∀ T (_t:Class TC T) (MQ : MQT),
+    MQC _ _ _ _ MQ ->
+    MQ _ _ _ _ qx (x _ _).
 Definition MQInd {VC TC} (qx : Ind VC) (x : Ind TC) {MQC : MQCT}
   :=
   ∀ V (_v:Class VC V) T (_t:Class TC T) (MQ : MQT),
@@ -292,33 +297,36 @@ Definition Rule {TC} := ∀ T (_:Class TC T), InfSet T -> Prop.
 
 (* We can now make the big definition of what propositions mean. *)
 
-(* definition specific to T, although we will often be dealing in values of type (∀ T (_t:Class TC T), PropMeaning) *)
-Inductive PropMeaning {TC} {T} {_t:Class TC T} :=
-  | meaning_implies : T -> T -> PropMeaning
-  | meaning_and : PropMeaning -> PropMeaning -> PropMeaning
-  | meaning_forall : (∀ T (_t:Class (OneMoreConstructor TC) T), (@PropMeaning (OneMoreConstructor TC) T _t)) -> PropMeaning
+(* definition specific to T, although we will often be dealing in values of type (∀ T (_t:Class TC T), Ruleset) *)
+Inductive Ruleset {TC} :=
+  | ruleset_implies : Ind TC -> Ind TC -> Ruleset
+  | ruleset_and : Ruleset -> Ruleset -> Ruleset
+  | ruleset_forall : @Ruleset (OneMoreConstructor TC) -> Ruleset
    .
 
-Fixpoint PropMeaning_to_Coq {TC} {T} {_t: Class TC T} (P : PropMeaning) (infs : InfSet T) : Prop :=
-  match P with
-  | meaning_implies p c => p ⊢ c
-  | meaning_and A B => PropMeaning_to_Coq A infs ∧ PropMeaning_to_Coq B infs
-  | meaning_forall F => ∀ x, PropMeaning_to_Coq (F _ {| omc_new := x |}) infs
+Fixpoint Ruleset_to_Coq [TC] (R : Ruleset) {T} {_t: Class TC T} (infs : InfSet T) : Prop :=
+  match R with
+  | ruleset_implies p c => (p _ _) ⊢ (c _ _)
+  | ruleset_and A B => Ruleset_to_Coq A _ ∧ Ruleset_to_Coq B _
+  | ruleset_forall F => ∀ x, @Ruleset_to_Coq _ F _ {| omc_new := x |} _
   end.
     
 (* Set Printing Implicit. *)
+(* Set Typeclasses Debug Verbosity 2. *)
+(* Set Typeclasses Depth 4. *)
 Inductive FormulaMeans {VC TC} {MQC : MQCT}
   {_vp:VC ⊆ PropositionConstructors}
-  {V} {_v: Class VC V} {T} {_t: Class TC T}
+  {V} {_v: Class VC V}
+  (* {T} {_t: Class TC T}
   {MQ : ∀ {V} {_v:Class VC V} {T} {_t:Class TC T}, V -> T -> Prop}
-  {_mq : MQC _ _ _ _ (@MQ)}
-  : V -> PropMeaning -> Prop :=
+  {_mq : MQC _ _ _ _ (@MQ)} *)
+  : V -> Ruleset -> Prop :=
 
   | mi_implies [qp qc p c]
       :
-      MQ qp p ->
-      @MQ V _v T _t qc c ->
-      FormulaMeans [qp -> qc] (meaning_implies p c)
+      MQInd_half qp p ->
+      MQInd_half qc c ->
+      FormulaMeans [qp -> qc] (ruleset_implies p c)
 
   | mi_unfold [a b B] :
       UnfoldStep a b ->
@@ -328,69 +336,21 @@ Inductive FormulaMeans {VC TC} {MQC : MQCT}
   | mi_and [a b A B] :
       FormulaMeans a A ->
       FormulaMeans b B ->
-      FormulaMeans [a & b] (meaning_and A B)
+      FormulaMeans [a & b] (ruleset_and A B)
 
   | mi_forall_quoted_formulas
       (f : Ind VC)
-      (F : ∀ T (_t:Class (OneMoreConstructor TC) T), (@PropMeaning (OneMoreConstructor TC) T _t))
+      (F : (@Ruleset (OneMoreConstructor TC)))
       :
-      (∀ V _v T _t MQ _mq,
-        @FormulaMeans _ _ (OneMoreQuotvar MQC) _ V _v T _t MQ _mq
+      (∀ V _v,
+        @FormulaMeans _ _ (OneMoreQuotvar MQC) _ V _v
           [(f _ _) omc_new]
-          (F _ _))
+          F)
       ->
       FormulaMeans
         [⋀ (f _ _)]
-        (meaning_forall (@F))
+        (ruleset_forall (@F))
   .
-(* Print mi_forall_quoted_formulas. *)
-
-(* Set Typeclasses Debug Verbosity 2. *)
-(* Set Typeclasses Depth 4. *)
-(* Inductive FormulaMeans {VC TC} {MQC : MQCT}
-  {_vp:VC ⊆ PropositionConstructors}
-  : Ind VC -> Rule -> Prop :=
-
-  | mi_implies (qp qc : Ind VC) (p c : Ind TC)
-      :
-      MQInd qp p ->
-      MQInd qc c ->
-      FormulaMeans  
-        (λ _ _, [(qp _ _) -> (qc _ _)])
-        (λ _ _ _, (p _ _) ⊢ (c _ _)) 
-
-  | mi_unfold [a b : Ind VC] B :
-      (∀ V (_v:Class VC V), UnfoldStep (a _ _) (b _ _)) ->
-      FormulaMeans b B ->
-      FormulaMeans a B
-
-  | mi_and (a b : Ind VC) (A B : Rule) :
-      FormulaMeans a A ->
-      FormulaMeans b B ->
-      FormulaMeans
-        (λ _ _, [(a _ _) & (b _ _)])
-        (λ _ _ _, A _ _ _ ∧ B _ _ _)
-
-   | mi_forall_quoted_formulas
-      (f : Ind VC)
-      (F : (∀ {T} {_:Class TC T}, T -> InfSet T -> Prop))
-      :
-      FormulaMeans (MQC := OneMoreQuotvar MQC)
-        (λ _ _, [(f _ _) omc_new])
-        (λ _ _ _, F omc_new _)
-      ->
-      FormulaMeans
-        (λ _ _, [⋀ (f _ _)])
-        (λ _ _ _, (∀x, F x _))
-  .
-
-Lemma FormulaMeans_rewrap {VC TC} {MQC : MQCT}
-  {_vp:VC ⊆ PropositionConstructors} f g R :
-  ∀ V _v, f V _v = g V _v -> 
-  FormulaMeans f R -> FormulaMeans g R.
-  intros. induction H0.
-  refine (mi_implies _ _).
-  constructor. *)
 
 (****************************************************
        Definitions of concrete formula types
@@ -415,8 +375,6 @@ Inductive Formula {Ext} :=
   | f_atm : Atom -> Formula
   | f_ext : Ext -> Formula
   | fo_apl : Formula -> Formula -> Formula.
-
-Definition StandardFormula := @Formula False.
 
 Inductive OneMoreExt {OldExt} :=
   | ome_embed : OldExt -> OneMoreExt
@@ -498,14 +456,6 @@ Instance shortcut_cfc_fnc F : Class FormulaConstructors F -> FunctionConstructor
 Instance shortcut_cfc_aplc F : Class FormulaConstructors F -> ApplyConstructor F := _.
 
 
-Fixpoint sf_to_ind (f : StandardFormula)
-  : Ind FormulaConstructors
-  := λ _ _, match f with
-    | f_atm a => fc_atm a
-    | f_ext a => match a with end
-    | fo_apl a b => [(sf_to_ind a _) (sf_to_ind b _)]
-    end.
-
 (* Definition ind_to_sf (i : Ind FormulaConstructors)
   : StandardFormula := i _ _. *)
 
@@ -551,6 +501,16 @@ Fixpoint NMoreQuotvars_without_new_MQCs n {VC} {TC} (MQC : @MQCT VC TC) : @MQCT 
 
 Definition FormulaWithNVars n : Type := @Formula (NMoreExt n False).
 Definition FCWithNVars n : Type -> Type := NMoreConstructors n FormulaConstructors.
+
+(* we could write (@Formula False) instead, but this makes inference easier *)
+Definition StandardFormula := FormulaWithNVars 0.
+Fixpoint sf_to_ind (f : StandardFormula)
+  : Ind FormulaConstructors
+  := λ _ _, match f with
+    | f_atm a => fc_atm a
+    | f_ext a => match a with end
+    | fo_apl a b => [(sf_to_ind a _) (sf_to_ind b _)]
+    end.
 
 
 (* Set Printing Implicit. *)
@@ -1244,13 +1204,13 @@ Qed.
 
 
 Definition MiSearchResult n : Type :=
-    ∀ T (_t: Class (FCWithNVars n) T), @PropMeaning (FCWithNVars n) T _t.
+    @Ruleset (FCWithNVars n).
 
-(* Fixpoint specialize_prop_meaning TC T (P : @PropMeaning (OneMoreConstructor TC) T) (tx : Ind TC): @PropMeaning TC T := 
+(* Fixpoint specialize_prop_meaning TC T (P : @Ruleset (OneMoreConstructor TC) T) (tx : Ind TC): @Ruleset TC T := 
   match P with
-  | meaning_implies p c => meaning_implies p c
-  | meaning_and A B => meaning_and (specialize_prop_meaning A tx) (specialize_prop_meaning B tx)
-  | meaning_forall F => meaning_forall (λ T2 _t2 tx2, specialize_prop_meaning (F T2 {| omc_new := tx _ _ |} tx2))
+  | ruleset_implies p c => ruleset_implies p c
+  | ruleset_and A B => ruleset_and (specialize_prop_meaning A tx) (specialize_prop_meaning B tx)
+  | ruleset_forall F => ruleset_forall (λ T2 _t2 tx2, specialize_prop_meaning (F T2 {| omc_new := tx _ _ |} tx2))
   end. *)
 
 Fixpoint get_prop_meaning steps [n] (f : FormulaWithNVars n)
@@ -1263,14 +1223,14 @@ Fixpoint get_prop_meaning steps [n] (f : FormulaWithNVars n)
         | fo_apl (fo_apl (f_atm atom_implies) qp) qc =>
           ? p <- (get_quoted_formula pred qp) ;
           ? c <- (get_quoted_formula pred qc) ;
-          success (λ _ _, meaning_implies (p _ _) (c _ _))
+          success (ruleset_implies p c)
         
         (* [a & b] *)
         | fo_apl (fo_apl (f_atm atom_and) a) b =>
           ? A <- (get_prop_meaning pred a) ;
           ? B <- (get_prop_meaning pred b) ;
           (* success (A ∧4 B) *)
-          success (λ _ _, meaning_and (A _ _) (B _ _))
+          success (ruleset_and A B)
 
         (* [forall_quoted_formulas f] *)
         | fo_apl (f_atm atom_forall_quoted_formulas) f =>
@@ -1278,7 +1238,7 @@ Fixpoint get_prop_meaning steps [n] (f : FormulaWithNVars n)
               [(embed_formula (λ a, ome_embed a) f)
                   (f_ext ome_new)]) ; 
                   (* TODO: be able to strip off the extra variable BEFORE putting under binding: *)
-            success (λ _ _, meaning_forall Fx)
+            success (ruleset_forall Fx)
         | _ => error _ ("not a proposition:", f)
       end
     end
@@ -1304,8 +1264,8 @@ Fixpoint get_prop_meaning steps [n] (f : FormulaWithNVars n)
 Lemma get_prop_meaning_correct
   steps [n] (f : FormulaWithNVars n) rule :
   get_prop_meaning steps f = success rule ->
-    ∀ V _v T _t MQ (_mq : FcMQCWithNVars n _ _ MQ),
-    FormulaMeans (_mq:=_mq) (fwn_to_ind f V _v) (rule T _t).
+    ∀ V _v,
+    FormulaMeans (MQC := FcMQCWithNVars n) (fwn_to_ind f V _v) rule.
   
   refine ((fix r steps n (f : FormulaWithNVars n) rule :=
     match steps as n0 return (steps = n0) -> _ with 0 => _ | S pred => _ end eq_refl) steps n f rule)
@@ -1320,7 +1280,7 @@ Lemma get_prop_meaning_correct
   [unfold]: {
     pose (unfold_step_correct _ fog) as u.
     intros.
-    specialize (r pred n g rule e V _v T _t MQ _mq).
+    specialize (r pred n g rule e V _v).
     exact (mi_unfold (VC := FCWithNVars n) (a := (fwn_to_ind f V _v)) (b := (fwn_to_ind g V _v)) (unfold_rewrap u V _v) r).
   }
   [flat]: {
@@ -1354,11 +1314,7 @@ Lemma get_prop_meaning_correct
         apply get_quoted_formula_correct in eqp.
         apply get_quoted_formula_correct in eqc.
         intros.
-        (* Print mi_implies.
-        cbn.
-        pose (mi_implies (MQ := MQ) (qp := (fwn_to_ind qp V _v)) (qc := (fwn_to_ind qc V _v)) (p := p T _t) (c := c T _t) (eqp _ _v _ _t MQ _mq) (eqc _ _v _ _t MQ _mq)).
-        Set Printing Implicit. *)
-        exact (mi_implies (eqp _ _ _ _ _ _mq) (eqc _ _ _ _ _ _mq)).
+        exact (mi_implies (eqp _ _) (eqc _ _)).
     }
     [and_case]: {
       (* TODO reduce duplicate code ID 3894038493 *)
@@ -1377,7 +1333,7 @@ Lemma get_prop_meaning_correct
         (* apply r in eqa.
         apply r in eqb. *)
         exact (mi_and
-          (r _ _ _ _ eqa _ _ _ _ _ _mq) (r _ _ _ _ eqb _ _ _ _ _ _mq)).
+          (r _ _ _ _ eqa _ _) (r _ _ _ _ eqb _ _)).
     }
     [forall_case]: {
       refine (match (get_prop_meaning pred (n := S n)
@@ -1391,71 +1347,21 @@ Lemma get_prop_meaning_correct
 
       injection e as <-.
 
-Print mi_forall_quoted_formulas.
+(* Print mi_forall_quoted_formulas. *)
       intros.
-      (* pose ((λ V _v T _t MQ _mq, r _ _ _ _ eq V _v T _t MQ _mq)) as IHer.
-      rewrite (embed_formula_rewrap f H).
-      
-      exact (mi_forall_quoted_formulas (fwn_to_ind f) (λ _ _ _, Fx _ _)
-        (λ V _v T _t MQ _mq, r _ _ _ _ eq _ _ _ _ _ _)). *)
-      
-      (* apply mi_forall_quoted_formulas. *)
-      refine (mi_forall_quoted_formulas (fwn_to_ind f) _ _).
+      refine (mi_forall_quoted_formulas (fwn_to_ind f) _).
       intros.
-      cbn.
+      (* cbn. *)
       unfold shortcut_omc_trans_apply , subclass_refl, subclass_apply.
       pose (embed_formula_rewrap f _v0) as rewrap.
       change (@fwn_to_ind n f V0 _) with (@fwn_to_ind n f V0 (@OneMoreConstructor_subclass (FCWithNVars n) V0 _v0)) in rewrap.
       rewrite <- rewrap.
-
-      change (apply
-  (fwn_to_ind (embed_formula (Ext2 := NMoreExt (S n) _) (λ a : NMoreExt n False, ome_embed a) f)
-  V0 _v0)
-  omc_new) with (fwn_to_ind
-  (fo_apl (embed_formula (Ext2 := NMoreExt (S n) _) (λ a : NMoreExt n False, ome_embed a) f)
-  (f_ext ome_new))
-  V0
-  _v0).
   
-      Set Printing Implicit.
-      (* specialize (r pred (S n)  Fx eq). *)
-      exact (r _ _ _ _ eq _ _ _ _ _ _).
-      (* exact (r _ _ _ _ eq V0 _v0 _ {|
-  omc_embed := OneMoreConstructor_subclass _t0;
-omc_new := omc_new
-|} _ _).
-      apply r.
-
-          (r _ _ _ _ eqa _ _ _ _ _ _mq) (r _ _ _ _ eqb _ _ _ _ _ _mq)).
-      apply r in eq.
-
-      refine (mi_forall_quoted_formulas (fwn_to_ind f) (λ _ _ x _, Fx _ {| omc_new := x |} _) _).
-      cbn in *.
-      unfold shortcut_omc_trans_apply , subclass_refl, subclass_apply.
-      
-      assert ( (λ (T : Type) (H : OneMoreConstructor
-  (NMoreConstructors n FormulaConstructors)
-  T),
-  apply (ApplyConstructor := shortcut_cpc_aplc _)
-  (fwn_to_ind
-  (embed_formula (Ext2 := NMoreExt (S n) _)  (λ a0 : NMoreExt n False, ome_embed a0)
-  f)
-  T
-  H)
-  omc_new) = 
-        (λ (T : Type) (H : Class (OneMoreConstructor (FCWithNVars n)) T),
-  apply (fwn_to_ind f T (OneMoreConstructor_subclass H)) omc_new)) as conversion.
-      {
-         exact (embed_formula_rewrap f H).
-      }
-
-      rewrite (embed_formula_rewrap f H).
-
-      (* clear atmc unfc aplc. *)
-      exact (ext_quotvar_rewrap e MQ H V _v T _t). *)
+      exact (r _ _ _ _ eq _ _).
     }
   }
 Qed.
+
 (****************************************************
    Practicalities of concrete formula construction
 ****************************************************)
@@ -1569,7 +1475,7 @@ Defined. *)
 Parameter Infs : InfSet StandardFormula.
 Definition simplify_meaning
   (meaning : MiSearchResult 0)
-  := PropMeaning_to_Coq (meaning StandardFormula _) Infs.
+  := Ruleset_to_Coq (meaning) Infs.
 Definition get_prop_meaning_simplified n f :=
   ? g <- get_prop_meaning n f ;
   success (simplify_meaning g).
@@ -1639,18 +1545,20 @@ Definition and_assoc_right : StandardFormula :=
               Definitions of inference
 ****************************************************)
 
-Definition default_rule {TC} : Rule := λ _ _ _, False.
+Definition f_default {Ext} : @Formula Ext := const.
+Definition sf_default : StandardFormula := f_default.
+Definition default_ruleset : Ruleset := ruleset_implies (fwn_to_ind sf_default) (fwn_to_ind sf_default).
 Definition reflexivity {TC} : Rule
   := λ _ _ infs, ∀ a, infs a a.
 Definition transitivity {TC} : Rule
   := λ _ _ infs, ∀ a b c, infs a b -> infs b c -> infs a c.
 
-Definition infs_provable_from {TC:TConsClass} (rules : Rule) :
+Definition infs_provable_from {TC:TConsClass} (rules : Ruleset) :
   ∀ T {_:Class TC T}, InfSet T
   := λ _ _ p c, ∀ infs,
     (reflexivity _ infs
     ∧ transitivity _ infs
-    ∧ rules _ _ infs) -> infs p c.
+    ∧ Ruleset_to_Coq rules infs) -> infs p c.
 
 (****************************************************
           Putting together the axioms of IC
@@ -1668,10 +1576,11 @@ Definition IC_axioms : StandardFormula :=
   [
     [ax_refl & [dup & drop]]
     & [and_sym & [and_assoc_left & and_assoc_right]]].
-Definition IC_external_rules : Rule :=
+
+Definition IC_external_rules : Ruleset :=
   match get_prop_meaning 900 IC_axioms with
   | success r => r
-  | _ => default_rule
+  | _ => default_ruleset
   end.
 Eval compute in (simplify_meaning IC_external_rules).
 
@@ -1687,12 +1596,12 @@ Definition IC_provable_props := IC_provable_infs IC_axioms.
       P (infs_provable_from (@Axioms) _). *)
 
 
-Lemma FormulaMeans_induction_with_meaning_only
-  (IH : ∀ {TC}, Rule → Prop)
+(* Lemma FormulaMeans_induction_with_meaning_only
+  (IH : ∀ {TC}, Ruleset → Prop)
   (implies_case :
-    (∀ TC (p c : Ind TC), IH (λ _ _ _, p _ _ ⊢ c _ _)))
+    (∀ TC (p c : Ind TC), IH (ruleset_implies p c)))
   (and_case : ∀ TC A B, IH A -> IH B ->
-    IH (λ _ _ _, A _ _ _ ∧ B _ _ _))
+    IH (ruleset_and A B))
   (forall_case : ∀ TC (F : ∀ T, Class TC T → T → InfSet T → Prop),
     @IH (OneMoreConstructor TC) (λ _ _ _,  F _ _ omc_new _) →
     IH (λ _ _ _, ∀ x, F _ _ x _))
@@ -1711,7 +1620,7 @@ Lemma FormulaMeans_induction_with_meaning_only
   [unfold_case]: { assumption. }
   [and_case]: { apply and_case; assumption. }
   [forall_case]: { apply forall_case; assumption. }
-Qed.
+Qed. *)
 
 
 Lemma fwn_ind_roundtrip n (x : Ind (FCWithNVars n)) T _t : 
