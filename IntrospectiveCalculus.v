@@ -179,20 +179,27 @@ Definition test_OneMoreConstructor_apply_and_unwrap_with_VConsClass
 Unfortunately, we can't express the statement `C (Ind C)`, because it results in universe inconsistency. This would work fine in the Prop universe; I think I could theoretically rewrite most of the code here to use Prop instead of Type, and have it work. But Coq generally expects you to be working in the predicative hierarchy instead, and can't abstract over Prop vs Type in the way we'd need. But, I think it turns out to be unnecessary to express `C (Ind C)` anyway (we can just convert to other forms). *)
 Definition Ind C := ∀ T (_:Class C T), T.
 
+Definition ind_on_stricter_constructors C C2
+  : (C2 ⊆ C) -> Ind C -> Ind C2
+  := λ _c x T _t, x T _.
+
 
 (* We also deal with "quoted formulas". To say that a V-formula is a quoted version of a T-formula, we need to define the MeansQuoted relation (MQ for short). This relation is only well-defined once you first specify the V and T constructors: *)
 Definition MQT V TC := V -> Ind TC -> Prop.
 
+Definition mqt_on_looser_constructors [V TC TC2 _t]
+  : MQT V TC -> MQT V TC2
+  := λ MQ v t, MQ v (ind_on_stricter_constructors _t t).
+
 (* ...and usually, we need to be talking about _constructors_ (MQC) for that relation, because it must be just as extensible as the formula types: *)
 Definition MQCT {VC TC} :=
-  ∀ V (_:Class VC V) (TC2:TConsClass), (TC2 ⊆ TC) -> 
-        MQT V TC2 -> Prop.
+  ∀ V (_:Class VC V), MQT V TC -> Prop.
 Existing Class MQCT.
 
 (* We also define how an MQCT relates _inductive instances_ of VC and TC - which is the same thing as saying an inductive instance of those MQ constructors: *)
 Definition MQInd {VC TC V} {_v:Class VC V} (qx : V) (x : Ind TC) {MQC : MQCT}
   :=
-  ∀ MQ, MQC _ _ _ _ MQ -> MQ qx x.
+  ∀ MQ, MQC _ _ MQ -> MQ qx x.
 
 (* Definition MQInd {VC TC} (qx : Ind VC) (x : Ind TC) {MQC : MQCT}
   :=
@@ -204,19 +211,19 @@ Definition MQInd {VC TC V} {_v:Class VC V} (qx : V) (x : Ind TC) {MQC : MQCT}
 (* ...the main case of which is to add one additional variable to each of V and T, and say that the new V-variable is a quoted version of the new T-variable. *)
 
 Definition OneMoreMQConstructor [VC TC] (qx : Ind VC) (x: Ind TC) (MQC : MQCT) : MQCT
-  := λ V _v oTC2 _t MQ,
-    (MQC _ _ _ _ MQ) ∧
-    (∀ T (_t:Class oTC2 T), (MQ (qx _ _) (λ _ _, x _ _))).
+  := λ V _v MQ,
+    (MQC _ _ MQ) ∧
+    (∀ T (_t:Class (OneMoreConstructor TC) T), (MQ (qx _ _) (λ _ _, x _ _))).
 
 Definition MQCOnStricterFormulaTypes
   {VC TC VC2 TC2} {eV: VC2 ⊆ VC} {eT: TC2 ⊆ TC}
   (MQC : @MQCT VC TC) : @MQCT VC2 TC2
-  := λ _ _ _ _ MQ, (MQC _ _ _ _ MQ).
+  := λ _ _ MQ, (MQC _ _ (mqt_on_looser_constructors MQ)).
 
 Print MQCOnStricterFormulaTypes.
 
 Definition MQCSubclassOf [VC TC] (MQC1 MQC2 : @MQCT VC TC)
-  := ∀ V _v TC2 eT MQ, MQC1 V _v TC2 eT MQ -> MQC2 V _v TC2 eT MQ.
+  := ∀ V _v MQ, MQC1 V _v MQ -> MQC2 V _v MQ.
 
 Lemma MQCSubclassOf_refl [VC TC] (MQC : @MQCT VC TC) : MQCSubclassOf MQC MQC.
   unfold MQCSubclassOf. trivial.
@@ -238,7 +245,7 @@ Lemma MQC_embed_under_stricter
   
   unfold MQCSubclassOf, MQCOnStricterFormulaTypes.
   intros.
-  exact (H _ _ _ _ _ H0).
+  exact (H _ _ _ H0).
 Qed.
 
 Lemma MQC_stricter_trans
@@ -257,9 +264,9 @@ Qed.
 
 Lemma MQC_stricter_unwrap
   {VC TC} (MQC : MQCT)
-  V _v TC2 eT MQ
-  : @MQCOnStricterFormulaTypes VC TC VC TC _ _ MQC V _v TC2 eT MQ
-   -> MQC V _v TC2 eT MQ.
+  V _v MQ
+  : @MQCOnStricterFormulaTypes VC TC VC TC _ _ MQC V _v MQ
+   -> MQC V _v MQ.
   
   unfold MQCOnStricterFormulaTypes.
   intros.
@@ -802,7 +809,7 @@ Fixpoint right_vars n : Vector.t (NMoreExt n False) n :=
   (FCWithNVars n)
   (FormulaWithNVars n)
   := vars_to_ n (right_vars n). *)
-
+Print lt.
 (* note the similarity to `lt` *)
 Inductive VariableEmbedding : nat -> nat -> Type :=
   | fresh_variable var_index : VariableEmbedding var_index (S var_index)
@@ -837,22 +844,31 @@ Fixpoint n_vars_embeddings n : VariableEmbeddings n n :=
     end.
 
 
-Fixpoint embeddings_to_class n m (es : VariableEmbeddings n m) : Class
+Fixpoint embeddings_to_fcn_instance n m (es : VariableEmbeddings n m) : Class
   (FCWithNVars n)
   (FormulaWithNVars m)
   :=
   match es with 
     | no_embeddings _ => f_fc
     | more_embeddings _ _ e es => {|
-        omc_embed := embeddings_to_class es ;
+        omc_embed := embeddings_to_fcn_instance es ;
         omc_new := f_ext (embedded_var_ext e)
       |}
+    end.
+
+
+Fixpoint embeddings_fcn_subset [n m] (es : VariableEmbeddings n m) : 
+  (FCWithNVars m) ⊆ (FCWithNVars n)
+  :=
+  match es in VariableEmbeddings n m return (FCWithNVars m) ⊆ (FCWithNVars n) with 
+    | no_embeddings _ => NMoreConstructors_subclass _ _
+    | more_embeddings _ _ e es => subclass_trans (embeddings_fcn_subset es) _
     end.
 
 Instance fn_fcn n : Class
   (FCWithNVars n)
   (FormulaWithNVars n)
-  := embeddings_to_class (n_vars_embeddings n).
+  := embeddings_to_fcn_instance (n_vars_embeddings n).
   
 
 Fixpoint ewnm_to_ind [n m] (embeddings : VariableEmbeddings n m) : NMoreExt n False -> Ind (FCWithNVars m)
@@ -1085,7 +1101,7 @@ Qed.
 
 (* Set Printing Implicit. *)
 Definition FcMQC : @MQCT FormulaConstructors FormulaConstructors :=
-  λ V _v TC2 eT MQ,
+  λ V _v MQ,
     (∀ f a,
       @UnfoldsToKind V _ _ (@IsAtom V _) f a ->
       MQ [f_quote f] (λ _ _, fc_atm a))
@@ -1117,10 +1133,97 @@ Fixpoint FcMQCWithEmbeddings [n m] (es : VariableEmbeddings n m) : @MQCT (FCWith
     end.
 
 Definition FcMQCWithNVars n := NMoreQuotvars n FcMQC.
+Print FcMQCWithNVars.
 
 Definition FcMQCWithEmbedNVars n := FcMQCWithEmbeddings (n_vars_embeddings n).
 
-Lemma FcMQCn_embed n MQ : FcMQCWithNVars n MQ -> FcMQCWithEmbedNVars n MQ.
+Lemma FcMQCWithEmbeddings_deeper n m (es : VariableEmbeddings n m) V (_v : Class _ V) MQ : 
+  (* this proof is messy , maybe clean it up later *) 
+  FcMQCWithEmbeddings es _v (mqt_on_looser_constructors MQ) ->
+FcMQCWithEmbeddings (deeper_embeddings es) _v MQ.
+  intro _f.
+  induction es; [trivial|].
+  cbn in *.
+  destruct _v as (embed, new).
+  destruct _f as (_fembed, _fnew).
+  specialize (IHes embed MQ _fembed).
+  split; cbn.
+  {
+    exact IHes.
+  }
+  {
+    intros.
+    exact (_fnew T _).
+  }
+Qed.
+
+Lemma FcMQCWithEmbeddings_shallower n m (es : VariableEmbeddings n m) V (_v : Class _ V) MQ : 
+  (* this proof is messy , maybe clean it up later *) 
+  FcMQCWithEmbeddings (deeper_embeddings es) _v MQ ->
+FcMQCWithEmbeddings es _v (mqt_on_looser_constructors MQ).
+
+  intro _f.
+  induction es; [trivial|].
+  cbn in *.
+  destruct _v as (embed, new).
+  destruct _f as (_fembed, _fnew).
+  specialize (IHes embed MQ _fembed).
+  split; cbn.
+  {
+    exact IHes.
+  }
+  {
+    unfold mqt_on_looser_constructors .
+    intros.
+    cbn in *.
+  (* destruct _t as (_tembed, _tnew). *)
+    exact (_fnew T _).
+  }
+Qed.
+
+  
+Lemma FcMQCn_embed n V (_v : Class _ V) MQ : FcMQCWithNVars n _v MQ -> FcMQCWithEmbedNVars n _v MQ.
+  intro _f.
+  induction n; [assumption|].
+  cbn in *.
+  destruct _v as (embed, new).
+  destruct _f as (_fembed, _fnew).
+  specialize (IHn embed (mqt_on_looser_constructors MQ) _fembed).
+  split.
+  {
+    unfold MQCOnStricterFormulaTypes.
+    cbn.
+    apply FcMQCWithEmbeddings_deeper.
+    exact IHn.
+  }
+  {
+    intros.
+    exact (_fnew T _).
+  }
+Qed.
+
+Lemma FcMQCembed_n n m (es : VariableEmbeddings n m) V (_v : Class _ V) MQ : FcMQCWithEmbeddings es _v MQ -> FcMQCWithNVars n _v (mqt_on_looser_constructors MQ).
+
+Lemma FcMQCembed_n n V (_v : Class _ V) MQ : FcMQCWithEmbedNVars n _v MQ -> FcMQCWithNVars n _v MQ.
+  intro _f.
+  induction n; [assumption|].
+  cbn in *.
+  destruct _v as (embed, new).
+  destruct _f as (_fembed, _fnew).
+  specialize (IHn embed (mqt_on_looser_constructors MQ)).
+  split.
+  {
+    unfold MQCOnStricterFormulaTypes in *.
+    cbn in *.
+    apply FcMQCWithEmbeddings_deeper.
+    exact (IHn _fembed).
+  }
+  {
+    intros.
+    exact (_fnew T _).
+  }
+.
+  
 
 (* Lemma just_uhh1 VC TC MQC MQ : 
   OneMoreQuotvar MQC subclass_refl subclass_refl MQ ->
@@ -1193,15 +1296,15 @@ Lemma stricter_unpack_n n VC TC (MQC : @MQCT VC TC) V _v TC2 eT MQ :
 Qed.
   
 
-Lemma embeddings_to_class_ends_at_f_fc n m (es : VariableEmbeddings n m) :
-  (subclass_apply (fcn_sub_fc n) (embeddings_to_class es)) = (@f_fc (NMoreExt m False)).
+Lemma embeddings_to_fcn_instance_ends_at_f_fc n m (es : VariableEmbeddings n m) :
+  (subclass_apply (fcn_sub_fc n) (embeddings_to_fcn_instance es)) = (@f_fc (NMoreExt m False)).
   
   induction es; [reflexivity|assumption].
 Qed.
 Lemma fcn_sub_fc_ends_at_f_fc n :
   (subclass_apply (fcn_sub_fc n) (fn_fcn n)) = (@f_fc (NMoreExt n False)).
   
-  exact (embeddings_to_class_ends_at_f_fc _).
+  exact (embeddings_to_fcn_instance_ends_at_f_fc _).
 Qed.
 
 
