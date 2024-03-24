@@ -181,15 +181,15 @@ Definition Ind C := ∀ T (_:Class C T), T.
 
 Definition ind_on_stricter_constructors C C2
   : (C2 ⊆ C) -> Ind C -> Ind C2
-  := λ _c x T _t, x T _.
+  := λ _c x T eT, x T _.
 
 
 (* We also deal with "quoted formulas". To say that a V-formula is a quoted version of a T-formula, we need to define the MeansQuoted relation (MQ for short). This relation is only well-defined once you first specify the V and T constructors: *)
 Definition MQT V TC := V -> Ind TC -> Prop.
 
-Definition mqt_on_looser_constructors [V TC TC2 _t]
+Definition mqt_on_looser_constructors [V TC TC2 eT]
   : MQT V TC -> MQT V TC2
-  := λ MQ v t, MQ v (ind_on_stricter_constructors _t t).
+  := λ MQ v t, MQ v (ind_on_stricter_constructors eT t).
 
 (* ...and usually, we need to be talking about _constructors_ (MQC) for that relation, because it must be just as extensible as the formula types: *)
 Definition MQCT {VC TC} :=
@@ -247,6 +247,21 @@ Lemma MQC_embed_under_stricter
   intros.
   exact (H _ _ _ H0).
 Qed.
+
+(* Lemma MQC_unembed_under_stricter
+  {VC TC VC2 TC2} {eV: VC2 ⊆ VC} {eT: TC2 ⊆ TC}
+  V (_v : Class VC2 V) (MQ : MQT V TC2)
+  (MQC1 MQC2 : @MQCT VC TC)
+  :
+    MQCSubclassOf (MQCOnStricterFormulaTypes MQC1) (MQCOnStricterFormulaTypes MQC2) ->
+    MQCSubclassOf MQC1 MQC2.
+  
+  unfold MQCSubclassOf, MQCOnStricterFormulaTypes.
+  intros.
+  unfold subclass_apply, mqt_on_looser_constructors, ind_on_stricter_constructors, subclass_apply in H.
+  specialize (H V _ MQ).
+  exact (H _ _ _ H0).
+Qed. *)
 
 Lemma MQC_stricter_trans
   {VC TC VC2 TC2 VC3 TC3}
@@ -686,7 +701,7 @@ Defined.
 
 
 
-Definition FCn_embed2 n m :
+Definition FCn_embed2 [n m] :
   Class (FCWithNVars n) (FormulaWithNVars m) ->
   Class (FCWithNVars n) (FormulaWithNVars (S m)).
   intro.
@@ -809,80 +824,217 @@ Fixpoint right_vars n : Vector.t (NMoreExt n False) n :=
   (FCWithNVars n)
   (FormulaWithNVars n)
   := vars_to_ n (right_vars n). *)
-Print lt.
-(* note the similarity to `lt` *)
-Inductive VariableEmbedding : nat -> nat -> Type :=
-  | fresh_variable var_index : VariableEmbedding var_index (S var_index)
-  | embedded_variable var_index num_embedded_in : VariableEmbedding var_index num_embedded_in -> VariableEmbedding var_index (S num_embedded_in).
+  
+Inductive ler (n : nat) : nat -> Type :=
+  | ler_nn : ler n n
+  | ler_Sm m : ler n m → ler n (S m).
 
-Fixpoint embedded_var_ext var_index num_embedded_in (embedding : VariableEmbedding var_index num_embedded_in) : (NMoreExt num_embedded_in False):=
+Definition ltr n m := ler (S n) m.
+
+Inductive upto : nat -> nat -> Type :=
+  | upto_0m m : upto 0 m
+  | upto_Sn n m : ltr n m -> upto n m -> upto (S n) m.
+
+Inductive leroute : nat -> nat -> Type :=
+  | leroute_00 : leroute 0 0
+  | leroute_Sm n m : leroute n m -> leroute n (S m)
+  | leroute_Sn n m : ltr n m -> leroute n m -> leroute (S n) m.
+
+Fixpoint ler_0m m : ler 0 m :=
+  match m with
+    | 0 => ler_nn 0
+    | S pred => ler_Sm (ler_0m pred)
+    end.
+
+Search le.
+Lemma ler_SnSm n m (l : ler n m) : ler (S n) (S m).
+  induction l; constructor.
+  assumption.
+Defined.
+
+Fixpoint ler_Pn [n m] (l : ler (S n) m) : ler n m :=
+  match l with
+    | ler_nn => ler_Sm (ler_nn _)
+    | ler_Sm m l => ler_Sm (ler_Pn l)
+    end.
+(* Set Printing Implicit.
+Print ler_Pn. *)
+(* Fixpoint ler_pboth n m (l : ler (S n) (S m)) : ler n m :=
+  match l in ler _ m0 return (m0 = (S m)) -> ler n m with
+    | ler_nn => λ eq, match eq with eq_refl => ler_nn n end
+    | ler_Sm m l => λ eq, _
+    end eq_refl.
+
+    
+  dependent induction l.
+  constructor.
+  
+  assumption.
+Defined. *)
+
+Lemma ler_pboth n m (l : ler (S n) (S m)) : ler n m.
+  dependent induction l.
+  constructor.
+  induction m.
+  dependent destruction l.
+
+  apply ler_Sm.
+  apply IHl.
+  reflexivity.
+Qed.
+
+Lemma S_not_ler n : ler (S n) n -> False.
+  intro l. induction n.
+  dependent destruction l.
+  exact (IHn (ler_pboth l) ).
+Qed.
+
+Lemma ler_unique n m (l0 l1 : ler n m) : l0 = l1.
+  induction l0.
+  dependent destruction l1.
+  reflexivity.
+
+  contradict l1; apply S_not_ler.
+  dependent destruction l1.
+  clear IHl0; contradict l0; apply S_not_ler.
+  rewrite (IHl0 l1); reflexivity.
+Qed.
+
+Fixpoint upto_Sm n m (u : upto n m) : upto n (S m) :=
+  match u with 
+    | upto_0m _ => upto_0m _
+    | upto_Sn _ _ l u => upto_Sn (ler_Sm l) (upto_Sm u)
+    end.
+
+Fixpoint upto_nn n : upto n n :=
+  match n with
+    | 0 => upto_0m _
+    | S pred => upto_Sn (ler_nn _) (upto_Sm (upto_nn pred))
+    end.
+
+Fixpoint ler_upto n m (l : ler n m) : upto n m :=
+  match l with
+    | ler_nn => upto_nn n
+    | ler_Sm m l => upto_Sm (ler_upto l)
+    end.
+
+Definition upto_ler n m (u : upto n m) : ler n m :=
+  match u with
+    | upto_0m m => ler_0m m
+    | upto_Sn _ _ l u => l
+    end.
+
+Fixpoint leroute_ler n m (r : leroute n m) : ler n m :=
+  match r with
+    | leroute_00 => ler_nn _
+    | leroute_Sm _ _ r => ler_Sm (leroute_ler r)
+    | leroute_Sn _ _ l r => l
+    end.
+
+Lemma upto_unique n m (u0 u1 : upto n m) : u0 = u1.
+  induction u0.
+  dependent destruction u1.
+  reflexivity.
+  dependent destruction u1.
+  rewrite (ler_unique l0 l).
+  rewrite (IHu0 u1); reflexivity.
+Qed.
+
+(* Lemma upto_SnSm n m (u : upto n m) : upto (S n) (S m).
+  induction u; constructor.
+  apply ler_SnSm; apply ler_0m.
+
+  assumption.
+Defined. *)
+
+Fixpoint leroute_0m m : leroute 0 m :=
+  match m with
+    | 0 => leroute_00
+    | S pred => leroute_Sm (leroute_0m pred)
+    end.
+
+Fixpoint upto_route n m (u : upto n m) : leroute n m :=
+  match u with 
+    | upto_0m _ => leroute_0m _
+    | upto_Sn _ _ l u => leroute_Sn l (upto_route u)
+    end.
+
+Fixpoint leroute_n_alternating n : leroute n n :=
+  match n with
+    | 0 => leroute_00
+    | S pred => leroute_Sn (ler_nn _) (leroute_Sm (leroute_n_alternating pred))
+    end.
+  
+
+Fixpoint embedded_var_ext i m (embedding : ltr i m) : (NMoreExt m False):=
   match embedding with
-    | fresh_variable _ => ome_new
-    | embedded_variable var_index num_embedded_in embedding => ome_embed (embedded_var_ext embedding)
+    | ler_nn => ome_new
+    | ler_Sm m embedding => ome_embed (embedded_var_ext embedding)
     end.
 
-Fixpoint embedded_var_ind var_index num_embedded_in (embedding : VariableEmbedding var_index num_embedded_in) : Ind (FCWithNVars num_embedded_in) :=
+Fixpoint embedded_var_ind i m (embedding : ltr i m) : Ind (FCWithNVars m) :=
   match embedding with
-    | fresh_variable _ => λ _ _, omc_new
-    | embedded_variable var_index num_embedded_in embedding => λ _ _, (embedded_var_ind embedding) _ _
-    end.
-
-Inductive VariableEmbeddings : nat -> nat -> Type :=
-  | no_embeddings m : VariableEmbeddings 0 m
-  | more_embeddings num_embedded num_embedded_in : VariableEmbedding num_embedded num_embedded_in ->  VariableEmbeddings num_embedded num_embedded_in -> VariableEmbeddings (S num_embedded) num_embedded_in.
-
-Fixpoint deeper_embeddings n m (es : VariableEmbeddings n m) : VariableEmbeddings n (S m) :=
-  match es with 
-    | no_embeddings _ => no_embeddings _
-    | more_embeddings _ _ e es => more_embeddings (embedded_variable e) (deeper_embeddings es)
-    end.
-
-Fixpoint n_vars_embeddings n : VariableEmbeddings n n :=
-  match n with 
-    | 0 => no_embeddings _
-    | S pred => more_embeddings (fresh_variable _) (deeper_embeddings (n_vars_embeddings pred))
+    | ler_nn => λ _ _, omc_new
+    | ler_Sm m embedding => λ _ _, (embedded_var_ind embedding) _ _
     end.
 
 
-Fixpoint embeddings_to_fcn_instance n m (es : VariableEmbeddings n m) : Class
+
+Fixpoint fcn_instance_route n m (r : leroute n m) : Class
   (FCWithNVars n)
   (FormulaWithNVars m)
   :=
-  match es with 
-    | no_embeddings _ => f_fc
-    | more_embeddings _ _ e es => {|
-        omc_embed := embeddings_to_fcn_instance es ;
+  match r in leroute n m return Class (FCWithNVars n)
+  (FormulaWithNVars m) with 
+    | leroute_00 => f_fc
+    | leroute_Sm _ _ r => FCn_embed2 (fcn_instance_route r)
+    | leroute_Sn _ _ l r => {|
+        omc_embed := fcn_instance_route r ;
+        omc_new := f_ext (embedded_var_ext l)
+      |}
+    end.
+Fixpoint embeddings_to_fcn_instance n m (u : upto n m) : Class
+  (FCWithNVars n)
+  (FormulaWithNVars m)
+  :=
+  match u with 
+    | upto_0m _ => f_fc
+    | upto_Sn _ _ e u => {|
+        omc_embed := embeddings_to_fcn_instance u ;
         omc_new := f_ext (embedded_var_ext e)
       |}
     end.
 
 
-Fixpoint embeddings_fcn_subset [n m] (es : VariableEmbeddings n m) : 
+Fixpoint ler_fcn_subclass [n m] (l : ler n m) : 
   (FCWithNVars m) ⊆ (FCWithNVars n)
   :=
-  match es in VariableEmbeddings n m return (FCWithNVars m) ⊆ (FCWithNVars n) with 
-    | no_embeddings _ => NMoreConstructors_subclass _ _
-    | more_embeddings _ _ e es => subclass_trans (embeddings_fcn_subset es) _
+  match l 
+  (* in ler n m return (FCWithNVars m) ⊆ (FCWithNVars n)  *)
+  with 
+    | ler_nn => subclass_refl
+    | ler_Sm m l => subclass_trans OneMoreConstructor_subclass (ler_fcn_subclass l)
     end.
+Existing Instance ler_fcn_subclass.
 
 Instance fn_fcn n : Class
   (FCWithNVars n)
   (FormulaWithNVars n)
-  := embeddings_to_fcn_instance (n_vars_embeddings n).
+  := embeddings_to_fcn_instance (upto_nn n).
   
 
-Fixpoint ewnm_to_ind [n m] (embeddings : VariableEmbeddings n m) : NMoreExt n False -> Ind (FCWithNVars m)
+Fixpoint ewnm_to_ind [n m] (embeddings : upto n m) : NMoreExt n False -> Ind (FCWithNVars m)
   := 
   match embeddings with 
-    | no_embeddings _ => False_rect _
-    | more_embeddings n m new_embedding es => λ e, match e with
-      | ome_embed e => λ _ _, ewnm_to_ind es e _ _
+    | upto_0m _ => False_rect _
+    | upto_Sn n m new_embedding u => λ e, match e with
+      | ome_embed e => λ _ _, ewnm_to_ind u e _ _
       | ome_new => embedded_var_ind new_embedding
       end
     end.
 
 Definition ewn_to_ind [n] (e : NMoreExt n False ) : Ind (FCWithNVars n) :=
-  ewnm_to_ind (n_vars_embeddings n) e.
+  ewnm_to_ind (upto_nn n) e.
 
 (* Set Typeclasses Debug Verbosity 2. *)
 Fixpoint fwn_to_ind n (f : FormulaWithNVars n) : Ind (FCWithNVars n)
@@ -913,11 +1065,11 @@ Fixpoint nme_to_ind {Ext} {Constrs} [n]
     | S pred => λ e _ _, ome_to_ind (nme_to_ind embed) e _
     end.
 
-Fixpoint ewn_to_ind [n m] (e : VariableEmbedding n m) : NMoreExt n False -> Ind (FCWithNVars m)
+Fixpoint ewn_to_ind [n m] (e : ltr n m) : NMoreExt n False -> Ind (FCWithNVars m)
   (* := nme_to_ind (False_rect _). *)
   := match e with
-    | fresh_variable _ => omc_new 
-    | embedded_variable n m e => λ e _ _, ome_to_ind (ewn_to_ind e ) e _
+    | ler_nn _ => omc_new 
+    | ler_Sm n m e => λ e _ _, ome_to_ind (ewn_to_ind e ) e _
     end. *)
 
 (* note the similarity to `lt` *)
@@ -925,10 +1077,10 @@ Fixpoint ewn_to_ind [n m] (e : VariableEmbedding n m) : NMoreExt n False -> Ind 
   | no_unaccounted_vars n : VarsEmbedding n n
   | s_unaccounted_vars n m : VarsEmbedding n m -> VarsEmbedding n (S m).
 
-Fixpoint embedded_var_ext var_index num_embedded_in (embedding : VarsEmbedding var_index num_embedded_in) : (NMoreExt (S num_embedded_in) False):=
+Fixpoint embedded_var_ext i m (embedding : VarsEmbedding i m) : (NMoreExt (S m) False):=
   match embedding with
     | no_unaccounted_vars _ => ome_new
-    | s_unaccounted_vars var_index num_embedded_in embedding => ome_embed (embedded_var_ext embedding)
+    | s_unaccounted_vars i m embedding => ome_embed (embedded_var_ext embedding)
     end.
 
 Fixpoint ve_0_m m :=
@@ -963,7 +1115,7 @@ Fixpoint f_fcvar n m (embedding : VarsEmbedding n m) : Class
   (FormulaWithNVars m) with
     | 0 => f_fc
     | S pred => {|
-        omc_embed := f_fcvar (embedded_variable pred m) ;
+        omc_embed := f_fcvar (ler_Sm pred m) ;
         omc_new := f_ext (embedded_var_ext embedding)
       |}
     end.
@@ -1126,30 +1278,37 @@ Definition UTKInd {VC TC} (qx : Ind VC) (x : Ind TC) {MQC : MQCT}
   UTKInd qa a -> UTKInd qb b ->
   @MQInd _ _ (λ _ _, [f_quote (qa _ _) (qb _ _)]) (λ _ _, [(a _ _) (b _ _)]) FcMQC. *)
 
-Fixpoint FcMQCWithEmbeddings [n m] (es : VariableEmbeddings n m) : @MQCT (FCWithNVars n) (FCWithNVars m) :=
-  match es in VariableEmbeddings n m return @MQCT (FCWithNVars n) (FCWithNVars m) with 
-    | no_embeddings _ => MQCOnStricterFormulaTypes FcMQC
-    | more_embeddings n m e es => OneMoreMQConstructor (@ omc_new _) (embedded_var_ind e) (MQCOnStricterFormulaTypes (FcMQCWithEmbeddings es))
+Fixpoint FcMQCWithRoute [n m] (r : leroute n m) : @MQCT (FCWithNVars n) (FCWithNVars m) :=
+  match r in leroute n m return @MQCT (FCWithNVars n) (FCWithNVars m) with 
+    | leroute_00 => FcMQC
+    | leroute_Sm _ _ r => MQCOnStricterFormulaTypes (FcMQCWithRoute r)
+    | leroute_Sn _ _ l r => OneMoreMQConstructor (@ omc_new _) (embedded_var_ind l) (MQCOnStricterFormulaTypes (FcMQCWithRoute r))
+    end.
+
+Fixpoint FcMQCWithEmbeddings [n m] (u : upto n m) : @MQCT (FCWithNVars n) (FCWithNVars m) :=
+  match u in upto n m return @MQCT (FCWithNVars n) (FCWithNVars m) with 
+    | upto_0m _ => MQCOnStricterFormulaTypes FcMQC
+    | upto_Sn n m e u => OneMoreMQConstructor (@ omc_new _) (embedded_var_ind e) (MQCOnStricterFormulaTypes (FcMQCWithEmbeddings u))
     end.
 
 Definition FcMQCWithNVars n := NMoreQuotvars n FcMQC.
 Print FcMQCWithNVars.
 
-Definition FcMQCWithEmbedNVars n := FcMQCWithEmbeddings (n_vars_embeddings n).
+Definition FcMQCWithEmbedNVars n := FcMQCWithEmbeddings (upto_nn n).
 
-Lemma FcMQCWithEmbeddings_deeper n m (es : VariableEmbeddings n m) V (_v : Class _ V) MQ : 
+Lemma FcMQCWithEmbeddings_deeper n m (u : upto n m) V (_v : Class _ V) MQ : 
   (* this proof is messy , maybe clean it up later *) 
-  FcMQCWithEmbeddings es _v (mqt_on_looser_constructors MQ) ->
-FcMQCWithEmbeddings (deeper_embeddings es) _v MQ.
+  FcMQCWithEmbeddings u _v (mqt_on_looser_constructors MQ) ->
+FcMQCWithEmbeddings (upto_Sm u) _v MQ.
   intro _f.
-  induction es; [trivial|].
+  induction u; [trivial|].
   cbn in *.
   destruct _v as (embed, new).
   destruct _f as (_fembed, _fnew).
-  specialize (IHes embed MQ _fembed).
+  specialize (IHu embed MQ _fembed).
   split; cbn.
   {
-    exact IHes.
+    exact IHu.
   }
   {
     intros.
@@ -1157,33 +1316,33 @@ FcMQCWithEmbeddings (deeper_embeddings es) _v MQ.
   }
 Qed.
 
-Lemma FcMQCWithEmbeddings_shallower n m (es : VariableEmbeddings n m) V (_v : Class _ V) MQ : 
+Lemma FcMQCWithEmbeddings_shallower n m (u : upto n m) V (_v : Class _ V) MQ : 
   (* this proof is messy , maybe clean it up later *) 
-  FcMQCWithEmbeddings (deeper_embeddings es) _v MQ ->
-FcMQCWithEmbeddings es _v (mqt_on_looser_constructors MQ).
+  FcMQCWithEmbeddings (upto_Sm u) _v MQ ->
+FcMQCWithEmbeddings u _v (mqt_on_looser_constructors MQ).
 
   intro _f.
-  induction es; [trivial|].
+  induction u; [trivial|].
   cbn in *.
   destruct _v as (embed, new).
   destruct _f as (_fembed, _fnew).
-  specialize (IHes embed MQ _fembed).
+  specialize (IHu embed MQ _fembed).
   split; cbn.
   {
-    exact IHes.
+    exact IHu.
   }
   {
     unfold mqt_on_looser_constructors .
     intros.
     cbn in *.
   (* destruct _t as (_tembed, _tnew). *)
-    exact (_fnew T _).
+    exact (_fnew T {|omc_new := fc_atm atom_const|}).
   }
 Qed.
 
   
-Lemma FcMQCn_embed n V (_v : Class _ V) MQ : FcMQCWithNVars n _v MQ -> FcMQCWithEmbedNVars n _v MQ.
-  intro _f.
+Lemma FcMQCn_embed n : MQCSubclassOf (FcMQCWithNVars n) (FcMQCWithEmbedNVars n).
+  unfold MQCSubclassOf. intros V _v MQ _f.
   induction n; [assumption|].
   cbn in *.
   destruct _v as (embed, new).
@@ -1202,11 +1361,13 @@ Lemma FcMQCn_embed n V (_v : Class _ V) MQ : FcMQCWithNVars n _v MQ -> FcMQCWith
   }
 Qed.
 
-Lemma FcMQCembed_n n m (es : VariableEmbeddings n m) V (_v : Class _ V) MQ : FcMQCWithEmbeddings es _v MQ -> FcMQCWithNVars n _v (mqt_on_looser_constructors MQ).
+(* Lemma FcMQCembed_n n m (u : upto n m) V (_v : Class _ V) MQ : FcMQCWithEmbeddings u _v MQ -> FcMQCWithNVars n _v (mqt_on_looser_constructors MQ). *)
 
-Lemma FcMQCembed_n n V (_v : Class _ V) MQ : FcMQCWithEmbedNVars n _v MQ -> FcMQCWithNVars n _v MQ.
-  intro _f.
+Lemma FcMQCembed_n n  : MQCSubclassOf (FcMQCWithEmbedNVars n) (FcMQCWithNVars n).
+  unfold MQCSubclassOf. intros V _v MQ _f.
   induction n; [assumption|].
+
+  (* apply MQC_embed_under_stricter. *)
   cbn in *.
   destruct _v as (embed, new).
   destruct _f as (_fembed, _fnew).
@@ -1215,14 +1376,177 @@ Lemma FcMQCembed_n n V (_v : Class _ V) MQ : FcMQCWithEmbedNVars n _v MQ -> FcMQ
   {
     unfold MQCOnStricterFormulaTypes in *.
     cbn in *.
-    apply FcMQCWithEmbeddings_deeper.
-    exact (IHn _fembed).
+    exact (IHn (FcMQCWithEmbeddings_shallower _ _ _ _fembed)).
   }
   {
     intros.
     exact (_fnew T _).
   }
-.
+Qed.
+
+(* Lemma FcMQC_routes_equivalent n m (r0 r1 : leroute n m) : MQCSubclassOf (FcMQCWithRoute r0) (FcMQCWithRoute r1).
+  induction r0.
+  (* 00 case: *)
+  dependent destruction r1; apply MQCSubclassOf_refl.
+  (* Sm case: *)
+  {
+    dependent destruction r1.
+    apply MQC_embed_under_stricter.
+    exact (IHr0 r1).
+    (* cbn. *)
+    unfold MQCSubclassOf; intros.
+    cbn in H.
+    cbn.
+    split.
+    generalize V _v MQ H.
+    (* Set Printing Implicit. *)
+    change (MQCSubclassOf (@MQCOnStricterFormulaTypes _ _ _ _ subclass_refl OneMoreConstructor_subclass (FcMQCWithRoute r0)) (MQCOnStricterFormulaTypes (FcMQCWithRoute r1))).
+    apply MQC_embed_under_stricter.
+    destruct H.
+  } *)
+
+
+Lemma FcMQC_route_diamond1
+  n m (r : leroute n m) (l : ltr n m)
+  : MQCSubclassOf
+    (FcMQCWithRoute (leroute_Sm (leroute_Sn l r)))
+    (FcMQCWithRoute (leroute_Sn (ler_Sm l) (leroute_Sm r))).
+  
+  unfold MQCSubclassOf. intros. cbn in *.
+  destruct H; split; trivial.
+
+  intros. exact (H0 _ _).
+Qed.
+Lemma FcMQC_route_diamond2
+  n m (r : leroute n m) (l : ltr n m)
+  : MQCSubclassOf
+    (FcMQCWithRoute (leroute_Sn (ler_Sm l) (leroute_Sm r)))
+    (FcMQCWithRoute (leroute_Sm (leroute_Sn l r))).
+  
+  unfold MQCSubclassOf. intros. cbn in *.
+  destruct H; split; trivial.
+
+  (* unfold shortcut_omc_trans_apply, subclass_apply, subclass_refl in H0.
+  unfold mqt_on_looser_constructors, ind_on_stricter_constructors, subclass_apply. *)
+  (* Set Printing Implicit. *)
+  (* super hacky but I guess it's proved???? *)
+  intros. exact (H0 _ {| omc_new := fc_atm atom_const |}).
+Qed.
+
+Lemma FcMQC_route_diamond3
+  n m (r0 r1 : leroute n m) (l : ltr n m)
+  (_ms : MQCSubclassOf
+    (FcMQCWithRoute r0)
+    (FcMQCWithRoute r1))
+  : MQCSubclassOf
+    (FcMQCWithRoute (leroute_Sm (leroute_Sn l r0)))
+    (FcMQCWithRoute (leroute_Sn (ler_Sm l) (leroute_Sm r1))).
+  
+  unfold MQCSubclassOf. intros. cbn in *.
+  destruct H; split.
+
+  apply _ms; exact H.
+  intros; exact (H0 _ _).
+Qed.
+
+Lemma FcMQC_route_diamond4
+  n m (r0 r1 : leroute n m) (l : ltr n m)
+  (_ms : MQCSubclassOf
+    (FcMQCWithRoute r0)
+    (FcMQCWithRoute r1))
+  : MQCSubclassOf
+    (FcMQCWithRoute (leroute_Sn (ler_Sm l) (leroute_Sm r0)))
+    (FcMQCWithRoute (leroute_Sm (leroute_Sn l r1))).
+  
+  unfold MQCSubclassOf. intros. cbn in *.
+  destruct H; split.
+
+  apply _ms; exact H.
+  intros; exact (H0 _ {| omc_new := fc_atm atom_const |}).
+Qed.
+
+
+
+(* Lemma FcMQC_routes_equivalent n m p (r0 r1 : leroute n m) (l : ler m p) : MQCSubclassOf (@MQCOnStricterFormulaTypes _ _ _ _ subclass_refl (ler_fcn_subclass l) (FcMQCWithRoute r0)) (@MQCOnStricterFormulaTypes _ _ _ _ subclass_refl (ler_fcn_subclass l) (FcMQCWithRoute r1)).
+  induction r0.
+  (* 00 case: *)
+  dependent destruction r1; apply MQCSubclassOf_refl.
+  (* Sm case: *)
+  {
+    dependent destruction r1.
+    {
+    (* refine (
+      match l in ler _ ml return (p = ) with
+        ler_nn => _
+        end
+    ).
+    destruct l.
+    specialize (IHr0 r1 (ler_Sm (ler_nn _))).
+    apply MQC_embed_under_stricter.
+    exact IHr0.
+    
+    (* Show Proof. *)
+    specialize (IHr0 r1 (ler_Sm (ler_Pn l))).
+    specialize (IHl IHr0).
+    refine (IHl _).
+    apply MQC_embed_under_stricter.
+    (* cbn in *. *)
+    exact IHr0.
+    
+    (* apply MQC_embed_under_stricter. fold FcMQCWithRoute. *)
+    exact IHr0.
+    (* unfold mqt_on_looser_constructors in *. *)
+    cbn in *.
+    (* Set Printing Implicit. *)
+    unfold MQCOnStricterFormulaTypes in *.
+    unfold MQCOnStricterFormulaTypes, subclass_apply, subclass_refl in *.
+    unfold mqt_on_looser_constructors, ind_on_stricter_constructors, subclass_apply in *. cbn in *.
+
+    induction l.
+    exact (IHr0 _f).
+    cbn in *. exact (IHr0 _f).
+
+    change (mqt_on_looser_constructors
+  (mqt_on_looser_constructors MQ)) with (@mqt_on_looser_constructors V _ (FCWithNVars m) (ler_fcn_subclass (ler_Pn l)) MQ) in _f.
+    cbn in *. *)
+    }
+    {
+      apply FcMQC_route_diamond3.
+    }
+  } *)
+
+
+(* Lemma FcMQC_routes_equivalent n m p (r0 r1 : leroute n m) (l : ler m p) : FcMQCWithRoute r0 _v (@mqt_on_looser_constructors _ _ _ (ler_fcn_subclass l) MQ) -> FcMQCWithRoute r1 _v (@mqt_on_looser_constructors _ _ _ (ler_fcn_subclass l) MQ).
+  intro _f.
+  induction r0.
+  (* 00 case: *)
+  dependent destruction r1; exact _f.
+  (* Sm case: *)
+  {
+    dependent destruction r1.
+    specialize (IHr0 r1 (ler_Pn l) _v).
+    (* unfold mqt_on_looser_constructors in *. *)
+    cbn in *.
+    unfold MQCOnStricterFormulaTypes, subclass_apply, subclass_refl in *.
+    (* Set Printing Implicit. *)
+    unfold mqt_on_looser_constructors, ind_on_stricter_constructors, subclass_apply in *. cbn in *.
+
+    induction l.
+    exact (IHr0 _f).
+    cbn in *. exact (IHr0 _f).
+
+    change (mqt_on_looser_constructors
+  (mqt_on_looser_constructors MQ)) with (@mqt_on_looser_constructors V _ (FCWithNVars m) (ler_fcn_subclass (ler_Pn l)) MQ) in _f.
+    cbn in *.
+  }
+  (* Sn case: *)
+  {
+
+  } *)
+
+
+
+(* Lemma fcn_routes_equivalent n m (r0 r1 : leroute n m) V (_v : Class _ V) MQ : fcn_instance_route r0 _v MQ -> fcn_instance_route r1 _v MQ.  *)
   
 
 (* Lemma just_uhh1 VC TC MQC MQ : 
@@ -1257,7 +1581,7 @@ Lemma just_uhh3 VC TC MQC MQ :
   assumption.
 Qed. *)
 
-Lemma quotvar_unzip_succ VC TC (MQC1 MQC2 : MQCT) :
+(* Lemma quotvar_unzip_succ VC TC (MQC1 MQC2 : MQCT) :
   MQCSubclassOf MQC1 MQC2 ->
   MQCSubclassOf (OneMoreQuotvar MQC1) (MQCOnStricterFormulaTypes MQC2).
   unfold MQCSubclassOf; intros.
@@ -1293,13 +1617,13 @@ Lemma stricter_unpack_n n VC TC (MQC : @MQCT VC TC) V _v TC2 eT MQ :
   induction n; [trivial | ].
   intro.
   exact (IHn _ _ H).
-Qed.
+Qed. *)
   
 
-Lemma embeddings_to_fcn_instance_ends_at_f_fc n m (es : VariableEmbeddings n m) :
-  (subclass_apply (fcn_sub_fc n) (embeddings_to_fcn_instance es)) = (@f_fc (NMoreExt m False)).
+Lemma embeddings_to_fcn_instance_ends_at_f_fc n m (u : upto n m) :
+  (subclass_apply (fcn_sub_fc n) (embeddings_to_fcn_instance u)) = (@f_fc (NMoreExt m False)).
   
-  induction es; [reflexivity|assumption].
+  induction u; [reflexivity|assumption].
 Qed.
 Lemma fcn_sub_fc_ends_at_f_fc n :
   (subclass_apply (fcn_sub_fc n) (fn_fcn n)) = (@f_fc (NMoreExt n False)).
@@ -1309,20 +1633,43 @@ Qed.
 
 
 
-Lemma FcMQC_subset_n n :
+(* Lemma FcMQC_subset_n n :
   MQCSubclassOf (FcMQCWithNVars n) (NMoreQuotvars_without_new_MQCs n FcMQC).
   apply quotvar_unzip_n. apply MQCSubclassOf_refl.
-Defined.
+Defined. *)
 
-Lemma FcMQCn_FcMQC [n V _v TC2 eT MQ] :
+(* Lemma FcMQCn_FcMQC [n V _v TC2 eT MQ] :
   @FcMQCWithNVars n V _v TC2 eT MQ ->
   @FcMQC            V _ TC2 _ MQ.
   intros.
   apply stricter_unpack_n.
   apply FcMQC_subset_n; assumption.
+Qed. *)
+
+Lemma FcMQCWithEmbeddings_FcMQC [n m] [u : upto n m] :
+  MQCSubclassOf (FcMQCWithEmbeddings u) (MQCOnStricterFormulaTypes FcMQC).
+  induction u.
+  unfold MQCSubclassOf; intros; assumption.
+  {
+    unfold MQCSubclassOf. intros. 
+    destruct H.
+    apply IHu.
+    exact H.
+  }
 Qed.
 
-Lemma FcMQC_fold [n] [qf qg : FormulaWithNVars n] [TC2 eT MQ] (_mq : (FcMQCWithNVars n) (FormulaWithNVars n) _ TC2 eT MQ) [f : Ind TC2] :
+Lemma FcMQCn_FcMQC [n] :
+  MQCSubclassOf (FcMQCWithNVars n) (MQCOnStricterFormulaTypes FcMQC).
+
+  unfold MQCSubclassOf; intros V _v MQ _f.
+  apply FcMQCn_embed in _f.
+  generalize V _v MQ _f.
+  change (MQCSubclassOf (FcMQCWithEmbedNVars n) (MQCOnStricterFormulaTypes FcMQC)).
+  apply FcMQCWithEmbeddings_FcMQC.  
+Qed.
+Arguments FcMQCn_FcMQC [n]%nat_scope [V _v MQ] _.
+
+Lemma FcMQC_fold [n] [qf qg : FormulaWithNVars n] [MQ] (_mq : (FcMQCWithNVars n) (FormulaWithNVars n) _ MQ) [f : Ind (FCWithNVars n)] :
   UnfoldStep qf qg ->
   MQ qg f ->
   MQ qf f.
@@ -1333,7 +1680,7 @@ Lemma FcMQC_fold [n] [qf qg : FormulaWithNVars n] [TC2 eT MQ] (_mq : (FcMQCWithN
   destruct (FcMQCn_FcMQC _mq) as (atmc, (unfc, aplc)).
 
   (* use the unfold constructor *)
-  refine (unfc qf qg _ _ qg_means_f).
+  refine (unfc qf qg (ind_on_stricter_constructors (fcn_sub_fc n) f) _ qg_means_f).
 
   rewrite fcn_sub_fc_ends_at_f_fc.
   exact u.
@@ -1528,7 +1875,7 @@ Fixpoint get_quoted_formula steps [n] (qf : FormulaWithNVars n)
       end
   end.
 
-Lemma ext_new_quotvar_rewrap_impl [n m] (embedding : VariableEmbedding n m)
+Lemma ext_new_quotvar_rewrap_impl [n m] (embedding : ltr n m)
   : ∀ V (_v : Class (FCWithNVars n) V), MQInd (MQC := FcMQCWithNVars n) (embedded_var_ind embedding V _) (embedded_var_ind embedding).
   induction embedding.
   {
@@ -1557,7 +1904,7 @@ Lemma ext_new_quotvar_rewrap_impl [n m] (embedding : VariableEmbedding n m)
   }
 
 
-Lemma ext_quotvar_rewrap_impl [n m] (embeddings : VariableEmbeddings n m) (e : NMoreExt n False)
+Lemma ext_quotvar_rewrap_impl [n m] (embeddings : upto n m) (e : NMoreExt n False)
   : ∀ V (_v : Class (FCWithNVars m) V), MQInd (MQC := FcMQCWithNVars m) (ewnm_to_ind embeddings e V _) (ewnm_to_ind embeddings e).
   induction embeddings; [contradiction|].
   destruct e.
@@ -1566,7 +1913,7 @@ Lemma ext_quotvar_rewrap_impl [n m] (embeddings : VariableEmbeddings n m) (e : N
   (* unfold ewnm_to_ind. *)
   cbn.
 
-Lemma ext_quotvar_rewrap [n m] (embedding : VariableEmbedding n m) (e : NMoreExt n False)
+Lemma ext_quotvar_rewrap [n m] (embedding : ltr n m) (e : NMoreExt n False)
   {VC}
   : ∀ V (_v : Class (FCWithNVars m) V), MQInd (MQC := FcMQCWithNVars m) (ewn_to_ind e V _) (ewn_to_ind e).
   (* unfold subclass_apply. *)
