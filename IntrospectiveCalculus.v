@@ -187,19 +187,25 @@ Definition ind_on_stricter_constructors C C2
 (* We also deal with "quoted formulas". To say that a V-formula is a quoted version of a T-formula, we need to define the MeansQuoted relation (MQ for short). This relation is only well-defined once you first specify the V and T constructors: *)
 Definition MQT V TC := V -> Ind TC -> Prop.
 
-Definition mqt_on_looser_constructors [V TC TC2 eT]
+Definition mqt_on_looser_constructors [V TC TC2] [eT : (TC ⊆ TC2)]
   : MQT V TC -> MQT V TC2
   := λ MQ v t, MQ v (ind_on_stricter_constructors eT t).
 
 (* ...and usually, we need to be talking about _constructors_ (MQC) for that relation, because it must be just as extensible as the formula types: *)
-Definition MQCT {VC TC} :=
-  ∀ V (_:Class VC V), MQT V TC -> Prop.
+Definition MQCT VC TC :=
+  ∀ V (_v:Class VC V) (TC2 : TConsClass) (eT : TC2 ⊆ TC), MQT V TC2 -> Prop.
 Existing Class MQCT.
 
 (* We also define how an MQCT relates _inductive instances_ of VC and TC - which is the same thing as saying an inductive instance of those MQ constructors: *)
-Definition MQInd {VC TC V} {_v:Class VC V} (qx : V) (x : Ind TC) {MQC : MQCT}
+(* We also need to be able to say an inductive instance of those MQ constructors ("this concrete qx is forced by the constructors to mean a quoted version of this concrete x, no matter what embedding we're in..."); "any MQ that obeys MQC (bearing in mind that MQC can judge any MQ on any extension of TC) must hold (MQ qx x)" *)
+Definition MQInd {VC TC V} {_v:Class VC V} (qx : V) (x : Ind TC) {MQC : MQCT VC TC}
   :=
-  ∀ MQ, MQC _ _ MQ -> MQ qx x.
+  ∀ TC2 eT MQ (_mq : MQC _ _ _ _ MQ), MQ qx (ind_on_stricter_constructors eT x).
+Print MQInd.
+
+(* ...and to say that a particular Ind VC always construct something that quotes an Ind TC: *)
+Definition VInd_MQInd {VC TC V} {_v:Class VC V} (qx : Ind VC) (x : Ind TC) {MQC : MQCT VC TC}
+  := ∀ V _v, MQInd (qx V _v) x.
 
 (* Definition MQInd {VC TC} (qx : Ind VC) (x : Ind TC) {MQC : MQCT}
   :=
@@ -207,30 +213,29 @@ Definition MQInd {VC TC V} {_v:Class VC V} (qx : V) (x : Ind TC) {MQC : MQCT}
     MQC _ _ _ _ MQ ->
     MQ _ _ _ _ (qx _ _) (x _ _). *)
 
-
 (* ...the main case of which is to add one additional variable to each of V and T, and say that the new V-variable is a quoted version of the new T-variable. *)
 
-Definition OneMoreMQConstructor [VC TC] (qx : Ind VC) (x: Ind TC) (MQC : MQCT) : MQCT
-  := λ V _v MQ,
-    (MQC _ _ MQ) ∧
+Definition OneMoreMQConstructor [VC TC] (qx : Ind VC) (x: Ind TC) (MQC : MQCT VC TC) : MQCT VC TC
+  := λ V _v TC2 eT MQ,
+    (MQC _ _ _ _ MQ) ∧
     (∀ T (_t:Class (OneMoreConstructor TC) T), (MQ (qx _ _) (λ _ _, x _ _))).
 
 Definition MQCOnStricterFormulaTypes
   {VC TC VC2 TC2} {eV: VC2 ⊆ VC} {eT: TC2 ⊆ TC}
-  (MQC : @MQCT VC TC) : @MQCT VC2 TC2
-  := λ _ _ MQ, (MQC _ _ (mqt_on_looser_constructors MQ)).
+  (MQC : MQCT VC TC) : MQCT VC2 TC2
+  := λ _ _ _ _ MQ, (MQC _ _ _ _ MQ).
 
 Print MQCOnStricterFormulaTypes.
 
-Definition MQCSubclassOf [VC TC] (MQC1 MQC2 : @MQCT VC TC)
-  := ∀ V _v MQ, MQC1 V _v MQ -> MQC2 V _v MQ.
+Definition MQCSubclassOf [VC TC] (MQC1 MQC2 : MQCT VC TC)
+  := ∀ V _v TC2 eT MQ, MQC1 V _v TC2 eT MQ -> MQC2 V _v TC2 eT MQ.
 
-Lemma MQCSubclassOf_refl [VC TC] (MQC : @MQCT VC TC) : MQCSubclassOf MQC MQC.
+Lemma MQCSubclassOf_refl [VC TC] (MQC : MQCT VC TC) : MQCSubclassOf MQC MQC.
   unfold MQCSubclassOf. trivial.
 Defined.
 
 Lemma OneMoreMQConstructor_embed
-  {VC TC} (qx : Ind VC) (x: Ind TC) (MQC : MQCT)
+  {VC TC} (qx : Ind VC) (x: Ind TC) (MQC : MQCT VC TC)
   : MQCSubclassOf (OneMoreMQConstructor qx x MQC) MQC.
   unfold MQCSubclassOf, OneMoreMQConstructor.
   intros.
@@ -239,19 +244,19 @@ Qed.
 
 Lemma MQC_embed_under_stricter
   {VC TC VC2 TC2} {eV: VC2 ⊆ VC} {eT: TC2 ⊆ TC}
-  (MQC1 MQC2 : @MQCT VC TC)
+  (MQC1 MQC2 : MQCT VC TC)
   : MQCSubclassOf MQC1 MQC2 ->
     MQCSubclassOf (MQCOnStricterFormulaTypes MQC1) (MQCOnStricterFormulaTypes MQC2).
   
   unfold MQCSubclassOf, MQCOnStricterFormulaTypes.
   intros.
-  exact (H _ _ _ H0).
+  exact (H _ _ _ _ _ H0).
 Qed.
 
 (* Lemma MQC_unembed_under_stricter
   {VC TC VC2 TC2} {eV: VC2 ⊆ VC} {eT: TC2 ⊆ TC}
   V (_v : Class VC2 V) (MQ : MQT V TC2)
-  (MQC1 MQC2 : @MQCT VC TC)
+  (MQC1 MQC2 : MQCT VC TC)
   :
     MQCSubclassOf (MQCOnStricterFormulaTypes MQC1) (MQCOnStricterFormulaTypes MQC2) ->
     MQCSubclassOf MQC1 MQC2.
@@ -267,7 +272,7 @@ Lemma MQC_stricter_trans
   {VC TC VC2 TC2 VC3 TC3}
   {eV12: VC2 ⊆ VC} {eT12: TC2 ⊆ TC}
   {eV23: VC3 ⊆ VC2} {eT23: TC3 ⊆ TC2}
-  (MQC : @MQCT VC TC)
+  (MQC : MQCT VC TC)
   : MQCSubclassOf
     (@MQCOnStricterFormulaTypes VC2 TC2 VC3 TC3 _ _ (MQCOnStricterFormulaTypes MQC))
     (@MQCOnStricterFormulaTypes VC TC VC3 TC3 _ _ MQC).
@@ -278,18 +283,25 @@ Lemma MQC_stricter_trans
 Qed.
 
 Lemma MQC_stricter_unwrap
-  {VC TC} (MQC : MQCT)
-  V _v MQ
-  : @MQCOnStricterFormulaTypes VC TC VC TC _ _ MQC V _v MQ
-   -> MQC V _v MQ.
+  {VC TC} (MQC : MQCT VC TC)
+  V _v TC2 eT MQ
+  : @MQCOnStricterFormulaTypes VC TC VC TC _ _ MQC V _v TC2 eT MQ
+   -> MQC V _v TC2 eT MQ.
   
   unfold MQCOnStricterFormulaTypes.
   intros.
   assumption.
 Qed.
 
-Definition OneMoreQuotvar {VC TC} (MQC : MQCT)
-  : @MQCT (OneMoreConstructor VC) (OneMoreConstructor TC)
+(* Lemma MQInd_erjekr {VC TC V} {_v:Class VC V} (qx : V) (x : Ind TC) {MQC : MQCT VC TC} TC2 (eT : TC2 ⊆ TC) :
+  MQInd qx x -> @MQInd VC TC2 _ _ qx (ind_on_stricter_constructors eT x) (MQCOnStricterFormulaTypes _).
+  intro _mqi. unfold MQInd in *. intros.
+  apply _mqi.
+  unfold MQCOnStricterFormulaTypes in H.
+  exact H. *)
+
+Definition OneMoreQuotvar {VC TC} (MQC : MQCT VC TC)
+  : MQCT (OneMoreConstructor VC) (OneMoreConstructor TC)
   :=
   OneMoreMQConstructor
     (@omc_new _) (@omc_new _)
@@ -336,7 +348,7 @@ Fixpoint Ruleset_to_Coq [TC] (R : Ruleset) {T} {_t: Class TC T} (infs : InfSet T
 (* Set Printing Implicit. *)
 (* Set Typeclasses Debug Verbosity 2. *)
 (* Set Typeclasses Depth 4. *)
-Inductive FormulaMeans {VC TC} {MQC : MQCT}
+Inductive FormulaMeans {VC TC} {MQC : MQCT VC TC}
   {_vp:VC ⊆ PropositionConstructors}
   {V} {_v: Class VC V}
   (* {T} {_t: Class TC T}
@@ -511,13 +523,13 @@ Fixpoint NMoreExt n Ext :=
     | S pred => @OneMoreExt (NMoreExt pred Ext)
     end.
 
-Fixpoint NMoreQuotvars n {VC} {TC} (MQC : @MQCT VC TC) : @MQCT (NMoreConstructors n VC) (NMoreConstructors n TC) :=
+Fixpoint NMoreQuotvars n {VC} {TC} (MQC : MQCT VC TC) : MQCT (NMoreConstructors n VC) (NMoreConstructors n TC) :=
   match n with
     | 0 => MQC
     | S p => OneMoreQuotvar (NMoreQuotvars p MQC)
     end.
 
-Fixpoint NMoreQuotvars_without_new_MQCs n {VC} {TC} (MQC : @MQCT VC TC) : @MQCT (NMoreConstructors n VC) (NMoreConstructors n TC) :=
+Fixpoint NMoreQuotvars_without_new_MQCs n {VC} {TC} (MQC : MQCT VC TC) : MQCT (NMoreConstructors n VC) (NMoreConstructors n TC) :=
   match n with
     | 0 => MQC
     | S p => MQCOnStricterFormulaTypes (NMoreQuotvars_without_new_MQCs p MQC)
@@ -1017,6 +1029,11 @@ Fixpoint ler_fcn_subclass [n m] (l : ler n m) :
     end.
 Existing Instance ler_fcn_subclass.
 
+Instance ler_fcn_subclass_apply [n m] (l : ler n m) V 
+   : Class (FCWithNVars m) V -> Class (FCWithNVars n) V := subclass_apply (ler_fcn_subclass l).
+Instance ltr_fcn_subclass_apply [n m] (l : ltr n m) V 
+   : Class (FCWithNVars m) V -> Class (FCWithNVars n) V := subclass_apply (ler_fcn_subclass (ler_Pn l)).
+
 Instance fn_fcn n : Class
   (FCWithNVars n)
   (FormulaWithNVars n)
@@ -1185,7 +1202,15 @@ Print fn_fcn. *)
   := λ _ _, cc_embed (embed_formula ome_embed). *)
 
 
-(* Lemma embed_formula_rewrap n f T H : 
+Lemma ewnm_to_ind_swap_succ n m (u : upto n m) e T _t : 
+  ewnm_to_ind (upto_Sm u) e T _t =
+ewnm_to_ind u e T
+  (OneMoreConstructor_subclass _t).
+  induction u; [contradiction|].
+  destruct e; [apply IHu|reflexivity].
+Qed.
+
+Lemma embed_formula_rewrap n f T H : 
   (fwn_to_ind
     (embed_formula (Ext2 := NMoreExt (S n) _) (λ a : NMoreExt n _, ome_embed a) f)
     T
@@ -1195,7 +1220,10 @@ Print fn_fcn. *)
     T
     (OneMoreConstructor_subclass H)).
   
-  induction f; destruct n; cbn in *; trivial.
+  induction f; destruct n; cbn in *; contradiction || trivial.
+  {
+    destruct e; [apply ewnm_to_ind_swap_succ|reflexivity].
+  }
   {
     rewrite IHf1, IHf2; reflexivity.
   }
@@ -1204,7 +1232,7 @@ Print fn_fcn. *)
   }
 Qed.
 
-Lemma apply_rewrap n (f : FormulaWithNVars n) x V _v : fwn_to_ind [f x] V _v = [(fwn_to_ind f V _v) (fwn_to_ind x V _v)].
+(* Lemma apply_rewrap n (f : FormulaWithNVars n) x V _v : fwn_to_ind [f x] V _v = [(fwn_to_ind f V _v) (fwn_to_ind x V _v)].
   reflexivity.
 Qed. *)
 
@@ -1252,8 +1280,8 @@ Qed.
     FcMeansQuoted [f_quote qa qb] [a b]. *)
 
 (* Set Printing Implicit. *)
-Definition FcMQC : @MQCT FormulaConstructors FormulaConstructors :=
-  λ V _v MQ,
+Definition FcMQC : MQCT FormulaConstructors FormulaConstructors :=
+  λ V _v TC2 eT MQ,
     (∀ f a,
       @UnfoldsToKind V _ _ (@IsAtom V _) f a ->
       MQ [f_quote f] (λ _ _, fc_atm a))
@@ -1278,34 +1306,33 @@ Definition UTKInd {VC TC} (qx : Ind VC) (x : Ind TC) {MQC : MQCT}
   UTKInd qa a -> UTKInd qb b ->
   @MQInd _ _ (λ _ _, [f_quote (qa _ _) (qb _ _)]) (λ _ _, [(a _ _) (b _ _)]) FcMQC. *)
 
-Fixpoint FcMQCWithRoute [n m] (r : leroute n m) : @MQCT (FCWithNVars n) (FCWithNVars m) :=
-  match r in leroute n m return @MQCT (FCWithNVars n) (FCWithNVars m) with 
+Fixpoint FcMQCWithRoute [n m] (r : leroute n m) : MQCT (FCWithNVars n) (FCWithNVars m) :=
+  match r in leroute n m return MQCT (FCWithNVars n) (FCWithNVars m) with 
     | leroute_00 => FcMQC
     | leroute_Sm _ _ r => MQCOnStricterFormulaTypes (FcMQCWithRoute r)
     | leroute_Sn _ _ l r => OneMoreMQConstructor (@ omc_new _) (embedded_var_ind l) (MQCOnStricterFormulaTypes (FcMQCWithRoute r))
     end.
 
-Fixpoint FcMQCWithEmbeddings [n m] (u : upto n m) : @MQCT (FCWithNVars n) (FCWithNVars m) :=
-  match u in upto n m return @MQCT (FCWithNVars n) (FCWithNVars m) with 
+Fixpoint FcMQCWithEmbeddings [n m] (u : upto n m) : MQCT (FCWithNVars n) (FCWithNVars m) :=
+  match u in upto n m return MQCT (FCWithNVars n) (FCWithNVars m) with 
     | upto_0m _ => MQCOnStricterFormulaTypes FcMQC
     | upto_Sn n m e u => OneMoreMQConstructor (@ omc_new _) (embedded_var_ind e) (MQCOnStricterFormulaTypes (FcMQCWithEmbeddings u))
     end.
 
-Definition FcMQCWithNVars n := NMoreQuotvars n FcMQC.
+Definition FcMQCWithNVars n : MQCT (FCWithNVars n) (FCWithNVars n) := NMoreQuotvars n FcMQC.
 Print FcMQCWithNVars.
 
 Definition FcMQCWithEmbedNVars n := FcMQCWithEmbeddings (upto_nn n).
 
-Lemma FcMQCWithEmbeddings_deeper n m (u : upto n m) V (_v : Class _ V) MQ : 
+Lemma FcMQCWithEmbeddings_deeper n m (u : upto n m) : 
   (* this proof is messy , maybe clean it up later *) 
-  FcMQCWithEmbeddings u _v (mqt_on_looser_constructors MQ) ->
-FcMQCWithEmbeddings (upto_Sm u) _v MQ.
-  intro _f.
+  MQCSubclassOf (MQCOnStricterFormulaTypes (FcMQCWithEmbeddings u)) (FcMQCWithEmbeddings (upto_Sm u)).
+  unfold MQCSubclassOf; intros V _v TC2 eT MQ _f.
   induction u; [trivial|].
   cbn in *.
   destruct _v as (embed, new).
   destruct _f as (_fembed, _fnew).
-  specialize (IHu embed MQ _fembed).
+  specialize (IHu embed eT _fembed).
   split; cbn.
   {
     exact IHu.
@@ -1316,17 +1343,16 @@ FcMQCWithEmbeddings (upto_Sm u) _v MQ.
   }
 Qed.
 
-Lemma FcMQCWithEmbeddings_shallower n m (u : upto n m) V (_v : Class _ V) MQ : 
+Lemma FcMQCWithEmbeddings_shallower n m (u : upto n m) : 
   (* this proof is messy , maybe clean it up later *) 
-  FcMQCWithEmbeddings (upto_Sm u) _v MQ ->
-FcMQCWithEmbeddings u _v (mqt_on_looser_constructors MQ).
+  MQCSubclassOf (FcMQCWithEmbeddings (upto_Sm u)) (MQCOnStricterFormulaTypes (FcMQCWithEmbeddings u)).
 
-  intro _f.
+  unfold MQCSubclassOf; intros V _v TC2 eT MQ _f.
   induction u; [trivial|].
   cbn in *.
   destruct _v as (embed, new).
   destruct _f as (_fembed, _fnew).
-  specialize (IHu embed MQ _fembed).
+  specialize (IHu embed eT _fembed).
   split; cbn.
   {
     exact IHu.
@@ -1342,12 +1368,12 @@ Qed.
 
   
 Lemma FcMQCn_embed n : MQCSubclassOf (FcMQCWithNVars n) (FcMQCWithEmbedNVars n).
-  unfold MQCSubclassOf. intros V _v MQ _f.
+  unfold MQCSubclassOf. intros V _v TC2 eT MQ _f.
   induction n; [assumption|].
   cbn in *.
   destruct _v as (embed, new).
   destruct _f as (_fembed, _fnew).
-  specialize (IHn embed (mqt_on_looser_constructors MQ) _fembed).
+  specialize (IHn embed _ _fembed).
   split.
   {
     unfold MQCOnStricterFormulaTypes.
@@ -1364,19 +1390,19 @@ Qed.
 (* Lemma FcMQCembed_n n m (u : upto n m) V (_v : Class _ V) MQ : FcMQCWithEmbeddings u _v MQ -> FcMQCWithNVars n _v (mqt_on_looser_constructors MQ). *)
 
 Lemma FcMQCembed_n n  : MQCSubclassOf (FcMQCWithEmbedNVars n) (FcMQCWithNVars n).
-  unfold MQCSubclassOf. intros V _v MQ _f.
+  unfold MQCSubclassOf. intros V _v TC2 eT MQ _f.
   induction n; [assumption|].
 
   (* apply MQC_embed_under_stricter. *)
   cbn in *.
   destruct _v as (embed, new).
   destruct _f as (_fembed, _fnew).
-  specialize (IHn embed (mqt_on_looser_constructors MQ)).
+  specialize (IHn embed _).
   split.
   {
     unfold MQCOnStricterFormulaTypes in *.
     cbn in *.
-    exact (IHn (FcMQCWithEmbeddings_shallower _ _ _ _fembed)).
+    exact (IHn (FcMQCWithEmbeddings_shallower _ _ _ _ _fembed)).
   }
   {
     intros.
@@ -1610,7 +1636,7 @@ Lemma stricter_unpack_succ VC TC MQC V _v TC2 eT MQ :
 Qed.
 Print stricter_unpack_succ.
 
-Lemma stricter_unpack_n n VC TC (MQC : @MQCT VC TC) V _v TC2 eT MQ : 
+Lemma stricter_unpack_n n VC TC (MQC : MQCT VC TC) V _v TC2 eT MQ : 
     (NMoreQuotvars_without_new_MQCs n MQC)
       V _v TC2 eT MQ ->
     MQC V _ TC2 _ MQ.
@@ -1661,15 +1687,15 @@ Qed.
 Lemma FcMQCn_FcMQC [n] :
   MQCSubclassOf (FcMQCWithNVars n) (MQCOnStricterFormulaTypes FcMQC).
 
-  unfold MQCSubclassOf; intros V _v MQ _f.
+  unfold MQCSubclassOf; intros V _v TC2 eT MQ _f.
   apply FcMQCn_embed in _f.
-  generalize V _v MQ _f.
+  generalize V _v TC2 eT MQ _f.
   change (MQCSubclassOf (FcMQCWithEmbedNVars n) (MQCOnStricterFormulaTypes FcMQC)).
   apply FcMQCWithEmbeddings_FcMQC.  
 Qed.
-Arguments FcMQCn_FcMQC [n]%nat_scope [V _v MQ] _.
+Arguments FcMQCn_FcMQC [n]%nat_scope [V _v TC2 eT MQ] _.
 
-Lemma FcMQC_fold [n] [qf qg : FormulaWithNVars n] [MQ] (_mq : (FcMQCWithNVars n) (FormulaWithNVars n) _ MQ) [f : Ind (FCWithNVars n)] :
+(* Lemma FcMQC_fold [n] [qf qg : FormulaWithNVars n] TC2 eT [MQ] (_mq : (FcMQCWithNVars n) (FormulaWithNVars n) _ TC2 eT MQ) [f : Ind (FCWithNVars n)] :
   UnfoldStep qf qg ->
   MQ qg f ->
   MQ qf f.
@@ -1684,7 +1710,7 @@ Lemma FcMQC_fold [n] [qf qg : FormulaWithNVars n] [MQ] (_mq : (FcMQCWithNVars n)
 
   rewrite fcn_sub_fc_ends_at_f_fc.
   exact u.
-Qed.
+Qed. *)
 
 Lemma FcMQC_fold_ind [n] [qf qg : FormulaWithNVars n] [V _v TC2 eT MQ] (_mq : (FcMQCWithNVars n) V _v TC2 eT MQ) [f : Ind TC2] :
   UnfoldStep (fwn_to_ind qf V _v) (fwn_to_ind qg V _v) ->
@@ -1703,7 +1729,7 @@ Lemma FcMQC_fold_ind [n] [qf qg : FormulaWithNVars n] [V _v TC2 eT MQ] (_mq : (F
   exact u.
 Qed.
 
-Lemma FcMQC_Ind_fold n qf qg f :
+(* Lemma FcMQC_Ind_fold n qf qg f :
   UnfoldStep qf qg ->
   MQInd (MQC := FcMQCWithNVars n) qg f ->
   MQInd (MQC := FcMQCWithNVars n) qf f.
@@ -1711,7 +1737,7 @@ Lemma FcMQC_Ind_fold n qf qg f :
   unfold MQInd. intros u qg_means_f MQ _mq.
   specialize (qg_means_f MQ _mq).
   exact (FcMQC_fold _mq u qg_means_f).
-Qed.
+Qed. *)
 
 
 (****************************************************
@@ -1876,62 +1902,37 @@ Fixpoint get_quoted_formula steps [n] (qf : FormulaWithNVars n)
   end.
 
 Lemma ext_new_quotvar_rewrap_impl [n m] (embedding : ltr n m)
-  : ∀ V (_v : Class (FCWithNVars n) V), MQInd (MQC := FcMQCWithNVars n) (embedded_var_ind embedding V _) (embedded_var_ind embedding).
-  induction embedding.
+  : VInd_MQInd (MQC := FcMQCWithNVars m) (embedded_var_ind embedding) (embedded_var_ind embedding).
+  induction embedding; unfold VInd_MQInd, MQInd; intros; destruct _mq as (embed, new).
   {
-    unfold MQInd; intros.
-    destruct H as (_, newvar_cons); exact (newvar_cons V _).
+    exact (new _ {| omc_new := fc_atm atom_const |}).
   }
   {
-    intros.
-    cbn.
-    pose (IHembedding V _).
-    unfold MQInd; intros.
-    exact (m MQ).
-    destruct H.
-    cbn.
-
-    apply (IHembedding V _).
-    change (shortcut_omc_trans_apply subclass_refl _v) with (OneMoreConstructor_subclass _v).
-    (* change (shortcut_omc_trans_apply subclass_refl H1) with (OneMoreConstructor_subclass H1). *)
-    unfold shortcut_omc_trans_apply, subclass_apply.
-    unfold MQCOnStricterFormulaTypes in H.
-    change (subclass_trans subclass_refl OneMoreConstructor_subclass) with OneMoreConstructor_subclass in H.
-    rewrite subclass_trans_
-    unfold subclass_trans, subclass_apply, subclass_refl in H.
-    change 
-    exact H.
+    exact (IHembedding _ _ _ _ _ embed).
   }
+Qed.
 
 
 Lemma ext_quotvar_rewrap_impl [n m] (embeddings : upto n m) (e : NMoreExt n False)
-  : ∀ V (_v : Class (FCWithNVars m) V), MQInd (MQC := FcMQCWithNVars m) (ewnm_to_ind embeddings e V _) (ewnm_to_ind embeddings e).
+  : VInd_MQInd (MQC := FcMQCWithNVars m) (ewnm_to_ind embeddings e) (ewnm_to_ind embeddings e).
   induction embeddings; [contradiction|].
-  destruct e.
-  apply IHembeddings.
-  unfold MQInd; intros.
-  (* unfold ewnm_to_ind. *)
-  cbn.
+  destruct e; [apply IHembeddings|apply ext_new_quotvar_rewrap_impl].
+Qed.
 
-Lemma ext_quotvar_rewrap [n m] (embedding : ltr n m) (e : NMoreExt n False)
-  {VC}
-  : ∀ V (_v : Class (FCWithNVars m) V), MQInd (MQC := FcMQCWithNVars m) (ewn_to_ind e V _) (ewn_to_ind e).
+Lemma ext_quotvar_rewrap [n] (e : NMoreExt n False)
+  : VInd_MQInd (MQC := FcMQCWithNVars n) (ewn_to_ind e) (ind_on_stricter_constructors _ (ewn_to_ind e)).
   (* unfold subclass_apply. *)
 
   induction n; [contradiction|].
   destruct e; [refine ?[embed]|refine ?[new]].
 
   [new]: {
-    intros. unfold MQInd. intros MQ _mq.
-    destruct _mq.
-    exact (H0 _ _).
+    unfold VInd_MQInd, MQInd; intros.
+    destruct _mq as (embed, new).
+    exact (new _ {| omc_new := fc_atm atom_const |}).
   }
   [embed]: {
-    intros.
-    exact (IHn (ome_embed n0) _ MQ V _v0 T _t0).
-
-    destruct _mq.
-    exact (IHn n0 _ MQ V _v0 T _t0).
+    apply ext_quotvar_rewrap_impl.
   }
 Qed.
 
@@ -1939,28 +1940,27 @@ Qed.
 Lemma get_quoted_formula_correct
   steps [n] (qf : FormulaWithNVars n) f :
   get_quoted_formula steps qf = success f ->
-    ∀ V (_v : Class (FCWithNVars n) V),
-    MQInd (MQC := FcMQCWithNVars n) (fwn_to_ind qf _ _) f.
+    VInd_MQInd (MQC := FcMQCWithNVars n) (fwn_to_ind qf) f.
   
   refine ((fix r steps n (qf : FormulaWithNVars n) f :=
     match steps as n0 return (steps = n0) -> _ with 0 => _ | S pred => _ end eq_refl) steps n qf f)
     ; intros ne e; [discriminate|].
   
-  unfold MQInd; intros V _v MQ _mq.
   refine (match unfold_step qf as oqg return (unfold_step qf = oqg -> _) with
       | Some qg => _
       | None => _
       end eq_refl); intro fog; cbn in e; rewrite fog in e; [refine ?[unfold]|refine ?[flat]].
   
   [unfold]: {
+    unfold VInd_MQInd, MQInd; intros.
     pose (unfold_step_correct _ fog) as u.
-    specialize (r pred n qg f e _ _ _ _mq).
+    specialize (r pred n qg f e _ _ _ _ _ _mq).
     exact (FcMQC_fold_ind _mq (unfold_rewrap u _ _) r).
   }
   [flat]: {
     clear fog.
     
-    unfold MQInd; intros.
+    unfold VInd_MQInd, MQInd; intros.
     destruct (FcMQCn_FcMQC _mq) as (atmc, (unfc, aplc)).
 
     refine (match qf as qf0 return (qf = qf0) -> _ with
@@ -2000,13 +2000,13 @@ Lemma get_quoted_formula_correct
         pose (r pred _ _ _ eqa) as ar.
         pose (r pred _ _ _ eqb) as br.
         apply aplc.
-        exact (ar _ _ _ _mq).
-        exact (br _ _ _ _mq).
+        exact (ar _ _ _ _ _ _mq).
+        exact (br _ _ _ _ _ _mq).
     }
     [ext]: {
       (* clear atmc unfc aplc. *)
       injection e0 as <-.
-      exact (ext_quotvar_rewrap e MQ _mq V _v T _t).
+      exact (ext_quotvar_rewrap _ _ _ _ _mq).
     }
   }
 Qed.
@@ -2535,7 +2535,7 @@ Local Instance MQC : MQCT := FcMQCWithNVars n. *)
 
 (* Implicit Type VC : VConsClass.
 Implicit Type TC : TConsClass.
-Implicit Type MQC : @MQCT VC TC. *)
+Implicit Type MQC : MQCT VC TC. *)
 
 (* Variable VC : VConsClass.
 Variable TC : TConsClass.
