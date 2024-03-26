@@ -324,8 +324,8 @@ We must ask what the actual type of Rule is. A Rule must be agnostic to grammar-
 
 Definition InfSet T := T -> T -> Prop.
 Existing Class InfSet.
-Definition _proves {T} {infs:InfSet T} p c := infs p c.
-Notation "p ⊢ c" := (_proves p c) (at level 70).
+(* Definition _proves {T} {infs:InfSet T} p c := infs p c.
+Notation "p ⊢ c" := (_proves p c) (at level 70). *)
 
 Definition Rule {TC} := ∀ T (_:Class TC T), InfSet T -> Prop.
 
@@ -338,9 +338,22 @@ Inductive Ruleset {TC} :=
   | ruleset_forall : @Ruleset (OneMoreConstructor TC) -> Ruleset
    .
 
+Definition specialize_ind {TC} (f : Ind (OneMoreConstructor TC)) (x : Ind TC) : Ind TC :=
+  λ T _t, f T {| omc_new := (x _ _) |}.
+  
+
+(* wrong variable order:
+Fixpoint specialize_ruleset {TC} (R : @Ruleset (OneMoreConstructor TC)) (x : Ind TC) : @Ruleset TC :=
+  match R return Ruleset with
+  | ruleset_implies p c => ruleset_implies (specialize_ind p x) (specialize_ind c x)
+  | ruleset_and A B => ruleset_and (specialize_ruleset A x) (specialize_ruleset B x)
+  | ruleset_forall F => ruleset_forall (specialize_ruleset F (ind_on_stricter_constructors _ x))
+    end. *)
+    
+
 Fixpoint Ruleset_to_Coq [TC] (R : Ruleset) {T} {_t: Class TC T} (infs : InfSet T) : Prop :=
   match R with
-  | ruleset_implies p c => (p _ _) ⊢ (c _ _)
+  | ruleset_implies p c => infs (p _ _) (c _ _)
   | ruleset_and A B => Ruleset_to_Coq A _ ∧ Ruleset_to_Coq B _
   | ruleset_forall F => ∀ x, @Ruleset_to_Coq _ F _ {| omc_new := x |} _
   end.
@@ -409,6 +422,7 @@ Inductive Formula Ext :=
   | f_atm : Atom -> Formula Ext
   | f_ext : Ext -> Formula Ext
   | fo_apl : Formula Ext -> Formula Ext -> Formula Ext.
+Arguments f_atm [Ext] _.
 
 Inductive OneMoreExt OldExt :=
   | ome_embed : OldExt -> OneMoreExt OldExt
@@ -682,7 +696,7 @@ Fixpoint embed_formula
   Ext1 Ext2 (embed : Ext1 -> Ext2)
   (f : (Formula Ext1)) : (Formula Ext2)
   := match f with
-    | f_atm a => f_atm _ a
+    | f_atm a => f_atm a
     | f_ext a => f_ext (embed a)
     | fo_apl a b => [(embed_formula embed a) (embed_formula embed b)]
     end.
@@ -792,7 +806,7 @@ Fixpoint nth_new_var_in_wrong {Ext} n m
   IHn (OneMoreConstructor_subclass X)
 Defined. *)
 
-Require Import Vector.
+(* Require Import Vector.
 
 Fixpoint nth_var_in n m (vars : Vector.t (NMoreExt (S m) False) n) : (NMoreExt (S m) False).
   destruct vars.
@@ -801,7 +815,7 @@ Fixpoint nth_var_in n m (vars : Vector.t (NMoreExt (S m) False) n) : (NMoreExt (
 Defined.
 
 Definition embed_vars n m (vars : Vector.t (NMoreExt m False) n) : Vector.t (NMoreExt (S m) False) n
-  := map ome_embed vars.
+  := map ome_embed vars. *)
 (* 
 Definition vars_to_ n (vars : Vector.t (NMoreExt n False) n) :
   (FCWithNVars n)
@@ -814,7 +828,7 @@ Definition vars_to_ n (vars : Vector.t (NMoreExt n False) n) :
     omc_new := f_ext ome_new
   |}. *)
 
-Fixpoint vars_to_ n m (vars : Vector.t (NMoreExt m False) n) :
+(* Fixpoint vars_to_ n m (vars : Vector.t (NMoreExt m False) n) :
   (FCWithNVars n)
   (FormulaWithNVars m) :=
   match vars with 
@@ -829,7 +843,7 @@ Fixpoint right_vars n : Vector.t (NMoreExt n False) n :=
   match n with
     | 0 => Vector.nil _
     | S pred => Vector.cons _ ome_new _ (map ome_embed (right_vars pred))
-    end.
+    end. *)
 
 
 (* Instance fn_fcn n : Class
@@ -2178,8 +2192,8 @@ Qed.
 Definition f_id {F} `{FunctionConstructors F} : F := [fuse const const].
 
 Definition f_with_variable [Ext]
-  (fgen : Formula (@OneMoreExt Ext) ->
-          Formula (@OneMoreExt Ext)) : Formula :=
+  (fgen : Formula (OneMoreExt Ext) ->
+          Formula (OneMoreExt Ext)) : Formula (OneMoreExt Ext) :=
   (fgen (f_ext ome_new)).
 
 Fixpoint eliminate_abstraction
@@ -2324,8 +2338,8 @@ Eval compute in display_f dup.
 Eval compute in (get_prop_meaning_simplified 90 dup).
 
 Definition drop : StandardFormula :=
-  [∀a, [∀b,
-    [(quote_f [(a@1) & b]) -> b]
+  [∀a, [∀ctx,
+    [(quote_f [ctx & (a@1)]) -> ctx]
   ]].
 
 Definition and_sym : StandardFormula :=
@@ -2361,13 +2375,20 @@ Definition reflexivity {TC} : Rule
   := λ _ _ infs, ∀ a, infs a a.
 Definition transitivity {TC} : Rule
   := λ _ _ infs, ∀ a b c, infs a b -> infs b c -> infs a c.
+Arguments reflexivity {TC} {T} {_t} _.
+Arguments transitivity {TC} {T} {_t} _.
 
 Definition infs_provable_from {TC:TConsClass} (rules : Ruleset) :
-  ∀ T {_:Class TC T}, InfSet T
+  ∀ T {_t:Class TC T}, InfSet T
   := λ _ _ p c, ∀ infs,
-    (reflexivity _ infs
-    ∧ transitivity _ infs
-    ∧ Ruleset_to_Coq rules infs) -> infs p c.
+    reflexivity infs ->
+    transitivity infs ->
+    Ruleset_to_Coq rules infs ->
+    infs p c.
+Arguments infs_provable_from {TC} rules [T]%type_scope {_t} p c.
+
+Definition rules_implies {TC:TConsClass} (premise : Ruleset) (conclusion : Ruleset) : Prop
+  := ∀ T (_t:Class TC T) (infs : InfSet T), reflexivity infs -> transitivity infs -> Ruleset_to_Coq premise infs -> Ruleset_to_Coq conclusion infs.
 
 (****************************************************
           Putting together the axioms of IC
@@ -2397,6 +2418,160 @@ Eval compute in (simplify_meaning IC_external_rules).
 Definition IC_provable_infs := infs_provable_from IC_external_rules.
 Arguments IC_provable_infs {T _}.
 Definition IC_provable_props := IC_provable_infs IC_axioms.
+
+Definition IC_implements_inference_for
+  n axioms Axioms p P
+  (_a : FormulaMeans (MQC := FcMQCWithNVars n) axioms Axioms)
+  (_p : FormulaMeans (MQC := FcMQCWithNVars n) p P)
+  := (rules_implies Axioms P) -> (IC_provable_infs axioms p).
+Print IC_implements_inference_for.
+
+
+Definition IC_can_preserve_left_context_when_using [n]
+  (r : @Ruleset (FCWithNVars n)) := ∀ ctx p c, (infs_provable_from r p c) -> (IC_provable_infs [ctx & p] [ctx & c]).
+Print IC_can_preserve_left_context_when_using.
+
+Lemma rules_positive {TC} T (_t : Class TC T) R (infs0 infs1 : InfSet T) :
+  (∀ p c, infs0 p c -> infs1 p c) -> Ruleset_to_Coq R infs0 -> Ruleset_to_Coq R infs1.
+  induction R; cbn.
+  intros; apply H; assumption.
+  {
+    intros. destruct H0.
+    split.
+    apply IHR1; assumption.
+    apply IHR2; assumption.
+  }
+  {
+    intros.
+    apply IHR.
+    assumption.
+    apply H0.
+  }
+Qed.
+Print rules_positive.
+
+Lemma and_proves_more_left {TC} T (_t : Class TC T)
+  (R S : @Ruleset TC) p c : infs_provable_from R (T:=T) p c -> infs_provable_from (ruleset_and R S) p c.
+  unfold infs_provable_from. intros.
+  destruct H2.
+  apply H; assumption.
+Qed.
+
+Lemma and_proves_more_right {TC} T (_t : Class TC T)
+  (R S : @Ruleset TC) p c : infs_provable_from S (T:=T) p c -> infs_provable_from (ruleset_and R S) p c.
+  unfold infs_provable_from. intros.
+  destruct H2.
+  apply H; assumption.
+Qed.
+
+Lemma forall_proves_more {TC}
+  (R : @Ruleset (OneMoreConstructor TC)) : ∀ T (_t : Class TC T) (x : T) p c, infs_provable_from R (_t := {| omc_new := x |}) p c -> infs_provable_from (ruleset_forall R) p c.
+  intros.
+  unfold infs_provable_from. intros.
+  (* apply H; solve [unfold infs_provable_from; intros; assumption] || idtac.
+  unfold reflexivity. intros.  *)
+  
+  apply H; [assumption | assumption | apply H2].
+  (* change (λ p0 c0 : T, infs p0 c0) with infs. *)
+  (* Set Printing Implicit. *)
+  (* cbn in H2. *)
+  (* exact (H2 x). *)
+Qed.
+
+Lemma provable_obey_rules {TC} T (_t : Class TC T) (R : @Ruleset TC) : Ruleset_to_Coq R (infs_provable_from R (T:=T)).
+  induction R; cbn.
+  { unfold infs_provable_from. intros. apply H1. }
+  {
+    split.
+    eapply rules_positive; [|apply IHR1].
+    apply and_proves_more_left.
+    eapply rules_positive; [|apply IHR2].
+    apply and_proves_more_right.
+  }
+  {
+    intro.
+    eapply rules_positive; [|apply IHR].
+    apply forall_proves_more.
+  }
+Qed.
+  
+
+Lemma rules_implies_and_intro {TC} A B C : rules_implies A B -> rules_implies A C -> rules_implies A (ruleset_and B C).
+  intros _B _C.
+  unfold rules_implies in *. intros T _t infs refl trans rp.
+  split.
+  apply _B; assumption.
+  apply _C; assumption.
+Qed.
+
+Lemma IC_can_preserve_left_context_when_using__and n a b :
+  IC_can_preserve_left_context_when_using a ->
+  IC_can_preserve_left_context_when_using b ->
+  @IC_can_preserve_left_context_when_using n (ruleset_and a b).
+  
+  intros _a _b.
+  unfold IC_can_preserve_left_context_when_using; intros.
+  (* unfold IC_provable_infs, infs_provable_from; intros infs refl trans icp. *)
+
+  unfold infs_provable_from in H.
+
+  apply H.
+
+  { intros f infs refl trans icp. apply refl. }
+
+  { intros x y z xy yz infs refl trans icp. exact (trans _ _ _ (xy _ refl trans icp) (yz _ refl trans icp)). }
+
+  cbn.
+  split.
+  { 
+    refine (rules_positive _ a _ _ _ _).
+    apply _a.
+    apply provable_obey_rules.
+  }
+  { 
+    refine (rules_positive _ b _ _ _ _).
+    apply _b.
+    apply provable_obey_rules.
+  }
+Qed.
+  
+
+
+Lemma IC_implements_inference_case__and
+  n axioms Axioms p P q Q
+  (_a : FormulaMeans (MQC := FcMQCWithNVars n) axioms Axioms)
+  (_p : FormulaMeans (MQC := FcMQCWithNVars n) p P)
+  (_q : FormulaMeans (MQC := FcMQCWithNVars n) q Q)
+  (IHp : IC_implements_inference_for _a _p)
+  (IHq : IC_implements_inference_for _a _q)
+  : IC_implements_inference_for _a (mi_and _p _q).
+  unfold IC_implements_inference_for, rules_implies in *.
+  intros.
+  cbn in H.
+  (* apply proj1 in H. *)
+  assert (IC_provable_infs axioms p). { apply IHp. intros. destruct (H _ _ _ H0 H1 H2). assumption. }
+  assert (IC_provable_infs axioms q). { apply IHq. intros. destruct (H _ _ _ H1 H2 H3). assumption. }
+  clear IHp IHq H.
+  
+  intros infs refl trans icp.
+  (* specialize (H0 infs refl trans icp).
+  specialize (H1 infs refl trans icp). *)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 (* Definition tejhst : 
   ∀ (Axioms : ∀ {T} {_:Class FormulaConstructors T}, InfSet T -> Prop)
@@ -2432,14 +2607,14 @@ Definition IC_provable_props := IC_provable_infs IC_axioms.
 Qed. *)
 
 
-Lemma fwn_ind_roundtrip n (x : Ind (FCWithNVars n)) T _t : 
-(fwn_to_ind (x (FormulaWithNVars n) _) T _t).
+(* Lemma fwn_ind_roundtrip n (x : Ind (FCWithNVars n)) T _t : 
+(fwn_to_ind (x (FormulaWithNVars n) _) T _t). *)
 
 (* Set Printing Implicit. *)
 Lemma mq_fwn_ind_roundtrip n :
     let VC : VConsClass := FCWithNVars n in
     let TC : TConsClass := FCWithNVars n in
-    let MQC : MQCT := FcMQCWithNVars n in
+    let MQC : MQCT VC TC := FcMQCWithNVars n in
     ∀ qx x,
       MQInd qx x ->
       MQInd qx
@@ -2594,9 +2769,9 @@ Lemma implies_case {n}
       (qp qc : ∀ {V} {_:Class (FCWithNVars n) V}, V)
       (p c : ∀ {T} {_:Class (FCWithNVars n) T}, T)
       :
-      let _ : VConsClass := FCWithNVars n in
-      let _ : TConsClass := FCWithNVars n in
-      let _ : MQCT := FcMQCWithNVars n in
+      let VC : VConsClass := FCWithNVars n in
+      let TC : TConsClass := FCWithNVars n in
+      let MQC : MQCT VC TC := FcMQCWithNVars n in
       (MQInd (@qp) (@p)) ->
       (MQInd (@qc) (@c)) ->
       IH n
