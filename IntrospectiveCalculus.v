@@ -2428,6 +2428,9 @@ Definition transitivity {TC} : Rule
 Arguments reflexivity {TC} {T} {_t} _.
 Arguments transitivity {TC} {T} {_t} _.
 
+Definition infs_stated_by {TC:TConsClass} (rules : Ruleset) :
+  ∀ T {_t:Class TC T}, InfSet T
+  := λ _ _ p c, ∀ infs, Ruleset_to_Coq rules infs -> infs p c.
 Definition infs_provable_from {TC:TConsClass} (rules : Ruleset) :
   ∀ T {_t:Class TC T}, InfSet T
   := λ _ _ p c, ∀ infs,
@@ -2435,6 +2438,7 @@ Definition infs_provable_from {TC:TConsClass} (rules : Ruleset) :
     transitivity infs ->
     Ruleset_to_Coq rules infs ->
     infs p c.
+Arguments infs_stated_by {TC} rules [T]%type_scope {_t} p c.
 Arguments infs_provable_from {TC} rules [T]%type_scope {_t} p c.
 
 Check "2".
@@ -2505,6 +2509,10 @@ Lemma rules_positive {TC} T (_t : Class TC T) R (infs0 infs1 : InfSet T) :
 Qed.
 Print rules_positive.
 
+Definition rules_prove_what_they_say {TC} R T (_t : Class TC T) p c : infs_stated_by R p c -> infs_provable_from R p c.
+  intros iR infs refl trans r. exact (iR _ r).
+Qed.
+
 Lemma and_proves_more_left {TC} T (_t : Class TC T)
   (R S : @Ruleset TC) p c : infs_provable_from R (T:=T) p c -> infs_provable_from (ruleset_and R S) p c.
   unfold infs_provable_from. intros.
@@ -2549,6 +2557,34 @@ Lemma provable_obey_rules {TC} T (_t : Class TC T) (R : @Ruleset TC) : Ruleset_t
     apply forall_proves_more.
   }
 Qed.
+
+Lemma proof_trans {TC} {R} [T] [_t : Class TC T] [a b c] : infs_provable_from R a b -> infs_provable_from R b c -> infs_provable_from R a c.
+  intros ab bc infs refl trans r.
+  exact (trans _ _ _ (ab _ refl trans r) (bc _ refl trans r)).
+Qed.
+
+Lemma proof_apply_implied_rule {TC} [T] [_t : Class TC T] [A B p c] : rules_implies A B -> infs_stated_by B p c -> infs_provable_from A p c.
+  Print rules_implies.
+  intros AB pB infs refl trans r.
+  apply pB; trivial.
+  apply AB; trivial.
+Qed.
+
+Ltac proof_finish imp := timeout 1 (let r := fresh "r" in refine (proof_apply_implied_rule imp (λ infs r, _)); apply r).
+Ltac proof_step_cleanup := timeout 1 (change (infs_provable_from IC_external_rules ?p ?c) with (IC_provable_infs p c); cbn).
+Ltac proof_step_left imp := timeout 1 (eapply proof_trans; [
+    proof_finish imp
+    |
+    proof_step_cleanup
+  ]).
+(* Ltac proof_steps := *)
+(* eapply proof_trans; [apply (proof_apply_implied_rule imp)|]. *)
+Ltac do_with_left_context ctxlemma := 
+  timeout 1 (eapply proof_trans; [
+    apply ctxlemma; apply rules_prove_what_they_say; intros infs r; apply r
+    |
+    proof_step_cleanup
+  ]).
   
 
 Lemma rules_implies_refl {TC} A : rules_implies A A.
@@ -2584,6 +2620,7 @@ Lemma rules_implies_search_right {TC} A B C : rules_implies B C -> rules_implies
   apply B_C; assumption.
 Qed.
 
+
 Create HintDb search_for_rule_in_and_tree.
 Hint Immediate rules_implies_refl : search_for_rule_in_and_tree.
 Hint Resolve rules_implies_search_left : search_for_rule_in_and_tree.
@@ -2592,7 +2629,7 @@ Hint Resolve rules_implies_search_right : search_for_rule_in_and_tree.
 
 
 
-Lemma IC_can_preserve_left_context_when_using__and n a b :
+Lemma Icplcwu__and n a b :
   IC_can_preserve_left_context_when_using a ->
   IC_can_preserve_left_context_when_using b ->
   @IC_can_preserve_left_context_when_using n (ruleset_and a b).
@@ -2607,7 +2644,7 @@ Lemma IC_can_preserve_left_context_when_using__and n a b :
 
   { intros f infs refl trans icp. apply refl. }
 
-  { intros x y z xy yz infs refl trans icp. exact (trans _ _ _ (xy _ refl trans icp) (yz _ refl trans icp)). }
+  { intros x y z. apply proof_trans. }
 
   cbn.
   split.
@@ -2624,25 +2661,43 @@ Lemma IC_can_preserve_left_context_when_using__and n a b :
 Qed.
 
 Lemma IC_dup : rules_implies IC_external_rules rule_dup.
-  cbn.
+  (* This works but it's expensive, so I leave it off during development: *)
+  (* cbn.
   auto with search_for_rule_in_and_tree.
-Qed.
+Qed. *)
+  admit.
+Admitted.
 Lemma IC_drop : rules_implies IC_external_rules rule_drop.
-  cbn.
+  (* This works but it's expensive, so I leave it off during development: *)
+  (* cbn.
   auto with search_for_rule_in_and_tree.
-Qed.
+Qed. *)
+  admit.
+Admitted.
 Lemma IC_and_sym : rules_implies IC_external_rules rule_and_sym.
-  cbn.
+  (* This works but it's expensive, so I leave it off during development: *)
+  (* cbn.
   auto with search_for_rule_in_and_tree.
-Qed.
+Qed. *)
+  admit.
+Admitted.
 Lemma IC_and_assoc_left : rules_implies IC_external_rules rule_and_assoc_left.
-  cbn.
+  (* This works but it's expensive, so I leave it off during development: *)
+  (* cbn.
   auto with search_for_rule_in_and_tree.
-Qed.
+Qed. *)
+  admit.
+Admitted.
 Lemma IC_and_assoc_right : rules_implies IC_external_rules rule_and_assoc_right.
-  cbn.
+  (* This works but it's expensive, so I leave it off during development: *)
+  (* cbn.
   auto with search_for_rule_in_and_tree.
-Qed.
+Qed. *)
+  admit.
+Admitted.
+
+Ltac do_with_right_context ctxlemma :=
+  proof_step_left IC_and_sym; do_with_left_context ctxlemma; proof_step_left IC_and_sym.
 
 Inductive InAndTree [n] : FormulaWithNVars n -> FormulaWithNVars n -> Prop :=
   | iat_here f : InAndTree f f
@@ -2659,46 +2714,102 @@ Inductive ConjunctiveCover [n] : FormulaWithNVars n -> FormulaWithNVars n -> Pro
 (* Definition a : string -> option (FormulaWithNVars 0) := (λ _, None).
 String Notation FormulaWithNVars a a :  . *)
 
-Lemma IC_can_preserve_left_context_when_using__dup :
+Ltac Icplcwu_setup := 
+  unfold IC_can_preserve_left_context_when_using; intros ctx p c H; apply H; [
+    intros f infs refl trans icp; apply refl |
+    intros x y z xy yz infs refl trans icp; exact (trans _ _ _ (xy _ refl trans icp) (yz _ refl trans icp)) |
+    cbn
+  ].
+
+Lemma Icplcwu__dup :
   IC_can_preserve_left_context_when_using rule_dup.
+  Icplcwu_setup. intro a.
 
-  unfold IC_can_preserve_left_context_when_using; intros.
-  unfold infs_provable_from in H.
-  apply H.
-  { intros f infs refl trans icp. apply refl. }
-  { intros x y z xy yz infs refl trans icp. exact (trans _ _ _ (xy _ refl trans icp) (yz _ refl trans icp)). }
-
-  cbn. intro.
-  intros infs refl trans icp.
-Print transitivity.
-  refine (trans _ _ _ (IC_dup refl trans icp _) _). cbn.
-  eapply trans. apply (IC_and_assoc_right refl trans icp). cbn.
-  eapply trans. apply (IC_and_sym refl trans icp). cbn.
-  eapply trans. apply (IC_drop refl trans icp). cbn.
-  eapply trans. apply (IC_and_sym refl trans icp). cbn.
-  apply (IC_and_assoc_right refl trans icp).
+  proof_step_left IC_dup.
+  proof_step_left IC_and_assoc_right.
+  proof_step_left IC_and_sym.
+  proof_step_left IC_drop.
+  proof_step_left IC_and_sym.
+  proof_finish IC_and_assoc_right.
 Qed.
 
-Lemma IC_can_preserve_left_context_when_using__drop :
+Lemma Icplcwu__drop :
   IC_can_preserve_left_context_when_using rule_drop.
-
-  unfold IC_can_preserve_left_context_when_using; intros.
-  unfold infs_provable_from in H.
-  apply H.
-  { intros f infs refl trans icp. apply refl. }
-  { intros x y z xy yz infs refl trans icp. exact (trans _ _ _ (xy _ refl trans icp) (yz _ refl trans icp)). }
-
-  cbn. intros a b.
-  intros infs refl trans icp.
-
-  eapply trans. apply (IC_and_assoc_left refl trans icp). cbn.
-  apply (IC_drop refl trans icp).
+  Icplcwu_setup. intros a b.
+  
+  proof_step_left IC_and_assoc_left.
+  proof_finish IC_drop.
 Qed.
+
+Lemma Icplcwu__and_sym :
+  IC_can_preserve_left_context_when_using rule_and_sym.
+  Icplcwu_setup. intros a b.
+  
+  proof_step_left IC_dup.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_drop.
+  proof_step_left IC_and_sym.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_drop.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_and_sym.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_drop.
+  proof_step_left IC_and_assoc_left.
+  proof_finish IC_and_sym.
+Qed.
+
+Lemma Icplcwu__and_assoc_left :
+  IC_can_preserve_left_context_when_using rule_and_assoc_left.
+  Icplcwu_setup. intros x y z.
+  proof_step_left IC_dup.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_drop.
+  proof_step_left IC_and_assoc_right.
+  proof_step_left IC_and_sym.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_drop.
+  proof_step_left IC_and_assoc_left.
+  do_with_left_context Icplcwu__and_sym.
+  do_with_left_context Icplcwu__drop.
+  do_with_left_context Icplcwu__and_sym.
+  do_with_left_context Icplcwu__drop.
+  do_with_right_context Icplcwu__and_sym.
+  proof_finish IC_and_assoc_right.
+Qed.
+
+Lemma Icplcwu__and_assoc_right :
+  IC_can_preserve_left_context_when_using rule_and_assoc_right.
+  Icplcwu_setup. intros x y z.
+  proof_step_left IC_dup.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_and_sym.
+  proof_step_left IC_and_assoc_left.
+  do_with_left_context Icplcwu__and_sym.
+  do_with_left_context Icplcwu__drop.
+  proof_step_left IC_and_sym.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_drop.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_drop.
+  proof_step_left IC_and_assoc_left.
+  proof_step_left IC_drop.
+  proof_step_left IC_and_sym.
+  proof_step_left IC_and_assoc_left.
+  proof_finish IC_and_sym.
+Qed.  
 
 
 
 Create HintDb IC_can_preserve_left_context.
-Hint Resolve IC_can_preserve_left_context_when_using__and : IC_can_preserve_left_context.
+Hint Resolve Icplcwu__and : IC_can_preserve_left_context.
   
 
 
