@@ -553,6 +553,7 @@ Definition FCWithNVars n : Type -> Type := NMoreConstructors n FormulaConstructo
 
 (* we could write (Formula False) instead, but this makes inference easier *)
 Definition StandardFormula := FormulaWithNVars 0.
+Definition StandardRuleset := @Ruleset (FCWithNVars 0).
 (* Fixpoint sf_to_ind (f : StandardFormula)
   : Ind FormulaConstructors
   := λ _ _, match f with
@@ -2319,57 +2320,107 @@ Fixpoint embed_nmore n [Ext] (f : Formula Ext)
     end.
 Notation "f @ n" := (embed_nmore n f) (at level 0).
 
+Definition f_default {Ext} : Formula Ext := const.
+Definition sf_default : StandardFormula := f_default.
+Definition default_ruleset : Ruleset := ruleset_implies (fwn_to_ind sf_default) (fwn_to_ind sf_default).
+
+Definition ax_meaning (ax : StandardFormula) : StandardRuleset := match get_prop_meaning 900 ax with
+  | success r => r
+  | _ => default_ruleset
+  end.
+
+Definition StandardMeans := FormulaMeans (MQC := FcMQCWithNVars 0) (V := StandardFormula).
+(* Definition ax_means_rule (ax : StandardFormula) : StandardMeans ax (ax_meaning ax). *)
 
 (****************************************************
               Concrete axioms of IC
 ****************************************************)
+Check "0".
 
 Definition ax_refl : StandardFormula :=
   [∀a, [a -> a]].
 (* Definition ax_trans : StandardFormula :=
   [∀a, [a -> a]]. *)
+Definition rule_refl : StandardRuleset := Eval cbn in ax_meaning ax_refl.
+Definition amr_refl : StandardMeans ax_refl rule_refl := get_prop_meaning_correct 900 ax_refl eq_refl _ _.
 
-Definition dup : StandardFormula :=
+Definition ax_dup : StandardFormula :=
   [∀a,
     [a -> (quote_f [a & a])]
   ].
-Eval compute in display_f dup.
-Eval compute in (get_prop_meaning_simplified 90 dup).
+Definition rule_dup : StandardRuleset := Eval cbn in ax_meaning ax_dup.
+Eval compute in display_f ax_dup.
+Eval compute in (get_prop_meaning 90 ax_dup).
+Eval compute in (get_prop_meaning_simplified 90 ax_dup).
+Print rule_dup.
 
-Definition drop : StandardFormula :=
+
+(* Definition f_default {Ext} : Formula Ext := const.
+Definition sf_default : StandardFormula := f_default.
+Definition default_ruleset : Ruleset := ruleset_implies (fwn_to_ind sf_default) (fwn_to_ind sf_default).
+Lemma uhh : @Ruleset FormulaConstructors.
+  (* pose (λ (T : Type) (H : OneMoreConstructor
+  FormulaConstructors T),
+  let (_, omc_new0) := H in omc_new0). *)
+
+  pose (get_prop_meaning 90 ax_dup).
+  cbn in g.
+
+  pose (match g with
+  | success r => r
+  | _ => default_ruleset
+  end).
+  unfold g in m.
+  exact m.
+Defined.
+Print uhh.
+  cbn in .
+  compute in g.
+  change (let (apply0) :=
+  let (_, fc_apl0) :=
+  let (omc_embed0, _) := H in omc_embed0 in
+fc_apl0 in
+apply0) with (
+  let (_, fc_apl0) :=
+  let (omc_embed0, _) := H in omc_embed0 in
+fc_apl0) in g. *)
+
+Definition ax_drop : StandardFormula :=
   [∀a, [∀ctx,
     [(quote_f [ctx & (a@1)]) -> ctx]
   ]].
+Definition rule_drop : StandardRuleset := Eval cbn in ax_meaning ax_drop.
 
-Definition and_sym : StandardFormula :=
+Definition ax_and_sym : StandardFormula :=
   [∀a, [∀b,
     [(quote_f [(a@1) & b])
     -> (quote_f [b & (a@1)])]
   ]].
-Eval compute in display_f and_sym.
-(* Eval cbv beta iota delta in and_sym. *)
-Eval compute in (get_prop_meaning_simplified 90 and_sym).
+Definition rule_and_sym : StandardRuleset := Eval cbn in ax_meaning ax_and_sym.
+Eval compute in display_f ax_and_sym.
+(* Eval cbv beta iota delta in ax_and_sym. *)
+Eval compute in (get_prop_meaning_simplified 90 ax_and_sym).
 
-Definition and_assoc_left : StandardFormula :=
+Definition ax_and_assoc_left : StandardFormula :=
   [∀a, [∀b, [∀c,
     [(quote_f [(a@2) & [(b@1) & c]])
     -> (quote_f [[(a@2) & (b@1)] & c])]
   ]]].
-Eval compute in (get_prop_meaning_simplified 1890 and_assoc_left).
+Definition rule_and_assoc_left : StandardRuleset := Eval cbn in ax_meaning ax_and_assoc_left.
+Eval compute in (get_prop_meaning_simplified 1890 ax_and_assoc_left).
 
-Definition and_assoc_right : StandardFormula :=
+Definition ax_and_assoc_right : StandardFormula :=
   [∀a, [∀b, [∀c,
     [(quote_f [[(a@2) & (b@1)] & c])
     -> (quote_f [(a@2) & [(b@1) & c]])]
   ]]].
+Definition rule_and_assoc_right : StandardRuleset := Eval cbn in ax_meaning ax_and_assoc_right.
 
 (****************************************************
               Definitions of inference
 ****************************************************)
+Check "1".
 
-Definition f_default {Ext} : Formula Ext := const.
-Definition sf_default : StandardFormula := f_default.
-Definition default_ruleset : Ruleset := ruleset_implies (fwn_to_ind sf_default) (fwn_to_ind sf_default).
 Definition reflexivity {TC} : Rule
   := λ _ _ infs, ∀ a, infs a a.
 Definition transitivity {TC} : Rule
@@ -2385,6 +2436,8 @@ Definition infs_provable_from {TC:TConsClass} (rules : Ruleset) :
     Ruleset_to_Coq rules infs ->
     infs p c.
 Arguments infs_provable_from {TC} rules [T]%type_scope {_t} p c.
+
+Check "2".
 
 Definition rules_implies {TC:TConsClass} (premise : Ruleset) (conclusion : Ruleset) : Prop
   := ∀ T (_t:Class TC T) (infs : InfSet T), reflexivity infs -> transitivity infs -> Ruleset_to_Coq premise infs -> Ruleset_to_Coq conclusion infs.
@@ -2403,15 +2456,18 @@ Definition rules_implies {TC:TConsClass} (premise : Ruleset) (conclusion : Rules
 
 Definition IC_axioms : StandardFormula := 
   [
-    [ax_refl & [dup & drop]]
-    & [and_sym & [and_assoc_left & and_assoc_right]]].
+    [ax_refl & [ax_dup & ax_drop]]
+    & [ax_and_sym & [ax_and_assoc_left & ax_and_assoc_right]]].
 
 Definition IC_external_rules : Ruleset :=
+(* Eval cbn in *)
   match get_prop_meaning 900 IC_axioms with
   | success r => r
   | _ => default_ruleset
   end.
+(* Print IC_external_rules. *)
 Eval compute in (simplify_meaning IC_external_rules).
+Check "3".
 
 
 Definition IC_provable_infs := infs_provable_from IC_external_rules.
@@ -2495,6 +2551,9 @@ Lemma provable_obey_rules {TC} T (_t : Class TC T) (R : @Ruleset TC) : Ruleset_t
 Qed.
   
 
+Lemma rules_implies_refl {TC} A : rules_implies A A.
+  unfold rules_implies; trivial.
+Qed.
 Lemma rules_implies_and_intro {TC} A B C : rules_implies A B -> rules_implies A C -> rules_implies A (ruleset_and B C).
   intros _B _C.
   unfold rules_implies in *. intros T _t infs refl trans rp.
@@ -2502,6 +2561,36 @@ Lemma rules_implies_and_intro {TC} A B C : rules_implies A B -> rules_implies A 
   apply _B; assumption.
   apply _C; assumption.
 Qed.
+Lemma rules_implies_and_proj1 {TC} A B C : rules_implies A (ruleset_and B C) -> rules_implies A B.
+  intro A_BC.
+  unfold rules_implies in *. intros T _t infs refl trans rp.
+  apply A_BC; assumption.
+Qed.
+Lemma rules_implies_and_proj2 {TC} A B C : rules_implies A (ruleset_and B C) -> rules_implies A C.
+  intro A_BC.
+  unfold rules_implies in *. intros T _t infs refl trans rp.
+  apply A_BC; assumption.
+Qed.
+Lemma rules_implies_search_left {TC} A B C : rules_implies A C -> rules_implies (ruleset_and A B) C.
+  intro A_C.
+  unfold rules_implies in *. intros T _t infs refl trans rp.
+  destruct rp.
+  apply A_C; assumption.
+Qed.
+Lemma rules_implies_search_right {TC} A B C : rules_implies B C -> rules_implies (ruleset_and A B) C.
+  intro B_C.
+  unfold rules_implies in *. intros T _t infs refl trans rp.
+  destruct rp.
+  apply B_C; assumption.
+Qed.
+
+Create HintDb search_for_rule_in_and_tree.
+Hint Immediate rules_implies_refl : search_for_rule_in_and_tree.
+Hint Resolve rules_implies_search_left : search_for_rule_in_and_tree.
+Hint Resolve rules_implies_search_right : search_for_rule_in_and_tree.
+
+
+
 
 Lemma IC_can_preserve_left_context_when_using__and n a b :
   IC_can_preserve_left_context_when_using a ->
@@ -2533,6 +2622,83 @@ Lemma IC_can_preserve_left_context_when_using__and n a b :
     apply provable_obey_rules.
   }
 Qed.
+
+Lemma IC_dup : rules_implies IC_external_rules rule_dup.
+  cbn.
+  auto with search_for_rule_in_and_tree.
+Qed.
+Lemma IC_drop : rules_implies IC_external_rules rule_drop.
+  cbn.
+  auto with search_for_rule_in_and_tree.
+Qed.
+Lemma IC_and_sym : rules_implies IC_external_rules rule_and_sym.
+  cbn.
+  auto with search_for_rule_in_and_tree.
+Qed.
+Lemma IC_and_assoc_left : rules_implies IC_external_rules rule_and_assoc_left.
+  cbn.
+  auto with search_for_rule_in_and_tree.
+Qed.
+Lemma IC_and_assoc_right : rules_implies IC_external_rules rule_and_assoc_right.
+  cbn.
+  auto with search_for_rule_in_and_tree.
+Qed.
+
+Inductive InAndTree [n] : FormulaWithNVars n -> FormulaWithNVars n -> Prop :=
+  | iat_here f : InAndTree f f
+  | iat_left f g : InAndTree f [f & g]
+  | iat_right f g : InAndTree g [f & g].
+
+Inductive ConjunctiveCover [n] : FormulaWithNVars n -> FormulaWithNVars n -> Prop :=
+  | cc_in f g : InAndTree f g -> ConjunctiveCover f g
+  | cc_and f g h : ConjunctiveCover f g -> ConjunctiveCover f h -> ConjunctiveCover f [g & h].
+
+(* Lemma IC_proves_covered f g : ConjunctiveCover f g -> IC_provable_infs f g.
+  intro H. induction H. *)
+
+(* Definition a : string -> option (FormulaWithNVars 0) := (λ _, None).
+String Notation FormulaWithNVars a a :  . *)
+
+Lemma IC_can_preserve_left_context_when_using__dup :
+  IC_can_preserve_left_context_when_using rule_dup.
+
+  unfold IC_can_preserve_left_context_when_using; intros.
+  unfold infs_provable_from in H.
+  apply H.
+  { intros f infs refl trans icp. apply refl. }
+  { intros x y z xy yz infs refl trans icp. exact (trans _ _ _ (xy _ refl trans icp) (yz _ refl trans icp)). }
+
+  cbn. intro.
+  intros infs refl trans icp.
+Print transitivity.
+  refine (trans _ _ _ (IC_dup refl trans icp _) _). cbn.
+  eapply trans. apply (IC_and_assoc_right refl trans icp). cbn.
+  eapply trans. apply (IC_and_sym refl trans icp). cbn.
+  eapply trans. apply (IC_drop refl trans icp). cbn.
+  eapply trans. apply (IC_and_sym refl trans icp). cbn.
+  apply (IC_and_assoc_right refl trans icp).
+Qed.
+
+Lemma IC_can_preserve_left_context_when_using__drop :
+  IC_can_preserve_left_context_when_using rule_drop.
+
+  unfold IC_can_preserve_left_context_when_using; intros.
+  unfold infs_provable_from in H.
+  apply H.
+  { intros f infs refl trans icp. apply refl. }
+  { intros x y z xy yz infs refl trans icp. exact (trans _ _ _ (xy _ refl trans icp) (yz _ refl trans icp)). }
+
+  cbn. intros a b.
+  intros infs refl trans icp.
+
+  eapply trans. apply (IC_and_assoc_left refl trans icp). cbn.
+  apply (IC_drop refl trans icp).
+Qed.
+
+
+
+Create HintDb IC_can_preserve_left_context.
+Hint Resolve IC_can_preserve_left_context_when_using__and : IC_can_preserve_left_context.
   
 
 
@@ -3845,10 +4011,10 @@ Fixpoint forall_n n :=
     | S pred => [p => [(forall_n pred) [l => [∀x, [p (f_pair x l)]]]]]
     end.
 
-Definition and_sym : StandardFormula :=
+Definition ax_and_sym : StandardFormula :=
   [(forall_n 2) [[@0 & @1] -> [@1 & @0]]].
 
-Eval lazy in (get_prop_meaning_simplified 90 and_sym).
+Eval lazy in (get_prop_meaning_simplified 90 ax_and_sym).
 
 (* Definition TrueOf2 Infs f : Prop :=
   InfsAssertedBy f ⊆2 Infs.
@@ -4446,11 +4612,11 @@ Definition rule_external (rule : ReifiedRule) : InfSet.
 Definition rule_internal (rule : ReifiedRule) : Formula.
   admit. Admitted.
 
-Definition and_sym : ReifiedRule.
+Definition ax_and_sym : ReifiedRule.
   admit. Admitted.
 
 Definition IC_reified_rules : list ReifiedRule :=
-  and_sym ::
+  ax_and_sym ::
   nil.
 
 Definition axioms rules : Formula :=
@@ -4470,7 +4636,7 @@ Definition IC :=
   IC_axioms_rule
   IC_reified_rules.
 
-Lemma and_sym_known : (rule_external and_sym ⊆2 KnownInferences 1).
+Lemma and_sym_known : (rule_external ax_and_sym ⊆2 KnownInferences 1).
 Qed.
 
 Lemma IC_external_rules_known :
@@ -4598,9 +4764,9 @@ Lemma predimp_trans_required a b c :
 Qed.
 
 Inductive IC : InfSet :=
-  | drop a b : IC [a & b] a
-  | dup a b : IC [a & b] [[a & a] & b]
-  | and_sym a b : IC [a & b] [b & a]
+  | ax_drop a b : IC [a & b] a
+  | ax_dup a b : IC [a & b] [[a & a] & b]
+  | ax_and_sym a b : IC [a & b] [b & a]
   | and_assoc1 a b c : IC [a & [b & c]] [[a & b] & c]
   | and_assoc2 a b c : IC [[a & b] & c] [a & [b & c]]
   | predimp_trans a b c t :
