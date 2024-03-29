@@ -691,6 +691,10 @@ Instance fcn_sub_fc n
 
 Instance fcn_pc n : FCWithNVars n ⊆ PropositionConstructors
   := _.
+Instance fn_cpc n : Class PropositionConstructors (FormulaWithNVars n)
+  := _.
+Instance fn_pc n : PropositionConstructors (FormulaWithNVars n)
+  := _.
 
 Fixpoint embed_formula
   Ext1 Ext2 (embed : Ext1 -> Ext2)
@@ -2486,8 +2490,8 @@ Definition IC_implements_inference_for
 Print IC_implements_inference_for.
 
 
-Definition IC_can_preserve_left_context_when_using [n]
-  (r : @Ruleset (FCWithNVars n)) := ∀ ctx p c, (infs_provable_from r p c) -> (IC_provable_infs [ctx & p] [ctx & c]).
+Definition IC_can_preserve_left_context_when_using
+  (r : @Ruleset (FCWithNVars 0)) := ∀ T (_t:Class (FCWithNVars 0) T) (ctx p c : T), (infs_provable_from r p c) -> (IC_provable_infs [ctx & p] [ctx & c]).
 Print IC_can_preserve_left_context_when_using.
 
 Lemma rules_positive {TC} T (_t : Class TC T) R (infs0 infs1 : InfSet T) :
@@ -2629,10 +2633,10 @@ Hint Resolve rules_implies_search_right : search_for_rule_in_and_tree.
 
 
 
-Lemma Icplcwu__and n a b :
+Lemma Icplcwu__and a b :
   IC_can_preserve_left_context_when_using a ->
   IC_can_preserve_left_context_when_using b ->
-  @IC_can_preserve_left_context_when_using n (ruleset_and a b).
+  IC_can_preserve_left_context_when_using (ruleset_and a b).
   
   intros _a _b.
   unfold IC_can_preserve_left_context_when_using; intros.
@@ -2715,7 +2719,7 @@ Inductive ConjunctiveCover [n] : FormulaWithNVars n -> FormulaWithNVars n -> Pro
 String Notation FormulaWithNVars a a :  . *)
 
 Ltac Icplcwu_setup := 
-  unfold IC_can_preserve_left_context_when_using; intros ctx p c H; apply H; [
+  unfold IC_can_preserve_left_context_when_using; intros T _t ctx p c H; apply H; [
     intros f infs refl trans icp; apply refl |
     intros x y z xy yz infs refl trans icp; exact (trans _ _ _ (xy _ refl trans icp) (yz _ refl trans icp)) |
     cbn
@@ -2810,6 +2814,11 @@ Qed.
 
 Create HintDb IC_can_preserve_left_context.
 Hint Resolve Icplcwu__and : IC_can_preserve_left_context.
+
+Lemma Icplcwu__IC : IC_can_preserve_left_context_when_using IC_external_rules.
+  admit.
+Admitted.
+Print Icplcwu__IC.
   
 
 
@@ -2828,12 +2837,43 @@ Lemma IC_implements_inference_case__and
   assert (IC_provable_infs axioms p). { apply IHp. intros. destruct (H _ _ _ H0 H1 H2). assumption. }
   assert (IC_provable_infs axioms q). { apply IHq. intros. destruct (H _ _ _ H1 H2 H3). assumption. }
   clear IHp IHq H.
-  
+
+  proof_step_left IC_dup.
+  eapply proof_trans. apply (Icplcwu__IC axioms H1).
+  proof_step_left IC_and_sym.
+  eapply proof_trans. apply (Icplcwu__IC q H0). proof_step_cleanup.
+  fold (subclass_apply (fcn_sub_fc n) (fn_fcn n)).
+  rewrite fcn_sub_fc_ends_at_f_fc. cbn.
+  proof_finish IC_and_sym.
+Qed.
+
+
+Lemma IC_implements_inference_case__implies_implies
+  n ax_qp ax_p ax_qc ax_c qp p qc c
+  (_ax_p : MQInd (MQC := FcMQCWithNVars n) ax_qp ax_p)
+  (_ax_c : MQInd (MQC := FcMQCWithNVars n) ax_qc ax_c)
+  (_p : MQInd (MQC := FcMQCWithNVars n) qp p)
+  (_c : MQInd (MQC := FcMQCWithNVars n) qc c)
+  : IC_implements_inference_for (mi_implies _ax_p _ax_c) (mi_implies _p _c).
+  unfold IC_implements_inference_for, rules_implies in *.
+  intros.
+  cbn in H.
   intros infs refl trans icp.
-  (* specialize (H0 infs refl trans icp).
-  specialize (H1 infs refl trans icp). *)
 
+  Set Printing Implicit.
+  assert (∀ qp2 qc2, MQInd (MQC := FcMQCWithNVars n) qp2 p -> MQInd (MQC := FcMQCWithNVars n) qc2 c -> infs [ax_qp -> ax_qc] [qp2 -> qc2]).
 
+  {
+    (* intros.  *)
+  apply H.
+    
+    refine (H _ _ (λ (p2 q2 : Ind (FCWithNVars n)), ∀ qp2 qc2, MQInd (MQC := FcMQCWithNVars n) qp2 p2 -> MQInd (MQC := FcMQCWithNVars n) qc2 c2 -> infs [ax_qp -> ax_qc] [qp2 -> qc2]) _ _ _).
+  }
+  apply H.
+  assert (∀ qp2 qc2, MQInd qp2 p -> MQInd qc2 c -> infs [(ax_qp) -> (ax_qc)] [(qp) -> (qc)]).
+
+  (* apply H. *)
+Qed.
 
 
 
