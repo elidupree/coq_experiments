@@ -96,6 +96,7 @@ Instance pc_class_unwrap :
 Instance aplc_class_unwrap :
   ∀ {F}, Class ApplyConstructor F ->
          ApplyConstructor F := λ _ b, b.
+Instance func_aplc_subclass : FunctionConstructors ⊆ ApplyConstructor := λ _, _.
 
 (* And because we use a low depth limit, we need to provide some "shortcuts": *)
 Instance shortcut_cpc_fnc F : Class PropositionConstructors F -> FunctionConstructors F := _.
@@ -109,7 +110,7 @@ Notation "[ x & y ]" := [f_and x y]
 Notation "[ ⋀ x ]" := [f_forall_quoted_formulas x]
   (at level 0, x at next level).
 
-Inductive UnfoldStep {F} `{FunctionConstructors F} : F -> F -> Prop :=
+Inductive UnfoldStep {F} {_f:FunctionConstructors F} : F -> F -> Prop :=
   | unfold_const a b : UnfoldStep [const a b] a
   | unfold_fuse a b c : UnfoldStep [fuse a b c] [[a c] [b c]]
   | unfold_in_lhs a b c : UnfoldStep a b -> UnfoldStep [a c] [b c].
@@ -141,6 +142,10 @@ Instance shortcut_omc_trans A B
   
 Instance shortcut_omc_trans_apply A B T
   : (A ⊆ B) -> (Class (OneMoreConstructor A) T) -> Class B T
+  := λ _ _, _.
+  
+Instance shortcut_omc_func_aplc A T
+  : (A ⊆ FunctionConstructors) -> (Class (OneMoreConstructor A) T) -> Class ApplyConstructor T
   := λ _ _, _.
 
 (* Propositions are formulas that say things about other formulas, but there's no intrinsic reason those formulas have to use the _same grammar_. So we will often be passing around _two_ formula-constructor-classes, which I call the "viewing type" (conventionally named V, with constructors named VC) and the "target type" (conventionally named T, with constructors named TC).
@@ -2888,15 +2893,16 @@ unfold ind_on_stricter_constructors, subclass_apply. cbn.
   apply H.
 Qed.
 
-Inductive Generalizes f o := (f omc_new) unfolds to o
+Inductive UnfoldPath {F} {_f:FunctionConstructors F} : F -> F -> Prop :=
+  | unfold_path_refl f : UnfoldPath f f
+  | unfold_path_step_then f g h : UnfoldStep f g -> UnfoldPath g h -> UnfoldPath f h.
+
+Definition Generalizes [TC] [tf : TC ⊆ FunctionConstructors] (f : Ind TC) (o : Ind (OneMoreConstructor TC)) := ∀ T (_t : Class (OneMoreConstructor TC) T), @UnfoldPath T (shortcut_omc_trans_apply _ _) [(f _ _) omc_new] (o T _t).
   
-
-
-Definition IC_can_preserve_left_context_when_using
-  (r : @Ruleset (FCWithNVars 0)) := ∀ T (_t:Class (FCWithNVars 0) T) (ctx p c : T), (infs_provable_from r p c) -> (IC_provable_infs [ctx & p] [ctx & c]).
 Definition IC_can_generalize (r : @Ruleset (FCWithNVars 0)) :
-  ∀ T (_t:Class (FCWithNVars 0) T) p (c : Ind (FCWithNVars 0)), 
-  infs_provable_from r p [(c _ _) omc_new] -> IC_provable_infs p [⋀ (c _ _)].
+  ∀ p (f : Ind (FCWithNVars 0)) o,
+  Generalizes f o ->
+  indinfs_provable_from r _ p o -> IC_provable_indinfs p (λ _ _, [⋀ (f _ _)]).
 
 
 Lemma IC_implements_inference_case__forall
