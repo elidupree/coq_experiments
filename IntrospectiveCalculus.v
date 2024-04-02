@@ -332,10 +332,10 @@ Definition Rule {TC} := ∀ T (_:Class TC T), InfSet T -> Prop.
 (* We can now make the big definition of what propositions mean. *)
 
 (* definition specific to T, although we will often be dealing in values of type (∀ T (_t:Class TC T), Ruleset) *)
-Inductive Ruleset {TC} :=
-  | ruleset_implies : Ind TC -> Ind TC -> Ruleset
-  | ruleset_and : Ruleset -> Ruleset -> Ruleset
-  | ruleset_forall : @Ruleset (OneMoreConstructor TC) -> Ruleset
+Inductive Ruleset TC :=
+  | ruleset_implies : Ind TC -> Ind TC -> Ruleset TC
+  | ruleset_and : Ruleset TC -> Ruleset TC -> Ruleset TC
+  | ruleset_forall : Ruleset (OneMoreConstructor TC) -> Ruleset TC
    .
 
 (* Definition specialize_ind {TC} (f : Ind (OneMoreConstructor TC)) (x : Ind TC) : Ind TC :=
@@ -350,53 +350,65 @@ Fixpoint specialize_ruleset {TC} (R : @Ruleset (OneMoreConstructor TC)) (x : Ind
     end. *)
     
 
-Fixpoint Ruleset_to_Coq [TC] (R : Ruleset) {T} {_t: Class TC T} (infs : InfSet T) : Prop :=
+Fixpoint Ruleset_to_Coq [TC] (R : Ruleset TC) {T} {_t: Class TC T} (infs : InfSet T) : Prop :=
   match R with
   | ruleset_implies p c => infs (p _ _) (c _ _)
   | ruleset_and A B => Ruleset_to_Coq A _ ∧ Ruleset_to_Coq B _
   | ruleset_forall F => ∀ x, @Ruleset_to_Coq _ F _ {| omc_new := x |} _
   end.
+
+Fixpoint Ruleset_on_stricter_constructors [TC TC2] [eT : TC2 ⊆ TC] (R : Ruleset TC)  : Ruleset TC2 :=
+  match R with
+  | ruleset_implies p c => ruleset_implies (ind_on_stricter_constructors _ p) (ind_on_stricter_constructors _ c)
+  | ruleset_and A B => ruleset_and (Ruleset_on_stricter_constructors A) (Ruleset_on_stricter_constructors B)
+  | ruleset_forall F => ruleset_forall (@Ruleset_on_stricter_constructors _ (OneMoreConstructor TC2) (λ _ _, {| omc_new := omc_new |}) F)
+  end.
     
 (* Set Printing Implicit. *)
 (* Set Typeclasses Debug Verbosity 2. *)
 (* Set Typeclasses Depth 4. *)
-Inductive FormulaMeans {VC TC} {MQC : MQCT VC TC}
+Inductive FormulaMeansProp {VC TC} {MQC : MQCT VC TC}
   {_vp:VC ⊆ PropositionConstructors}
   {V} {_v: Class VC V}
   (* {T} {_t: Class TC T}
   {MQ : ∀ {V} {_v:Class VC V} {T} {_t:Class TC T}, V -> T -> Prop}
   {_mq : MQC _ _ _ _ (@MQ)} *)
-  : V -> Ruleset -> Prop :=
+  : V -> Ruleset TC -> Prop :=
 
   | mi_implies [qp qc p c]
       :
       MQInd qp p ->
       MQInd qc c ->
-      FormulaMeans [qp -> qc] (ruleset_implies p c)
+      FormulaMeansProp [qp -> qc] (ruleset_implies p c)
 
   | mi_unfold [a b B] :
       UnfoldStep a b ->
-      FormulaMeans b B ->
-      FormulaMeans a B
+      FormulaMeansProp b B ->
+      FormulaMeansProp a B
 
   | mi_and [a b A B] :
-      FormulaMeans a A ->
-      FormulaMeans b B ->
-      FormulaMeans [a & b] (ruleset_and A B)
+      FormulaMeansProp a A ->
+      FormulaMeansProp b B ->
+      FormulaMeansProp [a & b] (ruleset_and A B)
 
   | mi_forall_quoted_formulas
       (f : Ind VC)
-      (F : (@Ruleset (OneMoreConstructor TC)))
+      (F : Ruleset (OneMoreConstructor TC))
       :
       (∀ V _v,
-        @FormulaMeans _ _ (OneMoreQuotvar MQC) _ V _v
+        @FormulaMeansProp _ _ (OneMoreQuotvar MQC) _ V _v
           [(f _ _) omc_new]
           F)
       ->
-      FormulaMeans
+      FormulaMeansProp
         [⋀ (f _ _)]
         (ruleset_forall (@F))
   .
+
+Definition VIndMeansProp {VC TC} {MQC : MQCT VC TC}
+  {_vp:VC ⊆ PropositionConstructors}
+  : Ind VC -> Ruleset TC -> Prop
+  := λ p P, ∀ V _v, FormulaMeansProp (p V _v) P.
 
 (****************************************************
        Definitions of concrete formula types
@@ -553,7 +565,7 @@ Definition FCWithNVars n : Type -> Type := NMoreConstructors n FormulaConstructo
 
 (* we could write (Formula False) instead, but this makes inference easier *)
 Definition StandardFormula := FormulaWithNVars 0.
-Definition StandardRuleset := @Ruleset (FCWithNVars 0).
+Definition StandardRuleset := Ruleset (FCWithNVars 0).
 (* Fixpoint sf_to_ind (f : StandardFormula)
   : Ind FormulaConstructors
   := λ _ _, match f with
@@ -2031,7 +2043,7 @@ Qed.
 
 
 Definition MiSearchResult n : Type :=
-    @Ruleset (FCWithNVars n).
+    Ruleset (FCWithNVars n).
 
 (* Fixpoint specialize_prop_meaning TC T (P : @Ruleset (OneMoreConstructor TC) T) (tx : Ind TC): @Ruleset TC T := 
   match P with
@@ -2091,8 +2103,7 @@ Fixpoint get_prop_meaning steps [n] (f : FormulaWithNVars n)
 Lemma get_prop_meaning_correct
   steps [n] (f : FormulaWithNVars n) rule :
   get_prop_meaning steps f = success rule ->
-    ∀ V _v,
-    FormulaMeans (MQC := FcMQCWithNVars n) (fwn_to_ind f V _v) rule.
+    VIndMeansProp (MQC := FcMQCWithNVars n) (fwn_to_ind f) rule.
   
   refine ((fix r steps n (f : FormulaWithNVars n) rule :=
     match steps as n0 return (steps = n0) -> _ with 0 => _ | S pred => _ end eq_refl) steps n f rule)
@@ -2106,7 +2117,7 @@ Lemma get_prop_meaning_correct
   Print mi_unfold.
   [unfold]: {
     pose (unfold_step_correct _ fog) as u.
-    intros.
+    unfold VIndMeansProp; intros.
     specialize (r pred n g rule e V _v).
     exact (mi_unfold (VC := FCWithNVars n) (a := (fwn_to_ind f V _v)) (b := (fwn_to_ind g V _v)) (unfold_rewrap u V _v) r).
   }
@@ -2140,7 +2151,7 @@ Lemma get_prop_meaning_correct
         injection e as <-.
         apply get_quoted_formula_correct in eqp.
         apply get_quoted_formula_correct in eqc.
-        intros.
+        unfold VIndMeansProp; intros.
         exact (mi_implies (eqp _ _) (eqc _ _)).
     }
     [and_case]: {
@@ -2156,7 +2167,7 @@ Lemma get_prop_meaning_correct
 
         injection e as <-.
 
-        intros.
+        unfold VIndMeansProp; intros.
         (* apply r in eqa.
         apply r in eqb. *)
         exact (mi_and
@@ -2175,7 +2186,7 @@ Lemma get_prop_meaning_correct
       injection e as <-.
 
 (* Print mi_forall_quoted_formulas. *)
-      intros.
+      unfold VIndMeansProp; intros.
       refine (mi_forall_quoted_formulas (fwn_to_ind f) _).
       intros.
       (* cbn. *)
@@ -2326,14 +2337,14 @@ Notation "f @ n" := (embed_nmore n f) (at level 0).
 
 Definition f_default {Ext} : Formula Ext := const.
 Definition sf_default : StandardFormula := f_default.
-Definition default_ruleset : Ruleset := ruleset_implies (fwn_to_ind sf_default) (fwn_to_ind sf_default).
+Definition default_ruleset : Ruleset _ := ruleset_implies (fwn_to_ind sf_default) (fwn_to_ind sf_default).
 
 Definition ax_meaning (ax : StandardFormula) : StandardRuleset := match get_prop_meaning 900 ax with
   | success r => r
   | _ => default_ruleset
   end.
 
-Definition StandardMeans := FormulaMeans (MQC := FcMQCWithNVars 0) (V := StandardFormula).
+Definition StandardMeans := FormulaMeansProp (MQC := FcMQCWithNVars 0) (V := StandardFormula).
 (* Definition ax_means_rule (ax : StandardFormula) : StandardMeans ax (ax_meaning ax). *)
 
 (****************************************************
@@ -2432,10 +2443,10 @@ Definition transitivity {TC} : Rule
 Arguments reflexivity {TC} {T} {_t} _.
 Arguments transitivity {TC} {T} {_t} _.
 
-Definition infs_stated_by {TC:TConsClass} (rules : Ruleset) :
+Definition infs_stated_by {TC:TConsClass} (rules : Ruleset TC) :
   ∀ T {_t:Class TC T}, InfSet T
   := λ _ _ p c, ∀ infs, Ruleset_to_Coq rules infs -> infs p c.
-Definition infs_provable_from {TC:TConsClass} (rules : Ruleset) :
+Definition infs_provable_from {TC:TConsClass} (rules : Ruleset TC) :
   ∀ T {_t:Class TC T}, InfSet T
   := λ _ _ p c, ∀ infs,
     reflexivity infs ->
@@ -2444,10 +2455,13 @@ Definition infs_provable_from {TC:TConsClass} (rules : Ruleset) :
     infs p c.
 Arguments infs_stated_by {TC} rules [T]%type_scope {_t} p c.
 Arguments infs_provable_from {TC} rules [T]%type_scope {_t} p c.
+Definition indinfs_provable_from {TC} (rules : Ruleset TC)
+  : ∀ TC2 (eT : TC2 ⊆ TC), InfSet (Ind TC2)
+  := λ TC2 eT p c, ∀ T (_t:Class TC2 T), infs_provable_from rules (p T _t) (c T _t). 
 
 Check "2".
 
-Definition rules_implies {TC:TConsClass} (premise : Ruleset) (conclusion : Ruleset) : Prop
+Definition rules_implies [TC] (premise : Ruleset TC) (conclusion : Ruleset TC) : Prop
   := ∀ T (_t:Class TC T) (infs : InfSet T), reflexivity infs -> transitivity infs -> Ruleset_to_Coq premise infs -> Ruleset_to_Coq conclusion infs.
 
 (****************************************************
@@ -2467,7 +2481,7 @@ Definition IC_axioms : StandardFormula :=
     [ax_refl & [ax_dup & ax_drop]]
     & [ax_and_sym & [ax_and_assoc_left & ax_and_assoc_right]]].
 
-Definition IC_external_rules : Ruleset :=
+Definition IC_external_rules : StandardRuleset :=
 (* Eval cbn in *)
   match get_prop_meaning 900 IC_axioms with
   | success r => r
@@ -2480,13 +2494,17 @@ Check "3".
 
 Definition IC_provable_infs := infs_provable_from IC_external_rules.
 Arguments IC_provable_infs {T _}.
+Definition IC_provable_indinfs [TC2] [eT : TC2 ⊆ FCWithNVars 0]
+  (p : Ind TC2) (c : Ind TC2) : Prop
+  := indinfs_provable_from IC_external_rules
+    _ (ind_on_stricter_constructors _ p) c.
 Definition IC_provable_props := IC_provable_infs IC_axioms.
 
 Definition IC_implements_inference_for
   n axioms Axioms p P
-  (_a : FormulaMeans (MQC := FcMQCWithNVars n) axioms Axioms)
-  (_p : FormulaMeans (MQC := FcMQCWithNVars n) p P)
-  := (rules_implies Axioms P) -> (IC_provable_infs axioms p).
+  (_a : VIndMeansProp (MQC := FcMQCWithNVars n) axioms Axioms)
+  (_p : VIndMeansProp (MQC := FcMQCWithNVars n) p P)
+  := (rules_implies Axioms P) -> (IC_provable_indinfs axioms p).
 Print IC_implements_inference_for.
 
 
@@ -2518,21 +2536,21 @@ Definition rules_prove_what_they_say {TC} R T (_t : Class TC T) p c : infs_state
 Qed.
 
 Lemma and_proves_more_left {TC} T (_t : Class TC T)
-  (R S : @Ruleset TC) p c : infs_provable_from R (T:=T) p c -> infs_provable_from (ruleset_and R S) p c.
+  (R S : Ruleset TC) p c : infs_provable_from R (T:=T) p c -> infs_provable_from (ruleset_and R S) p c.
   unfold infs_provable_from. intros.
   destruct H2.
   apply H; assumption.
 Qed.
 
 Lemma and_proves_more_right {TC} T (_t : Class TC T)
-  (R S : @Ruleset TC) p c : infs_provable_from S (T:=T) p c -> infs_provable_from (ruleset_and R S) p c.
+  (R S : Ruleset TC) p c : infs_provable_from S (T:=T) p c -> infs_provable_from (ruleset_and R S) p c.
   unfold infs_provable_from. intros.
   destruct H2.
   apply H; assumption.
 Qed.
 
 Lemma forall_proves_more {TC}
-  (R : @Ruleset (OneMoreConstructor TC)) : ∀ T (_t : Class TC T) (x : T) p c, infs_provable_from R (_t := {| omc_new := x |}) p c -> infs_provable_from (ruleset_forall R) p c.
+  (R : Ruleset (OneMoreConstructor TC)) : ∀ T (_t : Class TC T) (x : T) p c, infs_provable_from R (_t := {| omc_new := x |}) p c -> infs_provable_from (ruleset_forall R) p c.
   intros.
   unfold infs_provable_from. intros.
   (* apply H; solve [unfold infs_provable_from; intros; assumption] || idtac.
@@ -2545,7 +2563,7 @@ Lemma forall_proves_more {TC}
   (* exact (H2 x). *)
 Qed.
 
-Lemma provable_obey_rules {TC} T (_t : Class TC T) (R : @Ruleset TC) : Ruleset_to_Coq R (infs_provable_from R (T:=T)).
+Lemma provable_obey_rules {TC} T (_t : Class TC T) (R : Ruleset TC) : Ruleset_to_Coq R (infs_provable_from R (T:=T)).
   induction R; cbn.
   { unfold infs_provable_from. intros. apply H1. }
   {
@@ -2567,7 +2585,7 @@ Lemma proof_trans {TC} {R} [T] [_t : Class TC T] [a b c] : infs_provable_from R 
   exact (trans _ _ _ (ab _ refl trans r) (bc _ refl trans r)).
 Qed.
 
-Lemma proof_apply_implied_rule {TC} [T] [_t : Class TC T] [A B p c] : rules_implies A B -> infs_stated_by B p c -> infs_provable_from A p c.
+Lemma proof_apply_implied_rule {TC} [T] [_t : Class TC T] [A B : Ruleset TC] [p c] : rules_implies A B -> infs_stated_by B p c -> infs_provable_from A p c.
   Print rules_implies.
   intros AB pB infs refl trans r.
   apply pB; trivial.
@@ -2594,30 +2612,30 @@ Ltac do_with_left_context ctxlemma :=
 Lemma rules_implies_refl {TC} A : rules_implies A A.
   unfold rules_implies; trivial.
 Qed.
-Lemma rules_implies_and_intro {TC} A B C : rules_implies A B -> rules_implies A C -> rules_implies A (ruleset_and B C).
+Lemma rules_implies_and_intro {TC} [A B C : Ruleset TC] : rules_implies A B -> rules_implies A C -> rules_implies A (ruleset_and B C).
   intros _B _C.
   unfold rules_implies in *. intros T _t infs refl trans rp.
   split.
   apply _B; assumption.
   apply _C; assumption.
 Qed.
-Lemma rules_implies_and_proj1 {TC} A B C : rules_implies A (ruleset_and B C) -> rules_implies A B.
+Lemma rules_implies_and_proj1 {TC} [A B C : Ruleset TC] : rules_implies A (ruleset_and B C) -> rules_implies A B.
   intro A_BC.
   unfold rules_implies in *. intros T _t infs refl trans rp.
   apply A_BC; assumption.
 Qed.
-Lemma rules_implies_and_proj2 {TC} A B C : rules_implies A (ruleset_and B C) -> rules_implies A C.
+Lemma rules_implies_and_proj2 {TC} [A B C : Ruleset TC] : rules_implies A (ruleset_and B C) -> rules_implies A C.
   intro A_BC.
   unfold rules_implies in *. intros T _t infs refl trans rp.
   apply A_BC; assumption.
 Qed.
-Lemma rules_implies_search_left {TC} A B C : rules_implies A C -> rules_implies (ruleset_and A B) C.
+Lemma rules_implies_search_left {TC} [A B C : Ruleset TC] : rules_implies A C -> rules_implies (ruleset_and A B) C.
   intro A_C.
   unfold rules_implies in *. intros T _t infs refl trans rp.
   destruct rp.
   apply A_C; assumption.
 Qed.
-Lemma rules_implies_search_right {TC} A B C : rules_implies B C -> rules_implies (ruleset_and A B) C.
+Lemma rules_implies_search_right {TC} [A B C : Ruleset TC] : rules_implies B C -> rules_implies (ruleset_and A B) C.
   intro B_C.
   unfold rules_implies in *. intros T _t infs refl trans rp.
   destruct rp.
@@ -2824,28 +2842,77 @@ Print Icplcwu__IC.
 
 Lemma IC_implements_inference_case__and
   n axioms Axioms p P q Q
-  (_a : FormulaMeans (MQC := FcMQCWithNVars n) axioms Axioms)
-  (_p : FormulaMeans (MQC := FcMQCWithNVars n) p P)
-  (_q : FormulaMeans (MQC := FcMQCWithNVars n) q Q)
+  (_a : VIndMeansProp (MQC := FcMQCWithNVars n) axioms Axioms)
+  (_p : VIndMeansProp (MQC := FcMQCWithNVars n) p P)
+  (_q : VIndMeansProp (MQC := FcMQCWithNVars n) q Q)
   (IHp : IC_implements_inference_for _a _p)
   (IHq : IC_implements_inference_for _a _q)
-  : IC_implements_inference_for _a (mi_and _p _q).
+  : IC_implements_inference_for _a (λ _ _, mi_and (_p _ _) (_q _ _)).
   unfold IC_implements_inference_for, rules_implies in *.
   intros.
   cbn in H.
   (* apply proj1 in H. *)
-  assert (IC_provable_infs axioms p). { apply IHp. intros. destruct (H _ _ _ H0 H1 H2). assumption. }
-  assert (IC_provable_infs axioms q). { apply IHq. intros. destruct (H _ _ _ H1 H2 H3). assumption. }
+  assert (IC_provable_indinfs axioms p). { apply IHp. intros. destruct (H _ _ _ H0 H1 H2). assumption. }
+  assert (IC_provable_indinfs axioms q). { apply IHq. intros. destruct (H _ _ _ H1 H2 H3). assumption. }
   clear IHp IHq H.
 
+  unfold IC_provable_indinfs, indinfs_provable_from  . intros.
+
   proof_step_left IC_dup.
-  eapply proof_trans. apply (Icplcwu__IC axioms H1).
+  eapply proof_trans. apply (Icplcwu__IC (axioms _ _) (H1 _ _)).
   proof_step_left IC_and_sym.
-  eapply proof_trans. apply (Icplcwu__IC q H0). proof_step_cleanup.
+  eapply proof_trans. apply (Icplcwu__IC (q _ _) (H0 _ _)). proof_step_cleanup.
   fold (subclass_apply (fcn_sub_fc n) (fn_fcn n)).
-  rewrite fcn_sub_fc_ends_at_f_fc. cbn.
+  (* rewrite fcn_sub_fc_ends_at_f_fc. cbn. *)
   proof_finish IC_and_sym.
 Qed.
+
+Lemma VIndMeansProp_onemore [VC TC] [_v : VC ⊆ PropositionConstructors] [MQC : MQCT VC TC] p P :
+  VIndMeansProp (MQC := MQC) p P -> VIndMeansProp (MQC := OneMoreQuotvar MQC) (ind_on_stricter_constructors _ p) (Ruleset_on_stricter_constructors P).
+  unfold VIndMeansProp; intros.
+  destruct _v0 as (embed, new).
+  specialize (H V embed).
+  dependent induction H; cbn.
+  {
+unfold ind_on_stricter_constructors, subclass_apply. cbn.
+  rewrite <- x.
+  refine (mi_implies _ _).
+  unfold MQInd; intros. refine (H _ _ _ _). destruct _mq. exact H1.
+  unfold MQInd; intros. refine (H0 _ _ _ _). destruct _mq. exact H1.
+  }
+  {
+  refine (mi_unfold _ _).
+    2: { apply IHFormulaMeansProp. }
+  }
+  apply mi_implies.
+  apply H.
+Qed.
+
+Inductive Generalizes f o := (f omc_new) unfolds to o
+  
+
+
+Definition IC_can_preserve_left_context_when_using
+  (r : @Ruleset (FCWithNVars 0)) := ∀ T (_t:Class (FCWithNVars 0) T) (ctx p c : T), (infs_provable_from r p c) -> (IC_provable_infs [ctx & p] [ctx & c]).
+Definition IC_can_generalize (r : @Ruleset (FCWithNVars 0)) :
+  ∀ T (_t:Class (FCWithNVars 0) T) p (c : Ind (FCWithNVars 0)), 
+  infs_provable_from r p [(c _ _) omc_new] -> IC_provable_infs p [⋀ (c _ _)].
+
+
+Lemma IC_implements_inference_case__forall
+  n axioms Axioms (f : Ind (FCWithNVars n)) F
+  (_a : VIndMeansProp (MQC := FcMQCWithNVars n) axioms Axioms)
+  (_f : VIndMeansProp (MQC := FcMQCWithNVars (S n)) (λ V _v, [(f _ _) omc_new]) F)
+  (IHp : IC_implements_inference_for (n := S n) (VIndMeansProp_onemore _a) _f)
+  : IC_implements_inference_for (P := ruleset_forall F) _a (λ V _v, mi_forall_quoted_formulas f _f).
+  unfold IC_implements_inference_for, rules_implies in *.
+  intros.
+  cbn in H.
+  unfold IC_provable_indinfs, indinfs_provable_from  . intros. unfold ind_on_stricter_constructors, subclass_apply, subclass_refl. proof_step_cleanup.
+  assert (IC_provable_indinfs (ind_on_stricter_constructors _ axioms) (λ V (_v : Class
+  (FCWithNVars
+  (S n))
+  V), [(f V _) omc_new])). { apply IHp. intros. destruct (H _ _ _ H0 H1 H2). assumption. }
 
 
 Lemma IC_implements_inference_case__implies_implies
@@ -2859,6 +2926,11 @@ Lemma IC_implements_inference_case__implies_implies
   intros.
   cbn in H.
   intros infs refl trans icp.
+
+  assert ((p _ _) = (ax_p _ _) ∧ (c _ _) = (ax_c _ _)).
+  apply H.
+  intro.
+  specialize (H _ _ (λ p2 c2, (p _ _) = p2 ∧ (c _ _) = c2)).
 
   Set Printing Implicit.
   assert (∀ qp2 qc2, MQInd (MQC := FcMQCWithNVars n) qp2 p -> MQInd (MQC := FcMQCWithNVars n) qc2 c -> infs [ax_qp -> ax_qc] [qp2 -> qc2]).
@@ -2932,7 +3004,7 @@ Qed.
     IH (λ _ _ _, ∀ x, F _ _ x _))
   :
   ∀ VC TC (MQC : MQCT) (_vp : VC ⊆ PropositionConstructors) i r,
-    FormulaMeans i r → IH r.
+    FormulaMeansProp i r → IH r.
   
   intros.
   induction H; [
@@ -3040,7 +3112,7 @@ Variable axioms : ∀ {V} {_:Class FormulaConstructors V},
   V.
 Variable Axioms : ∀ {T} {_:Class FormulaConstructors T},
   InfSet T -> Prop.
-Variable aA : FormulaMeans (MQC := FcMQC) (@axioms) (@Axioms).
+Variable aA : FormulaMeansProp (MQC := FcMQC) (@axioms) (@Axioms).
 
 Section IC_implements_inference_cases.
 
@@ -3071,7 +3143,7 @@ Existing Instance tcf. *)
 
 Variable p : ∀ {V} {_:Class (FCWithNVars n) V}, V.
 Variable P : ∀ {T} {_:Class (FCWithNVars n) T}, InfSet T -> Prop.
-Variable pP : FormulaMeans (MQC := FcMQCWithNVars n) (@p) (@P).
+Variable pP : FormulaMeansProp (MQC := FcMQCWithNVars n) (@p) (@P).
 
 Definition p_proven := ∀ T (_t:Class (FCWithNVars n) T) (infs : InfSet T),
         let _ : TConsClass := FCWithNVars n in
@@ -3163,7 +3235,7 @@ Lemma implies_case {n}
     [rules_case]: { 
         unfold implies_case_AxIH.
       refine (
-        match aA in (FormulaMeans a A) return (A _ _
+        match aA in (FormulaMeansProp a A) return (A _ _
   (λ p0 c0 : Formula,
   ∀ qp0
  qc0 : ∀ V0 : Type,
@@ -3236,13 +3308,13 @@ End IC_implements_inference.
 Lemma IC_implements_inference_universal :
   ∀ (axioms : ∀ {V} {_:Class FormulaConstructors V}, V)
     (Axioms : ∀ {T} {_:Class FormulaConstructors T}, InfSet T -> Prop),
-    FormulaMeans
+    FormulaMeansProp
       (MQC := FcMQC)
       (@axioms)
       (@Axioms) -> 
     ∀ (p : ∀ {V} {_:Class FormulaConstructors V}, V)
       (P : ∀ {T} {_:Class FormulaConstructors T}, InfSet T -> Prop),
-      FormulaMeans
+      FormulaMeansProp
         (MQC := FcMQC)
         (@p)
         (@P) ->
@@ -3261,10 +3333,10 @@ Lemma IC_implements_inference_universal :
     
     Ext (assumed1 : @Meanings Ext) assumed2 a1_a2 f F mf
       {struct mf}
-      : FormulaMeans (MQC:=MQC) f F
+      : FormulaMeansProp (MQC:=MQC) f F
     := match mf
-        in FormulaMeans _ f F
-        return FormulaMeans assumed2 f F
+        in FormulaMeansProp _ f F
+        return FormulaMeansProp assumed2 f F
         with
     | mi_assumed a A aAassumed => _
     | mi_implies qp p qc c x y => _
@@ -3361,30 +3433,30 @@ Fixpoint embed_formula
     | apply a b => [(embed_formula embed a) (embed_formula embed b)]
     end.
 
-Inductive FormulaMeans [EExt] [J]
+Inductive FormulaMeansProp [EExt] [J]
   (MeansQuoted : (Formula EExt) -> J -> Prop)
   : @Meanings EExt J :=
   | mi_implies qp p qc c :
       MeansQuoted qp p -> MeansQuoted qc c -> 
-      FormulaMeans MeansQuoted [qp -> qc] (λ J2 e infs,
+      FormulaMeansProp MeansQuoted [qp -> qc] (λ J2 e infs,
         infs (e p) (e c))
   | mi_unfold a b B :
       UnfoldStep a b ->
-      FormulaMeans MeansQuoted b B ->
-      FormulaMeans MeansQuoted a B
+      FormulaMeansProp MeansQuoted b B ->
+      FormulaMeansProp MeansQuoted a B
   | mi_and a A b B :
-      FormulaMeans MeansQuoted a A ->
-      FormulaMeans MeansQuoted b B ->
-      FormulaMeans MeansQuoted [a & b] (A ∧3 B)
+      FormulaMeansProp MeansQuoted a A ->
+      FormulaMeansProp MeansQuoted b B ->
+      FormulaMeansProp MeansQuoted [a & b] (A ∧3 B)
   (* | mi_forall_quoted_formulas f 
     (F : ∀ J2, (J -> J2) -> J2 -> Rule J2) :
     (∀ EExt2 J2 qx x e_embed j_embed
         (MQ : (Formula EExt2) -> J2 -> Prop),
       (∀ e i, MeansQuoted e i -> MQ (e_embed e) (j_embed i)) ->
       MQ qx x -> 
-      FormulaMeans MQ [(e_embed f) qx] (F J2 j_embed x)
+      FormulaMeansProp MQ [(e_embed f) qx] (F J2 j_embed x)
     ) -> 
-    FormulaMeans
+    FormulaMeansProp
       MeansQuoted
       [f_forall_quoted_formulas f]
       (λ J2 e infs,
@@ -3401,10 +3473,10 @@ Inductive FormulaMeans [EExt] [J]
         (MQ : (Formula EExt2) -> J2 -> Prop),
       (∀ e i, MeansQuoted e i -> MQ (e_embed e) (j_embed i)) ->
       MQ qx x -> 
-      FormulaMeans MQ [(e_embed f) qx] (λ J3 e infs,
+      FormulaMeansProp MQ [(e_embed f) qx] (λ J3 e infs,
         (F J3 (λ v, e (j_embed v)) (e x) infs))
     ) -> 
-    FormulaMeans
+    FormulaMeansProp
       MeansQuoted
       [f_forall_quoted_formulas f]
       (λ J2 e infs,
@@ -3419,8 +3491,8 @@ Definition MetaInferences
   J
   (KnownRules : Rule J)
   (p c : StandardFormula) : Prop :=
-  ∀ P, FormulaMeans (∅2) p P -> 
-    ∃ C, FormulaMeans (∅2) c C ∧
+  ∀ P, FormulaMeansProp (∅2) p P -> 
+    ∃ C, FormulaMeansProp (∅2) c C ∧
       ∀ J2 (e : J -> J2) infs,
         KnownRules J2 e infs -> P J2 e infs -> C J2 e infs.
 
@@ -3456,8 +3528,8 @@ Notation "'unfold_or' body" :=
     | 0 => timed_out _ | S pred => body end) (at level 40). *)
 
 
-Print FormulaMeans.
-(* Definition Meaning : Meanings := FormulaMeans (∅2). *)
+Print FormulaMeansProp.
+(* Definition Meaning : Meanings := FormulaMeansProp (∅2). *)
 
 Inductive OneMoreExt {OldExt} :=
   | ome_embed : OldExt -> OneMoreExt
@@ -3505,7 +3577,7 @@ Qed.
     (f : Formula Ext) : Type :=
     ∀ (qv_meanings : ∀ e, quotvars e -> StandardFormula)
       (pv_meanings : ∀ e, propvars e -> Rule),
-    {F | FormulaMeans
+    {F | FormulaMeansProp
       (UnreifiedAssumed propvars pv_meanings)
       f F}. *)
 
@@ -3575,16 +3647,16 @@ Definition embed_var_meanings
   (assumed1 : @Meanings Ext)
   (assumed2 : @Meanings Ext)
   : (assumed1 ⊆2 assumed2) ->
-  (FormulaMeans assumed1 ⊆2 FormulaMeans assumed2).
+  (FormulaMeansProp assumed1 ⊆2 FormulaMeansProp assumed2).
   intros a1_a2 f F mf.
 
   refine ((fix recurse 
     Ext (assumed1 : @Meanings Ext) assumed2 a1_a2 f F mf
       {struct mf}
-      : FormulaMeans assumed2 f F
+      : FormulaMeansProp assumed2 f F
     := match mf
-        in FormulaMeans _ f F
-        return FormulaMeans assumed2 f F
+        in FormulaMeansProp _ f F
+        return FormulaMeansProp assumed2 f F
         with
     | mi_assumed a A aAassumed => _
     | mi_implies qp p qc c x y => _
@@ -3626,19 +3698,19 @@ Qed. *)
 
 (* Lemma specialize_FormulaMeans [OldExt] 
     (assumed_meanings : @Meanings OldExt) f F x X :
-  FormulaMeans (assume_one_more assumed_meanings X) f F ->
-  FormulaMeans assumed_meanings x X ->
-  FormulaMeans assumed_meanings (specialize_onemore f x) F.
+  FormulaMeansProp (assume_one_more assumed_meanings X) f F ->
+  FormulaMeansProp assumed_meanings x X ->
+  FormulaMeansProp assumed_meanings (specialize_onemore f x) F.
 
   intros.
 
   refine ((fix recurse 
     OldExt (assumed_meanings : @Meanings OldExt) f F x X mf mx
-      : FormulaMeans assumed_meanings
+      : FormulaMeansProp assumed_meanings
         (specialize_onemore f x) F
     := match mf
-        in FormulaMeans _ f F
-        return FormulaMeans assumed_meanings
+        in FormulaMeansProp _ f F
+        return FormulaMeansProp assumed_meanings
     (specialize_onemore f x) F
         with
     | mi_assumed a A aAassumed => _
@@ -3741,7 +3813,7 @@ Qed. *)
     (propvars : OldExt -> Prop)
     (x : Formula OldExt)
     (X : Rule)
-    (xXimp : ∀ pv_meanings, FormulaMeans (UnreifiedAssumed
+    (xXimp : ∀ pv_meanings, FormulaMeansProp (UnreifiedAssumed
   propvars pv_meanings) x X)
     (missss : MiSearchSuccess
       (embed_vars quotvars) (one_more_var propvars)
@@ -4123,8 +4195,8 @@ Definition f_false : StandardFormula := [∀p, p].
   ∀ p c, IC_provable_infs p c -> IC_provable_props [p -> c]. *)
 
 Lemma IC_implements_inference_universal :
-  ∀ axioms Axioms, FormulaMeans (∅2) axioms Axioms ->
-    ∀ p P, FormulaMeans (∅2) p P ->
+  ∀ axioms Axioms, FormulaMeansProp (∅2) axioms Axioms ->
+    ∀ p P, FormulaMeansProp (∅2) p P ->
       P (infs_provable_from (Axioms ∧1 transitivity))
       -> (* <-> *)
       IC_provable_infs axioms p.
@@ -4137,7 +4209,7 @@ Lemma IC_implements_inference_universal :
 Qed.
 
 Definition IC_implements_inference :=
-  ∀ axioms Axioms, FormulaMeans (∅2) axioms Axioms ->
+  ∀ axioms Axioms, FormulaMeansProp (∅2) axioms Axioms ->
     ∀ qp p qc c, MeansQuoted qp p -> MeansQuoted qc c ->
       infs_provable_from (Axioms ∧1 transitivity) p c
       <->
@@ -4145,10 +4217,10 @@ Definition IC_implements_inference :=
 
 Definition IC_self_describing :=
   ∀ p, IC_provable_props p ->
-    ∃ P, FormulaMeans (∅2) p P ∧ P IC_provable_infs.
+    ∃ P, FormulaMeansProp (∅2) p P ∧ P IC_provable_infs.
 
 Definition IC_introspective :=
-  ∀ p P, FormulaMeans (∅2) p P ∧ P IC_provable_infs    
+  ∀ p P, FormulaMeansProp (∅2) p P ∧ P IC_provable_infs    
     -> IC_provable_props p.
 
 Definition IC_consistent :=
