@@ -47,6 +47,7 @@ Instance subclass_trans {T} {A B C : T -> Type}
 
 Definition test_subclass_trans {T} {A B C : T -> Type}
   : (A ⊆ B) -> (B ⊆ C) -> (A ⊆ C) := _.
+(* Set Typeclasses Debug Verbosity 2. *)
 Definition test_subclass_trans_2 {T} {A B C D : T -> Type}
   : (A ⊆ B) -> (B ⊆ C) -> (C ⊆ D) -> (A ⊆ D) := λ _ _ _, _.
 
@@ -2460,6 +2461,9 @@ Definition infs_provable_from {TC:TConsClass} (rules : Ruleset TC) :
     infs p c.
 Arguments infs_stated_by {TC} rules [T]%type_scope {_t} p c.
 Arguments infs_provable_from {TC} rules [T]%type_scope {_t} p c.
+Definition indinfs_stated_by {TC} (rules : Ruleset TC)
+  : ∀ TC2 (eT : TC2 ⊆ TC), InfSet (Ind TC2)
+  := λ TC2 eT p c, ∀ T (_t:Class TC2 T), infs_stated_by rules (p T _t) (c T _t). 
 Definition indinfs_provable_from {TC} (rules : Ruleset TC)
   : ∀ TC2 (eT : TC2 ⊆ TC), InfSet (Ind TC2)
   := λ TC2 eT p c, ∀ T (_t:Class TC2 T), infs_provable_from rules (p T _t) (c T _t). 
@@ -2499,7 +2503,7 @@ Check "3".
 
 Definition IC_provable_infs := infs_provable_from IC_external_rules.
 Arguments IC_provable_infs {T _}.
-Definition IC_provable_indinfs [TC2] [eT : TC2 ⊆ FCWithNVars 0]
+Definition IC_provable_indinfs [TC2] [eT : TC2 ⊆ FormulaConstructors]
   (p : Ind TC2) (c : Ind TC2) : Prop
   := indinfs_provable_from IC_external_rules
     _ (ind_on_stricter_constructors _ p) c.
@@ -2898,11 +2902,32 @@ Inductive UnfoldPath {F} {_f:FunctionConstructors F} : F -> F -> Prop :=
   | unfold_path_step_then f g h : UnfoldStep f g -> UnfoldPath g h -> UnfoldPath f h.
 
 Definition Generalizes [TC] [tf : TC ⊆ FunctionConstructors] (f : Ind TC) (o : Ind (OneMoreConstructor TC)) := ∀ T (_t : Class (OneMoreConstructor TC) T), @UnfoldPath T (shortcut_omc_trans_apply _ _) [(f _ _) omc_new] (o T _t).
+
+Instance fcn_sub_func : (FCWithNVars 0) ⊆ FunctionConstructors := λ _, _.
   
-Definition IC_can_generalize (r : @Ruleset (FCWithNVars 0)) :
-  ∀ p (f : Ind (FCWithNVars 0)) o,
-  Generalizes f o ->
-  indinfs_provable_from r _ p o -> IC_provable_indinfs p (λ _ _, [⋀ (f _ _)]).
+Definition IC_can_generalize (r : @Ruleset (FCWithNVars 0)) :=
+  ∀ n (fp fc : Ind (FCWithNVars n)) (op oc : Ind (FCWithNVars (S n))),
+  Generalizes fp op -> Generalizes fc oc ->
+  indinfs_provable_from r _ op oc -> @IC_provable_indinfs (FCWithNVars n) _ (λ _ _, [⋀ (fp _ _)]) (λ _ _, [⋀ (fc _ _)]).
+
+
+
+(* Ltac Icplcwu_setup := 
+  unfold IC_can_preserve_left_context_when_using; intros T _t ctx p c H; apply H; [
+    intros f infs refl trans icp; apply refl |
+    intros x y z xy yz infs refl trans icp; exact (trans _ _ _ (xy _ refl trans icp) (yz _ refl trans icp)) |
+    cbn
+  ]. *)
+Lemma Icg_dup : IC_can_generalize rule_dup.
+  unfold IC_can_generalize; intros p f o gfo rule_proves_po.
+  unfold IC_provable_indinfs. unfold indinfs_provable_from  . intros.
+
+  unfold Generalizes in gfo.
+  specialize (gfo T _t).
+  induction gfo.
+
+  
+  
 
 
 Lemma IC_implements_inference_case__forall
@@ -2955,6 +2980,37 @@ Qed.
 
 
 
+(* Definition IC_implements_inference_for
+  n axioms Axioms p P
+  (_a : VIndMeansProp (MQC := FcMQCWithNVars n) axioms Axioms)
+  (_p : VIndMeansProp (MQC := FcMQCWithNVars n) p P)
+  := (rules_implies Axioms P) -> (IC_provable_indinfs axioms p). *)
+Definition InferenceIncludes (r : Ruleset FormulaConstructors) :=
+  ∀ n V (_v : Class (FCWithNVars n) V) (p c : V),
+    (infs_stated_by r p c) ->
+    ∀ P
+      (_p : FormulaMeansProp (MQC := FcMQCWithNVars n) p P),
+      ∃ C
+      (_c : FormulaMeansProp (MQC := FcMQCWithNVars n) c C),(rules_implies P C).
+
+Ltac iisetup := unfold InferenceIncludes; let pc_stated := fresh "pc_stated" in intros n V _v p c pc_stated; unfold indinfs_stated_by, infs_stated_by in pc_stated; cbn in pc_stated;
+  apply pc_stated;
+  intros.
+
+Definition inference_includes_dup : InferenceIncludes rule_dup.
+  iisetup.
+  apply ex_intro with (ruleset_and P P).
+  apply ex_intro with (mi_and _p _p).
+  unfold rules_implies. intros. cbn. split; assumption.
+Qed.
+Definition inference_includes_drop : InferenceIncludes rule_drop.
+  iisetup.
+  (* destruct _p. *)
+  dependent destruction _p. discriminate x.
+  apply ex_intro with (ruleset_and P P).
+  apply ex_intro with (mi_and _p _p).
+  unfold rules_implies. intros. cbn. split; assumption.
+Qed.
 
 
 (****************************************************
