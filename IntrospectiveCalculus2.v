@@ -13,7 +13,7 @@ Parameter cheat : ∀ {A}, A.
 
 (* We often want to view IC formulas as "extensible". That is, we know that the formula type has certain constructors, but don't guarantee that those are the ONLY constructors.
 
-Theoretically, this is "simpler" than Coq's `Inductive` types (constructors come _before_ inductive instances), but in Coq, it's not elementary. So to represent a "set of constructors", we use a typeclass, where the typeclass methods are the constructors. 
+Theoretically, this is "simpler" than Coq's `Inductive` types (constructors come _before_ inductive instances), but in Coq, it's not elementary. So to represent a "set of constructors", we use typeclasses - first, one where the typeclass methods are the recursion cases, and then, one where the typeclasse methods are induction cases that refer to those recursion cases.
 
 Here we must do some bureaucracy about how we'll use typeclasses. *)
 
@@ -23,8 +23,8 @@ Existing Class Class.
 Hint Unfold Class : typeclass_instances.
 (* Implicit Type C : Prop -> Prop. *)
 
-(* Given such a class, the corresponding _formula type_ is the inductive type with those constructors, which we represent as the type of functions that can construct an arbitrary output by invoking the induction cases: *)
-Definition Ind (C : Prop -> Prop) := ∀ T (_:Class C T), T.
+(* Given such a class, the corresponding _formula type_ is the inductive type with those constructors. We start by representing the type of functions that can construct an arbitrary output by invoking the recursion cases: *)
+Definition Rec (C : Prop -> Prop) := ∀ T (_:Class C T), T.
 
 (* We also often want to extend a typeclass with additional constructors, while still leaving it open to still-further constructors. This gives us a _second typeclass_ that is a subclass of the first. It's useful to represent the subclass relation explicitly: *)
 Definition Subclass (Subclass Superclass : Prop -> Prop) := ∀ T (_:Class Subclass T), Class Superclass T.
@@ -39,63 +39,68 @@ Instance subclass_trans {A B C}
   : (A ⊆ B) -> (B ⊆ C) -> (A ⊆ C)
   := λ ab bc, λ x xA, bc _ (ab _ xA).
 
-Instance subclass_apply {A B} {R}
-  : (A ⊆ B) -> Class A R -> Class B R
+Instance subclass_apply {A B} {RH}
+  : (A ⊆ B) -> Class A RH -> Class B RH
   := λ ab AR, ab _ AR.
 
 (* If you can construct something with certain constructors, you can also construct it with more constructors: *)
-Definition ind_embed [C] (x : Ind C) {C2} {_c:C2 ⊆ C} : Ind C2
+Definition rec_embed [C] (x : Rec C) {C2} {_c:C2 ⊆ C} : Rec C2
   := λ _ _, x _ _.
+
+Definition InductionCases (RecursionCases : Prop -> Prop) := ∀ C, C ⊆ RecursionCases -> (Rec C -> Prop) -> Prop.
+Existing Class InductionCases.
+
+Definition Ind [C] [IndCases : InductionCases C] (x : Rec C) := ∀ (IH : Rec C -> Prop), IndCases C subclass_refl IH -> IH x.
 
 (****************************************************
    Relations between internal and external meaning
 ****************************************************)
 
-Class ApplyConstructor (R : Prop) := {
-    apply_case : R -> R -> R
+Class ApplyRecCase (RH : Prop) := {
+    apply_rec_case : RH -> RH -> RH
   }.
 
-Class FunctionConstructors (R : Prop) := {
-    const_case : R
-  ; fuse_case : R
-  ; func_apply_cases :: ApplyConstructor R
+Class FuncRecCases (RH : Prop) := {
+    const_rec_case : RH
+  ; fuse_rec_case : RH
+  ; func_apply_rec_cases :: ApplyRecCase RH
   }.
 
-Class PropositionConstructors (R : Prop) := {
-    prop_func_cases :: FunctionConstructors R
-  ; implies_case : R
-  ; and_case : R
-  ; forall_quoted_formulas_case : R
+Class PropRecCases (RH : Prop) := {
+    prop_func_rec_cases :: FuncRecCases RH
+  ; implies_rec_case : RH
+  ; and_rec_case : RH
+  ; forall_quoted_formulas_rec_case : RH
   }.
 
 Instance aplc_class_unwrap :
-  ∀ [R], Class ApplyConstructor R ->
-         ApplyConstructor R := λ _ b, b.
+  ∀ [RH], Class ApplyRecCase RH ->
+         ApplyRecCase RH := λ _ b, b.
 Instance funcc_class_unwrap :
-  ∀ [R], Class FunctionConstructors R ->
-         FunctionConstructors R := λ _ b, b.
+  ∀ [RH], Class FuncRecCases RH ->
+         FuncRecCases RH := λ _ b, b.
 Instance propc_class_unwrap :
-  ∀ [R], Class PropositionConstructors R ->
-         PropositionConstructors R := λ _ b, b.
+  ∀ [RH], Class PropRecCases RH ->
+         PropRecCases RH := λ _ b, b.
 Instance shortcut_funcc_aplc :
-  ∀ [R], Class FunctionConstructors R ->
-         ApplyConstructor R := λ _ _, _.
+  ∀ [RH], Class FuncRecCases RH ->
+         ApplyRecCase RH := λ _ _, _.
 Instance shortcut_propc_funcc :
-  ∀ [R], Class PropositionConstructors R ->
-         FunctionConstructors R := λ _ _, _.
+  ∀ [RH], Class PropRecCases RH ->
+         FuncRecCases RH := λ _ _, _.
 Instance shortcut_propc_aplc :
-  ∀ [R], Class PropositionConstructors R ->
-         ApplyConstructor R := λ _ _, _.
-Instance subclass_funcc_aplc : FunctionConstructors ⊆ ApplyConstructor := λ _ _, _.
-Instance subclass_propc_funcc : PropositionConstructors ⊆ FunctionConstructors := λ _ _, _.
-Instance subclass_propc_aplc : PropositionConstructors ⊆ ApplyConstructor := _.
+  ∀ [RH], Class PropRecCases RH ->
+         ApplyRecCase RH := λ _ _, _.
+Instance subclass_funcc_aplc : FuncRecCases ⊆ ApplyRecCase := λ _ _, _.
+Instance subclass_propc_funcc : PropRecCases ⊆ FuncRecCases := λ _ _, _.
+Instance subclass_propc_aplc : PropRecCases ⊆ ApplyRecCase := _.
          
-Definition apply [C] [_ : C ⊆ ApplyConstructor] (f x : Ind C) : Ind C := λ _ _, apply_case (f _ _) (x _ _).
-Definition const {C} {_ : C ⊆ FunctionConstructors} : Ind C := λ _ _, const_case.
-Definition fuse {C} {_ : C ⊆ FunctionConstructors} : Ind C := λ _ _, fuse_case.
-Definition f_implies {C} {_ : C ⊆ PropositionConstructors} : Ind C := λ _ _, implies_case.
-Definition f_and {C} {_ : C ⊆ PropositionConstructors} : Ind C := λ _ _, and_case.
-Definition forall_quoted_formulas {C} {_ : C ⊆ PropositionConstructors} : Ind C := λ _ _, forall_quoted_formulas_case.
+Definition apply [C] [_ : C ⊆ ApplyRecCase] (f x : Rec C) : Rec C := λ _ _, apply_rec_case (f _ _) (x _ _).
+Definition const {C} {_ : C ⊆ FuncRecCases} : Rec C := λ _ _, const_rec_case.
+Definition fuse {C} {_ : C ⊆ FuncRecCases} : Rec C := λ _ _, fuse_rec_case.
+Definition f_implies {C} {_ : C ⊆ PropRecCases} : Rec C := λ _ _, implies_rec_case.
+Definition f_and {C} {_ : C ⊆ PropRecCases} : Rec C := λ _ _, and_rec_case.
+Definition forall_quoted_formulas {C} {_ : C ⊆ PropRecCases} : Rec C := λ _ _, forall_quoted_formulas_rec_case.
 
 Notation "[ x y ]" := (apply x y)
  (at level 0, x at next level, y at next level).
@@ -107,27 +112,46 @@ Notation "[ x & y ]" := [f_and x y]
 Notation "[ ⋀ x ]" := [forall_quoted_formulas x]
   (at level 0, x at next level).
 
-Inductive UnfoldStep [C] [_cfn : C ⊆ FunctionConstructors] : Ind C -> Ind C -> Prop :=
+Class ApplyIndCase_ [C] (_c : C ⊆ ApplyRecCase) (IH : Rec C -> Prop) := {
+    apply_ind_case : ∀ f x, IH f -> IH x -> IH [f x]
+  }.
+Instance ApplyIndCase : InductionCases ApplyRecCase := ApplyIndCase_.
+Class FuncIndCases_ C (_c : C ⊆ FuncRecCases) (IH : Rec C -> Prop) := {
+      const_ind_case : IH const
+    ; fuse_ind_case : IH const
+    ; func_apply_ind_cases : ApplyIndCase _ IH
+  }.
+Instance FuncIndCases : InductionCases FuncRecCases := FuncIndCases_.
+Class PropIndCases_ C (_c : C ⊆ PropRecCases) (IH : Rec C -> Prop) := {
+      implies_ind_case : IH f_implies
+    ; and_ind_case : IH f_and
+    ; forall_quoted_formulas_ind_case : IH forall_quoted_formulas
+    ; prop_func_ind_cases : FuncIndCases _ IH
+  }.
+Instance PropIndCases : InductionCases PropRecCases := PropIndCases_.
+
+
+Inductive UnfoldStep [C] [_cfn : C ⊆ FuncRecCases] : Rec C -> Rec C -> Prop :=
   | unfold_const a b : UnfoldStep [const a b] a
   | unfold_fuse a b c : UnfoldStep [fuse a b c] [[a c] [b c]]
   | unfold_in_lhs a b c : UnfoldStep a b -> UnfoldStep [a c] [b c].
 
-Inductive UnfoldPath [C] [_cfn : C ⊆ FunctionConstructors] : Ind C -> Ind C -> Prop :=
+Inductive UnfoldPath [C] [_cfn : C ⊆ FuncRecCases] : Rec C -> Rec C -> Prop :=
   | unfold_path_refl f : UnfoldPath f f
   | unfold_path_step_then f g h : UnfoldStep f g -> UnfoldPath g h -> UnfoldPath f h.
 
-Class OneMoreConstructor (C:Prop->Prop) (R : Prop) := {
-    omc_embed_case : Class C R
-  ; omc_new_case : R
+Class OneMoreConstructor (C:Prop->Prop) (RH : Prop) := {
+    omc_embed_rec_case : Class C RH
+  ; omc_new_rec_case : RH
   }.
 
-Definition omc_new {C} : Ind (OneMoreConstructor C) := λ _ _r, @omc_new_case _ _ _r.
+Definition omc_new {C} : Rec (OneMoreConstructor C) := λ _ _r, @omc_new_rec_case _ _ _r.
 
-Instance omc_class_unwrap [C R] :
-  Class (OneMoreConstructor C) R ->
-         OneMoreConstructor C R := λ c, c.
+Instance omc_class_unwrap [C RH] :
+  Class (OneMoreConstructor C) RH ->
+         OneMoreConstructor C RH := λ c, c.
 Instance omc_subclass {C}
-  : OneMoreConstructor C ⊆ C := λ _ _, omc_embed_case.
+  : OneMoreConstructor C ⊆ C := λ _ _, omc_embed_rec_case.
 Instance shortcut_omc_trans A B
   : (A ⊆ B) -> (OneMoreConstructor A ⊆ B)
   := _.
@@ -135,7 +159,7 @@ Instance shortcut_omc_trans_apply A B T
   : (A ⊆ B) -> (Class (OneMoreConstructor A) T) -> Class B T
   := λ _ _, _.
 Instance shortcut_omc_func_aplc A T
-  : (A ⊆ FunctionConstructors) -> (Class (OneMoreConstructor A) T) -> Class ApplyConstructor T
+  : (A ⊆ FuncRecCases) -> (Class (OneMoreConstructor A) T) -> Class ApplyRecCase T
   := λ _ _, _.
 
 (* Propositions are formulas that say things about other formulas, but there's no intrinsic reason those formulas have to use the _same grammar_. So we will often be passing around _two_ formula-constructor-classes, which I call the "viewing type" (conventionally named V, with constructors named VC) and the "target type" (conventionally named T, with constructors named TC). *)
@@ -144,24 +168,24 @@ Implicit Type VC : Prop -> Prop.
 Implicit Type TC : Prop -> Prop.
 
 (* We also deal with "quoted formulas". To say that a V-formula is a quoted version of a T-formula, we need to define the MeansQuoted relation (MQ for short). This relation is only well-defined once you first specify the V and T constructors. It is also a dependent type; here we define the return-type of  *)
-Definition MQR VC TC := Ind VC -> Ind TC -> Prop.
+Definition MQR VC TC := Rec VC -> Rec TC -> Prop.
 
-(* ...and usually, we need to be talking about _constructors_ (MQC) for that relation, because it must be just as extensible as the formula types. Since MQR uses VC and TC in "negative" positions (LHS of an implication), it doesn't naturally embed in subclasses the way Ind does, so we need to have the constructors explicitly allow subclasses: *)
+(* ...and usually, we need to be talking about _constructors_ (MQC) for that relation, because it must be just as extensible as the formula types. Since MQR uses VC and TC in "negative" positions (LHS of an implication), it doesn't naturally embed in subclasses the way Rec does, so we need to have the constructors explicitly allow subclasses: *)
 Definition MQCT VC TC :=
   ∀ VC2 (eV : VC2 ⊆ VC) TC2 (eT : TC2 ⊆ TC), MQR VC2 TC2 -> Prop.
 Existing Class MQCT.
 
 (* We also define _inductive instances_ of MQ constructors: *)
-Definition MQInd [VC TC] (MQC : MQCT VC TC) (qx : Ind VC) (x : Ind TC)
+Definition MQRec [VC TC] (MQC : MQCT VC TC) (qx : Rec VC) (x : Rec TC)
   :=
-  ∀ VC2 eV TC2 eT R (_mq : MQC VC2 eV TC2 eT R), R (ind_embed qx) (ind_embed x).
+  ∀ VC2 eV TC2 eT RH (_mq : MQC VC2 eV TC2 eT RH), RH (rec_embed qx) (rec_embed x).
 
 
 (* ...the main case of which is to add one additional variable to each of V and T, and say that the new V-variable is a quoted version of the new T-variable. *)
-Definition OneMoreMQConstructor [VC TC] (qx : Ind VC) (x: Ind TC) (MQC : MQCT VC TC) : MQCT VC TC
-  := λ VC2 eV TC2 eT R,
-    (MQC _ _ _ _ R) ∧
-    (R (ind_embed qx) (ind_embed x)).
+Definition OneMoreMQConstructor [VC TC] (qx : Rec VC) (x: Rec TC) (MQC : MQCT VC TC) : MQCT VC TC
+  := λ VC2 eV TC2 eT RH,
+    (MQC _ _ _ _ RH) ∧
+    (RH (rec_embed qx) (rec_embed x)).
 
 Definition MQCEmbed
   [VC TC] (MQC : MQCT VC TC) {VC2 TC2} {eV: VC2 ⊆ VC} {eT: TC2 ⊆ TC}
@@ -182,7 +206,7 @@ Definition MQCSubclass [VC TC] (MQC1 MQC2 : MQCT VC TC)
 (* Propositions represent sets of rules of inference, so we define a ruleset type: *)
 
 Inductive Ruleset TC :=
-  | ruleset_implies : Ind TC -> Ind TC -> Ruleset TC
+  | ruleset_implies : Rec TC -> Rec TC -> Ruleset TC
   | ruleset_and : Ruleset TC -> Ruleset TC -> Ruleset TC
   | ruleset_forall : Ruleset (OneMoreConstructor TC) -> Ruleset TC
    .
@@ -195,34 +219,34 @@ Nevertheless, the simplest way to define Rule is as a predicate on InfSets, whic
 
 We must ask what the actual type of Ruleset is. A Ruleset must be agnostic to grammar-extensions, but you may express a rule that assumes particular constructors exist (otherwise, our example rule wouldn't be able to express &). Therefore: *)
 
-Definition InfSet TC := Ind TC -> Ind TC -> Prop.
+Definition InfSet TC := Rec TC -> Rec TC -> Prop.
 Existing Class InfSet.
 Definition infset_embed [C] (infs : InfSet C) {C2} {_c:C ⊆ C2} : InfSet C2
-  := λ p c, infs (ind_embed p) (ind_embed c).
+  := λ p c, infs (rec_embed p) (rec_embed c).
 
 Fixpoint Ruleset_to_Coq [TC] (R : Ruleset TC) (infs : InfSet TC) : Prop :=
   match R with
   | ruleset_implies p c => infs p c
   | ruleset_and A B => Ruleset_to_Coq A _ ∧ Ruleset_to_Coq B _
-  | ruleset_forall F => ∀ (x : Ind TC),Ruleset_to_Coq F (infset_embed (_c := (λ _ _, {| omc_new_case := (x _ _) |})) infs)
+  | ruleset_forall F => ∀ (x : Rec TC),Ruleset_to_Coq F (infset_embed (_c := (λ _ _, {| omc_new_rec_case := (x _ _) |})) infs)
   end.
   
 Fixpoint Ruleset_embed [TC TC2] [eT : TC2 ⊆ TC] (R : Ruleset TC)  : Ruleset TC2 :=
   match R with
-  | ruleset_implies p c => ruleset_implies (ind_embed p) (ind_embed c)
+  | ruleset_implies p c => ruleset_implies (rec_embed p) (rec_embed c)
   | ruleset_and A B => ruleset_and (Ruleset_embed A) (Ruleset_embed B)
-  | ruleset_forall F => ruleset_forall (Ruleset_embed (eT := λ _ _, {| omc_new_case := omc_new_case |}) F)
+  | ruleset_forall F => ruleset_forall (Ruleset_embed (eT := λ _ _, {| omc_new_rec_case := omc_new_rec_case |}) F)
   end.
 
 
 Inductive FormulaMeansProp {VC TC} {MQC : MQCT VC TC}
-  {_vp:VC ⊆ PropositionConstructors}
-  : Ind VC -> Ruleset TC -> Prop :=
+  {_vp:VC ⊆ PropRecCases}
+  : Rec VC -> Ruleset TC -> Prop :=
 
   | fmp_implies [qp qc p c]
       :
-      MQInd MQC qp p ->
-      MQInd MQC qc c ->
+      MQRec MQC qp p ->
+      MQRec MQC qc c ->
       FormulaMeansProp [qp -> qc] (ruleset_implies p c)
 
   | fmp_unfold [a b B] :
@@ -236,11 +260,11 @@ Inductive FormulaMeansProp {VC TC} {MQC : MQCT VC TC}
       FormulaMeansProp [a & b] (ruleset_and A B)
 
   | fmp_forall_quoted_formulas
-      (f : Ind VC)
+      (f : Rec VC)
       (F : Ruleset (OneMoreConstructor TC))
       :
       FormulaMeansProp (MQC := OneMoreQuotvar MQC)
-        [(ind_embed f) omc_new]
+        [(rec_embed f) omc_new]
         F
       ->
       FormulaMeansProp
@@ -254,30 +278,36 @@ Inductive FormulaMeansProp {VC TC} {MQC : MQCT VC TC}
 
 (* In order to make quoted versions of ordinary formulas, we need an extra constructor for quoting stuff: *)
 
-Class FormulaConstructors R := {
-      quote_case : R
-    ; formula_prop_case :: PropositionConstructors R
+Class FormulaRecCases RH := {
+      quote_rec_case : RH
+    ; formula_prop_rec_cases :: PropRecCases RH
   }.
 
 Instance formulac_class_unwrap :
-  ∀ [R], Class FormulaConstructors R ->
-         FormulaConstructors R := λ _ b, b.
+  ∀ [RH], Class FormulaRecCases RH ->
+         FormulaRecCases RH := λ _ b, b.
 Instance shortcut_formulac_propc :
-  ∀ [R], Class FormulaConstructors R ->
-         PropositionConstructors R := λ _ _, _.
+  ∀ [RH], Class FormulaRecCases RH ->
+         PropRecCases RH := λ _ _, _.
 Instance shortcut_formulac_funcc :
-  ∀ [R], Class FormulaConstructors R ->
-         FunctionConstructors R := λ _ _, _.
+  ∀ [RH], Class FormulaRecCases RH ->
+         FuncRecCases RH := λ _ _, _.
 Instance shortcut_formulac_aplc :
-  ∀ [R], Class FormulaConstructors R ->
-         ApplyConstructor R := λ _ _, _.
-Instance subclass_formulac_propc : FormulaConstructors ⊆ PropositionConstructors := λ _, _.
-Instance subclass_formulac_funcc : FormulaConstructors ⊆ FunctionConstructors := _.
-Instance subclass_formulac_aplc : FormulaConstructors ⊆ ApplyConstructor := _.
+  ∀ [RH], Class FormulaRecCases RH ->
+         ApplyRecCase RH := λ _ _, _.
+Instance subclass_formulac_propc : FormulaRecCases ⊆ PropRecCases := λ _, _.
+Instance subclass_formulac_funcc : FormulaRecCases ⊆ FuncRecCases := _.
+Instance subclass_formulac_aplc : FormulaRecCases ⊆ ApplyRecCase := _.
 
-Definition f_quote {C} {_ : C ⊆ FormulaConstructors} : Ind C := λ _ _, quote_case.
+Definition f_quote {C} {_ : C ⊆ FormulaRecCases} : Rec C := λ _ _, quote_rec_case.
 
-Inductive IsAtom : Ind FormulaConstructors -> Prop :=
+Class FormulaIndCases_ C (_c : C ⊆ FormulaRecCases) (IH : Rec C -> Prop) := {
+      quote_ind_case : IH f_quote
+    ; formula_prop_ind_cases : PropIndCases _ IH
+  }.
+Instance FormulaIndCases : InductionCases FormulaRecCases := FormulaIndCases_.
+
+Inductive IsAtom : Rec FormulaRecCases -> Prop :=
   | atom_const : IsAtom const
   | atom_fuse : IsAtom fuse
   | atom_implies : IsAtom f_implies
@@ -286,15 +316,15 @@ Inductive IsAtom : Ind FormulaConstructors -> Prop :=
   | atom_quote : IsAtom f_quote
   .
 
-Definition FcMQC : MQCT FormulaConstructors FormulaConstructors :=
-  λ VC2 eV TC2 eT R,
+Definition FcMQC : MQCT FormulaRecCases FormulaRecCases :=
+  λ VC2 eV TC2 eT RH,
     (∀ f a, IsAtom a ->
-      UnfoldPath f (ind_embed a) -> R [f_quote f] (ind_embed a))
+      UnfoldPath f (rec_embed a) -> RH [f_quote f] (rec_embed a))
     ∧
-    (∀ qa qb b, UnfoldStep qa qb -> R qb b -> R qa b)
+    (∀ qa qb b, UnfoldStep qa qb -> RH qb b -> RH qa b)
     ∧
-    (∀ qa a qb b, R qa a -> R qb b ->
-      R [f_quote qa qb] [a b])
+    (∀ qa a qb b, RH qa a -> RH qb b ->
+      RH [f_quote qa qb] [a b])
     .
 
 
@@ -302,7 +332,7 @@ Definition FcMQC : MQCT FormulaConstructors FormulaConstructors :=
             Utilities for axioms of IC
 ****************************************************)
 
-(* Definition StandardFormula := Ind FormulaConstructors. *)
+(* Definition StandardFormula := Rec FormulaRecCases. *)
   
 
 Notation "{ x → y }" := (ruleset_implies x y)
@@ -312,16 +342,16 @@ Notation "{ x ∧ y }" := (ruleset_and x y)
 Notation "{ ⋀ f }" := (ruleset_forall f)
   (at level 0, f at next level).
 
-Notation "^ x" := (@ind_embed _ x _ omc_subclass) (at level 0).
+Notation "^ x" := (@rec_embed _ x _ omc_subclass) (at level 0).
 Notation "'α'" := omc_new (at level 0).
 Notation "'β'" := (^α) (at level 0).
 Notation "'γ'" := (^β) (at level 0).
 
-Definition ICR := Ruleset FormulaConstructors.
+Definition ICR := Ruleset FormulaRecCases.
 Definition AxiomRepresenting (rule : ICR) := ∃ f, FormulaMeansProp (MQC := FcMQC) f rule.
 
 Definition fmp_unfold_path {VC TC} {MQC : MQCT VC TC}
-  {_vp:VC ⊆ PropositionConstructors} [a b B] : UnfoldPath a b ->
+  {_vp:VC ⊆ PropRecCases} [a b B] : UnfoldPath a b ->
       FormulaMeansProp b B ->
       FormulaMeansProp a B.
   intros path _f.
@@ -330,16 +360,17 @@ Definition fmp_unfold_path {VC TC} {MQC : MQCT VC TC}
   exact (fmp_unfold H (IHpath _f)).
 Defined.
 
-Definition functionize_prop [VC TC] [_vp : VC ⊆ PropositionConstructors] (P : Ruleset (OneMoreConstructor TC)) (p : Ind (OneMoreConstructor VC)) [MQC] (_pP : FormulaMeansProp (MQC := OneMoreQuotvar MQC) p P) : ∃ f : Ind VC, FormulaMeansProp (MQC := OneMoreQuotvar MQC) [(ind_embed f) omc_new] P.
+Definition functionize_prop [VC TC] [_vp : VC ⊆ PropRecCases] (P : Ruleset (OneMoreConstructor TC)) (p : Rec (OneMoreConstructor VC)) [MQC] (_pP : FormulaMeansProp (MQC := OneMoreQuotvar MQC) p P) : ∃ f : Rec VC, FormulaMeansProp (MQC := OneMoreQuotvar MQC) [(rec_embed f) omc_new] P.
+Defined.
 
 Create HintDb abstraction_elimination.
 
-Definition bubble_embed_in_const {C} {_c : C ⊆ FunctionConstructors} : @const (OneMoreConstructor C) _ = ind_embed (_c := omc_subclass) const := eq_refl.
-Definition bubble_embed_in_fuse {C} {_c : C ⊆ FunctionConstructors} : @fuse (OneMoreConstructor C) _ = ind_embed (_c := omc_subclass) fuse := eq_refl.
-Definition bubble_embed_in_implies {C} {_c : C ⊆ PropositionConstructors} : @f_implies (OneMoreConstructor C) _ = ind_embed (_c := omc_subclass) f_implies := eq_refl.
-Definition bubble_embed_in_and {C} {_c : C ⊆ PropositionConstructors} : @f_and (OneMoreConstructor C) _ = ind_embed (_c := omc_subclass) f_and := eq_refl.
-Definition bubble_embed_in_forall {C} {_c : C ⊆ PropositionConstructors} : @forall_quoted_formulas (OneMoreConstructor C) _ = ind_embed (_c := omc_subclass) forall_quoted_formulas := eq_refl.
-Definition bubble_embed_in_quote {C} {_c : C ⊆ FormulaConstructors} : @f_quote (OneMoreConstructor C) _ = ind_embed (_c := omc_subclass) f_quote := eq_refl.
+Definition bubble_embed_in_const {C} {_c : C ⊆ FuncRecCases} : @const (OneMoreConstructor C) _ = rec_embed (_c := omc_subclass) const := eq_refl.
+Definition bubble_embed_in_fuse {C} {_c : C ⊆ FuncRecCases} : @fuse (OneMoreConstructor C) _ = rec_embed (_c := omc_subclass) fuse := eq_refl.
+Definition bubble_embed_in_implies {C} {_c : C ⊆ PropRecCases} : @f_implies (OneMoreConstructor C) _ = rec_embed (_c := omc_subclass) f_implies := eq_refl.
+Definition bubble_embed_in_and {C} {_c : C ⊆ PropRecCases} : @f_and (OneMoreConstructor C) _ = rec_embed (_c := omc_subclass) f_and := eq_refl.
+Definition bubble_embed_in_forall {C} {_c : C ⊆ PropRecCases} : @forall_quoted_formulas (OneMoreConstructor C) _ = rec_embed (_c := omc_subclass) forall_quoted_formulas := eq_refl.
+Definition bubble_embed_in_quote {C} {_c : C ⊆ FormulaRecCases} : @f_quote (OneMoreConstructor C) _ = rec_embed (_c := omc_subclass) f_quote := eq_refl.
 
 Hint Rewrite bubble_embed_in_const : abstraction_elimination.
 Hint Rewrite bubble_embed_in_fuse : abstraction_elimination.
@@ -348,11 +379,11 @@ Hint Rewrite bubble_embed_in_and : abstraction_elimination.
 Hint Rewrite bubble_embed_in_forall : abstraction_elimination.
 Hint Rewrite bubble_embed_in_quote : abstraction_elimination.
 
-Definition bubble_embed_in_apply {C} {_c : C ⊆ FunctionConstructors} a b : @apply (OneMoreConstructor C) _ (ind_embed a) (ind_embed b) = ind_embed (_c := omc_subclass) (apply a b) := eq_refl.
+Definition bubble_embed_in_apply {C} {_c : C ⊆ FuncRecCases} a b : @apply (OneMoreConstructor C) _ (rec_embed a) (rec_embed b) = rec_embed (_c := omc_subclass) (apply a b) := eq_refl.
 
 Hint Rewrite bubble_embed_in_apply : abstraction_elimination.
 
-Lemma UnfoldPath_in_lhs [C] [_cfn : C ⊆ FunctionConstructors] (a b c : Ind C) : UnfoldPath (_cfn := _cfn) a b -> UnfoldPath (_cfn := _cfn) [a c] [b c].
+Lemma UnfoldPath_in_lhs [C] [_cfn : C ⊆ FuncRecCases] (a b c : Rec C) : UnfoldPath (_cfn := _cfn) a b -> UnfoldPath (_cfn := _cfn) [a c] [b c].
   intro.
   induction H.
   apply unfold_path_refl.
@@ -361,22 +392,22 @@ Lemma UnfoldPath_in_lhs [C] [_cfn : C ⊆ FunctionConstructors] (a b c : Ind C) 
   assumption.
 Qed.
 
-Lemma abstraction_elimination_const {C} {_c : C ⊆ FunctionConstructors} b : UnfoldPath (_cfn := subclass_trans omc_subclass _c) [(ind_embed [const b]) α] (ind_embed b).
+Lemma abstraction_elimination_const {C} {_c : C ⊆ FuncRecCases} b : UnfoldPath (_cfn := subclass_trans omc_subclass _c) [(rec_embed [const b]) α] (rec_embed b).
   eapply unfold_path_step_then; [|apply unfold_path_refl].
   apply unfold_const.
 Qed.
 
-Definition f_id {C} {_c : C ⊆ FunctionConstructors} : Ind C := [fuse const const].
+Definition f_id {C} {_c : C ⊆ FuncRecCases} : Rec C := [fuse const const].
 
-Lemma abstraction_elimination_id {C} {_c : C ⊆ FunctionConstructors} : UnfoldPath (_cfn := subclass_trans omc_subclass _c) [(ind_embed f_id) α] α.
+Lemma abstraction_elimination_id {C} {_c : C ⊆ FuncRecCases} : UnfoldPath (_cfn := subclass_trans omc_subclass _c) [(rec_embed f_id) α] α.
   eapply unfold_path_step_then.
   apply unfold_fuse.
   eapply unfold_path_step_then; [|apply unfold_path_refl].
   apply unfold_const.
 Qed.
 
-Lemma abstraction_elimination_fuse {C} {_c : C ⊆ FunctionConstructors} a b q : UnfoldPath (_cfn := subclass_trans omc_subclass _c) [(ind_embed a) α] q ->
-UnfoldPath [(ind_embed [fuse a b]) α] [q [b α]].
+Lemma abstraction_elimination_fuse {C} {_c : C ⊆ FuncRecCases} a b q : UnfoldPath (_cfn := subclass_trans omc_subclass _c) [(rec_embed a) α] q ->
+UnfoldPath [(rec_embed [fuse a b]) α] [q [b α]].
   intro.
   eapply unfold_path_step_then.
   apply unfold_fuse.
@@ -387,16 +418,16 @@ Qed.
 Ltac abstraction_elimination := repeat (
   autorewrite with abstraction_elimination;
   match goal with
-  | |- UnfoldPath ((ind_embed ?f) α) (ind_embed ?B) => apply abstraction_elimination_const
-  | |- UnfoldPath [(ind_embed ?f) α] α => apply abstraction_elimination_id
-  | |- UnfoldPath ((ind_embed ?f) α) (apply ?B ?C) => apply abstraction_elimination_fuse
+  | |- UnfoldPath ((rec_embed ?f) α) (rec_embed ?B) => apply abstraction_elimination_const
+  | |- UnfoldPath [(rec_embed ?f) α] α => apply abstraction_elimination_id
+  | |- UnfoldPath ((rec_embed ?f) α) (apply ?B ?C) => apply abstraction_elimination_fuse
   end).
   
 (* Print bubble_embed_in_apply.
   Set Printing Implicit. *)
 
 (* UnfoldPath
-  (apply (ind_embed ?f) α)
+  (apply (rec_embed ?f) α)
   (apply (apply f_implies α)
   (apply
   (apply f_quote
@@ -421,8 +452,8 @@ Lemma dfkjdjf
 VC2 
 (eV : VC2
 ⊆ OneMoreConstructor
-  FormulaConstructors) a b : (ind_embed (_c := omc_subclass)
-  (apply a b)) = (apply (ind_embed a) (ind_embed b)).
+  FormulaRecCases) a b : (rec_embed (_c := omc_subclass)
+  (apply a b)) = (apply (rec_embed a) (rec_embed b)).
     (* Set Printing Implicit. *)
     reflexivity.
 Qed.
@@ -435,31 +466,31 @@ Definition ax_dup : AxiomRepresenting rule_dup.
   apply fmp_forall_quoted_formulas.
   eapply fmp_unfold_path.
   2: {
-    apply fmp_implies; unfold MQInd; intros;destruct _mq;
+    apply fmp_implies; unfold MQRec; intros;destruct _mq;
     destruct H.
     apply H0.
     destruct H1.
-    (* unfold ind_embed. *)
+    (* unfold rec_embed. *)
     (* pose (H2 _ _ _ _ H0 H0) as x. *)
-    (* unfold ind_embed,apply in x. *)
-    (* change ( (ind_embed (_c := eT)
+    (* unfold rec_embed,apply in x. *)
+    (* change ( (rec_embed (_c := eT)
   (apply (apply f_and α) α))) with ( 
-  (apply (ind_embed (_c := eT) (apply f_and α)) (ind_embed α))). *)
+  (apply (rec_embed (_c := eT) (apply f_and α)) (rec_embed α))). *)
     instantiate (1 := ((apply (apply f_quote _) _))).
     (* instantiate (3 := f_quote). *)
 
-    (* repeat change ( (ind_embed (_c := eV)
+    (* repeat change ( (rec_embed (_c := eV)
   (apply ?a ?b))) with (
-  (apply (ind_embed (_c := eV) a) (ind_embed b))). *)
-    (* change ( (ind_embed (_c := eT)
+  (apply (rec_embed (_c := eV) a) (rec_embed b))). *)
+    (* change ( (rec_embed (_c := eT)
   (apply ?a ?b))) with (
-  (apply (ind_embed (_c := eT) a) (ind_embed b))). *)
-    (* unfold ind_embed,apply in *. *)
+  (apply (rec_embed (_c := eT) a) (rec_embed b))). *)
+    (* unfold rec_embed,apply in *. *)
     apply H2.
     instantiate (1 := ((apply (apply f_quote _) _))).
     apply H2.
     instantiate (1 := ((apply f_quote f_and) )).
-    change (R [f_quote (ind_embed f_and)] (ind_embed f_and)).
+    change (RH [f_quote (rec_embed f_and)] (rec_embed f_and)).
     apply H.
     constructor.
     constructor.
@@ -472,7 +503,7 @@ Definition ax_dup : AxiomRepresenting rule_dup.
   instantiate (1 := [fuse _ _]).
   Print abstraction_elimination_fuse.
   eapply abstraction_elimination_fuse.
-  eapply (abstraction_elimination_fuse (C := FormulaConstructors) (_c := subclass_formulac_funcc)).
+  eapply (abstraction_elimination_fuse (C := FormulaRecCases) (_c := subclass_formulac_funcc)).
 
   
   eapply unfold_path_step_then.
@@ -482,9 +513,9 @@ Definition ax_dup : AxiomRepresenting rule_dup.
 (*   
   autorewrite with abstraction_elimination;
   match goal with
-  | |- UnfoldPath ((ind_embed ?f) α) (ind_embed ?B) => apply abstraction_elimination_const
-  | |- UnfoldPath [(ind_embed ?f) α] α => apply abstraction_elimination_id
-  | |- UnfoldPath ((ind_embed ?f) α) (apply ?B ?C) => apply abstraction_elimination_fuse
+  | |- UnfoldPath ((rec_embed ?f) α) (rec_embed ?B) => apply abstraction_elimination_const
+  | |- UnfoldPath [(rec_embed ?f) α] α => apply abstraction_elimination_id
+  | |- UnfoldPath ((rec_embed ?f) α) (apply ?B ?C) => apply abstraction_elimination_fuse
   end). *)
 
 Defined.
@@ -534,15 +565,28 @@ We need to include, in the judgment, T-rules that are on extensions of the origi
 ...so we need to have a matching extention to VC
 *)
 
-Definition MQFunctional [VC TC] (MQC : MQCT VC TC) := ∀ qx x (_x : MQInd MQC qx x) y (_y : MQInd MQC qx y), y = x.
-Definition MQSurjective [VC TC] (MQC : MQCT VC TC) := ∀ x, ∃ qx, MQInd MQC qx x.
-Definition MPFunctional [VC TC] [eV : VC ⊆ PropositionConstructors] (MQC : MQCT VC TC) := ∀ x X Y (_x : FormulaMeansProp x X) (_y : FormulaMeansProp x Y), Y = X.
-Definition MPSurjective [VC TC] [eV : VC ⊆ PropositionConstructors] (MQC : MQCT VC TC) := ∀ X, ∃ x, FormulaMeansProp x X.
+Section MetatheoremDefinitions.
 
-Definition InferenceIncludes [VC TC] [eV : VC ⊆ PropositionConstructors] (MQC : MQCT VC TC) (rules : Ruleset VC) 
+Variable VC TC : Prop -> Prop.
+Variable eV : VC ⊆ PropRecCases.
+Variable VCI : InductionCases VC.
+Variable TCI : InductionCases TC.
+Variable MQC : MQCT VC TC.
+Existing Instance VCI.
+Existing Instance TCI.
+
+Variable choose_formula_representation : Rec TC -> Rec VC.
+Variable choose_ruleset_representation : Ruleset TC -> Rec VC.
+Definition MQSurjective := ∀ x, Ind x -> MQRec MQC (choose_formula_representation x) x. 
+Definition MPSurjective := ∀ r, FormulaMeansProp (choose_ruleset_representation r) r.
+
+Definition MQFunctional := ∀ qx x (_x : MQRec MQC qx x) y (_y : MQRec MQC qx y), y = x.
+Definition MPFunctional := ∀ x X Y (_x : FormulaMeansProp x X) (_y : FormulaMeansProp x Y), Y = X.
+
+Definition InferenceIncludes (rules : Ruleset VC) 
 :=
   ∀ VC2 (eV : VC2 ⊆ VC) TC2 (eT : TC2 ⊆ TC) (MQC2 : MQCT VC2 TC2) (_mq : MQCSubclass MQC2 (MQCEmbed MQC))
-    (p c : Ind VC2)
+    (p c : Rec VC2)
     (pc_provable : infs_provable_from (Ruleset_embed rules) p c)
     (P C : Ruleset TC2)
     (_p : FormulaMeansProp (MQC:=MQC2) p P)
@@ -551,15 +595,16 @@ Definition InferenceIncludes [VC TC] [eV : VC ⊆ PropositionConstructors] (MQC 
         rules_implies P C.
 
 
-Definition IncludesInference [VC TC] [eV : VC ⊆ PropositionConstructors] (MQC : MQCT VC TC) (rules : Ruleset VC) :=
+Definition IncludesInference (rules : Ruleset VC) :=
   ∀ VC2 (eV : VC2 ⊆ VC) TC2 (eT : TC2 ⊆ TC) (MQC2 : MQCT VC2 TC2) (_mq : MQCSubclass MQC2 (MQCEmbed MQC))
     (P C : Ruleset TC2)
     (PC_implied : rules_implies P C)
-    (p c : Ind VC2)
+    (p c : Rec VC2)
     (_p : FormulaMeansProp (MQC:=MQC2) p P)
     (_c : FormulaMeansProp (MQC:=MQC2) c C),
         infs_provable_from (Ruleset_embed rules) p c.
 
+End MetatheoremDefinitions.
 
 (****************************************************
             Proofs of MQFunctional
@@ -567,16 +612,16 @@ Definition IncludesInference [VC TC] [eV : VC ⊆ PropositionConstructors] (MQC 
 
 Lemma FcMQCFunctional : MQFunctional FcMQC.
   intros qx x qxx.
-  unfold MQInd in *.
-  specialize (qxx FormulaConstructors _ FormulaConstructors _). 
-  change (ind_embed qx) with (qx) in qxx.
-  change (ind_embed x) with (x) in qxx.
-  (* unfold ind_embed, subclass_apply, subclass_refl in qxx. cbn in qxx. *)
+  unfold MQRec in *.
+  specialize (qxx FormulaRecCases _ FormulaRecCases _). 
+  change (rec_embed qx) with (qx) in qxx.
+  change (rec_embed x) with (x) in qxx.
+  (* unfold rec_embed, subclass_apply, subclass_refl in qxx. cbn in qxx. *)
   (* specialize (qxx (λ qx x, ∀ y, )).  *)
   apply qxx. clear qxx.
   split; [ | split]; intros.
-  specialize (_y FormulaConstructors _ FormulaConstructors _).
-  change (ind_embed y) with (y) in _y.
+  specialize (_y FormulaRecCases _ FormulaRecCases _).
+  change (rec_embed y) with (y) in _y.
   revert a H H0.
   generalize f.
   generalize y.
@@ -587,21 +632,51 @@ Qed.
             Proofs of MQSurjective
 ****************************************************)
 Print nat_ind.
-Lemma FcMQCSurjective : MQSurjective FcMQC.
-  intro x.
-  refine (x (∀ y, ∃ qx : Ind FormulaConstructors,
-  MQInd FcMQC qx y) _).
+
+Definition formula_representation_apply {C} {_c : C ⊆ FormulaRecCases} : ApplyRecCase (Rec C) :=
+  {| apply_rec_case := λ f x, [f_quote f x] |}.
+  
+Definition formula_representation_func {C} {_c : C ⊆ FormulaRecCases} : FuncRecCases (Rec C) :=
+  {| 
+    const_rec_case := [f_quote const]
+  ; fuse_rec_case := [f_quote fuse]
+  ; func_apply_rec_cases := formula_representation_apply |}.
+  
+Definition formula_representation_prop {C} {_c : C ⊆ FormulaRecCases} : PropRecCases (Rec C) :=
+  {| 
+    implies_rec_case := [f_quote f_implies]
+  ; and_rec_case := [f_quote f_and]
+  ; forall_quoted_formulas_rec_case := [f_quote forall_quoted_formulas]
+  ; prop_func_rec_cases := formula_representation_func |}.
+  
+Definition formula_representation_formula {C} {_c : C ⊆ FormulaRecCases} : FormulaRecCases (Rec C) :=
+  {| 
+    quote_rec_case := [f_quote f_quote]
+  ; formula_prop_rec_cases := formula_representation_prop |}.
+
+
+
+Definition choose_formula_representation_0 : Rec FormulaRecCases -> Rec FormulaRecCases :=
+  λ x, x _ formula_representation_formula.
+
+Lemma FcMQCSurjective : MQSurjective _ FcMQC choose_formula_representation_0.
+  intros x xi.
+  apply xi.
+  repeat split.
+  intro; intros.
+  refine (x (∀ y, ∃ qx : Rec FormulaRecCases,
+  MQRec FcMQC qx y) _).
   generalize x.
   apply x.
   split.
   apply x.
   split.
 
-  apply (x (∀ y, ∃ qx : Ind FormulaConstructors,
-  MQInd FcMQC qx y)).
+  apply (x (∀ y, ∃ qx : Rec FormulaRecCases,
+  MQRec FcMQC qx y)).
   split.
-∃ qx : Ind FormulaConstructors,
-  MQInd FcMQC qx x
+∃ qx : Rec FormulaRecCases,
+  MQRec FcMQC qx x
 (****************************************************
             Proofs of InferenceIncludes
 ****************************************************)
@@ -621,7 +696,7 @@ Definition inference_includes_drop : InferenceIncludes FcMQC rule_drop.
   {apply rules_implies_trans.
   admit. }
 
-  (* unfold ind_embed, subclass_apply, shortcut_omc_trans_apply, subclass_apply, omc_subclass. cbn. *)
+  (* unfold rec_embed, subclass_apply, shortcut_omc_trans_apply, subclass_apply, omc_subclass. cbn. *)
   intros x y.
   intros P C _p _c.
   (* destruct _p. *)
