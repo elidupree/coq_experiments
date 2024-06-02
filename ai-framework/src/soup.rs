@@ -157,9 +157,9 @@ pub struct SoupOptimizationStepContext<'a> {
 impl Soup {
     /// Do one step of optimization.
     ///
-    /// The basic idea of a Soup is to call `step` over and over again, making it slowly get that are in better.
+    /// The basic idea of a Soup is to call `step` over and over again, making it slowly get better and better.
     ///
-    /// This strutunction's main effect is to delegate to the `step` function of one of the stored optimizers. To make sure each optimizer gets approximately equal shares of CPU time, we choose the optimizer with the lowest expenditures so far.
+    /// This function's main effect is to delegate to the `step` function of one of the stored optimizers. To make sure each optimizer gets approximately equal shares of CPU time, we choose the optimizer with the lowest expenditures so far.
     ///
     /// The function also tracks the amount of time spent by the step, and attributes it to the optimizer appropriately.
     pub fn step(&mut self) {
