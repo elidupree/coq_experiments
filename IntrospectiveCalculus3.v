@@ -87,14 +87,16 @@ Inductive Ruleset FC :=
   | ruleset_and : Ruleset FC -> Ruleset FC -> Ruleset FC
   | ruleset_forall_formulas : Ruleset (OneMoreConstructor FC) -> Ruleset FC.
 
+(* Inductive Ruleset_specializes FC : Ruleset FC -> Ruleset (OneMoreConstructor FC) -> Prop := *)
+  
 (* A ruleset asserts that certain inferences must be valid. This means it expresses a predicate on inference-sets. *)
 
-Inductive Proof FC : Ruleset FC -> Rec FC -> Rec FC -> Prop :=
-  | proof_inference p c : Proof (ruleset_inference p c) p c
-  | proof_and_left a b p c : Proof (ruleset_and a b) p c -> Proof a p c
-  | proof_and_right a b p c : Proof (ruleset_and a b) p c -> Proof b p c
-  | proof_specialization r p c : Proof (ruleset_forall_formulas r) p c -> Proof r p c
-  | proof_transitivity r p m c : Proof r p m -> Proof r m c -> Proof r p c.
+Inductive Proof FC FC2 (_f : FC2 ⊆ FC): Ruleset FC -> Rec FC2 -> Rec FC2 -> Prop :=
+  | proof_inference p c : Proof _ (ruleset_inference p c) (rec_embed p) (rec_embed c)
+  | proof_and_left a b p c : Proof _ a p c -> Proof _ (ruleset_and a b) p c
+  | proof_and_right a b p c : Proof _ b p c -> Proof _ (ruleset_and a b) p c
+  | proof_specialization r p c : Proof _ r p c -> Proof _ (ruleset_forall_formulas r) p c
+  | proof_transitivity r p m c : Proof _ r p m -> Proof _ r m c -> Proof _ r p c.
 
 
 (* A ruleset asserts that certain inferences must be valid. This means it expresses a predicate on inference-sets. *)
