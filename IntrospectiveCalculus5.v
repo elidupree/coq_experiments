@@ -33,6 +33,11 @@ Inductive GenericFormula : Type :=
   | gf_pop : GenericFormula -> GenericFormula
   | gf_apply : GenericFormula -> GenericFormula -> GenericFormula.
 
+Instance fgf : Formula GenericFormula := {
+    f_atom := gf_atom
+  ; f_apply := gf_apply
+  }.
+
 Inductive Ruleset :=
   | r_rule : GenericFormula -> GenericFormula -> Ruleset
   | r_plus : Ruleset -> Ruleset -> Ruleset
@@ -57,6 +62,180 @@ Inductive Specializes F {_f : Formula F}
       Specializes (gf_apply A B) xs (f_apply a b)
   .
 
+
+(* make combined version? *)
+
+Inductive RulesetStatesSingle F {_f : Formula F}
+  : Ruleset -> F -> F -> Prop :=
+  | rss_plus_left r s a b : 
+    RulesetStatesSingle r a b ->
+    RulesetStatesSingle (r_plus r s) a b
+  | rss_plus_right r s a b : 
+    RulesetStatesSingle s a b ->
+    RulesetStatesSingle (r_plus r s) a b
+  | rss_rule P C x p c :
+    Specializes P x p ->
+    Specializes C x c ->
+    RulesetStatesSingle (r_rule P C) p c
+  .
+  
+Inductive RulesetStatesSingleChain F {_f : Formula F} (r : Ruleset)
+  : F -> F -> Prop :=
+  | rssc_refl a : RulesetStatesSingleChain r a a
+  | rssc_trans a b c :
+    RulesetStatesSingleChain r a b ->
+    RulesetStatesSingleChain r b c ->
+    RulesetStatesSingleChain r a c
+  | rssc_single a b :
+    RulesetStatesSingle r a b ->
+    RulesetStatesSingleChain r a b
+    
+  (* | rs_rule_then a b c :
+    RulesetStatesSingleChainSingle r a b ->
+    RulesetStatesSingleChain r b c ->
+    RulesetStatesSingleChain r a c *)
+  .
+  
+Inductive RulesetStates F {_f : Formula F} 
+  : Ruleset -> F -> F -> Prop :=
+  | rs_refl r a : RulesetStates r a a
+  | rs_trans r a b c :
+    RulesetStates r a b ->
+    RulesetStates r b c ->
+    RulesetStates r a c
+  | rs_plus_left r s a b : 
+    RulesetStates r a b ->
+    RulesetStates (r_plus r s) a b
+  | rs_plus_right r s a b : 
+    RulesetStates s a b ->
+    RulesetStates (r_plus r s) a b
+  | rs_rule P C x p c :
+    Specializes P x p ->
+    Specializes C x c ->
+    RulesetStates (r_rule P C) p c
+  .
+
+Lemma rss_rs F _f R a b : @RulesetStatesSingle F _f R a b -> RulesetStates R a b.
+  intro. induction H.
+  apply rs_plus_left; assumption.
+  apply rs_plus_right; assumption.
+  apply rs_rule with x; assumption.
+Qed.
+
+Lemma rssc_rs F _f R a b : @RulesetStatesSingleChain F _f R a b -> RulesetStates R a b.
+  intro. induction H; try constructor.
+  apply rs_trans with b; assumption.
+  apply rss_rs; assumption.
+Qed.
+
+Lemma rs_rssc F _f R a b : @RulesetStates F _f R a b -> RulesetStatesSingleChain R a b.
+  intro. induction H.
+  apply rssc_refl.
+  apply rssc_trans with b; assumption.
+  {
+    (* TODO reduce duplicate code ID 920605944 *)
+    induction IHRulesetStates.
+    apply rssc_refl.
+    apply rssc_trans with b; [apply IHIHRulesetStates1 | apply IHIHRulesetStates2]; apply rssc_rs; assumption.
+    apply rssc_single; apply rss_plus_left; assumption.
+  }
+  {
+    (* TODO reduce duplicate code ID 920605944 *)
+    induction IHRulesetStates.
+    apply rssc_refl.
+    apply rssc_trans with b; [apply IHIHRulesetStates1 | apply IHIHRulesetStates2]; apply rssc_rs; assumption.
+    apply rssc_single; apply rss_plus_right; assumption.
+  }
+  apply rssc_single; apply rss_rule with x; assumption.
+Qed.
+
+Definition AuthoritativeRulesetDerives R S :=
+  ∀ F _f a b, @RulesetStates F _f S a b -> RulesetStates R a b.
+(* Definition AuthoritativeRulesetDerivesSingle R S :=
+  ∀ F _f a b, @RulesetStatesSingle F _f S a b -> RulesetStatesSingle R a b. *)
+
+Inductive RulesetDerives (r : Ruleset)
+  : Ruleset -> Prop :=
+  | rd_rule p c :
+    RulesetStates r p c ->
+    RulesetDerives r (r_rule p c)
+  | rd_plus s t :
+    RulesetDerives r s ->
+    RulesetDerives r t ->
+    RulesetDerives r (r_plus s t)
+  .
+
+(* Lemma ARD_ARDSingle R S : AuthoritativeRulesetDerives R S -> AuthoritativeRulesetDerivesSingle R S.
+  unfold AuthoritativeRulesetDerives, AuthoritativeRulesetDerivesSingle; intros. *)
+
+
+Lemma RulesetDerivesCorrect_plus R S T :
+  AuthoritativeRulesetDerives R S ->
+  AuthoritativeRulesetDerives R T ->
+  AuthoritativeRulesetDerives R (r_plus S T).
+  unfold AuthoritativeRulesetDerives; intros.
+  apply rs_rssc in H1.
+  (* apply rssc_rs. *)
+  induction H1.
+  apply rs_refl.
+  apply rs_trans with b; assumption.
+  dependent destruction H1.
+  exact (H _ _ _ _ (rss_rs H1)).
+  exact (H0 _ _ _ _ (rss_rs H1)).
+Qed.
+
+Lemma RulesetDerivesCorrect_rule R p c :
+  RulesetStates R p c ->
+  AuthoritativeRulesetDerives R (r_rule p c).
+  unfold AuthoritativeRulesetDerives; intros.
+  (* "How did (r_rule p c) state a |- b? Just do the same thing using R" *)
+  apply rs_rssc in H0.
+  induction H0.
+  apply rs_refl.
+  apply rs_trans with b; assumption.
+  (* "How did (r_rule p c) singly-state a |- b? Just state it the same way using R" *)
+  dependent destruction H0.
+  induction H.
+  { (* specializations unique *) admit. }
+  { }
+  { apply rs_rule. apply rss_rule. }
+
+  apply rs_rule. apply rss_rule.
+Qed.
+
+
+Theorem RulesetDerivesCorrect R S :
+  RulesetDerives R S -> AuthoritativeRulesetDerives R S.
+
+  intro H; induction H.
+  apply RulesetDerivesCorrect_rule; assumption.
+  apply RulesetDerivesCorrect_plus; assumption.
+Qed.
+
+Theorem RulesetDerivesComplete R S :
+  AuthoritativeRulesetDerives R S -> RulesetDerives R S. 
+Qed.
+
+
+(* Inductive FormulaThunk F : Type :=
+  | ft_done : F -> FormulaThunk F
+  | ft_force_then : FormulaThunk F -> FTContinuation F -> FormulaThunk F
+with FTContinuation F : Type :=
+  | ft_then_done : FTContinuation F
+  | ft_then_force_right_sibling_then : FormulaThunk F -> FTContinuation F -> FTContinuation F
+  | ft_then_use_as_right_sibling_of_then : F -> FTContinuation F -> FTContinuation F
+  . *)
+
+Inductive FillableFormulaThunk F : Type :=
+  | fft_any : FillableFormulaThunk F
+  | fft_done : F -> FillableFormulaThunk F
+  | fft_force_then : FillableFormulaThunk F -> FFTContinuation F -> FillableFormulaThunk F
+with FFTContinuation F : Type :=
+  | fft_then_done : FFTContinuation F
+  | fft_then_force_right_sibling_then : FillableFormulaThunk F -> FFTContinuation F -> FFTContinuation F
+  | fft_then_use_as_right_sibling_of_then : F -> FFTContinuation F -> FFTContinuation F
+  .
+
 Inductive SpecializationState F : Type :=
   | ss_premise_with_context : GenericFormula -> Context F -> SpecializationState F
   | ss_conclusion : F -> SpecializationState F
@@ -70,7 +249,7 @@ with SSContinuation F : Type :=
 Fixpoint SSSpecializes F {_f : Formula F}
   (SS : SpecializationState F) (xs:Context F) (output: F) : Prop :=
   match SS with
-  | ss_premise_with_context gf xs0 => True
+  | ss_premise_with_context gf xs0 => ((xs0 = context_arbitrary _) ∧ Specializes gf xs output) ∨ (∃ h t, xs0 = (context_cons h t) ∧ SSSpecializes gf (context_cons h ))
   | ss_conclusion f => output = f
   | ss_making_subformula sg cont => ∃ g,
     SSSpecializes sg xs g ∧ SSCSpecializes g cont xs output
@@ -109,6 +288,12 @@ Inductive SpecializationStep F {_f : Formula F} : SpecializationState F -> Speci
   (* | sst_specialize p x xs : SpecializationStep (ss_premise_with_context p xs) (ss_premise_with_context p (context_cons x xs)) *)
   (* | sst_commit ss : SpecializationStep ss (ss_making_subformula ss (ss_then_done _)) *)
   (* | sst_finish f : SpecializationStep (ss_making_subformula (ss_conclusion f) (ss_then_done _)) (ss_conclusion f) *)
+  | sst_eliminate_usage x xs cont : SpecializationStep
+    (ss_making_subformula (ss_premise_with_context gf_usage (context_cons x xs)) cont)
+    (ss_making_subformula (ss_conclusion x) cont)
+  | sst_eliminate_pop f x xs cont : SpecializationStep
+    (ss_making_subformula (ss_premise_with_context (gf_pop f) (context_cons x xs)) cont)
+    (ss_making_subformula (ss_premise_with_context f xs) cont)
   | sst_atom a xs cont : SpecializationStep
     (ss_making_subformula (ss_premise_with_context (gf_atom a) xs) cont)
     (ss_making_subformula (ss_conclusion (f_atom a)) cont)
