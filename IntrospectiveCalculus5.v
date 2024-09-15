@@ -62,8 +62,10 @@ Inductive Specializes F {_f : Formula F}
       Specializes (gf_apply A B) xs (f_apply a b)
   .
 
+Lemma double_specialize F _f a b c x y :
+  Specializes a x b -> @Specializes F _f b y c -> ∃ z, Specializes a z c.
+  intros Saxb Sbyc.
 
-(* make combined version? *)
 
 Inductive RulesetStatesSingle F {_f : Formula F}
   : Ruleset -> F -> F -> Prop :=
@@ -78,25 +80,26 @@ Inductive RulesetStatesSingle F {_f : Formula F}
     Specializes C x c ->
     RulesetStatesSingle (r_rule P C) p c
   .
-  
-Inductive RulesetStatesSingleChain F {_f : Formula F} (r : Ruleset)
+
+
+Inductive RulesetStates F {_f : Formula F} (r : Ruleset)
   : F -> F -> Prop :=
-  | rssc_refl a : RulesetStatesSingleChain r a a
-  | rssc_trans a b c :
-    RulesetStatesSingleChain r a b ->
-    RulesetStatesSingleChain r b c ->
-    RulesetStatesSingleChain r a c
-  | rssc_single a b :
+  | rs_refl a : RulesetStates r a a
+  | rs_trans a b c :
+    RulesetStates r a b ->
+    RulesetStates r b c ->
+    RulesetStates r a c
+  | rs_single a b :
     RulesetStatesSingle r a b ->
-    RulesetStatesSingleChain r a b
+    RulesetStates r a b
     
   (* | rs_rule_then a b c :
-    RulesetStatesSingleChainSingle r a b ->
-    RulesetStatesSingleChain r b c ->
-    RulesetStatesSingleChain r a c *)
+    RulesetStatesSingle r a b ->
+    RulesetStates r b c ->
+    RulesetStates r a c *)
   .
-  
-Inductive RulesetStates F {_f : Formula F} 
+
+(* Inductive RulesetStates F {_f : Formula F} 
   : Ruleset -> F -> F -> Prop :=
   | rs_refl r a : RulesetStates r a a
   | rs_trans r a b c :
@@ -113,41 +116,68 @@ Inductive RulesetStates F {_f : Formula F}
     Specializes P x p ->
     Specializes C x c ->
     RulesetStates (r_rule P C) p c
-  .
+  . *)
 
-Lemma rss_rs F _f R a b : @RulesetStatesSingle F _f R a b -> RulesetStates R a b.
+(* Lemma rss_rs F _f R a b : @RulesetStatesSingle F _f R a b -> RulesetStates R a b.
   intro. induction H.
   apply rs_plus_left; assumption.
   apply rs_plus_right; assumption.
   apply rs_rule with x; assumption.
-Qed.
+Qed. *)
 
-Lemma rssc_rs F _f R a b : @RulesetStatesSingleChain F _f R a b -> RulesetStates R a b.
+(* Lemma rs_rs F _f R a b : @RulesetStates F _f R a b -> RulesetStates R a b.
   intro. induction H; try constructor.
   apply rs_trans with b; assumption.
   apply rss_rs; assumption.
+Qed. *)
+
+Lemma rs_plus_left F _f r s a b : @RulesetStates F _f r a b ->
+    RulesetStates (r_plus r s) a b.
+  (* TODO reduce duplicate code ID 920605944 *)
+  intro. induction H.
+  apply rs_refl.
+  apply rs_trans with b; assumption.
+  apply rs_single; apply rss_plus_left; assumption.
 Qed.
 
-Lemma rs_rssc F _f R a b : @RulesetStates F _f R a b -> RulesetStatesSingleChain R a b.
+Lemma rs_plus_right F _f r s a b : @RulesetStates F _f s a b ->
+    RulesetStates (r_plus r s) a b.
+  (* TODO reduce duplicate code ID 920605944 *)
   intro. induction H.
-  apply rssc_refl.
-  apply rssc_trans with b; assumption.
-  {
-    (* TODO reduce duplicate code ID 920605944 *)
-    induction IHRulesetStates.
-    apply rssc_refl.
-    apply rssc_trans with b; [apply IHIHRulesetStates1 | apply IHIHRulesetStates2]; apply rssc_rs; assumption.
-    apply rssc_single; apply rss_plus_left; assumption.
-  }
-  {
-    (* TODO reduce duplicate code ID 920605944 *)
-    induction IHRulesetStates.
-    apply rssc_refl.
-    apply rssc_trans with b; [apply IHIHRulesetStates1 | apply IHIHRulesetStates2]; apply rssc_rs; assumption.
-    apply rssc_single; apply rss_plus_right; assumption.
-  }
-  apply rssc_single; apply rss_rule with x; assumption.
+  apply rs_refl.
+  apply rs_trans with b; assumption.
+  apply rs_single; apply rss_plus_right; assumption.
 Qed.
+
+Lemma rs_rule F _f P C x p c :
+    Specializes P x p ->
+    Specializes C x c ->
+    @RulesetStates F _f (r_rule P C) p c.
+  (* TODO reduce duplicate code ID 920605944 *)
+  intros.
+  apply rs_single; apply rss_rule with x; assumption.
+Qed.
+
+(* Lemma rs_rs F _f R a b : @RulesetStates F _f R a b -> RulesetStates R a b.
+  intro. induction H.
+  apply rs_refl.
+  apply rs_trans with b; assumption.
+  {
+    (* TODO reduce duplicate code ID 920605944 *)
+    induction IHRulesetStates.
+    apply rs_refl.
+    apply rs_trans with b; [apply IHIHRulesetStates1 | apply IHIHRulesetStates2]; apply rs_rs; assumption.
+    apply rs_single; apply rss_plus_left; assumption.
+  }
+  {
+    (* TODO reduce duplicate code ID 920605944 *)
+    induction IHRulesetStates.
+    apply rs_refl.
+    apply rs_trans with b; [apply IHIHRulesetStates1 | apply IHIHRulesetStates2]; apply rs_rs; assumption.
+    apply rs_single; apply rss_plus_right; assumption.
+  }
+  apply rs_single; apply rss_rule with x; assumption.
+Qed. *)
 
 Definition AuthoritativeRulesetDerives R S :=
   ∀ F _f a b, @RulesetStates F _f S a b -> RulesetStates R a b.
@@ -174,33 +204,48 @@ Lemma RulesetDerivesCorrect_plus R S T :
   AuthoritativeRulesetDerives R T ->
   AuthoritativeRulesetDerives R (r_plus S T).
   unfold AuthoritativeRulesetDerives; intros.
-  apply rs_rssc in H1.
-  (* apply rssc_rs. *)
+  (* apply rs_rs in H1. *)
+  (* apply rs_rs. *)
   induction H1.
   apply rs_refl.
   apply rs_trans with b; assumption.
   dependent destruction H1.
-  exact (H _ _ _ _ (rss_rs H1)).
-  exact (H0 _ _ _ _ (rss_rs H1)).
+  exact (H _ _ _ _ (rs_single H1)).
+  exact (H0 _ _ _ _ (rs_single H1)).
 Qed.
 
 Lemma RulesetDerivesCorrect_rule R p c :
   RulesetStates R p c ->
   AuthoritativeRulesetDerives R (r_rule p c).
   unfold AuthoritativeRulesetDerives; intros.
+
+  (* clear p. *)
+
+  (* "How did R state p |- c? Use the same to" *)
+  (* induction H.
+  {
+    induction H0; try constructor.
+    dependent destruction H0; try constructor.
+  } *)
+
   (* "How did (r_rule p c) state a |- b? Just do the same thing using R" *)
-  apply rs_rssc in H0.
   induction H0.
   apply rs_refl.
   apply rs_trans with b; assumption.
   (* "How did (r_rule p c) singly-state a |- b? Just state it the same way using R" *)
+  (* induction H0; trivial. *)
+  (* apply rs_rule with x. *)
+
+  (* "How did (r_rule p c) singly-state a |- b? Only one way is possible" *)
   dependent destruction H0.
+  (* "How did R state p |- c? Use the same to" *)
   induction H.
+  (* apply rs_rule with x. *)
   { (* specializations unique *) admit. }
   { }
   { apply rs_rule. apply rss_rule. }
 
-  apply rs_rule. apply rss_rule.
+  apply rs_rule. apply rss_rule. *)
 Qed.
 
 
