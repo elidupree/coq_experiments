@@ -3,6 +3,7 @@ Set Asymmetric Patterns.
 
 Require Import Unicode.Utf8.
 Require Import Coq.Program.Equality.
+Require Import Setoid.
 (* Require Import List. *)
 
 (* Hack - remove later *)
@@ -14,6 +15,7 @@ Parameter cheat : ∀ {A}, A.
 ****************************************************)
 
 Definition AtomIndex := nat.
+Definition VarIndex := nat.
 (* Inductive Formula : Type :=
   | f_atom : AtomIndex -> Formula
   | f_apply : Formula -> Formula -> Formula. *)
@@ -29,8 +31,7 @@ Notation "[ x y .. z ]" := (f_apply .. (f_apply x y) .. z)
  
 Inductive GenericFormula : Type :=
   | gf_atom : AtomIndex -> GenericFormula
-  | gf_usage : GenericFormula
-  | gf_pop : GenericFormula -> GenericFormula
+  | gf_var : VarIndex -> GenericFormula
   | gf_apply : GenericFormula -> GenericFormula -> GenericFormula.
 
 Instance fgf : Formula GenericFormula := {
@@ -44,10 +45,21 @@ Inductive Ruleset :=
   .
 
 (* no need to be inductive or coinductive: *)
-Parameter Context : Type -> Type.
+(* Parameter Context : Type -> Type.
 Parameter context_arbitrary : ∀ F, Context F.
-Parameter context_cons : ∀ F, F -> Context F -> Context F.
+Parameter context_cons : ∀ F, F -> Context F -> Context F. *)
 
+Definition Context F := VarIndex -> F.
+
+Fixpoint specialize F {_f : Formula F} gf ctx : F :=
+  match gf with
+  | gf_atom a => f_atom a
+  | gf_var v => ctx v
+  | gf_apply f x => f_apply (specialize f ctx) (specialize x ctx) 
+  end.
+
+Notation "x / y" := (specialize x y).
+(* 
 Inductive Specializes F {_f : Formula F}
   : GenericFormula -> Context F -> F -> Prop
   :=
@@ -60,11 +72,21 @@ Inductive Specializes F {_f : Formula F}
       Specializes A xs a ->
       Specializes B xs b ->
       Specializes (gf_apply A B) xs (f_apply a b)
-  .
+  . *)
 
-Lemma double_specialize F _f a b c x y :
-  Specializes a x b -> @Specializes F _f b y c -> ∃ z, Specializes a z c.
-  intros Saxb Sbyc.
+Definition specialize_chain F {_f : Formula F} ctx cty : Context F :=
+  λ v, specialize (ctx v) cty.
+
+Lemma specialize_chain_correct F {_f : Formula F} ctx cty a :
+  (specialize a (specialize_chain ctx cty) = (specialize (specialize a ctx) cty)).
+  induction a; trivial.
+  cbn; rewrite IHa1, IHa2; reflexivity.
+Qed.
+Lemma specialize_self_correct a :
+  (specialize a gf_var) = a.
+  induction a; trivial.
+  cbn; rewrite IHa1, IHa2; reflexivity.
+Qed.
 
 
 Inductive RulesetStatesSingle F {_f : Formula F}
@@ -75,10 +97,8 @@ Inductive RulesetStatesSingle F {_f : Formula F}
   | rss_plus_right r s a b : 
     RulesetStatesSingle s a b ->
     RulesetStatesSingle (r_plus r s) a b
-  | rss_rule P C x p c :
-    Specializes P x p ->
-    Specializes C x c ->
-    RulesetStatesSingle (r_rule P C) p c
+  | rss_rule P C ctx :
+    RulesetStatesSingle (r_rule P C) (P/ctx) (C/ctx)
   .
 
 
@@ -149,13 +169,9 @@ Lemma rs_plus_right F _f r s a b : @RulesetStates F _f s a b ->
   apply rs_single; apply rss_plus_right; assumption.
 Qed.
 
-Lemma rs_rule F _f P C x p c :
-    Specializes P x p ->
-    Specializes C x c ->
-    @RulesetStates F _f (r_rule P C) p c.
-  (* TODO reduce duplicate code ID 920605944 *)
-  intros.
-  apply rs_single; apply rss_rule with x; assumption.
+Lemma rs_rule F _f P C ctx :
+    @RulesetStates F _f (r_rule P C) (P/ctx) (C/ctx).
+  apply rs_single; apply rss_rule.
 Qed.
 
 (* Lemma rs_rs F _f R a b : @RulesetStates F _f R a b -> RulesetStates R a b.
@@ -240,14 +256,16 @@ Lemma RulesetDerivesCorrect_rule R p c :
   dependent destruction H0.
   (* "How did R state p |- c? Use the same to" *)
   induction H.
-  (* apply rs_rule with x. *)
-  { (* specializations unique *) admit. }
-  { }
-  { apply rs_rule. apply rss_rule. }
-
-  apply rs_rule. apply rss_rule. *)
+  apply rs_refl.
+  apply rs_trans with (b / ctx); assumption.
+  {
+    induction H.
+    apply rs_plus_left; assumption.
+    apply rs_plus_right; assumption.
+    rewrite <- 2 (specialize_chain_correct ctx0 ctx).
+    apply rs_rule.
+  }
 Qed.
-
 
 Theorem RulesetDerivesCorrect R S :
   RulesetDerives R S -> AuthoritativeRulesetDerives R S.
@@ -258,7 +276,26 @@ Theorem RulesetDerivesCorrect R S :
 Qed.
 
 Theorem RulesetDerivesComplete R S :
-  AuthoritativeRulesetDerives R S -> RulesetDerives R S. 
+  AuthoritativeRulesetDerives R S -> RulesetDerives R S.
+  unfold AuthoritativeRulesetDerives.
+  (* break the goal down into parts... *)
+  induction S; intros.
+  {
+    (* rule case *)
+    apply rd_rule.
+    apply H.
+    rewrite <- (specialize_self_correct g) at 2.
+    rewrite <- (specialize_self_correct g0) at 2.
+    apply rs_rule.
+  }
+  {
+    (* plus case *)
+    apply rd_plus;
+      [apply IHS1 | apply IHS2];
+      intros; apply H;
+      [apply rs_plus_left | apply rs_plus_right];
+      assumption.
+  }
 Qed.
 
 
