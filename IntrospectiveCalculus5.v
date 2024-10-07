@@ -15,7 +15,7 @@ Parameter cheat : ∀ {A}, A.
 ****************************************************)
 
 Definition AtomIndex := nat.
-Definition VarIndex := nat.
+Definition VarIndex := list bool.
 (* Inductive Formula : Type :=
   | f_atom : AtomIndex -> Formula
   | f_apply : Formula -> Formula -> Formula. *)
@@ -45,11 +45,11 @@ Inductive Ruleset :=
   .
 
 (* no need to be inductive or coinductive: *)
-(* Parameter Context : Type -> Type.
-Parameter context_arbitrary : ∀ F, Context F.
-Parameter context_cons : ∀ F, F -> Context F -> Context F. *)
+(* Parameter InfiniteContext : Type -> Type.
+Parameter context_arbitrary : ∀ F, InfiniteContext F.
+Parameter context_cons : ∀ F, F -> InfiniteContext F -> InfiniteContext F. *)
 
-Definition Context F := VarIndex -> F.
+Definition InfiniteContext F := VarIndex -> F.
 
 Fixpoint specialize F {_f : Formula F} gf ctx : F :=
   match gf with
@@ -61,7 +61,7 @@ Fixpoint specialize F {_f : Formula F} gf ctx : F :=
 Notation "x / y" := (specialize x y).
 (* 
 Inductive Specializes F {_f : Formula F}
-  : GenericFormula -> Context F -> F -> Prop
+  : GenericFormula -> InfiniteContext F -> F -> Prop
   :=
   | sgf_atom xs a : Specializes (gf_atom a) xs (f_atom a)
   | sgf_usage x xs : Specializes (gf_usage) (context_cons x xs) x
@@ -74,7 +74,7 @@ Inductive Specializes F {_f : Formula F}
       Specializes (gf_apply A B) xs (f_apply a b)
   . *)
 
-Definition specialize_chain F {_f : Formula F} ctx cty : Context F :=
+Definition specialize_chain F {_f : Formula F} ctx cty : InfiniteContext F :=
   λ v, specialize (ctx v) cty.
 
 Lemma specialize_chain_correct F {_f : Formula F} ctx cty a :
@@ -101,8 +101,81 @@ Inductive RulesetStatesSingle F {_f : Formula F}
     RulesetStatesSingle (r_rule P C) (P/ctx) (C/ctx)
   .
 
+Inductive Chain F (Step : F -> F -> Prop) : F -> F -> Prop :=
+  | chain_refl a : Chain Step a a
+  | chain_step_then a b c :
+    Step a b ->
+    Chain Step b c ->
+    Chain Step a c
+    .
 
-Inductive RulesetStates F {_f : Formula F} (r : Ruleset)
+Lemma chain_step [F Step a b] : 
+    Step a b ->
+    @Chain F Step a b.
+  intro.
+  apply chain_step_then with b. assumption. apply chain_refl.
+Qed.
+
+Lemma chain_trans F Step a b c : @Chain F Step a b ->
+    Chain Step b c ->
+    Chain Step a c.
+  intros.
+  induction H; trivial.
+  apply chain_step_then with b; trivial.
+  apply IHChain; assumption.
+Qed.
+
+Lemma chain_then_step F Step a b c : @Chain F Step a b ->
+    Step b c ->
+    Chain Step a c.
+  intros.
+  apply chain_trans with b; trivial.
+  apply chain_step; trivial.
+Qed.
+
+Lemma chain_map F Step1 Step2 (a b : F) : (∀ x y, Step1 x y -> Step2 x y) -> Chain Step1 a b -> Chain Step2 a b.
+  intros.
+  induction H0.
+  apply chain_refl.
+  apply chain_step_then with b; trivial.
+  apply H; assumption.
+Qed.
+
+Lemma chain_flat_map F Step1 Step2 (a b : F) : (∀ x y, Step1 x y -> Chain Step2 x y) -> Chain Step1 a b -> Chain Step2 a b.
+  intros.
+  induction H0.
+  apply chain_refl.
+  apply chain_trans with b; trivial.
+  apply H; assumption.
+Qed.
+
+Lemma chain_map_mapf [F G Step1 Step2] (a b : F) (map_f : F -> G) (map_step : ∀ x y, Step1 x y -> Step2 (map_f x) (map_f y)) : Chain Step1 a b -> Chain Step2 (map_f a) (map_f b).
+  intros.
+  induction H.
+  apply chain_refl.
+  apply chain_step_then with (map_f b); trivial.
+  apply map_step; assumption.
+Qed.
+
+Lemma chain_flat_map_mapf F G Step1 Step2 (a b : F) (map_f : F -> G) (map_step : ∀ x y, Step1 x y -> Chain Step2 (map_f x) (map_f y)) : Chain Step1 a b -> Chain Step2 (map_f a) (map_f b).
+  intros.
+  induction H.
+  apply chain_refl.
+  apply chain_trans with (map_f b); trivial.
+  apply map_step; assumption.
+Qed.
+
+
+Definition RulesetStates F {_f : Formula F} (r : Ruleset)
+  : F -> F -> Prop := Chain (@RulesetStatesSingle F _f r).
+
+Definition rs_refl F {_f : Formula F} (r : Ruleset) a : @RulesetStates F _f r a a := chain_refl _ _.
+Definition rs_single F {_f : Formula F} (r : Ruleset) a b : @RulesetStatesSingle F _f r a b ->
+    RulesetStates r a b := λ step, chain_step step.
+Definition rs_trans F {_f : Formula F} (r : Ruleset) a b c : @RulesetStates F _f r a b ->
+    RulesetStates r b c ->
+    RulesetStates r a c := λ ab bc, chain_trans ab bc.
+(* Inductive RulesetStates F {_f : Formula F} (r : Ruleset)
   : F -> F -> Prop :=
   | rs_refl a : RulesetStates r a a
   | rs_trans a b c :
@@ -117,7 +190,7 @@ Inductive RulesetStates F {_f : Formula F} (r : Ruleset)
     RulesetStatesSingle r a b ->
     RulesetStates r b c ->
     RulesetStates r a c *)
-  .
+  . *)
 
 (* Inductive RulesetStates F {_f : Formula F} 
   : Ruleset -> F -> F -> Prop :=
@@ -153,25 +226,19 @@ Qed. *)
 
 Lemma rs_plus_left F _f r s a b : @RulesetStates F _f r a b ->
     RulesetStates (r_plus r s) a b.
-  (* TODO reduce duplicate code ID 920605944 *)
-  intro. induction H.
-  apply rs_refl.
-  apply rs_trans with b; assumption.
-  apply rs_single; apply rss_plus_left; assumption.
+  apply chain_map.
+  apply rss_plus_left.
 Qed.
 
 Lemma rs_plus_right F _f r s a b : @RulesetStates F _f s a b ->
     RulesetStates (r_plus r s) a b.
-  (* TODO reduce duplicate code ID 920605944 *)
-  intro. induction H.
-  apply rs_refl.
-  apply rs_trans with b; assumption.
-  apply rs_single; apply rss_plus_right; assumption.
+  apply chain_map.
+  apply rss_plus_right.
 Qed.
 
 Lemma rs_rule F _f P C ctx :
     @RulesetStates F _f (r_rule P C) (P/ctx) (C/ctx).
-  apply rs_single; apply rss_rule.
+  apply chain_step; apply rss_rule.
 Qed.
 
 (* Lemma rs_rs F _f R a b : @RulesetStates F _f R a b -> RulesetStates R a b.
@@ -220,14 +287,11 @@ Lemma RulesetDerivesCorrect_plus R S T :
   AuthoritativeRulesetDerives R T ->
   AuthoritativeRulesetDerives R (r_plus S T).
   unfold AuthoritativeRulesetDerives; intros.
-  (* apply rs_rs in H1. *)
-  (* apply rs_rs. *)
-  induction H1.
-  apply rs_refl.
-  apply rs_trans with b; assumption.
-  dependent destruction H1.
-  exact (H _ _ _ _ (rs_single H1)).
-  exact (H0 _ _ _ _ (rs_single H1)).
+  apply chain_flat_map with (RulesetStatesSingle (r_plus S T)); trivial.
+  intros.
+  dependent destruction H2.
+  apply H. apply chain_step; assumption.
+  apply H0. apply chain_step; assumption.
 Qed.
 
 Lemma RulesetDerivesCorrect_rule R p c :
@@ -235,36 +299,26 @@ Lemma RulesetDerivesCorrect_rule R p c :
   AuthoritativeRulesetDerives R (r_rule p c).
   unfold AuthoritativeRulesetDerives; intros.
 
-  (* clear p. *)
-
-  (* "How did R state p |- c? Use the same to" *)
-  (* induction H.
-  {
-    induction H0; try constructor.
-    dependent destruction H0; try constructor.
-  } *)
-
   (* "How did (r_rule p c) state a |- b? Just do the same thing using R" *)
-  induction H0.
-  apply rs_refl.
-  apply rs_trans with b; assumption.
-  (* "How did (r_rule p c) singly-state a |- b? Just state it the same way using R" *)
-  (* induction H0; trivial. *)
-  (* apply rs_rule with x. *)
+  refine (chain_flat_map _ H0); intros.
 
   (* "How did (r_rule p c) singly-state a |- b? Only one way is possible" *)
-  dependent destruction H0.
-  (* "How did R state p |- c? Use the same to" *)
-  induction H.
-  apply rs_refl.
-  apply rs_trans with (b / ctx); assumption.
-  {
-    induction H.
-    apply rs_plus_left; assumption.
-    apply rs_plus_right; assumption.
-    rewrite <- 2 (specialize_chain_correct ctx0 ctx).
-    apply rs_rule.
-  }
+  dependent destruction H1.
+
+  (* "How did R state p |- c? Use the same chain to say p/ctx |- c/ctx" *)
+  refine (chain_flat_map_mapf (λ f, f / ctx) _ H); intros.
+  
+  (* clear some things so induction doesn't get confused *)
+  clear p c H H0 a b.
+
+  (* "Which rule did R use to singly-state x |- y? Use that same rule" *)
+  induction H1.
+  apply rs_plus_left; assumption.
+  apply rs_plus_right; assumption.
+
+  (* Now all that's left is 2 specializations in series *)
+  rewrite <- 2 (specialize_chain_correct ctx0 ctx).
+  apply rs_rule.
 Qed.
 
 Theorem RulesetDerivesCorrect R S :
@@ -296,7 +350,363 @@ Theorem RulesetDerivesComplete R S :
       [apply rs_plus_left | apply rs_plus_right];
       assumption.
   }
+  (* Show Proof. *)
 Qed.
+
+
+Class Context F C := {
+    ctx_branch : F -> C -> C -> C
+  ; ctx_formula :: Formula F
+  }.
+
+Definition ContextRelation := ∀ F C (_fc : Context F C), C -> C -> Prop.
+Definition ContextRelationDerives
+  (Premise Conclusion : ContextRelation)
+  := ∀ F C (_fc : Context F C) a b,
+  Conclusion F C _fc a b ->
+     Premise F C _fc a b.
+
+Inductive GenericContext :=
+  | gc_use_subtree : VarIndex -> GenericContext
+  | gc_branch :
+      GenericFormula ->
+      GenericContext ->
+      GenericContext ->
+      GenericContext
+  .
+
+Instance gcic : Context GenericFormula GenericContext := {
+    ctx_branch := gc_branch
+  }.
+
+Definition gc_root_value (gc : GenericContext) : GenericFormula :=
+  match gc with
+  | gc_use_subtree i => gf_var i 
+  | gc_branch x L R => x
+  end.
+
+Definition gc_child_left (gc : GenericContext) : GenericContext :=
+  match gc with
+  | gc_use_subtree i => gc_use_subtree (cons false i) 
+  | gc_branch x L R => L
+  end.
+
+Definition gc_child_right (gc : GenericContext) : GenericContext :=
+  match gc with
+  | gc_use_subtree i => gc_use_subtree (cons true i) 
+  | gc_branch x L R => R
+  end.
+
+Fixpoint gc_subtree (gc : GenericContext) (i : VarIndex) : GenericContext :=
+  match i with
+  | nil => gc
+  | cons false tail => gc_subtree (gc_child_left gc) tail
+  | cons true tail => gc_subtree (gc_child_right gc) tail 
+  end.
+
+Definition gc_get_value (gc : GenericContext) (i : VarIndex) : GenericFormula :=
+  gc_root_value (gc_subtree gc i).
+
+Fixpoint compose_gc_gf (gc : GenericContext) (gf : GenericFormula) : GenericFormula :=
+  match gf with
+  | gf_atom a => gf_atom a
+  | gf_var i => gc_get_value gc i
+  | gf_apply f x => gf_apply (compose_gc_gf gc f) (compose_gc_gf gc x) 
+  end.
+
+Fixpoint compose_gc_gc (A B : GenericContext) : GenericContext :=
+  match B with
+  | gc_use_subtree i => gc_subtree A i
+  | gc_branch x L R => gc_branch
+      (compose_gc_gf A x)
+      (compose_gc_gc A L)
+      (compose_gc_gc A R)
+  end.
+
+Inductive GenericContextChoices :=
+  | gcc_gc : GenericContext -> GenericContextChoices
+  | gcc_choice : GenericContextChoices -> GenericContextChoices -> GenericContextChoices
+  .
+
+Inductive GenericFormulaSpecializes F C {_fc : Context F C}
+  : GenericFormula -> C -> F -> Prop :=
+  | gfs_atom a ctx : GenericFormulaSpecializes
+    (gf_atom a) ctx (f_atom a)
+  | gfs_use x L R : GenericFormulaSpecializes
+    (gf_var nil) (ctx_branch x L R) x
+  | gfs_left x i L R :
+    GenericFormulaSpecializes (gf_var i) L x ->
+    GenericFormulaSpecializes
+      (gf_var (cons false i)) (ctx_branch x L R) x
+  | gfs_right x i L R :
+    GenericFormulaSpecializes (gf_var i) R x ->
+    GenericFormulaSpecializes
+      (gf_var (cons true i)) (ctx_branch x L R) x
+  | gfs_branch ctx pa pb ca cb :
+    GenericFormulaSpecializes pa ctx ca ->
+    GenericFormulaSpecializes pb ctx cb ->
+    GenericFormulaSpecializes
+      (gf_apply pa pb) ctx (f_apply ca cb)
+  .
+
+Inductive GenericContextSpecializes F C {_fc : Context F C}
+  : GenericContext -> C -> C -> Prop :=
+  | gcs_whole_tree ct : GenericContextSpecializes
+    (gc_use_subtree nil) ct ct
+  | gcs_left a b x0 x1 i :
+    GenericContextSpecializes
+      (gc_use_subtree i) a b ->
+    GenericContextSpecializes
+      (gc_use_subtree (cons false i)) (ctx_branch x0 a x1) b
+  | gcs_branch x L R p lc rc xc :
+    GenericFormulaSpecializes x p xc ->
+    GenericContextSpecializes L p lc ->
+    GenericContextSpecializes R p rc ->
+    GenericContextSpecializes
+      (gc_branch x L R) p (ctx_branch xc lc rc)
+  .
+
+Inductive GenericContextChoicesSpecializes F C {_fc : Context F C}
+  : GenericContextChoices -> C -> C -> Prop :=
+  | gccs_gc gc a b :
+      GenericContextSpecializes gc a b -> 
+      GenericContextChoicesSpecializes (gcc_gc gc) a b 
+  | gccs_choice_left L R a b :
+      GenericContextChoicesSpecializes L a b ->
+      GenericContextChoicesSpecializes (gcc_choice L R) a b
+  | gccs_choice_right L R a b :
+      GenericContextChoicesSpecializes R a b ->
+      GenericContextChoicesSpecializes (gcc_choice L R) a b
+  .
+
+Definition gc_to_cr (gc : GenericContext) : ContextRelation :=
+  λ _ _ _, GenericContextSpecializes gc.
+Definition gcc_to_cr (gcc : GenericContextChoices) : ContextRelation :=
+  λ _ _ _, GenericContextChoicesSpecializes gcc.
+(* Set Printing Implicit.
+Print gc_to_cr. *)
+
+Inductive GenericContextChoicesDerives (r : GenericContextChoices)
+  : GenericContextChoices -> Prop :=
+  | gccd_gc a b :
+    GenericContextChoicesSpecializes r a b ->
+    GenericContextChoicesDerives r (gcc_gc b)
+  | gccd_choice s t :
+    GenericContextChoicesDerives r s ->
+    GenericContextChoicesDerives r t ->
+    GenericContextChoicesDerives r (gcc_choice s t)
+  .
+
+Inductive ContextTransformation :=
+  | ct_compose : ContextTransformation -> ContextTransformation -> ContextTransformation
+  | ct_star : ContextTransformation -> ContextTransformation
+  | ct_inverse : ContextTransformation -> ContextTransformation
+  | ct_in_left : ContextTransformation -> ContextTransformation
+  | ct_rotate_left : ContextTransformation
+  | ct_swap : ContextTransformation
+  | ct_drop : ContextTransformation
+  | ct_formula_atom : ContextTransformation
+  | ct_formula_branch : ContextTransformation
+  .
+
+Inductive ContextTransformationSpecializes F C {_fc : Context F C}
+  : ContextTransformation -> C -> C -> Prop :=
+  | cts_compose A B x y z :
+    ContextTransformationSpecializes A x y ->
+    ContextTransformationSpecializes B y z ->
+    ContextTransformationSpecializes (ct_compose A B) x z
+  | cts_star_refl A x :
+    ContextTransformationSpecializes (ct_star A) x x
+  | cts_star_chain A x y z :
+    ContextTransformationSpecializes A x y ->
+    ContextTransformationSpecializes (ct_star A) y z ->
+    ContextTransformationSpecializes (ct_star A) x z
+  | cts_inverse A x y :
+    ContextTransformationSpecializes A x y ->
+    ContextTransformationSpecializes (ct_inverse A) y x
+  | cts_in_left A x y z w :
+    ContextTransformationSpecializes A x y ->
+    ContextTransformationSpecializes
+      (ct_in_left A) (ctx_branch w x z) (ctx_branch w y z)
+  | cts_rotate_left A B C x y :
+    ContextTransformationSpecializes ct_rotate_left
+      (ctx_branch x A (ctx_branch y B C))
+      (ctx_branch y (ctx_branch x A B) C)
+  | cts_swap A B x :
+    ContextTransformationSpecializes ct_swap
+      (ctx_branch x A B)
+      (ctx_branch x B A)
+  | cts_drop x A B :
+    ContextTransformationSpecializes ct_drop
+      (ctx_branch x A B)
+      A
+  | cts_formula_atom A :
+    ContextTransformationSpecializes ct_formula_atom
+      A
+      (ctx_branch (f_atom 0) A A)
+  | cts_formula_branch x y A B C :
+    ContextTransformationSpecializes ct_formula_branch
+      (ctx_branch y (ctx_branch x A B) C)
+      (ctx_branch (f_apply x y) (ctx_branch x A B) C)
+  .
+
+Inductive CtRepresentsGc :
+  ContextTransformation -> GenericContext -> Prop :=
+  | ctrgc_compose A a B b :
+      CtRepresentsGc A a ->
+      CtRepresentsGc B b ->
+      CtRepresentsGc (ct_compose A B) (compose_gc_gc a b)
+  | ctrgc_inverse A a B b :
+      CtRepresentsGc A a ->
+      CtRepresentsGc B b ->
+      CtRepresentsGc (ct_compose A B) (compose_gc_gc a b)
+  .
+
+(* Interactive Generic Formula or something *)
+Inductive IGF :=
+  | igf_apply : IGF -> IGF -> IGF
+  | igf_atom : IGF
+  | igf_popatom : IGF -> IGF
+  | igf_var : IGF
+  | igf_popvar : IGF -> IGF
+  | igf_pushvar : IGF -> IGF -> IGF
+  .
+
+
+Fixpoint index_to_igf_atom (a : AtomIndex) : IGF :=
+  match a with
+  | 0 => igf_atom
+  | S p => igf_popvar (index_to_igf_atom p)
+  end.
+
+Instance figf : Formula IGF := {
+    f_atom := index_to_igf_atom
+  ; f_apply := igf_apply
+  }.
+
+Fixpoint gf_increment_vars (gf : GenericFormula) : GenericFormula :=
+  match gf with
+  | gf_atom a => gf_atom a
+  | gf_var v => gf_var (S v)
+  | gf_apply a b => gf_apply (gf_increment_vars a) (gf_increment_vars b) 
+  end.
+Fixpoint gf_increment_atoms (gf : GenericFormula) : GenericFormula :=
+  match gf with
+  | gf_atom a => gf_atom (S a)
+  | gf_var v => gf_var v
+  | gf_apply a b => gf_apply (gf_increment_atoms a) (gf_increment_atoms b) 
+  end.
+Fixpoint gf_specialize_one (gf : GenericFormula) (x : GenericFormula) : GenericFormula :=
+  match gf with
+  | gf_atom a => gf_atom a
+  | gf_var v => match v with
+    | 0 => x
+    | S p => gf_var p
+    end
+  | gf_apply a b => gf_apply (gf_specialize_one a x) (gf_specialize_one b x) 
+  end.
+
+Fixpoint igf_to_gf (igf : IGF) : GenericFormula :=
+  match igf with
+  | igf_apply f x => gf_apply (igf_to_gf f) (igf_to_gf x)
+  | igf_atom => gf_atom 0
+  | igf_popatom f => gf_increment_atoms (igf_to_gf f)
+  | igf_var => gf_var 0
+  | igf_popvar f => gf_increment_vars (igf_to_gf f)
+  | igf_pushvar x f => gf_specialize_one (igf_to_gf f) (igf_to_gf x)
+  end.
+Fixpoint atom_to_canonical_igf (i : AtomIndex) : IGF :=
+  match i with
+  | 0 => igf_atom
+  | S p => igf_popatom (atom_to_canonical_igf p)
+  end.
+Fixpoint var_to_canonical_igf (i : VarIndex) : IGF :=
+  match i with
+  | 0 => igf_var
+  | S p => igf_popvar (var_to_canonical_igf p)
+  end.
+Fixpoint gf_to_canonical_igf (gf : GenericFormula) : IGF :=
+  match gf with
+  | gf_atom a => atom_to_canonical_igf a
+  | gf_var v => var_to_canonical_igf v
+  | gf_apply a b => igf_apply (gf_to_canonical_igf a) (gf_to_canonical_igf b)
+  end.
+
+Definition igf_stash A B := igf_pushvar A (igf_popvar B).
+
+Inductive IgfUnfoldStep : IGF -> IGF -> Prop :=
+  | its_forget_var A : IgfUnfoldStep (igf_stash igf_var A) A
+  | its_forget_pop A B : IgfUnfoldStep (igf_stash (igf_popvar A) B) B
+  | its_forget_apply A B C : IgfUnfoldStep
+    (igf_stash [A B] C)
+    (igf_stash A (igf_stash B C))
+  (* | its_unfold_push_push A B C : IgfUnfoldStep
+    (igf_pushvar (igf_pushvar A B) C)
+    (igf_pushvar A (igf_pushvar B C)) *)
+  | its_distribute_popvar A B : IgfUnfoldStep
+    (igf_popvar [A B]) [(igf_popvar A) (igf_popvar B)]
+  | its_distribute_popatom A B : IgfUnfoldStep
+    (igf_popatom [A B]) [(igf_popatom A) (igf_popatom B)]
+  .
+
+Inductive IgfUhhhStep : IGF -> IGF -> Prop :=
+  | ius_splay_apply A B C : IgfUhhhStep
+    (igf_pushvar [A B] C)
+    (igf_pushvar (igf_pushvar A (igf_pushvar B [_])) C)
+    (igf_pushvar (igf_pushvar A [igf_var (igf_popvar B)]) C)
+    (igf_pushvar (igf_pushvar B [(igf_popvar A) igf_var]) C)
+    (igf_pushvar [A B] C)
+  .
+
+Lemma atoms_vars_unrelated A : gf_increment_vars
+  (gf_increment_atoms A) = gf_increment_atoms
+  (gf_increment_vars A).
+  induction A; cbn; try (rewrite IHA1); try (rewrite IHA2); trivial.
+Qed.
+
+Lemma specialize_ignored A B : gf_specialize_one
+  (gf_increment_vars A) B = A.
+  induction A; cbn; try (rewrite IHA1); try (rewrite IHA2); trivial.
+Qed.
+
+(* Lemma igf_stash_ignored A B : igf_to_gf (igf_stash A B) = igf_to_gf B.
+cbn.
+  apply specialize_ignored.
+Qed. *)
+
+Lemma IgfUnfoldStep_Correct P C : IgfUnfoldStep P C -> (igf_to_gf P = igf_to_gf C).
+  intro. destruct H; cbn; try apply specialize_ignored.
+Qed.
+
+Lemma IgfUnfoldStep_Complete igf : Chain IgfUnfoldStep igf
+  (gf_to_canonical_igf (igf_to_gf igf)).
+  
+Qed.
+
+
+Inductive IRule := ⇝*
+
+Inductive IOp :=
+  | iop_add_right_sibling : IGF -> IOp
+  | iop_add_left_sibling : IGF -> IOp
+  .
+
+Record IRule {
+  focused : IGF -> list IOp -> IRule
+
+  }.
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 (* Inductive FormulaThunk F : Type :=
@@ -319,7 +729,7 @@ with FFTContinuation F : Type :=
   .
 
 Inductive SpecializationState F : Type :=
-  | ss_premise_with_context : GenericFormula -> Context F -> SpecializationState F
+  | ss_premise_with_context : GenericFormula -> InfiniteContext F -> SpecializationState F
   | ss_conclusion : F -> SpecializationState F
   | ss_making_subformula : SpecializationState F -> SSContinuation F -> SpecializationState F
 with SSContinuation F : Type :=
@@ -329,7 +739,7 @@ with SSContinuation F : Type :=
   .
 
 Fixpoint SSSpecializes F {_f : Formula F}
-  (SS : SpecializationState F) (xs:Context F) (output: F) : Prop :=
+  (SS : SpecializationState F) (xs:InfiniteContext F) (output: F) : Prop :=
   match SS with
   | ss_premise_with_context gf xs0 => ((xs0 = context_arbitrary _) ∧ Specializes gf xs output) ∨ (∃ h t, xs0 = (context_cons h t) ∧ SSSpecializes gf (context_cons h ))
   | ss_conclusion f => output = f
@@ -337,7 +747,7 @@ Fixpoint SSSpecializes F {_f : Formula F}
     SSSpecializes sg xs g ∧ SSCSpecializes g cont xs output
   end
 with SSCSpecializes F {_f : Formula F}
-  (input : F) (SSC : SSContinuation F) (xs:Context F) (output: F) : Prop :=
+  (input : F) (SSC : SSContinuation F) (xs:InfiniteContext F) (output: F) : Prop :=
   match SSC with
   | ss_then_done => True
   | ss_then_make_right_sibling_then sb cont => ∃ b, SSSpecializes sb xs b ∧ output = (f_apply input b)
@@ -346,7 +756,7 @@ with SSCSpecializes F {_f : Formula F}
   .
   
 (* Inductive SSSpecializes F {_f : Formula F}
-  : SpecializationState F -> Context F -> F -> Prop
+  : SpecializationState F -> InfiniteContext F -> F -> Prop
   :=
   | sss_premise_with_context gf xs rest f :
     (* Specializes gf (xs++rest) f -> *)
@@ -357,7 +767,7 @@ with SSCSpecializes F {_f : Formula F}
     SSCSpecializes f cont xs g ->
     SSSpecializes (ss_making_subformula ss cont) xs g
 with SSCSpecializes F {_f : Formula F}
-  : F -> SSContinuation F -> Context F -> F -> Prop :=
+  : F -> SSContinuation F -> InfiniteContext F -> F -> Prop :=
   | sss_then_done f xs : SSCSpecializes f (ss_then_done F) xs f
   | sss_then_make_right_sibling_then f sg g cont xs :
       SSSpecializes sg xs g ->
@@ -454,7 +864,7 @@ Inductive WgrRepresents
   :=
   .
 Inductive PartiallySpecializes
-  : WorkableGenericFormula -> (* which may already contain a Context WorkableGenericFormula *)
+  : WorkableGenericFormula -> (* which may already contain a InfiniteContext WorkableGenericFormula *)
     WorkableGenericFormula ->
     Prop
   :=
@@ -529,10 +939,10 @@ Inductive RulesetIncludesFormula : Ruleset -> Formula -> Prop :=
   .
 
 
-CoInductive Context : Type :=
-  | ctx_cons : Formula -> Context -> Context.
+CoInductive InfiniteContext : Type :=
+  | ctx_cons : Formula -> InfiniteContext -> InfiniteContext.
 Notation "x :: xs" := (ctx_cons x xs).
-CoFixpoint ascending_context n : Context := (f_atom n) :: ascending_context (S n).
+CoFixpoint ascending_context n : InfiniteContext := (f_atom n) :: ascending_context (S n).
 Definition default_context := ascending_context 0.
 
 (* Definition Rule := Formula. *)
@@ -588,7 +998,7 @@ Inductive RulesetIncludesFormula : Ruleset -> Formula -> Prop :=
   . *)
 
 
-Inductive RulesetIncludesFormula : Ruleset -> Context -> Formula -> Prop :=
+Inductive RulesetIncludesFormula : Ruleset -> InfiniteContext -> Formula -> Prop :=
   | rif_usage x xs :
       RulesetIncludesFormula r_usage (x::xs) x
   | rif_var r x xs f :
@@ -604,7 +1014,7 @@ Inductive RulesetIncludesFormula : Ruleset -> Context -> Formula -> Prop :=
   .
 
 Inductive RulesetIncludesImplication
-      : Ruleset -> Context -> Formula -> Formula -> Prop :=
+      : Ruleset -> InfiniteContext -> Formula -> Formula -> Prop :=
   | rii_var r x xs p c :
       RulesetIncludesImplication r (x::xs) p c ->
       RulesetIncludesImplication (r_var r) xs p c
