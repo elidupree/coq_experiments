@@ -497,6 +497,328 @@ Inductive GenericContextChoicesDerives (r : GenericContextChoices)
     GenericContextChoicesDerives r (gcc_choice s t)
   .
 
+Inductive Program :=
+  | p_compose : Program -> Program -> Program
+  | p_iterate : Program -> Program
+  | p_choice : Program -> Program -> Program
+  | p_inverse : Program -> Program
+  | p_in_left : Program -> Program
+  | p_rotate_left : Program
+  | p_swap : Program
+  | p_dup : Program
+  | p_drop : Program
+  (* | p_branch : Program *)
+  .
+
+CoInductive ProgramContext Ext :=
+  | pc_nil : ProgramContext Ext
+  | pc_branch : ProgramContext Ext -> ProgramContext Ext -> ProgramContext Ext
+  | pc_ext : Ext -> ProgramContext Ext
+  .
+Arguments pc_nil {Ext}.
+
+(* Print PC2_. *)
+
+(* Class ProgramContext C := {
+      pc_branch : C -> C -> C
+    ; pc_nil : C
+  }. *)
+Inductive ProgramExecution Ext
+  : Program -> ProgramContext Ext -> ProgramContext Ext -> Prop :=
+  | pe_compose A B x y z :
+    ProgramExecution B x y ->
+    ProgramExecution A y z ->
+    ProgramExecution (p_compose A B) x z
+  | pe_iterate_refl A x :
+    ProgramExecution (p_iterate A) x x
+  | pe_iterate_chain A x y z :
+    ProgramExecution (p_iterate A) x y ->
+    ProgramExecution A y z ->
+    ProgramExecution (p_iterate A) x z
+  | pe_choice_left A B x y :
+    ProgramExecution A x y ->
+    ProgramExecution (p_choice A B) x y
+  | pe_choice_right A B x y :
+    ProgramExecution B x y ->
+    ProgramExecution (p_choice A B) x y
+  | pe_inverse A x y :
+    ProgramExecution A x y ->
+    ProgramExecution (p_inverse A) y x
+  | pe_in_left A x y z :
+    ProgramExecution A x y ->
+    ProgramExecution
+      (p_in_left A) (pc_branch x z) (pc_branch y z)
+  | pe_rotate_left A B C :
+    ProgramExecution p_rotate_left
+      (pc_branch A (pc_branch B C))
+      (pc_branch (pc_branch A B) C)
+  | pe_swap A B :
+    ProgramExecution p_swap
+      (pc_branch A B)
+      (pc_branch B A)
+  | pe_dup A :
+    ProgramExecution p_dup A (pc_branch A A)
+  | pe_drop A B :
+    ProgramExecution p_drop (pc_branch A B) A
+  (* | pe_branch : ProgramExecution p_branch pc_nil (pc_branch pc_nil pc_nil) *)
+  .
+
+Inductive VarExecution Ext
+  : VarIndex -> ProgramContext Ext -> ProgramContext Ext -> Prop :=
+  | ve_nil c : VarExecution nil c c
+  | ve_left tail a b c :
+    VarExecution tail a c ->
+    VarExecution (cons false tail) (pc_branch a b) c
+  | ve_right tail a b c :
+    VarExecution tail b c ->
+    VarExecution (cons true tail) (pc_branch a b) c
+  .
+
+Inductive DeterministicProgram :=
+  | dp_var : VarIndex -> DeterministicProgram
+  | dp_branch : DeterministicProgram -> DeterministicProgram -> DeterministicProgram
+  .
+Inductive DeterministicProgramExecution Ext
+  : DeterministicProgram -> ProgramContext Ext -> ProgramContext Ext -> Prop :=
+  | dpe_var i a b : @VarExecution Ext i a b
+    -> DeterministicProgramExecution (dp_var i) a b
+  | dpe_branch L R a lb rb :
+    DeterministicProgramExecution L a lb ->
+    DeterministicProgramExecution R a rb ->
+    DeterministicProgramExecution (dp_branch L R) a (pc_branch lb rb)
+  .
+
+Definition dp_child_left (dp : DeterministicProgram) : DeterministicProgram :=
+  match dp with
+  | dp_var i => dp_var (cons false i) 
+  | dp_branch L R => L
+  end.
+
+Definition dp_child_right (dp : DeterministicProgram) : DeterministicProgram :=
+  match dp with
+  | dp_var i => dp_var (cons true i) 
+  | dp_branch L R => R
+  end.
+
+Fixpoint dp_get_value (dp : DeterministicProgram) (i : VarIndex) : DeterministicProgram :=
+  match i with
+  | nil => dp
+  | cons false tail => dp_get_value (dp_child_left dp) tail
+  | cons true tail => dp_get_value (dp_child_right dp) tail 
+  end.
+
+Fixpoint dp_compose (a b : DeterministicProgram) : DeterministicProgram :=
+  match a with
+  | dp_var i => dp_get_value b i
+  | dp_branch L R => dp_branch (dp_compose L b) (dp_compose R b)
+  end.
+
+Definition p_canonical_branch (a b : Program) : Program :=
+  p_compose
+    (p_compose (p_in_left a) p_swap)
+    (p_compose (p_in_left b) p_dup)
+  .
+
+Definition p_canonical_id := p_compose (p_inverse p_dup) p_dup.
+Definition p_dropleft := p_compose p_drop p_swap.
+
+Fixpoint p_canonical_var (i : VarIndex) : Program :=
+  match i with
+  | nil => p_canonical_id
+  | cons false tail => p_compose (p_canonical_var tail) p_drop
+  | cons true tail => p_compose (p_canonical_var tail) p_dropleft
+  end.
+
+Fixpoint p_canonical_dp (dp : DeterministicProgram) : Program :=
+  match dp with
+  | dp_var i => p_canonical_var i
+  | dp_branch L R => p_canonical_branch (p_canonical_dp L) (p_canonical_dp R)
+  end.
+
+Lemma p_canonical_var_matches Ext i a b :
+  ProgramExecution (p_canonical_var i) a b <->
+  @VarExecution Ext i a b.
+  refine ((fix f (i : VarIndex) a b :
+      ProgramExecution (p_canonical_var i) a b <->
+    @VarExecution Ext i a b := 
+    match i with
+    | nil => _
+    | cons false tail => _
+    | cons true tail => _
+    end) i a b); clear i0 a0 b0; split; intro.
+
+  (* induction i. *)
+  {
+    dependent destruction H.
+    dependent destruction H.
+    dependent destruction H0.
+    dependent destruction H0.
+    apply ve_nil.
+  }
+  {
+    dependent destruction H.
+    (* eauto. *)
+    (* unfold p_canonical_var, p_canonical_id.
+    eauto. *)
+    apply pe_compose with (pc_branch c c).
+    apply pe_dup.
+    apply pe_inverse.
+    apply pe_dup.
+  }
+  {
+    dependent destruction H.
+    dependent destruction H.
+    dependent destruction H.
+    dependent destruction H0.
+    apply ve_right. apply f. assumption.
+  }
+  {
+    dependent destruction H.
+    apply pe_compose with b.
+    {
+      (* TODO: apply pe_dropleft *)
+      apply pe_compose with (pc_branch b a).
+      apply pe_swap.
+      apply pe_drop.
+    }
+    apply f; assumption.
+  }
+  {
+    dependent destruction H.
+    dependent destruction H.
+    apply ve_left. apply f. assumption.
+  }
+  {
+    dependent destruction H.
+    apply pe_compose with a.
+    apply pe_drop.
+    apply f; assumption.
+  }
+Qed.
+
+
+Lemma p_canonical_dp_matches Ext dp a b :
+  ProgramExecution (p_canonical_dp dp) a b <->
+  @DeterministicProgramExecution Ext dp a b.
+  refine ((fix f dp a b :
+      ProgramExecution (p_canonical_dp dp) a b <->
+    @DeterministicProgramExecution Ext dp a b := 
+    match dp with
+    | dp_var i => _
+    | dp_branch L R => _
+    end) dp a b); clear dp0 a0 b0;
+  (* induction dp; *)
+    split; intro.
+    
+  (* induction dp. *)
+  {
+    apply dpe_var.
+    apply p_canonical_var_matches. assumption.
+  }
+  {
+    dependent destruction H.
+    apply p_canonical_var_matches. assumption.
+  }
+  {
+    dependent destruction H.
+    dependent destruction H.
+    dependent destruction H.
+    dependent destruction H0.
+    dependent destruction H1.
+    dependent destruction H1_.
+    dependent destruction H1_0.
+    apply dpe_branch; apply f; assumption.
+  }
+  {
+    dependent destruction H.
+(* unfold p_canonical_dp, p_canonical_branch. *)
+    eapply pe_compose.
+    eapply pe_compose.
+    apply pe_dup.
+    apply pe_in_left.
+    apply f.
+    exact H0.
+    eapply pe_compose.
+    apply pe_swap.
+    apply pe_in_left.
+    apply f.
+    assumption.
+  }
+Qed.
+
+Definition Deterministic (P : Program) :=
+  ∀ C _c i o1 o2, @ProgramExecution C _c P i o1 -> ProgramExecution P i o2 -> o1 = o2.
+
+Remark ddup : Deterministic p_dup.
+  unfold Deterministic.
+  intros.
+  dependent destruction H0.
+  dependent destruction H.
+  trivial.
+Qed.
+
+Definition d_p_dp (P : Program) (DP : Deterministic P) : DeterministicProgram.
+  induction P.
+  
+  
+  unfold Deterministic in DP.
+Lemma d_p_dp (P : Program) :
+  Deterministic P -> ∃ dp : DeterministicProgram, ProgramExecution P dp
+
+Inductive Deterministic : Program -> Prop :=
+  | pd_compose P Q :
+      Deterministic P -> Deterministic Q -> (p_compose P Q)
+  (* | pd_iterate P Q :
+      Deterministic P -> Deterministic Q -> (p_compose P Q) *)
+  .
+with ()
+
+
+
+
+
+
+
+
+
+Lemma programs_injective Ext P :
+  ∀ x y z w,
+  @ProgramExecution Ext P x y ->
+  @ProgramExecution Ext P z w ->
+  ((x = z) <-> (y = w)).
+  induction P; intros.
+  (* ; split; intro firstEq.  *)
+  (* ; rewrite <- firstEq in *. *)
+  {
+    dependent destruction H0.
+    dependent destruction H.
+    specialize (IHP1 x y x0 y0 H H0_).
+    specialize (IHP2 y z y0 z0 H0 H0_0).
+    tauto.
+  }
+  {
+    dependent destruction H0; dependent destruction H.
+    {
+      split; intro.
+
+      injection H; tauto.
+      rewrite H; tauto.
+    }
+    {
+      dependent destruction H0.
+      split; intro.
+      admit. admit.
+    }
+    {
+      admit.
+    }
+    {
+
+    }
+  }
+Qed.
+
+
 Inductive ContextTransformation :=
   | ct_compose : ContextTransformation -> ContextTransformation -> ContextTransformation
   | ct_star : ContextTransformation -> ContextTransformation
