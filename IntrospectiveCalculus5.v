@@ -4,7 +4,7 @@ Set Asymmetric Patterns.
 Require Import Unicode.Utf8.
 Require Import Coq.Program.Equality.
 Require Import Setoid.
-(* Require Import List. *)
+Require Import List.
 
 (* Hack - remove later *)
 Parameter cheat : ∀ {A}, A.
@@ -510,12 +510,12 @@ Inductive Program :=
   (* | p_branch : Program *)
   .
 
-CoInductive ProgramContext Ext :=
-  | pc_nil : ProgramContext Ext
-  | pc_branch : ProgramContext Ext -> ProgramContext Ext -> ProgramContext Ext
-  | pc_ext : Ext -> ProgramContext Ext
+CoInductive ProgramContext Value :=
+  (* | pc_nil : ProgramContext Value *)
+  | pc_value : Value -> ProgramContext Value
+  | pc_branch : ProgramContext Value -> ProgramContext Value -> ProgramContext Value
   .
-Arguments pc_nil {Ext}.
+(* Arguments pc_nil {Value}. *)
 
 (* Print PC2_. *)
 
@@ -523,17 +523,17 @@ Arguments pc_nil {Ext}.
       pc_branch : C -> C -> C
     ; pc_nil : C
   }. *)
-Inductive ProgramExecution Ext
-  : Program -> ProgramContext Ext -> ProgramContext Ext -> Prop :=
+Inductive ProgramExecution Value
+  : Program -> ProgramContext Value -> ProgramContext Value -> Prop :=
   | pe_compose A B x y z :
-    ProgramExecution B x y ->
     ProgramExecution A y z ->
+    ProgramExecution B x y ->
     ProgramExecution (p_compose A B) x z
   | pe_iterate_refl A x :
     ProgramExecution (p_iterate A) x x
   | pe_iterate_chain A x y z :
-    ProgramExecution (p_iterate A) x y ->
     ProgramExecution A y z ->
+    ProgramExecution (p_iterate A) x y ->
     ProgramExecution (p_iterate A) x z
   | pe_choice_left A B x y :
     ProgramExecution A x y ->
@@ -563,8 +563,8 @@ Inductive ProgramExecution Ext
   (* | pe_branch : ProgramExecution p_branch pc_nil (pc_branch pc_nil pc_nil) *)
   .
 
-Inductive VarExecution Ext
-  : VarIndex -> ProgramContext Ext -> ProgramContext Ext -> Prop :=
+Inductive VarExecution Value
+  : VarIndex -> ProgramContext Value -> ProgramContext Value -> Prop :=
   | ve_nil c : VarExecution nil c c
   | ve_left tail a b c :
     VarExecution tail a c ->
@@ -578,9 +578,9 @@ Inductive DeterministicProgram :=
   | dp_var : VarIndex -> DeterministicProgram
   | dp_branch : DeterministicProgram -> DeterministicProgram -> DeterministicProgram
   .
-Inductive DeterministicProgramExecution Ext
-  : DeterministicProgram -> ProgramContext Ext -> ProgramContext Ext -> Prop :=
-  | dpe_var i a b : @VarExecution Ext i a b
+Inductive DeterministicProgramExecution Value
+  : DeterministicProgram -> ProgramContext Value -> ProgramContext Value -> Prop :=
+  | dpe_var i a b : @VarExecution Value i a b
     -> DeterministicProgramExecution (dp_var i) a b
   | dpe_branch L R a lb rb :
     DeterministicProgramExecution L a lb ->
@@ -600,16 +600,16 @@ Definition dp_child_right (dp : DeterministicProgram) : DeterministicProgram :=
   | dp_branch L R => R
   end.
 
-Fixpoint dp_get_value (dp : DeterministicProgram) (i : VarIndex) : DeterministicProgram :=
+Fixpoint dp_get_subtree (dp : DeterministicProgram) (i : VarIndex) : DeterministicProgram :=
   match i with
   | nil => dp
-  | cons false tail => dp_get_value (dp_child_left dp) tail
-  | cons true tail => dp_get_value (dp_child_right dp) tail 
+  | cons false tail => dp_get_subtree (dp_child_left dp) tail
+  | cons true tail => dp_get_subtree (dp_child_right dp) tail 
   end.
 
 Fixpoint dp_compose (a b : DeterministicProgram) : DeterministicProgram :=
   match a with
-  | dp_var i => dp_get_value b i
+  | dp_var i => dp_get_subtree b i
   | dp_branch L R => dp_branch (dp_compose L b) (dp_compose R b)
   end.
 
@@ -619,12 +619,55 @@ Definition p_canonical_branch (a b : Program) : Program :=
     (p_compose (p_in_left b) p_dup)
   .
 
-Definition p_canonical_id := p_compose (p_inverse p_dup) p_dup.
+(* Create HintDb simple_programs. *)
+
+Definition ProgramImplements P (relation : ∀ V (a b : ProgramContext V), Prop) :=
+  ∀ V a b, @ProgramExecution V P a b <-> relation V a b.
+
+Create HintDb program_reductions.
+Ltac break_down_executions :=
+  repeat (match goal with
+  | H : ProgramExecution ?P _ _ |- _ => (cbn in H; try autorewrite with program_reductions)
+  end ;
+  match goal with
+  | H : ProgramExecution (p_compose _ _) _ _ |- _ => dependent destruction H
+  | H : ProgramExecution (p_iterate _) _ _ |- _ => dependent destruction H
+  | H : ProgramExecution (p_choice _ _) _ _ |- _ => dependent destruction H
+  | H : ProgramExecution (p_inverse _) _ _ |- _ => dependent destruction H
+  | H : ProgramExecution (p_in_left _) _ _ |- _ => dependent destruction H
+  | H : ProgramExecution p_rotate_left _ _ |- _ => dependent destruction H
+  | H : ProgramExecution p_swap _ _ |- _ => dependent destruction H
+  | H : ProgramExecution p_dup _ _ |- _ => dependent destruction H
+  | H : ProgramExecution p_drop _ _ |- _ => dependent destruction H
+  | _ => idtac
+  end) ; trivial
+  .
+
+Create HintDb test.
+Hint Extern 9 => shelve : test.
+Definition p_id := p_compose (p_inverse p_dup) p_dup.
+Hint Extern 2 => unfold p_id : test.
+(* Hint Unfold p_id : simple_programs. *)
+Lemma p_id_correct : ProgramImplements p_id (λ _ a b, a = b).
+  unshelve auto with test.
+  unfold ProgramImplements; intros.
+  split; intro.
+  {
+    unfold p_id in H.
+    break_down_executions.
+  }
+  {
+    rewrite H.
+    repeat econstructor.
+  }
+Qed.
+Hint Rewrite p_id_correct : program_reductions.
+
 Definition p_dropleft := p_compose p_drop p_swap.
 
 Fixpoint p_canonical_var (i : VarIndex) : Program :=
   match i with
-  | nil => p_canonical_id
+  | nil => p_id
   | cons false tail => p_compose (p_canonical_var tail) p_drop
   | cons true tail => p_compose (p_canonical_var tail) p_dropleft
   end.
@@ -635,12 +678,12 @@ Fixpoint p_canonical_dp (dp : DeterministicProgram) : Program :=
   | dp_branch L R => p_canonical_branch (p_canonical_dp L) (p_canonical_dp R)
   end.
 
-Lemma p_canonical_var_matches Ext i a b :
+Lemma p_canonical_var_matches Value i a b :
   ProgramExecution (p_canonical_var i) a b <->
-  @VarExecution Ext i a b.
+  @VarExecution Value i a b.
   refine ((fix f (i : VarIndex) a b :
       ProgramExecution (p_canonical_var i) a b <->
-    @VarExecution Ext i a b := 
+    @VarExecution Value i a b := 
     match i with
     | nil => _
     | cons false tail => _
@@ -649,60 +692,42 @@ Lemma p_canonical_var_matches Ext i a b :
 
   (* induction i. *)
   {
-    dependent destruction H.
-    dependent destruction H.
-    dependent destruction H0.
-    dependent destruction H0.
+    break_down_executions.
+    (* rewrite <- p_id_correct in H. *)
+    apply p_id_correct in H; rewrite H.
     apply ve_nil.
   }
   {
     dependent destruction H.
-    (* eauto. *)
-    (* unfold p_canonical_var, p_canonical_id.
-    eauto. *)
-    apply pe_compose with (pc_branch c c).
-    apply pe_dup.
-    apply pe_inverse.
-    apply pe_dup.
+    repeat econstructor.
   }
   {
-    dependent destruction H.
-    dependent destruction H.
-    dependent destruction H.
-    dependent destruction H0.
+    break_down_executions.
     apply ve_right. apply f. assumption.
   }
   {
     dependent destruction H.
-    apply pe_compose with b.
-    {
-      (* TODO: apply pe_dropleft *)
-      apply pe_compose with (pc_branch b a).
-      apply pe_swap.
-      apply pe_drop.
-    }
+    repeat econstructor.
     apply f; assumption.
   }
   {
-    dependent destruction H.
-    dependent destruction H.
+    break_down_executions.
     apply ve_left. apply f. assumption.
   }
   {
     dependent destruction H.
-    apply pe_compose with a.
-    apply pe_drop.
+    repeat econstructor.
     apply f; assumption.
   }
 Qed.
 
 
-Lemma p_canonical_dp_matches Ext dp a b :
+Lemma p_canonical_dp_matches Value dp a b :
   ProgramExecution (p_canonical_dp dp) a b <->
-  @DeterministicProgramExecution Ext dp a b.
+  @DeterministicProgramExecution Value dp a b.
   refine ((fix f dp a b :
       ProgramExecution (p_canonical_dp dp) a b <->
-    @DeterministicProgramExecution Ext dp a b := 
+    @DeterministicProgramExecution Value dp a b := 
     match dp with
     | dp_var i => _
     | dp_branch L R => _
@@ -720,31 +745,231 @@ Lemma p_canonical_dp_matches Ext dp a b :
     apply p_canonical_var_matches. assumption.
   }
   {
-    dependent destruction H.
-    dependent destruction H.
-    dependent destruction H.
-    dependent destruction H0.
-    dependent destruction H1.
-    dependent destruction H1_.
-    dependent destruction H1_0.
+    break_down_executions.
+    unfold p_canonical_branch in H.
+    break_down_executions.
     apply dpe_branch; apply f; assumption.
   }
   {
     dependent destruction H.
-(* unfold p_canonical_dp, p_canonical_branch. *)
-    eapply pe_compose.
-    eapply pe_compose.
-    apply pe_dup.
-    apply pe_in_left.
-    apply f.
-    exact H0.
-    eapply pe_compose.
-    apply pe_swap.
-    apply pe_in_left.
-    apply f.
-    assumption.
+    repeat econstructor; apply f; assumption.
   }
 Qed.
+
+Fixpoint pc_dp (dp : DeterministicProgram) : ProgramContext VarIndex :=
+  match dp with
+  | dp_var i => pc_value i
+  | dp_branch L R => pc_branch (pc_dp L) (pc_dp R)
+  end.
+
+Inductive SimpleProgramStep1 :=
+  | sps1_rotate_left
+  | sps1_rotate_left_in_left
+  | sps1_swap
+  | sps1_swap_in_left
+  | sps1_dup
+  | sps1_drop
+  .
+
+Inductive SimpleProgramStep :=
+  | sps_forwards : SimpleProgramStep1 -> SimpleProgramStep
+  | sps_backwards : SimpleProgramStep1 -> SimpleProgramStep
+  .
+
+Inductive SimpleProgramTree :=
+  | spt_step : SimpleProgramStep -> SimpleProgramTree
+  | spt_compose : SimpleProgramTree -> SimpleProgramTree -> SimpleProgramTree
+  .
+
+Definition SimpleProgramList := list SimpleProgramStep.
+
+Definition p_sps1 sps1 :=
+  match sps1 with
+  | sps1_rotate_left => p_rotate_left
+  | sps1_rotate_left_in_left => p_in_left p_rotate_left
+  | sps1_swap => p_swap
+  | sps1_swap_in_left => p_in_left p_swap
+  | sps1_dup => p_dup
+  | sps1_drop => p_drop
+  end.
+
+Definition p_sps sps :=
+  match sps with 
+  | sps_forwards s => p_sps1 s
+  | sps_backwards s => p_inverse (p_sps1 s)
+  end.
+
+Definition sps_inverse sps :=
+  match sps with 
+  | sps_forwards s => sps_backwards s
+  | sps_backwards s => sps_forwards s
+  end.
+
+Fixpoint p_spt spt :=
+  match spt with 
+  | spt_step s => p_sps s
+  | spt_compose a b => p_compose (p_spt a) (p_spt b)
+  end.
+
+Fixpoint p_spl spl :=
+  match spl with 
+  | nil => p_id
+  | cons x xs => p_compose (p_spl xs) (p_sps x)
+  end.
+
+Definition spl_compose (a b : SimpleProgramList) := b ++ a.
+Lemma spl_compose_correct P Q V a b :
+  @ProgramExecution V (p_spl (spl_compose P Q)) a b
+  <->
+  @ProgramExecution V (p_compose (p_spl P) (p_spl Q)) a b.
+  
+  induction P, Q; cbn; split; intro.
+  break_down_executions; repeat econstructor. assumption.
+  break_down_executions; repeat econstructor.
+
+  repeat econstructor.
+
+  apply p_id_correct in H; rewrite H; repeat econstructor.
+  break_down_executions; repeat econstructor.
+  repeat econstructor. apply IHspl.
+  break_down_executions.
+  ; repeat econstructor.
+Qed.
+Fixpoint spl_inverse spl :=
+  match spl with
+  | nil => nil
+  | x::xs => (spl_inverse xs) ++ (sps_inverse x)::nil
+  end.
+Lemma spl_inverse_correct spl V a b :
+  @ProgramExecution V (p_spl (spl_inverse spl)) a b
+  <->
+  @ProgramExecution V (p_inverse (p_spl spl)) a b.
+  
+  induction spl; cbn; split; intro.
+  apply p_id_correct in H; rewrite H; repeat econstructor.
+  break_down_executions; repeat econstructor.
+  repeat econstructor. apply IHspl.
+  break_down_executions.
+  ; repeat econstructor.
+Qed.
+
+Definition spl_sps1_in_left sps1 :=
+  match sps1 with 
+  | sps1_rotate_left => (sps_forwards sps1_rotate_left_in_left)::nil
+  | sps1_rotate_left_in_left =>
+    (sps_backwards sps1_rotate_left)::
+    (sps_forwards sps1_rotate_left_in_left)::
+    (sps_forwards sps1_rotate_left)::
+    nil
+  | sps1_swap => (sps_forwards sps1_swap_in_left)::nil
+  | sps1_swap_in_left => 
+    (sps_backwards sps1_rotate_left)::
+    (sps_forwards sps1_swap_in_left)::
+    (sps_forwards sps1_rotate_left)::
+    nil
+  | sps1_dup =>
+    (sps_forwards sps1_dup)::
+    (sps_forwards sps1_rotate_left)::
+    (sps_forwards sps1_drop)::
+    (sps_forwards sps1_swap)::
+    (sps_forwards sps1_rotate_left)::
+    nil
+  | sps1_drop => 
+    (sps_forwards sps1_swap)::
+    (sps_forwards sps1_rotate_left)::
+    (sps_forwards sps1_swap_in_left)::
+    (sps_forwards sps1_drop)::
+    nil
+  end.
+
+Lemma spl_sps1_in_left_correct sps1 V a b :
+  @ProgramExecution V (p_spl (spl_sps1_in_left sps1)) a b
+  <->
+  @ProgramExecution V (p_in_left (p_spl ((sps_forwards sps1)::nil))) a b.
+  
+  destruct sps1; cbn; split; intro; break_down_executions; repeat econstructor.
+Qed.
+
+Definition spl_sps_in_left sps :=
+  match sps with 
+  | sps_forwards s => spl_sps1_in_left s
+  | sps_backwards s => spl_inverse (spl_sps1_in_left s)
+  end.
+
+Lemma spl_sps_in_left_correct sps V a b :
+  @ProgramExecution V (p_spl (spl_sps_in_left sps)) a b
+  <->
+  @ProgramExecution V (p_in_left (p_spl (sps::nil))) a b.
+  
+  destruct sps; cbn; split; intro; break_down_executions; repeat econstructor.
+Qed.
+
+Definition spl_in_left spl :=
+  flat_map spl_sps1
+Lemma spl_in_left_correct : 
+
+Fixpoint spl_of_execution P Value a b
+  (exe : @ProgramExecution Value P a b)
+  : SimpleProgramList
+  :=
+  match exe with
+  | pe_compose A B x y z Ayz Bxy =>
+      spl_compose (spl_of_execution Ayz) (spl_of_execution Bxy)
+  | pe_iterate_refl A x => nil
+  | pe_iterate_chain A x y z Ayz Asxy =>
+      spl_compose (spl_of_execution Azy) (spl_of_execution Asxy)
+  | pe_choice_left A B x y Axy => spl_of_execution Axy
+  | pe_choice_right A B x y Bxy => spl_of_execution Bxy
+  | pe_inverse A x y Axy => spl_inverse (spl_of_execution Axy)
+  | pe_in_left A x y z =>
+
+    ProgramExecution A x y ->
+    ProgramExecution
+      (p_in_left A) (pc_branch x z) (pc_branch y z)
+  | pe_rotate_left A B C :
+    ProgramExecution p_rotate_left
+      (pc_branch A (pc_branch B C))
+      (pc_branch (pc_branch A B) C)
+  | pe_swap A B :
+    ProgramExecution p_swap
+      (pc_branch A B)
+      (pc_branch B A)
+  | pe_dup A :
+    ProgramExecution p_dup A (pc_branch A A)
+  | pe_drop A B :
+    ProgramExecution p_drop (pc_branch A B) A
+  end.
+
+
+
+CoInductive VarsInRightLocations (i : VarIndex) : ProgramContext VarIndex -> Prop :=
+  | virl_here : VarsInRightLocations i (pc_value i)
+  | virl_branch L R : 
+    VarsInRightLocations (cons false i) L ->
+    VarsInRightLocations (cons true i) R ->
+    VarsInRightLocations i (pc_branch L R)
+  .
+
+Definition AuthoritativeProgramDerives R S :=
+  ∀ Val a b, @ProgramExecution Val S a b -> @ProgramExecution Val R a b.
+
+Lemma p_dp_says_derives
+  (inputs : ProgramContext VarIndex)
+  (inr : VarsInRightLocations nil inputs)
+  (p : Program)
+  (dp : DeterministicProgram)
+  (exec : ProgramExecution p inputs (pc_dp dp))
+  :
+  AuthoritativeProgramDerives p (p_canonical_dp dp).
+
+  unfold AuthoritativeProgramDerives; intros.
+  apply p_canonical_dp_matches in H.
+  induction H.
+  {
+    cbn in *.
+    induction exec.
+  }
+  
 
 Definition Deterministic (P : Program) :=
   ∀ C _c i o1 o2, @ProgramExecution C _c P i o1 -> ProgramExecution P i o2 -> o1 = o2.
@@ -781,10 +1006,10 @@ with ()
 
 
 
-Lemma programs_injective Ext P :
+Lemma programs_injective Value P :
   ∀ x y z w,
-  @ProgramExecution Ext P x y ->
-  @ProgramExecution Ext P z w ->
+  @ProgramExecution Value P x y ->
+  @ProgramExecution Value P z w ->
   ((x = z) <-> (y = w)).
   induction P; intros.
   (* ; split; intro firstEq.  *)
