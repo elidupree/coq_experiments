@@ -563,6 +563,13 @@ Inductive ProgramExecution Value
   (* | pe_branch : ProgramExecution p_branch pc_nil (pc_branch pc_nil pc_nil) *)
   .
 
+Definition AuthoritativeProgramDerives R S :=
+  ∀ Val a b, @ProgramExecution Val S a b -> @ProgramExecution Val R a b.
+Definition ProgramImplements P (relation : ∀ V (a b : ProgramContext V), Prop) :=
+  ∀ V a b, @ProgramExecution V P a b <-> relation V a b.
+Definition ProgramsEquivalent R S :=
+  AuthoritativeProgramDerives R S ∧ AuthoritativeProgramDerives S R.
+
 Inductive VarExecution Value
   : VarIndex -> ProgramContext Value -> ProgramContext Value -> Prop :=
   | ve_nil c : VarExecution nil c c
@@ -621,14 +628,15 @@ Definition p_canonical_branch (a b : Program) : Program :=
 
 (* Create HintDb simple_programs. *)
 
-Definition ProgramImplements P (relation : ∀ V (a b : ProgramContext V), Prop) :=
-  ∀ V a b, @ProgramExecution V P a b <-> relation V a b.
-
-Create HintDb program_reductions.
-Ltac break_down_executions :=
-  repeat (match goal with
-  | H : ProgramExecution ?P _ _ |- _ => (cbn in H; try autorewrite with program_reductions)
-  end ;
+Create HintDb shelve.
+Hint Extern 5 => shelve : shelve.
+Create HintDb break_down_executions.
+Hint Extern 1 =>
+  match goal with
+  | H : ProgramExecution ?P _ _ |- _ => cbn in H
+  end
+: break_down_executions.
+Hint Extern 1 =>
   match goal with
   | H : ProgramExecution (p_compose _ _) _ _ |- _ => dependent destruction H
   | H : ProgramExecution (p_iterate _) _ _ |- _ => dependent destruction H
@@ -639,17 +647,21 @@ Ltac break_down_executions :=
   | H : ProgramExecution p_swap _ _ |- _ => dependent destruction H
   | H : ProgramExecution p_dup _ _ |- _ => dependent destruction H
   | H : ProgramExecution p_drop _ _ |- _ => dependent destruction H
-  | _ => idtac
-  end) ; trivial
-  .
+  end
+: break_down_executions.
+Hint Extern 1 (ProgramExecution _ _ _) => constructor
+: break_down_executions.
+Hint Extern 1 (ProgramExecution _ _ _) => assumption
+: break_down_executions.
+Ltac break_down_executions := unshelve eauto 10 with shelve break_down_executions; trivial.
+Ltac build_executions := solve [repeat econstructor; eassumption].
 
-Create HintDb test.
-Hint Extern 9 => shelve : test.
+Ltac solve_easy_equivalence :=
+  unfold ProgramsEquivalent, AuthoritativeProgramDerives;
+  split; intros; break_down_executions; build_executions.
+
 Definition p_id := p_compose (p_inverse p_dup) p_dup.
-Hint Extern 2 => unfold p_id : test.
-(* Hint Unfold p_id : simple_programs. *)
 Lemma p_id_correct : ProgramImplements p_id (λ _ a b, a = b).
-  unshelve auto with test.
   unfold ProgramImplements; intros.
   split; intro.
   {
@@ -658,10 +670,15 @@ Lemma p_id_correct : ProgramImplements p_id (λ _ a b, a = b).
   }
   {
     rewrite H.
-    repeat econstructor.
+    build_executions.
   }
 Qed.
-Hint Rewrite p_id_correct : program_reductions.
+(* Lemma compose_p_id :  *)
+Hint Extern 1 =>
+  match goal with
+  | H : ProgramExecution p_id _ _ |- _ => apply p_id_correct in H; rewrite H
+  end
+: break_down_executions.
 
 Definition p_dropleft := p_compose p_drop p_swap.
 
@@ -678,6 +695,13 @@ Fixpoint p_canonical_dp (dp : DeterministicProgram) : Program :=
   | dp_branch L R => p_canonical_branch (p_canonical_dp L) (p_canonical_dp R)
   end.
 
+Hint Extern 1 =>
+  match goal with
+  | H : ProgramExecution (p_canonical_branch _ _) _ _ |- _ =>
+          unfold p_canonical_branch in H
+  end
+: break_down_executions.
+
 Lemma p_canonical_var_matches Value i a b :
   ProgramExecution (p_canonical_var i) a b <->
   @VarExecution Value i a b.
@@ -693,13 +717,11 @@ Lemma p_canonical_var_matches Value i a b :
   (* induction i. *)
   {
     break_down_executions.
-    (* rewrite <- p_id_correct in H. *)
-    apply p_id_correct in H; rewrite H.
     apply ve_nil.
   }
   {
     dependent destruction H.
-    repeat econstructor.
+    build_executions.
   }
   {
     break_down_executions.
@@ -745,8 +767,6 @@ Lemma p_canonical_dp_matches Value dp a b :
     apply p_canonical_var_matches. assumption.
   }
   {
-    break_down_executions.
-    unfold p_canonical_branch in H.
     break_down_executions.
     apply dpe_branch; apply f; assumption.
   }
@@ -804,6 +824,11 @@ Definition sps_inverse sps :=
   | sps_forwards s => sps_backwards s
   | sps_backwards s => sps_forwards s
   end.
+Lemma sps_inverse_correct sps : ProgramsEquivalent
+  (p_sps (sps_inverse sps))
+  (p_inverse (p_sps sps)).
+  destruct sps; solve_easy_equivalence.
+Qed.
 
 Fixpoint p_spt spt :=
   match spt with 
@@ -817,40 +842,126 @@ Fixpoint p_spl spl :=
   | cons x xs => p_compose (p_spl xs) (p_sps x)
   end.
 
+Lemma peq_rotate A B C : ProgramsEquivalent
+  (p_compose (p_compose A B) C)
+  (p_compose A (p_compose B C)).
+  solve_easy_equivalence.
+Qed.
+Lemma peq_trans A B C :
+  ProgramsEquivalent A B ->
+  ProgramsEquivalent B C ->
+  ProgramsEquivalent A C.
+  unfold ProgramsEquivalent, AuthoritativeProgramDerives.
+  split; intros.
+  apply H. apply H0. assumption.
+  apply H0. apply H. assumption.
+Qed.
+Lemma peq_compose_equivalent A1 A2 B1 B2 :
+  ProgramsEquivalent A1 A2 ->
+  ProgramsEquivalent B1 B2 ->
+  ProgramsEquivalent (p_compose A1 B1) (p_compose A2 B2).
+  unfold ProgramsEquivalent, AuthoritativeProgramDerives.
+  split; intros; break_down_executions.
+  econstructor; [apply H | apply H0]; eassumption.
+  econstructor; [apply H | apply H0]; eassumption.
+Qed.
+Lemma peq_inverse_equivalent A B :
+  ProgramsEquivalent A B <->
+  ProgramsEquivalent (p_inverse A) (p_inverse B).
+  unfold ProgramsEquivalent, AuthoritativeProgramDerives.
+  split; intros; break_down_executions.
+  apply H; assumption.
+  break_down_executions; apply H; assumption.
+  {
+    assert (ProgramExecution (p_inverse A) b a).
+    apply H. apply pe_inverse. assumption.
+    break_down_executions.
+  }
+  {
+    assert (ProgramExecution (p_inverse B) b a).
+    apply H. apply pe_inverse. assumption.
+    break_down_executions.
+  }
+Qed.
+Lemma peq_refl A : ProgramsEquivalent A A.
+  solve_easy_equivalence.
+Qed.
+Hint Immediate peq_refl : break_down_executions.
+Lemma peq_id_then A : ProgramsEquivalent (p_compose A p_id) A.
+  solve_easy_equivalence.
+Qed.
+Hint Extern 1 (ProgramExecution (p_compose ?P p_id) _ _) =>
+  apply (peq_id_then P)
+: break_down_executions.
+Hint Extern 1 =>
+  match goal with
+  | H : (ProgramExecution (p_compose ?P p_id) _ _) |- _ =>
+          apply (peq_id_then P) in H
+  end
+: break_down_executions.
+Lemma peq_then_id A : ProgramsEquivalent (p_compose p_id A) A.
+  solve_easy_equivalence.
+Qed.
+Hint Extern 1 (ProgramExecution (p_compose p_id ?P) _ _) =>
+  apply (peq_then_id P)
+: break_down_executions.
+Hint Extern 1 =>
+  match goal with
+  | H : (ProgramExecution (p_compose p_id ?P) _ _) |- _ =>
+          apply (peq_then_id P) in H
+  end
+: break_down_executions.
+Lemma peq_inleft_inverse A : ProgramsEquivalent
+  (p_in_left (p_inverse A)) (p_inverse (p_in_left A)).
+  solve_easy_equivalence.
+Qed.
+Lemma peq_inleft_compose A B : ProgramsEquivalent
+  (p_in_left (p_compose A B)) (p_compose (p_in_left A) (p_in_left B)).
+  solve_easy_equivalence.
+Qed.
+
 Definition spl_compose (a b : SimpleProgramList) := b ++ a.
-Lemma spl_compose_correct P Q V a b :
-  @ProgramExecution V (p_spl (spl_compose P Q)) a b
-  <->
-  @ProgramExecution V (p_compose (p_spl P) (p_spl Q)) a b.
-  
-  induction P, Q; cbn; split; intro.
-  break_down_executions; repeat econstructor. assumption.
-  break_down_executions; repeat econstructor.
-
-  repeat econstructor.
-
-  apply p_id_correct in H; rewrite H; repeat econstructor.
-  break_down_executions; repeat econstructor.
-  repeat econstructor. apply IHspl.
-  break_down_executions.
-  ; repeat econstructor.
+Lemma spl_compose_correct P Q : ProgramsEquivalent
+  (p_spl (spl_compose P Q))
+  (p_compose (p_spl P) (p_spl Q)).
+  (* unfold ProgramsEquivalent, AuthoritativeProgramDerives. *)
+  induction Q; cbn.
+  {
+    (* unfold spl_compose. *)
+    split; intro; break_down_executions.
+  }
+  {
+    eapply peq_trans; [|apply peq_rotate].
+    apply peq_compose_equivalent.
+    exact IHQ.
+    apply peq_refl.
+  }
 Qed.
 Fixpoint spl_inverse spl :=
   match spl with
   | nil => nil
   | x::xs => (spl_inverse xs) ++ (sps_inverse x)::nil
   end.
-Lemma spl_inverse_correct spl V a b :
-  @ProgramExecution V (p_spl (spl_inverse spl)) a b
-  <->
-  @ProgramExecution V (p_inverse (p_spl spl)) a b.
+Lemma spl_inverse_correct spl : ProgramsEquivalent
+  (p_spl (spl_inverse spl))
+  (p_inverse (p_spl spl)).
+  unfold ProgramsEquivalent, AuthoritativeProgramDerives.
   
-  induction spl; cbn; split; intro.
-  apply p_id_correct in H; rewrite H; repeat econstructor.
-  break_down_executions; repeat econstructor.
-  repeat econstructor. apply IHspl.
-  break_down_executions.
-  ; repeat econstructor.
+  induction spl; cbn; split; intros.
+  break_down_executions; build_executions.
+  break_down_executions; build_executions.
+  {
+    apply spl_compose_correct.
+    break_down_executions. repeat econstructor.
+    apply sps_inverse_correct; repeat econstructor; eassumption.
+    apply IHspl; repeat econstructor; eassumption.
+  }
+  {
+    apply spl_compose_correct in H.
+    break_down_executions. repeat econstructor.
+    apply IHspl in H0; break_down_executions; assumption.
+    apply sps_inverse_correct in H; break_down_executions.
+  }
 Qed.
 
 Definition spl_sps1_in_left sps1 :=
@@ -882,12 +993,29 @@ Definition spl_sps1_in_left sps1 :=
     nil
   end.
 
-Lemma spl_sps1_in_left_correct sps1 V a b :
-  @ProgramExecution V (p_spl (spl_sps1_in_left sps1)) a b
-  <->
-  @ProgramExecution V (p_in_left (p_spl ((sps_forwards sps1)::nil))) a b.
-  
-  destruct sps1; cbn; split; intro; break_down_executions; repeat econstructor.
+Lemma spl_sps1_in_left_correct sps1 : ProgramsEquivalent
+  (p_spl (spl_sps1_in_left sps1))
+  (p_in_left (p_sps1 sps1)).
+  (* unfold ProgramsEquivalent, AuthoritativeProgramDerives; *)
+  destruct sps1.
+  solve_easy_equivalence.
+  solve_easy_equivalence.
+  solve_easy_equivalence.
+  solve_easy_equivalence.
+  {
+    unfold ProgramsEquivalent, AuthoritativeProgramDerives;
+    split; intros; break_down_executions.
+    (* TODO: automate better (hint that reacts to exact form of "(compose dup ?Q) ?A"?) *)
+    apply pe_compose with (pc_branch (pc_branch A z) (pc_branch A z)); [build_executions|build_executions].
+    break_down_executions; build_executions.
+  }
+  {
+    (* TODO: debug [; break_down_executions] not working *)
+    unfold ProgramsEquivalent, AuthoritativeProgramDerives;
+    split; intros; break_down_executions.
+    break_down_executions; build_executions.
+    break_down_executions; build_executions.
+  }
 Qed.
 
 Definition spl_sps_in_left sps :=
@@ -896,17 +1024,188 @@ Definition spl_sps_in_left sps :=
   | sps_backwards s => spl_inverse (spl_sps1_in_left s)
   end.
 
-Lemma spl_sps_in_left_correct sps V a b :
-  @ProgramExecution V (p_spl (spl_sps_in_left sps)) a b
-  <->
-  @ProgramExecution V (p_in_left (p_spl (sps::nil))) a b.
+Lemma spl_sps_in_left_correct sps : ProgramsEquivalent
+  (p_spl (spl_sps_in_left sps))
+  (p_in_left (p_sps sps)).
   
-  destruct sps; cbn; split; intro; break_down_executions; repeat econstructor.
+  destruct sps.
+  apply spl_sps1_in_left_correct.
+  cbn.
+  eapply peq_trans; [apply spl_inverse_correct|].
+  eapply peq_trans; [|split; apply peq_inleft_inverse].
+  apply (proj1 (peq_inverse_equivalent _ _)).
+  apply spl_sps1_in_left_correct.
 Qed.
 
+Definition p_force_branch p :=
+  p_compose p (p_compose p_swap p_swap).
+
+Lemma peq_force_branch_inleft p : ProgramsEquivalent
+  (p_force_branch (p_in_left p))
+  (p_in_left p).
+  unfold p_force_branch.
+  solve_easy_equivalence.
+Qed.
+
+Lemma peq_force_branch_sps_in_left sps P : ProgramsEquivalent
+  (p_compose (p_force_branch P) (p_spl (spl_sps_in_left sps)))
+  (p_compose P (p_force_branch (p_spl (spl_sps_in_left sps)))).
+  unfold p_force_branch.
+  destruct sps; destruct s.
+  (* TODO: shorten *)
+  solve_easy_equivalence.
+    unfold ProgramsEquivalent, AuthoritativeProgramDerives;
+    split; intros; break_down_executions.
+    break_down_executions; build_executions.
+    break_down_executions; build_executions.
+  solve_easy_equivalence.
+    unfold ProgramsEquivalent, AuthoritativeProgramDerives;
+    split; intros; break_down_executions.
+    break_down_executions; build_executions.
+    break_down_executions; build_executions.
+    unfold ProgramsEquivalent, AuthoritativeProgramDerives;
+    split; intros; break_down_executions.
+    break_down_executions; build_executions.
+    break_down_executions; build_executions.
+    unfold ProgramsEquivalent, AuthoritativeProgramDerives;
+    split; intros; break_down_executions.
+    break_down_executions; build_executions.
+    break_down_executions; build_executions.
+    unfold ProgramsEquivalent, AuthoritativeProgramDerives;
+    split; intros; break_down_executions.
+    break_down_executions; build_executions.
+    break_down_executions; build_executions.
+    unfold ProgramsEquivalent, AuthoritativeProgramDerives;
+    split; intros; break_down_executions.
+    break_down_executions; build_executions.
+    break_down_executions; build_executions.
+    unfold ProgramsEquivalent, AuthoritativeProgramDerives;
+    split; intros; break_down_executions.
+    break_down_executions; build_executions.
+    break_down_executions; build_executions.
+    unfold ProgramsEquivalent, AuthoritativeProgramDerives;
+    split; intros; break_down_executions.
+    break_down_executions; build_executions.
+    break_down_executions; build_executions.
+    unfold ProgramsEquivalent, AuthoritativeProgramDerives;
+    split; intros; break_down_executions.
+    break_down_executions. break_down_executions. build_executions.
+    break_down_executions. break_down_executions. build_executions.
+    
+    unfold ProgramsEquivalent, AuthoritativeProgramDerives;
+    split; intros; break_down_executions.
+    break_down_executions; build_executions.
+    break_down_executions; build_executions.
+Qed.
+  
+
 Definition spl_in_left spl :=
-  flat_map spl_sps1
-Lemma spl_in_left_correct : 
+  sps_forwards sps1_swap::
+  sps_forwards sps1_swap::
+  flat_map spl_sps_in_left spl.
+
+Lemma spl_in_left_correct spl : ProgramsEquivalent
+  (p_spl (spl_in_left spl))
+  (p_in_left (p_spl spl)).
+
+  (* eapply peq_trans.
+  2: apply peq_force_branch_inleft.
+
+  induction spl.
+  {
+    unfold p_force_branch.
+    solve_easy_equivalence.
+  }
+  unfold spl_in_left. *)
+
+
+  induction spl.
+  solve_easy_equivalence.
+  {
+    eapply peq_trans.
+    {
+    unfold spl_in_left.
+    change (sps_forwards sps1_swap
+:: sps_forwards sps1_swap
+:: _) with (spl_compose (flat_map spl_sps_in_left
+  (a :: spl)) (sps_forwards sps1_swap
+:: sps_forwards sps1_swap :: nil)).
+    apply spl_compose_correct.
+    }
+    eapply peq_trans.
+    2: {
+      unfold p_spl.
+      split; apply peq_inleft_compose.
+    }
+    cbn.
+    change (_ ++ _) with (spl_compose (flat_map spl_sps_in_left spl) (spl_sps_in_left a)).
+    
+    
+    eapply peq_trans.
+    {
+      apply peq_compose_equivalent.
+      apply spl_compose_correct.
+      apply peq_refl.
+    }
+    
+    eapply peq_trans.
+    apply peq_rotate.
+
+    
+    unfold spl_in_left in IHspl; cbn in IHspl.
+
+    unfold ProgramsEquivalent, AuthoritativeProgramDerives;
+    split; intros; break_down_executions.
+
+    {
+      (* repeat econstructor. *)
+      pose ((proj1 IHspl) Val (pc_branch y z0) (pc_branch y0 z0)) .
+      eapply pe_in_left in H.
+      specialize (p H).
+      break_down_executions.
+      repeat econstructor.
+      exact p1_1.
+      eapply pe_in_left in H0.
+      apply spl_sps_in_left_correct.
+      exact H0.
+    }
+    {
+      break_down_executions.
+      repeat econstructor.
+    }
+
+    build_executions.
+
+
+
+
+    apply 
+
+    unfold spl_in_left in *.
+    change (spl_compose (flat_map spl_sps_in_left
+  (a :: spl)) (sps_forwards sps1_swap
+:: sps_forwards sps1_swap :: nil)) with (sps_forwards sps1_swap
+:: sps_forwards sps1_swap
+:: _) in IHspl.
+    apply spl_compose_correct in IHspl.
+    change 
+    cbn.
+    unfold ProgramsEquivalent, AuthoritativeProgramDerives;
+    split; intros; break_down_executions.
+    repeat econstructor.
+    unfold spl_in_left in IHspl.
+    cbn in IHspl.
+    break_down_executions.
+    spl_compose_correct
+    fold spl_compose.
+    (* TODO: automate better (hint that reacts to exact form of "(compose dup ?Q) ?A"?) *)
+    apply pe_compose with (pc_branch (pc_branch A z) (pc_branch A z)); [build_executions|build_executions].
+    
+    repeat econstructor.
+    build_executions.
+  }
+
+  solve_easy_equivalence.
 
 Fixpoint spl_of_execution P Value a b
   (exe : @ProgramExecution Value P a b)
@@ -949,9 +1248,6 @@ CoInductive VarsInRightLocations (i : VarIndex) : ProgramContext VarIndex -> Pro
     VarsInRightLocations (cons true i) R ->
     VarsInRightLocations i (pc_branch L R)
   .
-
-Definition AuthoritativeProgramDerives R S :=
-  ∀ Val a b, @ProgramExecution Val S a b -> @ProgramExecution Val R a b.
 
 Lemma p_dp_says_derives
   (inputs : ProgramContext VarIndex)
