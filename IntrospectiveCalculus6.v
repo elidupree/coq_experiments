@@ -267,76 +267,112 @@ Inductive VariableLocations :=
   | vl_branch : VariableLocations -> VariableLocations -> VariableLocations
   .
 
-Inductive WhichVariable : VariableLocations -> Set :=
-  | wv_here : WhichVariable vl_here
-  | wv_left l r : WhichVariable l -> WhichVariable (vl_branch l r)
-  | wv_right l r : WhichVariable r -> WhichVariable (vl_branch l r)
+Inductive WhichVariable :=
+  | wv_here : WhichVariable
+  | wv_left : WhichVariable -> WhichVariable
+  | wv_right : WhichVariable -> WhichVariable
   .
 
-Inductive GenericContext (vl : VariableLocations) :=
-  | gc_var : WhichVariable vl -> GenericContext vl
-  | gc_branch : GenericContext vl -> GenericContext vl -> GenericContext vl
+Inductive WVinVL : VariableLocations -> WhichVariable -> Prop :=
+  | wvivl_here : WVinVL vl_here wv_here
+  | wvivl_left l r wv : WVinVL l wv -> WVinVL (vl_branch l r) (wv_left wv)
+  | wvivl_right l r wv : WVinVL r wv -> WVinVL (vl_branch l r) (wv_right wv)
   .
 
-Instance ct_gc vl : Context (GenericContext vl).
+Inductive GenericContext :=
+  | gc_var : WhichVariable -> GenericContext
+  | gc_branch : GenericContext -> GenericContext -> GenericContext
+  .
+
+Inductive GCinVL (vl : VariableLocations) : GenericContext -> Prop :=
+  | gcivl_var wv : WVinVL vl wv -> GCinVL vl (gc_var wv)
+  | gcivl_branch l r : GCinVL vl l -> GCinVL vl r -> GCinVL vl (gc_branch l r)
+  .
+
+Instance ct_gc : Context GenericContext.
   refine {|
-    ct_branch := @gc_branch _
+    ct_branch := @gc_branch
   |}.
 
   intros; split; injection H; trivial.
 Defined.
 
 Hint Extern 5 => progress (
-    change (@gc_branch ?a) with
-           (@ct_branch (GenericContext a) _) in *); shelve
-  : break_down_crrs.
+    change gc_branch with (@ct_branch GenericContext ct_gc) in *
+  ); shelve : break_down_crrs.
 
 Fixpoint gc_map_vars
-  (vl0 vl1 : VariableLocations)
-  (m : WhichVariable vl0 -> WhichVariable vl1)
-  (gc : GenericContext vl0)
-  : GenericContext vl1 :=
+  (m : WhichVariable -> WhichVariable)
+  (gc : GenericContext)
+  : GenericContext :=
   match gc with
   | gc_var wv => gc_var (m wv)
   | gc_branch l r => gc_branch (gc_map_vars m l) (gc_map_vars m r)
   end.
 
-Definition gc_huddle_left l r
+(* Fixpoint gc_map_vars
+  (vl0 vl1 : VariableLocations)
+  (m : WhichVariable -> WhichVariable)
+  (gc : GenericContext)
+  : GenericContext :=
+  match gc with
+  | gc_var wv => gc_var (m wv)
+  | gc_branch l r => gc_branch (gc_map_vars m l) (gc_map_vars m r)
+  end. *)
+
+Definition gc_huddle_left : GenericContext -> GenericContext :=
+  gc_map_vars wv_left.
+
+Definition gc_huddle_right : GenericContext -> GenericContext :=
+  gc_map_vars wv_right.
+
+(* Definition gc_huddle_left l r
   : GenericContext l -> GenericContext (vl_branch l r) :=
   gc_map_vars (@wv_left _ _).
 
 Definition gc_huddle_right l r
   : GenericContext r -> GenericContext (vl_branch l r) :=
-  gc_map_vars (@wv_right _ _).
+  gc_map_vars (@wv_right _ _). *)
 
 Fixpoint gc_standard_layout_of (vl : VariableLocations) :=
   match vl with
   | vl_here => gc_var wv_here
   | vl_branch l r => gc_branch
-    (gc_huddle_left _ (gc_standard_layout_of l))
-    (gc_huddle_right _ (gc_standard_layout_of r))
+    (gc_huddle_left (gc_standard_layout_of l))
+    (gc_huddle_right (gc_standard_layout_of r))
   end.
 
-Fixpoint cr_select_variable vl (wv : WhichVariable vl) : ContextRelation :=
+Fixpoint cr_select_variable (wv : WhichVariable) : ContextRelation :=
   match wv with
   | wv_here => cr_id
-  | wv_left _ _ wv => cr_drop ∘ (cr_select_variable wv)
-  | wv_right _ _ wv => cr_dropleft ∘ (cr_select_variable wv)
+  | wv_left wv => cr_drop ∘ (cr_select_variable wv)
+  | wv_right wv => cr_dropleft ∘ (cr_select_variable wv)
   end
   .
 
 Ltac print foo := idtac foo.
 
-Lemma cr_select_variable_correct vl (wv : WhichVariable vl) :
+Lemma cr_select_variable_correct vl (wv : WhichVariable) (wvivl : WVinVL vl wv) :
   CrRelates (cr_select_variable wv) (gc_standard_layout_of vl) (gc_var wv).
-  induction wv;
+  induction wvivl;
     break_down_crrs.
   {
+    induction wv; break_down_crrs; break_down_crrs.
+    break_down_crrs.
+    repeat match goal with
+    | H : _ = _ |- _ => rewrite H in *; clear H
+    end.
+    break_down_crrs.
+
     (* probably lemma *)
     induction l; break_down_crrs.
-    (* cbn in *. break_down_crrs. *)
-    dependent destruction wv.
-    apply cr_id_correct; reflexivity.
+    {
+      (* cbn in *. break_down_crrs. *)
+      dependent destruction wv; break_down_crrs; discriminate.
+    }
+
+
+      
 
     break_down_crrs.
 
