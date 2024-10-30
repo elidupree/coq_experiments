@@ -48,57 +48,71 @@ Notation "P '⊆' Q" := (CrSubset P Q) (at level 70, no associativity) : type_sc
 Definition CrEquiv (R S : ContextRelation) : Prop :=
   ∀ C (CT: Context C) a b, S _ _ a b <-> R _ _ a b.
 Notation "P '≡' Q" := (CrEquiv P Q) (at level 70, no associativity) : type_scope.
+Lemma CrSubset_of_CrEquiv R S : R ≡ S -> R ⊆ S.
+  unfold CrEquiv, CrSubset. intros. apply H. assumption.
+Qed.
+Lemma CrEquiv_refl A : A ≡ A.
+  unfold CrEquiv; intros; split; trivial.
+Qed.
+Lemma CrEquiv_sym A B : A ≡ B -> B ≡ A.
+  unfold CrEquiv; intros; split; intro; apply H; assumption.
+Qed. 
+Lemma CrEquiv_trans A B C : A ≡ B -> B ≡ C -> A ≡ C.
+  unfold CrEquiv; intros; split; intro.
+  apply H. apply H0. assumption.
+  apply H0. apply H. assumption.
+Qed. 
 
-Inductive CrCompose (R S : ContextRelation) : ContextRelation :=
-  | cr_compose {C} {CT: Context C} a b c
+Inductive CrCompose (R S : ContextRelation) C (CT: Context C) : C -> C -> Prop :=
+  | cr_compose a b c
       : R _ _ a b -> S _ _ b c -> CrCompose R S _ a c
   .
 Notation "P '∘' Q" := (CrCompose P Q) (at level 35, right associativity) : cr_scope. 
 
-Inductive CrTransitiveClosure (R : ContextRelation) : ContextRelation :=
-  | cr_tc_single {C} {CT: Context C} a b
+Inductive CrTransitiveClosure (R : ContextRelation) C (CT: Context C) : C -> C -> Prop :=
+  | cr_tc_single a b
       : R _ _ a b -> CrTransitiveClosure R _ a b
-  | cr_tc_trans {C} {CT: Context C} a b c :
+  | cr_tc_trans a b c :
     CrTransitiveClosure R _ a b ->
     CrTransitiveClosure R _ b c ->
     CrTransitiveClosure R _ a c
     .
 
-Inductive CrUnion (R S : ContextRelation) : ContextRelation :=
-  | cr_union_left {C} {CT: Context C} a b
+Inductive CrUnion (R S : ContextRelation) C (CT: Context C) : C -> C -> Prop :=
+  | cr_union_left a b
       : R _ _ a b -> CrUnion R S _ a b
-  | cr_union_right {C} {CT: Context C} a b
+  | cr_union_right a b
       : S _ _ a b -> CrUnion R S _ a b
   .
 Notation "P '∪' Q" := (CrUnion P Q) (at level 85, right associativity) : cr_scope. 
 
-Inductive CrConverse (R : ContextRelation) : ContextRelation :=
-  | cr_converse {C} {CT: Context C} a b
+Inductive CrConverse (R : ContextRelation) C (CT: Context C) : C -> C -> Prop :=
+  | cr_converse a b
       : R _ _ a b -> CrConverse R _ b a
   .
 Notation "P '^T'" := (CrConverse P) (at level 30) : cr_scope.
 
-Inductive CrInLeft (R : ContextRelation) : ContextRelation :=
-  | cr_in_left {C} {CT: Context C} a b c
+Inductive CrInLeft (R : ContextRelation) C (CT: Context C) : C -> C -> Prop :=
+  | cr_in_left a b c
       : R _ _ a b -> CrInLeft R _ (ct_branch a c) (ct_branch b c)
   .
 
-Inductive CrRotateLeft : ContextRelation :=
-  | cr_rotate_left {C} {CT: Context C} a b c : CrRotateLeft _
+Inductive CrRotateLeft C (CT: Context C) : C -> C -> Prop :=
+  | cr_rotate_left a b c : CrRotateLeft _
       (ct_branch a (ct_branch b c)) (ct_branch (ct_branch a b) c)
   .
 
-Inductive CrSwap : ContextRelation :=
-  | cr_swap {C} {CT: Context C} a b
+Inductive CrSwap C (CT: Context C) : C -> C -> Prop :=
+  | cr_swap a b
       : CrSwap _ (ct_branch a b) (ct_branch b a)
   .
 
-Inductive CrDup : ContextRelation :=
-  | cr_dup {C} {CT: Context C} a : CrDup _ a (ct_branch a a)
+Inductive CrDup C (CT: Context C) : C -> C -> Prop :=
+  | cr_dup a : CrDup _ a (ct_branch a a)
   .
 
-Inductive CrDrop : ContextRelation :=
-  | cr_drop {C} {CT: Context C} a b : CrDrop _ (ct_branch a b) a
+Inductive CrDrop C (CT: Context C) : C -> C -> Prop :=
+  | cr_drop a b : CrDrop _ (ct_branch a b) a
   .
 
 Fixpoint CRofUP (R : UnificationProgram) : ContextRelation :=
@@ -186,9 +200,17 @@ Ltac break_down_crrs :=
 Hint Extern 5 => progress break_down_one_builtin_crr; shelve
   : break_down_crrs.
 
-Hint Extern 6 (CRofUP _ _ _ _) => progress hnf; shelve
+Hint Extern 6 => progress match goal with
+    | eq : _ = _ |- _ => lazymatch (type of eq) with
+      | (_ _) = (_ _) => fail
+      | _ = (_ _) => try (rewrite eq in *); clear eq
+      | _ => try (rewrite <- eq in *); clear eq
+      end
+    end; shelve
   : break_down_crrs.
-Hint Extern 7 => match goal with
+Hint Extern 8 (CRofUP _ _ _ _) => progress hnf; shelve
+  : break_down_crrs.
+Hint Extern 9 => match goal with
   | H : CRofUP _ _ _ _ |- _ => progress hnf in H
   end; shelve : break_down_crrs.
   
@@ -201,7 +223,7 @@ Hint Immediate cr_swap : break_down_crrs.
 Hint Immediate cr_dup : break_down_crrs.
 Hint Immediate cr_drop : break_down_crrs.
 
-Hint Extern 2 (CrCompose _ _ _ _ _) => progress cbn; shelve
+Hint Extern 10 (CrCompose _ _ _ _ _) => progress cbn; shelve
   : break_down_crrs.
 Hint Extern 1 (CrCompose CrSwap _ _ (ct_branch _ _) _) =>
   simple eapply cr_compose; [solve[simple apply cr_swap]|]; shelve
@@ -227,8 +249,8 @@ Print CrDup_ind.
 (* Scheme  *)
 
 Definition u_id : UnificationProgram := u_dup ∘ u_dup^T.
-Inductive CrId : ContextRelation :=
-  | cr_id {C} {CT: Context C} a : CrId _ a a
+Inductive CrId C (CT: Context C) : C -> C -> Prop :=
+  | cr_id a : CrId _ a a
   .
 Hint Immediate cr_id : break_down_crrs.
 Hint Extern 5 => progress match goal with
@@ -243,16 +265,12 @@ Hint Extern 1 (CrCompose _ CrId _ _) =>
   : break_down_crrs.
 Lemma u_id_correct : CRofUP u_id ≡ CrId.
   split; intro; break_down_crrs.
-  {
-    rewrite H.
-    break_down_crrs.
-  }
 Qed.
 
 
 Definition u_dropleft : UnificationProgram := u_swap ∘ u_drop.
-Inductive CrDropleft : ContextRelation :=
-  | cr_dropleft {C} {CT: Context C} a b : CrDropleft _ (ct_branch a b) b
+Inductive CrDropleft C (CT: Context C) : C -> C -> Prop :=
+  | cr_dropleft a b : CrDropleft _ (ct_branch a b) b
   .
 Hint Immediate cr_dropleft : break_down_crrs.
 Hint Extern 5 => progress match goal with
@@ -265,17 +283,13 @@ Hint Extern 1 (CrCompose CrDropleft _ _ (ct_branch _ _) _) =>
 
 Lemma u_dropleft_correct : CRofUP u_dropleft ≡ CrDropleft.
   split; intro; break_down_crrs.
-  {
-    rewrite H.
-    break_down_crrs.
-  }
 Qed.
 
 
 Definition u_branch (a b : UnificationProgram) : UnificationProgram :=
   (u_dup ∘ (u_in_left b)) ∘ (u_swap ∘ (u_in_left a)).
-Inductive CrBranch (R S : ContextRelation) : ContextRelation :=
-  | cr_branch {C} {CT: Context C} a b c :
+Inductive CrBranch (R S : ContextRelation) C (CT: Context C) : C -> C -> Prop :=
+  | cr_branch a b c :
       R _ _ a b ->
       S _ _ a c ->
       CrBranch R S _ a (ct_branch b c)
@@ -300,6 +314,8 @@ Lemma u_branch_correct a b :
     end;
     break_down_crrs.
 Qed.
+
+
 
 (****************************************************
         Standard forms of inference rules
@@ -330,6 +346,12 @@ Inductive GenericContext :=
 Inductive GCinVL (vl : VariableLocations) : GenericContext -> Prop :=
   | gcivl_var wv : WVinVL vl wv -> GCinVL vl (gc_var wv)
   | gcivl_branch l r : GCinVL vl l -> GCinVL vl r -> GCinVL vl (gc_branch l r)
+  .
+
+Inductive WVinGC : GenericContext -> WhichVariable -> Prop :=
+  | wvigc_here gc : WVinGC gc wv_here
+  | wvigc_left l r wv : WVinGC l wv -> WVinGC (gc_branch l r) (wv_left wv)
+  | wvigc_right l r wv : WVinGC r wv -> WVinGC (gc_branch l r) (wv_right wv)
   .
 
 Instance ct_gc : Context GenericContext.
@@ -391,12 +413,12 @@ Fixpoint u_select_variable (wv : WhichVariable) : UnificationProgram :=
   | wv_left wv => u_drop ∘ (u_select_variable wv)
   | wv_right wv => u_dropleft ∘ (u_select_variable wv)
   end.
-Inductive CrFromLeft (R : ContextRelation) : ContextRelation :=
-  | cr_from_left {C} {CT: Context C} a b c :
+Inductive CrFromLeft (R : ContextRelation) C (CT: Context C) : C -> C -> Prop :=
+  | cr_from_left a b c :
       R _ _ a c ->
       CrFromLeft R _ (ct_branch a b) c.
-Inductive CrFromRight (R : ContextRelation) : ContextRelation :=
-  | cr_from_right {C} {CT: Context C} a b c :
+Inductive CrFromRight (R : ContextRelation) C (CT: Context C) : C -> C -> Prop :=
+  | cr_from_right a b c :
       R _ _ b c ->
       CrFromRight R _ (ct_branch a b) c.
 Fixpoint CrSelectVariable (wv : WhichVariable) : ContextRelation :=
@@ -425,101 +447,82 @@ Hint Extern 5 => progress match goal with
 Hint Extern 1 (CrSelectVariable _ _ _ _) => progress hnf; shelve
   : break_down_crrs.
 
+Create HintDb simplify_crs.
+Hint Resolve CrCompose_monotonic_left : simplify_crs.
+Hint Resolve CrCompose_monotonic_right : simplify_crs.
+Hint Resolve (CrSubset_of_CrEquiv u_dropleft_correct) : simplify_crs.
+
+Ltac simplify_crs :=
+  let P := fresh "P" in eassert (_ ⊆ _) as P;
+    [|simple apply P; clear P]; [solve[auto 5 with simplify_crs]|].
+Hint Extern 6 => progress simplify_crs; shelve
+  : break_down_crrs.
 
 Lemma u_select_variable_correct wv :
   CRofUP (u_select_variable wv) ≡ CrSelectVariable wv.
-  induction wv.
-
-  split; intro; break_down_crrs.
-  {
-    rewrite H. break_down_crrs.
-  }
-  {
-    split; intro; break_down_crrs.
-  }
-  {
-    split; intro; break_down_crrs.
-  }
-  {
-    induction H.
-     break_down_crrs.
-     break_down_crrs.
-     break_down_crrs.
-  }
-
-  induction wv.
-  {
-    cbn.
-    (* split; intro.
-     destruct_crr H. *)
-    
-     break_down_crrs.
-    apply cr_dup.
-  }
-  Set Debug Eauto.
-  split; intro.
-  induct_crr H.
-
-  break_down_crrs.
-  ; break_down_crrs.
+  induction wv; split; intro; break_down_crrs.
 Qed.
 
 Ltac print foo := idtac foo.
 
-Lemma u_select_variable_correct vl (wv : WhichVariable) (wvivl : WVinVL vl wv) :
-  CRofUP (u_select_variable wv) (gc_standard_layout_of vl) (gc_var wv).
-  induction wvivl;
-    break_down_crrs.
-  {
-    induction wv; break_down_crrs; break_down_crrs.
-    break_down_crrs.
-    repeat match goal with
-    | H : _ = _ |- _ => rewrite H in *; clear H
-    end.
-    break_down_crrs.
-
-    (* probably lemma *)
-    induction l; break_down_crrs.
-    {
-      (* cbn in *. break_down_crrs. *)
-      dependent destruction wv; break_down_crrs; discriminate.
-    }
-
-
-      
-
-    break_down_crrs.
-
-    induction wv; break_down_crrs.
-    rewrite Heqg0 in *; clear c Heqg0.
-    cbn in *.
-    change (@gc_branch ?a) with
-           (@ct_branch (GenericContext a) _) in Heqg.
-    destruct (ct_branch_injective _ _ _ _ Heqg).
-    rewrite H in *. rewrite H1 in *. clear H H1 a b Heqg.
-    change (@gc_branch ?a) with
-           (@ct_branch (GenericContext a) _).
-    break_down_crrs.
-    
-    cbn in *.
-  }
-  {
-    eapply CrCompose_monotonic_left; [apply u_dropleft_correct|].
-    (* change (@gc_branch (vl_branch l r)) with
-           (@ct_branch (GenericContext (vl_branch l r)) _). *)
-    break_down_crrs.
-  }
-  cbn.
+Lemma CrSelectVariable_only_selects_in wv gc x : 
+  CrSelectVariable wv ct_gc gc x -> WVinGC gc wv.
+  revert gc x.
+  induction wv; break_down_crrs; constructor; eapply IHwv; eassumption.
 Qed.
 
-Fixpoint u_gc vl (gc : GenericContext vl) : UnificationProgram :=
+
+Lemma CrSelectVariable_selects_mapped wv gc m x : 
+  CrSelectVariable wv ct_gc gc x -> CrSelectVariable wv ct_gc (gc_map_vars m gc) (gc_map_vars m x).
+  intro.
+  pose (CrSelectVariable_only_selects_in _ _ _ H) as w;
+    clearbody w; revert x H m.
+
+  induction w; break_down_crrs; constructor; apply IHw; assumption.
+Qed.
+
+Lemma CrSelectVariable_of_standard_layout vl wv (wvivl : WVinVL vl wv) {C} {CT:Context C} :
+  CrSelectVariable wv _ (gc_standard_layout_of vl) (gc_var wv).
+  induction wvivl; split; intros; break_down_crrs;
+    apply (CrSelectVariable_selects_mapped _ _ _ _ IHwvivl).
+Qed.
+
+Lemma u_select_variable_of_standard_layout vl wv (wvivl : WVinVL vl wv) :
+  CRofUP (u_select_variable wv) _ (gc_standard_layout_of vl) (gc_var wv).
+  apply u_select_variable_correct.
+  apply CrSelectVariable_of_standard_layout with GenericContext.
+  assumption.
+  exact _.
+Qed.
+
+Fixpoint u_gc gc : UnificationProgram :=
   match gc with
   | gc_var wv => u_select_variable wv
   | gc_branch l r => u_branch (u_gc l) (u_gc r)
   end
   .
+Fixpoint CRofGC (gc : GenericContext) : ContextRelation :=
+  match gc with
+  | gc_var wv => CrSelectVariable wv
+  | gc_branch l r => CrBranch (CRofGC l) (CRofGC r)
+  end.
 
-Lemma u_gc_correct vl gc :
+Lemma u_gc_correct gc :
+  CRofUP (u_gc gc) ≡ CRofGC gc.
+  induction gc. 
+  (* ; break_down_crrs. *)
+  apply u_select_variable_correct.
+  break_down_crrs.
+  change (u_gc (ct_branch ?a ?b)) with (u_branch (u_gc a) (u_gc b)).
+  change (CRofGC (ct_branch ?a ?b)) with (CrBranch (CRofGC a) (CRofGC b)).
+
+  eapply CrEquiv_trans.
+  apply u_branch_correct.
+  
+  apply u_branch_correct.
+  
+Qed.
+Lemma u_gc_correct gc :
   CRofUP (u_gc gc) (gc_standard_layout_of vl) gc.
   induction gc.
   apply u_select_variable_correct.
