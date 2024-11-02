@@ -156,6 +156,18 @@ Lemma CrCompose_monotonic_right (R S S2 : ContextRelation) :
   unfold CrSubset; intros. destruct H0.
   apply cr_compose with b; [|apply H]; assumption.
 Qed.
+Lemma CrCompose_compatibility_left (R S R2 : ContextRelation) :
+  R ≡ R2 ->
+  R ∘ S ≡ R2 ∘ S.
+  unfold CrEquiv; split; intros.
+  all: destruct H0; apply cr_compose with b; [apply H|]; assumption.
+Qed.
+Lemma CrCompose_compatibility_right (R S S2 : ContextRelation) :
+  S ≡ S2 ->
+  R ∘ S ≡ R ∘ S2.
+  unfold CrEquiv; split; intros.
+  all: destruct H0; apply cr_compose with b; [|apply H]; assumption.
+Qed.
 
 (* `remember`, but not if it's redundant *)
 Ltac dontforget term :=
@@ -208,12 +220,12 @@ Hint Extern 6 => progress match goal with
       end
     end; shelve
   : break_down_crrs.
-Hint Extern 8 (CRofUP _ _ _ _) => progress hnf; shelve
-  : break_down_crrs.
-Hint Extern 9 => match goal with
+(* Hint Extern 8 (CRofUP _ _ _ _) => progress hnf; shelve
+  : break_down_crrs. *)
+(* Hint Extern 9 => match goal with
   | H : CRofUP _ _ _ _ |- _ => progress hnf in H
   end; shelve : break_down_crrs.
-  
+   *)
 Hint Extern 1 (CrInLeft _ _ _ _) => simple apply cr_in_left; shelve
   : break_down_crrs.
 Hint Extern 1 (CrConverse _ _ _ _) => simple apply cr_converse; shelve
@@ -223,7 +235,15 @@ Hint Immediate cr_swap : break_down_crrs.
 Hint Immediate cr_dup : break_down_crrs.
 Hint Immediate cr_drop : break_down_crrs.
 
-Hint Extern 10 (CrCompose _ _ _ _ _) => progress cbn; shelve
+(* Hint Extern 10 (CrCompose _ _ _ _ _) => progress cbn; shelve
+  : break_down_crrs. *)
+Hint Extern 8 => progress change (CRofUP u_rotate_left) with CrRotateLeft in *; shelve
+  : break_down_crrs.
+Hint Extern 8 => progress change (CRofUP u_swap) with CrSwap in *; shelve
+  : break_down_crrs.
+Hint Extern 8 => progress change (CRofUP u_dup) with CrDup in *; shelve
+  : break_down_crrs.
+Hint Extern 8 => progress change (CRofUP u_drop) with CrDrop in *; shelve
   : break_down_crrs.
 Hint Extern 1 (CrCompose CrSwap _ _ (ct_branch _ _) _) =>
   simple eapply cr_compose; [solve[simple apply cr_swap]|]; shelve
@@ -240,6 +260,7 @@ Hint Extern 1 (CrCompose CrDrop _ _ (ct_branch _ _) _) =>
 (* Hint Extern 1 (CrCompose CrDup CrDrop ?a _) =>
   simple eapply cr_compose; [solve[simple apply cr_dup]|]; shelve
   : break_down_crrs. *)
+Hint Immediate CrEquiv_refl : break_down_crrs.
 
 (****************************************************
         Concrete usage of context relations
@@ -264,7 +285,7 @@ Hint Extern 1 (CrCompose _ CrId _ _) =>
   simple eapply cr_compose; [|solve[simple apply cr_id]]; shelve
   : break_down_crrs.
 Lemma u_id_correct : CRofUP u_id ≡ CrId.
-  split; intro; break_down_crrs.
+  cbn; split; intro; break_down_crrs.
 Qed.
 
 
@@ -282,7 +303,7 @@ Hint Extern 1 (CrCompose CrDropleft _ _ (ct_branch _ _) _) =>
   : break_down_crrs.
 
 Lemma u_dropleft_correct : CRofUP u_dropleft ≡ CrDropleft.
-  split; intro; break_down_crrs.
+  cbn; split; intro; break_down_crrs.
 Qed.
 
 
@@ -301,18 +322,41 @@ Hint Extern 5 => progress match goal with
   | H : CrBranch _ _ _ _ _ |- _ => destruct_crr H
   end; shelve
   : break_down_crrs.
+Lemma CrBranch_monotonic_left (R S R2 : ContextRelation) :
+  R ⊆ R2 ->
+  CrBranch R S ⊆ CrBranch R2 S.
+  unfold CrSubset; intros. destruct H0.
+  apply cr_branch; [apply H|]; assumption.
+Qed.
+Lemma CrBranch_monotonic_right (R S S2 : ContextRelation) :
+  S ⊆ S2 ->
+  CrBranch R S ⊆ CrBranch R S2.
+  unfold CrSubset; intros. destruct H0.
+  apply cr_branch; [|apply H]; assumption.
+Qed.
+Lemma CrBranch_compatibility_left (R S R2 : ContextRelation) :
+  R ≡ R2 ->
+  CrBranch R S ≡ CrBranch R2 S.
+  unfold CrEquiv; split; intros.
+  all: destruct H0; apply cr_branch; [apply H|]; assumption.
+Qed.
+Lemma CrBranch_compatibility_right (R S S2 : ContextRelation) :
+  S ≡ S2 ->
+  CrBranch R S ≡ CrBranch R S2.
+  unfold CrEquiv; split; intros.
+  all: destruct H0; apply cr_branch; [|apply H]; assumption.
+Qed.
 
 Lemma u_branch_correct a b :
   CRofUP (u_branch a b) ≡ CrBranch (CRofUP a) (CRofUP b).
+  cbn.
   split; intro; break_down_crrs.
-  {
-    econstructor; break_down_crrs.
-  }
-  all: 
-    repeat match goal with
-    | H : _ = _ |- _ => rewrite H in *; clear H
-    end;
-    break_down_crrs.
+  econstructor; break_down_crrs.
+Qed.
+
+Lemma u_branch_correct_subset a b :
+  CRofUP (u_branch a b) ⊆ CrBranch (CRofUP a) (CRofUP b).
+  intro; apply u_branch_correct.
 Qed.
 
 
@@ -448,27 +492,57 @@ Hint Extern 1 (CrSelectVariable _ _ _ _) => progress hnf; shelve
   : break_down_crrs.
 
 Create HintDb simplify_crs.
-Hint Resolve CrCompose_monotonic_left : simplify_crs.
-Hint Resolve CrCompose_monotonic_right : simplify_crs.
-Hint Resolve (CrSubset_of_CrEquiv u_dropleft_correct) : simplify_crs.
-
 Ltac simplify_crs :=
   let P := fresh "P" in eassert (_ ⊆ _) as P;
     [|simple apply P; clear P]; [solve[auto 5 with simplify_crs]|].
 Hint Extern 6 => progress simplify_crs; shelve
   : break_down_crrs.
 
+Hint Resolve CrCompose_monotonic_left : simplify_crs.
+Hint Resolve CrCompose_monotonic_right : simplify_crs.
+Hint Resolve CrBranch_monotonic_left : simplify_crs.
+Hint Resolve CrBranch_monotonic_right : simplify_crs.
+Hint Resolve (CrSubset_of_CrEquiv u_dropleft_correct) : simplify_crs.
+Hint Immediate u_branch_correct_subset : simplify_crs.
+
+
+(* Create HintDb simplify_creqs. *)
+Ltac simplify_creqs :=
+  (eapply CrEquiv_trans; [solve[auto 5 with simplify_crs]|])
+  ||
+  (eapply CrEquiv_trans; [|apply CrEquiv_sym; solve[auto 5 with simplify_crs]]).
+Hint Extern 6 => progress simplify_creqs; shelve
+  : break_down_crrs.
+Hint Resolve CrCompose_compatibility_left : simplify_crs.
+Hint Resolve CrCompose_compatibility_right : simplify_crs.
+Hint Resolve CrBranch_compatibility_left : simplify_crs.
+Hint Resolve CrBranch_compatibility_right : simplify_crs.
+Hint Immediate u_dropleft_correct : simplify_crs.
+Hint Immediate u_branch_correct : simplify_crs.
+
+Definition IsSimplification T (t : T) := t.
+Ltac hint_simplify H := change ?S with (IsSimplification S) in H.
+Ltac hint_simplify_with_hyps := repeat match goal with
+  | H : _ ≡ _ |- _ => hint_simplify H
+  end.
+Hint Extern 1 => match goal with
+  | H : IsSimplification ?S |- _ => exact H
+  end : simplify_crs.
+
+
 Lemma u_select_variable_correct wv :
   CRofUP (u_select_variable wv) ≡ CrSelectVariable wv.
-  induction wv; split; intro; break_down_crrs.
+  induction wv; cbn; split; intro; break_down_crrs.
 Qed.
+Hint Immediate u_select_variable_correct : break_down_crrs.
+Hint Immediate u_select_variable_correct : simplify_crs.
 
 Ltac print foo := idtac foo.
 
 Lemma CrSelectVariable_only_selects_in wv gc x : 
   CrSelectVariable wv ct_gc gc x -> WVinGC gc wv.
   revert gc x.
-  induction wv; break_down_crrs; constructor; eapply IHwv; eassumption.
+  induction wv; break_down_crrs; constructor; eauto.
 Qed.
 
 
@@ -478,7 +552,7 @@ Lemma CrSelectVariable_selects_mapped wv gc m x :
   pose (CrSelectVariable_only_selects_in _ _ _ H) as w;
     clearbody w; revert x H m.
 
-  induction w; break_down_crrs; constructor; apply IHw; assumption.
+  induction w; break_down_crrs; constructor; auto.
 Qed.
 
 Lemma CrSelectVariable_of_standard_layout vl wv (wvivl : WVinVL vl wv) {C} {CT:Context C} :
@@ -501,47 +575,45 @@ Fixpoint u_gc gc : UnificationProgram :=
   | gc_branch l r => u_branch (u_gc l) (u_gc r)
   end
   .
+Hint Extern 7 => progress change
+  (u_gc (ct_branch ?a ?b)) with
+  (u_branch (u_gc a) (u_gc b)) 
+  in *; shelve : break_down_crrs.
 Fixpoint CRofGC (gc : GenericContext) : ContextRelation :=
   match gc with
   | gc_var wv => CrSelectVariable wv
   | gc_branch l r => CrBranch (CRofGC l) (CRofGC r)
   end.
+Hint Extern 7 => progress change
+  (CRofGC (ct_branch ?a ?b)) with
+  (CrBranch (CRofGC a) (CRofGC b)) 
+  in *; shelve : break_down_crrs.
+
 
 Lemma u_gc_correct gc :
   CRofUP (u_gc gc) ≡ CRofGC gc.
-  induction gc. 
-  (* ; break_down_crrs. *)
-  apply u_select_variable_correct.
-  break_down_crrs.
-  change (u_gc (ct_branch ?a ?b)) with (u_branch (u_gc a) (u_gc b)).
-  change (CRofGC (ct_branch ?a ?b)) with (CrBranch (CRofGC a) (CRofGC b)).
-
-  eapply CrEquiv_trans.
-  apply u_branch_correct.
-  
-  apply u_branch_correct.
-  
+  induction gc; break_down_crrs.
+  {
+    hint_simplify_with_hyps.
+    break_down_crrs.
+  }
 Qed.
-Lemma u_gc_correct gc :
-  CRofUP (u_gc gc) (gc_standard_layout_of vl) gc.
-  induction gc.
-  apply u_select_variable_correct.
-  apply u_branch_correct; assumption.
+Lemma u_gc_pulls_self_from_standard_layout vl gc :
+  GCinVL vl gc ->
+  CRofUP (u_gc gc) _ (gc_standard_layout_of vl) gc.
+  intro giv.
+  induction giv; break_down_crrs.
+  apply u_select_variable_of_standard_layout; assumption.
 Qed.
 
 
+Definition u_canonical_gc_transform a b : UnificationProgram
+  := (u_gc a)^T ∘ u_gc b.
 
-Inductive DD T : T -> Type :=
-  ddcons t : DD t.
+Lemma compose_canonical_transforms vl a b c
+  (giva : GCinVL vl a) (givb : GCinVL vl b) (givc : GCinVL vl c)
+  : CRofUP ((u_canonical_gc_transform a b) ∘ (u_canonical_gc_transform b c))
+  ≡ CRofUP (u_canonical_gc_transform a c).
 
-Lemma test : True -> True.
-  intro.
-  match goal with
-  | H : _ |- _ => match constr:(ddcons H) with
-    | (ddcons ?J) => dependent destruction J
-    end
-  end.
-  match goal with
-  | H : _ |- _ => dependent destruction H
-  end.
-  dependent destruction H.
+  
+
