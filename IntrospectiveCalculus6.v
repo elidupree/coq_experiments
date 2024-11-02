@@ -365,10 +365,16 @@ Qed.
         Standard forms of inference rules
 ****************************************************)
 
-Inductive VariableLocations :=
-  | vl_here : VariableLocations
-  | vl_branch : VariableLocations -> VariableLocations -> VariableLocations
+Inductive ConcreteContext Value :=
+  | cc_val : Value -> ConcreteContext Value
+  | cc_branch : ConcreteContext Value -> ConcreteContext Value -> ConcreteContext Value
   .
+
+(* Inductive VariableLocations :=
+  | vl_val : VariableLocations
+  | vl_branch : VariableLocations -> VariableLocations -> VariableLocations
+  . *)
+Definition VariableLocations := ConcreteContext unit.
 
 Inductive WhichVariable :=
   | wv_here : WhichVariable
@@ -376,77 +382,103 @@ Inductive WhichVariable :=
   | wv_right : WhichVariable -> WhichVariable
   .
 
-Inductive WVinVL : VariableLocations -> WhichVariable -> Prop :=
-  | wvivl_here : WVinVL vl_here wv_here
-  | wvivl_left l r wv : WVinVL l wv -> WVinVL (vl_branch l r) (wv_left wv)
-  | wvivl_right l r wv : WVinVL r wv -> WVinVL (vl_branch l r) (wv_right wv)
+Inductive WVgetsValInCC Value : ConcreteContext Value -> WhichVariable -> Prop :=
+  | wvgv_val v : WVgetsValInCC (cc_val v) wv_here
+  | wvgv_left l r wv : WVgetsValInCC l wv -> WVgetsValInCC (cc_branch l r) (wv_left wv)
+  | wvgv_right l r wv : WVgetsValInCC r wv -> WVgetsValInCC (cc_branch l r) (wv_right wv)
   .
 
-Inductive GenericContext :=
+Inductive WVgetsSubtreeOfCC Value : ConcreteContext Value -> WhichVariable -> Prop :=
+  | wvgs_val cc : WVgetsSubtreeOfCC cc wv_here
+  | wvgs_left l r wv : WVgetsSubtreeOfCC l wv -> WVgetsSubtreeOfCC (cc_branch l r) (wv_left wv)
+  | wvgs_right l r wv : WVgetsSubtreeOfCC r wv -> WVgetsSubtreeOfCC (cc_branch l r) (wv_right wv)
+  .
+
+(* Fixpoint get_val_in_cc wv V (cc : ConcreteContext V)
+  (wvgv : WVgetsValInCC cc wv) : V :=
+  match wvgv with
+  | wvgv_val v => v
+  | wvgv_left l r wv wl => get_val_in_cc wl
+  | wvgv_right l r wv wr => get_val_in_cc wr
+  (* | wvgv_left l r wv : WVgetsValInCC l wv -> WVgetsValInCC (cc_branch l r) (wv_left wv)
+  | wvgv_right l r wv : WVgetsValInCC r wv -> WVgetsValInCC (cc_branch l r) (wv_right wv)
+   *)
+  end. *)
+
+Definition GenericContext := ConcreteContext WhichVariable.
+(* Inductive GenericContext :=
   | gc_var : WhichVariable -> GenericContext
   | gc_branch : GenericContext -> GenericContext -> GenericContext
-  .
+  . *)
 
-Inductive GCinVL (vl : VariableLocations) : GenericContext -> Prop :=
-  | gcivl_var wv : WVinVL vl wv -> GCinVL vl (gc_var wv)
-  | gcivl_branch l r : GCinVL vl l -> GCinVL vl r -> GCinVL vl (gc_branch l r)
+Inductive AllVals V (P : V -> Prop) : ConcreteContext V -> Prop :=
+  | av_val v : P v -> AllVals P (cc_val v)
+  | av_branch l r : AllVals P l -> AllVals P r -> AllVals P (cc_branch l r)
   .
+(* Inductive GCinCC (vl : VariableLocations) : GenericContext -> Prop :=
+  | gcivl_var wv : WVgetsValInCC vl wv -> GCinCC vl (cc_val wv)
+  | gcicc_branch l r : GCinCC vl l -> GCinCC vl r -> GCinCC vl (cc_branch l r)
+  . *)
+Definition GCinCC V (cc : ConcreteContext V) : GenericContext -> Prop
+ := AllVals (WVgetsValInCC cc).
 
-Inductive WVinGC : GenericContext -> WhichVariable -> Prop :=
+(* Inductive WVinGC : GenericContext -> WhichVariable -> Prop :=
   | wvigc_here gc : WVinGC gc wv_here
-  | wvigc_left l r wv : WVinGC l wv -> WVinGC (gc_branch l r) (wv_left wv)
-  | wvigc_right l r wv : WVinGC r wv -> WVinGC (gc_branch l r) (wv_right wv)
-  .
+  | wvigc_left l r wv : WVinGC l wv -> WVinGC (cc_branch l r) (wv_left wv)
+  | wvigc_right l r wv : WVinGC r wv -> WVinGC (cc_branch l r) (wv_right wv)
+  . *)
 
-Instance ct_gc : Context GenericContext.
+Instance ct_cc V : Context (ConcreteContext V).
   refine {|
-    ct_branch := @gc_branch
+    ct_branch := @cc_branch _
   |}.
 
   intros; split; injection H; trivial.
 Defined.
 
 Hint Extern 5 => progress (
-    change gc_branch with (@ct_branch GenericContext ct_gc) in *
+    change (@cc_branch ?V)
+      with (@ct_branch (ConcreteContext V) (ct_cc V)) in *
   ); shelve : break_down_crrs.
 
-Fixpoint gc_map_vars
-  (m : WhichVariable -> WhichVariable)
-  (gc : GenericContext)
-  : GenericContext :=
-  match gc with
-  | gc_var wv => gc_var (m wv)
-  | gc_branch l r => gc_branch (gc_map_vars m l) (gc_map_vars m r)
+Fixpoint cc_map_vals
+  V W
+  (m : V -> W)
+  (cc : ConcreteContext V)
+  : ConcreteContext W :=
+  match cc with
+  | cc_val v => cc_val (m v)
+  | cc_branch l r => cc_branch (cc_map_vals m l) (cc_map_vals m r)
   end.
 
-(* Fixpoint gc_map_vars
+(* Fixpoint cc_map_vals
   (vl0 vl1 : VariableLocations)
   (m : WhichVariable -> WhichVariable)
   (gc : GenericContext)
   : GenericContext :=
   match gc with
-  | gc_var wv => gc_var (m wv)
-  | gc_branch l r => gc_branch (gc_map_vars m l) (gc_map_vars m r)
+  | cc_val wv => cc_val (m wv)
+  | cc_branch l r => cc_branch (cc_map_vals m l) (cc_map_vals m r)
   end. *)
 
 Definition gc_huddle_left : GenericContext -> GenericContext :=
-  gc_map_vars wv_left.
+  cc_map_vals wv_left.
 
 Definition gc_huddle_right : GenericContext -> GenericContext :=
-  gc_map_vars wv_right.
+  cc_map_vals wv_right.
 
 (* Definition gc_huddle_left l r
-  : GenericContext l -> GenericContext (vl_branch l r) :=
-  gc_map_vars (@wv_left _ _).
+  : GenericContext l -> GenericContext (cc_branch l r) :=
+  cc_map_vals (@wv_left _ _).
 
 Definition gc_huddle_right l r
-  : GenericContext r -> GenericContext (vl_branch l r) :=
-  gc_map_vars (@wv_right _ _). *)
+  : GenericContext r -> GenericContext (cc_branch l r) :=
+  cc_map_vals (@wv_right _ _). *)
 
 Fixpoint gc_standard_layout_of (vl : VariableLocations) :=
   match vl with
-  | vl_here => gc_var wv_here
-  | vl_branch l r => gc_branch
+  | cc_val _ => cc_val wv_here
+  | cc_branch l r => cc_branch
     (gc_huddle_left (gc_standard_layout_of l))
     (gc_huddle_right (gc_standard_layout_of r))
   end.
@@ -539,15 +571,15 @@ Hint Immediate u_select_variable_correct : simplify_crs.
 
 Ltac print foo := idtac foo.
 
-Lemma CrSelectVariable_only_selects_in wv gc x : 
-  CrSelectVariable wv ct_gc gc x -> WVinGC gc wv.
-  revert gc x.
+Lemma CrSelectVariable_only_selects_in wv V (cc : ConcreteContext V) x : 
+  CrSelectVariable wv _ cc x -> WVgetsSubtreeOfCC cc wv.
+  revert cc x.
   induction wv; break_down_crrs; constructor; eauto.
 Qed.
 
 
-Lemma CrSelectVariable_selects_mapped wv gc m x : 
-  CrSelectVariable wv ct_gc gc x -> CrSelectVariable wv ct_gc (gc_map_vars m gc) (gc_map_vars m x).
+Lemma CrSelectVariable_selects_mapped wv V W (cc : ConcreteContext V) (m : V -> W) x : 
+  CrSelectVariable wv _ cc x -> CrSelectVariable wv _ (cc_map_vals m cc) (cc_map_vals m x).
   intro.
   pose (CrSelectVariable_only_selects_in _ _ _ H) as w;
     clearbody w; revert x H m.
@@ -555,14 +587,14 @@ Lemma CrSelectVariable_selects_mapped wv gc m x :
   induction w; break_down_crrs; constructor; auto.
 Qed.
 
-Lemma CrSelectVariable_of_standard_layout vl wv (wvivl : WVinVL vl wv) {C} {CT:Context C} :
-  CrSelectVariable wv _ (gc_standard_layout_of vl) (gc_var wv).
-  induction wvivl; split; intros; break_down_crrs;
-    apply (CrSelectVariable_selects_mapped _ _ _ _ IHwvivl).
+Lemma CrSelectVariable_of_standard_layout vl wv (wvgv : WVgetsValInCC vl wv) {C} {CT:Context C} :
+  CrSelectVariable wv _ (gc_standard_layout_of vl) (cc_val wv).
+  induction wvgv; split; intros; break_down_crrs;
+    apply (CrSelectVariable_selects_mapped _ _ _ _ IHwvgv).
 Qed.
 
-Lemma u_select_variable_of_standard_layout vl wv (wvivl : WVinVL vl wv) :
-  CRofUP (u_select_variable wv) _ (gc_standard_layout_of vl) (gc_var wv).
+Lemma u_select_variable_of_standard_layout vl wv (wvgv : WVgetsValInCC vl wv) :
+  CRofUP (u_select_variable wv) _ (gc_standard_layout_of vl) (cc_val wv).
   apply u_select_variable_correct.
   apply CrSelectVariable_of_standard_layout with GenericContext.
   assumption.
@@ -571,8 +603,8 @@ Qed.
 
 Fixpoint u_gc gc : UnificationProgram :=
   match gc with
-  | gc_var wv => u_select_variable wv
-  | gc_branch l r => u_branch (u_gc l) (u_gc r)
+  | cc_val wv => u_select_variable wv
+  | cc_branch l r => u_branch (u_gc l) (u_gc r)
   end
   .
 Hint Extern 7 => progress change
@@ -581,8 +613,8 @@ Hint Extern 7 => progress change
   in *; shelve : break_down_crrs.
 Fixpoint CRofGC (gc : GenericContext) : ContextRelation :=
   match gc with
-  | gc_var wv => CrSelectVariable wv
-  | gc_branch l r => CrBranch (CRofGC l) (CRofGC r)
+  | cc_val wv => CrSelectVariable wv
+  | cc_branch l r => CrBranch (CRofGC l) (CRofGC r)
   end.
 Hint Extern 7 => progress change
   (CRofGC (ct_branch ?a ?b)) with
@@ -599,7 +631,7 @@ Lemma u_gc_correct gc :
   }
 Qed.
 Lemma u_gc_pulls_self_from_standard_layout vl gc :
-  GCinVL vl gc ->
+  GCinCC vl gc ->
   CRofUP (u_gc gc) _ (gc_standard_layout_of vl) gc.
   intro giv.
   induction giv; break_down_crrs.
@@ -610,10 +642,10 @@ Qed.
 Definition u_canonical_gc_transform a b : UnificationProgram
   := (u_gc a)^T ∘ u_gc b.
 
-Lemma compose_canonical_transforms vl a b c
-  (giva : GCinVL vl a) (givb : GCinVL vl b) (givc : GCinVL vl c)
+Lemma compose_canonical_transforms (vl : VariableLocations) a b c
+  (giva : GCinCC vl a) (givb : GCinCC vl b) (givc : GCinCC vl c)
   : CRofUP ((u_canonical_gc_transform a b) ∘ (u_canonical_gc_transform b c))
   ≡ CRofUP (u_canonical_gc_transform a c).
 
-  
+
 
