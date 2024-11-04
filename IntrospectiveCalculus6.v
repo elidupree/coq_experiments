@@ -144,6 +144,12 @@ Ltac autouse_shelving_db steps db :=
 ****************************************************)
 
 (* Notation "R ⊆2 S" := (∀ x y, R x y -> S x y) (at level 70). *)
+Lemma CrConverse_monotonic (R R2 : ContextRelation) :
+  R ⊆ R2 ->
+  R ^T ⊆ R2 ^T.
+  unfold CrSubset; intros. destruct H0.
+  apply cr_converse; apply H; assumption.
+Qed.
 Lemma CrCompose_monotonic_left (R S R2 : ContextRelation) :
   R ⊆ R2 ->
   R ∘ S ⊆ R2 ∘ S.
@@ -155,6 +161,12 @@ Lemma CrCompose_monotonic_right (R S S2 : ContextRelation) :
   R ∘ S ⊆ R ∘ S2.
   unfold CrSubset; intros. destruct H0.
   apply cr_compose with b; [|apply H]; assumption.
+Qed.
+Lemma CrConverse_compatibility (R R2 : ContextRelation) :
+  R ≡ R2 ->
+  R ^T ≡ R2 ^T.
+  unfold CrEquiv; split; intros.
+  all: destruct H0; apply cr_converse; apply H; assumption.
 Qed.
 Lemma CrCompose_compatibility_left (R S R2 : ContextRelation) :
   R ≡ R2 ->
@@ -244,6 +256,10 @@ Hint Extern 8 => progress change (CRofUP u_swap) with CrSwap in *; shelve
 Hint Extern 8 => progress change (CRofUP u_dup) with CrDup in *; shelve
   : break_down_crrs.
 Hint Extern 8 => progress change (CRofUP u_drop) with CrDrop in *; shelve
+  : break_down_crrs.
+Hint Extern 8 => progress change (CRofUP (?a ∘ ?b)) with (CrCompose (CRofUP a) (CRofUP b)) in *; shelve
+  : break_down_crrs.
+  Hint Extern 8 => progress change (CRofUP (?a ^T)) with (CrConverse (CRofUP a)) in *; shelve
   : break_down_crrs.
 Hint Extern 1 (CrCompose CrSwap _ _ (ct_branch _ _) _) =>
   simple eapply cr_compose; [solve[simple apply cr_swap]|]; shelve
@@ -530,6 +546,7 @@ Ltac simplify_crs :=
 Hint Extern 6 => progress simplify_crs; shelve
   : break_down_crrs.
 
+Hint Resolve CrConverse_monotonic : simplify_crs.
 Hint Resolve CrCompose_monotonic_left : simplify_crs.
 Hint Resolve CrCompose_monotonic_right : simplify_crs.
 Hint Resolve CrBranch_monotonic_left : simplify_crs.
@@ -545,6 +562,7 @@ Ltac simplify_creqs :=
   (eapply CrEquiv_trans; [|apply CrEquiv_sym; solve[auto 5 with simplify_crs]]).
 Hint Extern 6 => progress simplify_creqs; shelve
   : break_down_crrs.
+Hint Resolve CrConverse_compatibility : simplify_crs.
 Hint Resolve CrCompose_compatibility_left : simplify_crs.
 Hint Resolve CrCompose_compatibility_right : simplify_crs.
 Hint Resolve CrBranch_compatibility_left : simplify_crs.
@@ -566,8 +584,13 @@ Lemma u_select_variable_correct wv :
   CRofUP (u_select_variable wv) ≡ CrSelectVariable wv.
   induction wv; cbn; split; intro; break_down_crrs.
 Qed.
+Lemma u_select_variable_correct_subset wv :
+  CRofUP (u_select_variable wv) ⊆ CrSelectVariable wv.
+  intro; apply u_select_variable_correct.
+Qed.
 Hint Immediate u_select_variable_correct : break_down_crrs.
 Hint Immediate u_select_variable_correct : simplify_crs.
+Hint Immediate u_select_variable_correct_subset : simplify_crs.
 
 Ltac print foo := idtac foo.
 
@@ -587,18 +610,16 @@ Lemma CrSelectVariable_selects_mapped wv V W (cc : ConcreteContext V) (m : V -> 
   induction w; break_down_crrs; constructor; auto.
 Qed.
 
-Lemma CrSelectVariable_of_standard_layout vl wv (wvgv : WVgetsValInCC vl wv) {C} {CT:Context C} :
+Lemma CrSelectVariable_of_standard_layout vl wv (wvgv : WVgetsValInCC vl wv) :
   CrSelectVariable wv _ (gc_standard_layout_of vl) (cc_val wv).
   induction wvgv; split; intros; break_down_crrs;
     apply (CrSelectVariable_selects_mapped _ _ _ _ IHwvgv).
 Qed.
+Hint Immediate CrSelectVariable_of_standard_layout : break_down_crrs.
 
 Lemma u_select_variable_of_standard_layout vl wv (wvgv : WVgetsValInCC vl wv) :
   CRofUP (u_select_variable wv) _ (gc_standard_layout_of vl) (cc_val wv).
-  apply u_select_variable_correct.
-  apply CrSelectVariable_of_standard_layout with GenericContext.
-  assumption.
-  exact _.
+  break_down_crrs.
 Qed.
 
 Fixpoint u_gc gc : UnificationProgram :=
@@ -620,6 +641,10 @@ Hint Extern 7 => progress change
   (CRofGC (ct_branch ?a ?b)) with
   (CrBranch (CRofGC a) (CRofGC b)) 
   in *; shelve : break_down_crrs.
+Hint Extern 7 => progress change
+  (CRofGC (cc_val ?v)) with
+  (CrSelectVariable v) 
+  in *; shelve : break_down_crrs.
 
 
 Lemma u_gc_correct gc :
@@ -630,12 +655,23 @@ Lemma u_gc_correct gc :
     break_down_crrs.
   }
 Qed.
+Lemma u_gc_correct_subset gc :
+  CRofUP (u_gc gc) ⊆ CRofGC gc.
+  intro; apply u_gc_correct.
+Qed.
+Hint Immediate u_gc_correct : break_down_crrs.
+Hint Immediate u_gc_correct : simplify_crs.
+Hint Immediate u_gc_correct_subset : simplify_crs.
+Lemma CRofGC_of_standard_layout vl gc :
+  GCinCC vl gc ->
+  CRofGC gc _ (gc_standard_layout_of vl) gc.
+  induction 1; break_down_crrs.
+Qed.
+Hint Immediate CRofGC_of_standard_layout : break_down_crrs.
 Lemma u_gc_pulls_self_from_standard_layout vl gc :
   GCinCC vl gc ->
   CRofUP (u_gc gc) _ (gc_standard_layout_of vl) gc.
-  intro giv.
-  induction giv; break_down_crrs.
-  apply u_select_variable_of_standard_layout; assumption.
+  break_down_crrs.
 Qed.
 
 
@@ -644,8 +680,22 @@ Definition u_canonical_gc_transform a b : UnificationProgram
 
 Lemma compose_canonical_transforms (vl : VariableLocations) a b c
   (giva : GCinCC vl a) (givb : GCinCC vl b) (givc : GCinCC vl c)
-  : CRofUP ((u_canonical_gc_transform a b) ∘ (u_canonical_gc_transform b c))
-  ≡ CRofUP (u_canonical_gc_transform a c).
+  : CRofUP (u_canonical_gc_transform a c) ⊆
+    CRofUP ((u_canonical_gc_transform a b)
+          ∘ (u_canonical_gc_transform b c))
+ .
+ intro;intros.
+ break_down_crrs.
+ unfold u_canonical_gc_transform in *.
+ break_down_crrs.
+  change (CRofUP (?a ^T)) with (CrConverse (CRofUP a)) in *.
+
+  let P := fresh "P" in eassert (_ ⊆ _) as P; [|simple apply P; clear P].
+  apply CrCompose_monotonic_left.
+  apply u_gc_correct_subset.
+  [solve[auto 5 with simplify_crs]|].
+ Set Debug Auto.
+ simplify_crs.
 
 
 
