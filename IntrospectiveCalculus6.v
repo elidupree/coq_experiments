@@ -426,6 +426,56 @@ Inductive ConcreteContext Value :=
   | cc_branch : ConcreteContext Value -> ConcreteContext Value -> ConcreteContext Value
   .
 
+Instance ct_cc V : Context (ConcreteContext V).
+  refine {|
+    ct_branch := @cc_branch _
+  |}.
+
+  intros; split; injection H; trivial.
+Defined.
+
+Fixpoint cc_as_program V {_v:AsProgram V} cc : UnificationProgram :=
+  match cc with
+  | cc_val v => as_program v
+  | cc_branch l r => u_branch (cc_as_program l) (cc_as_program r)
+  end
+  .
+Hint Extern 7 => progress change
+  (cc_as_program (ct_branch ?a ?b)) with
+  (u_branch (cc_as_program a) (cc_as_program b)) 
+  in *; shelve : break_down_crrs.
+Hint Extern 7 => progress change
+  (cc_as_program (cc_val ?v)) with
+  (as_program v) 
+  in *; shelve : break_down_crrs.
+
+Fixpoint cc_as_cr V {_v:AsProgram V} cc : ContextSet :=
+  match cc with
+  | cc_val v => as_cr v
+  | cc_branch l r => CrBranch (cc_as_cr l) (cc_as_cr r)
+  end.
+Hint Extern 7 => progress change
+  (cc_as_cr (ct_branch ?a ?b)) with
+  (u_branch (cc_as_cr a) (cc_as_cr b)) 
+  in *; shelve : break_down_crrs.
+Hint Extern 7 => progress change
+  (cc_as_cr (cc_val ?v)) with
+  (as_cr v) 
+  in *; shelve : break_down_crrs.
+
+Instance cc_AsProgram V {_v:AsProgram V} : AsProgram (ConcreteContext V).
+  refine {|
+    as_program := cc_as_program (_v:=_)
+  ; as_cr := cc_as_cr (_v:=_)
+  |}.
+  intro t; induction t; break_down_crrs.
+  apply as_program_agrees_with_as_cr.
+  {
+    hint_simplify_with_hyps.
+    break_down_crrs.
+  }
+  
+
 (* Inductive VariableLocations :=
   | vl_val : VariableLocations
   | vl_branch : VariableLocations -> VariableLocations -> VariableLocations
@@ -483,14 +533,6 @@ Definition GCinCC V (cc : ConcreteContext V) : GenericContext -> Prop
   | wvigc_left l r wv : WVinGC l wv -> WVinGC (cc_branch l r) (wv_left wv)
   | wvigc_right l r wv : WVinGC r wv -> WVinGC (cc_branch l r) (wv_right wv)
   . *)
-
-Instance ct_cc V : Context (ConcreteContext V).
-  refine {|
-    ct_branch := @cc_branch _
-  |}.
-
-  intros; split; injection H; trivial.
-Defined.
 
 Hint Extern 5 => progress (
     change (@cc_branch ?V)
