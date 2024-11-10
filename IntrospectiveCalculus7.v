@@ -1,0 +1,552 @@
+Set Implicit Arguments.
+Set Asymmetric Patterns.
+
+Require Import Unicode.Utf8.
+Require Import Coq.Program.Equality.
+Require Import Setoid.
+Require Import List.
+Require Import String.
+
+(* Hack - remove later *)
+Parameter cheat : ∀ {A}, A.
+
+(****************************************************
+               Contexts and relations
+****************************************************)
+
+(* The most basic level of objects we act-upon are called "contexts". You can view a context either as a formula, which is a binary tree, or as a list of formulas, represented as a tree of formulas which are each trees.
+
+The definition of "Context" has no opinion on what objects are at the leaves of such a tree, or whether it's finite or infinite, or even whether you can look at a Context and tell whether it's a branch or leaf: all you know is that branch nodes can exist. *)
+
+Class Context C := {
+    (* ct_branch : C -> C -> C
+  ; ct_branch_injective : ∀ a b c d,
+       ((ct_branch a b) = (ct_branch c d)) ->
+       (a = c) ∧ (b = d) *)
+    ct_branch : C -> C -> C -> Prop
+  (* ; ct_ *)
+}.
+
+Inductive BranchNature C S : Prop :=
+  | bn_val : C -> BranchNature C S
+  | bn_branch : S -> S -> BranchNature C S
+  .
+
+Inductive BranchNatureRepresented C (CT: Context C) S (embed : S -> C):
+  BranchNature C S -> C -> Prop :=
+  | bnr_val c : BranchNatureRepresented _ embed (bn_val _ c) c
+  | bnr_branch ab a b :
+      ct_branch ab (embed a) (embed b) ->
+      BranchNatureRepresented _ embed (bn_branch _ a b) ab
+  | bnr_val_branch ab a b :
+    ct_branch ab a b ->
+    BranchNatureRepresented _ embed (bn_val _ a) a ->
+    BranchNatureRepresented _ embed (bn_val _ b) b ->
+    BranchNatureRepresented _ embed (bn_val _ ab) ab
+    
+  .
+
+Definition BranchStructure C S := ∀ s : S, BranchNature C S.
+(* Inductive BranchStructure C :=
+  | bs_cons S : ∀ s : S, BranchNature C S -> BranchStructure C. *)
+  
+Definition ContextComplete C (CT: Context C) :=
+  ∀ S (structure : BranchStructure C S),
+    ∃ embed : S -> C,
+      ∀ s,
+        BranchNatureRepresented _ embed (structure s) (embed s).
+      (* ∀ s,
+      match structure s with
+      | bn_val c => embed s = c
+      | bn_branch a b => ct_branch (embed s) (embed a) (embed b)
+      end. *)
+
+Inductive CompletedContext C : Prop :=
+  | cc_cons S (structure : BranchStructure C S)
+      : S -> CompletedContext C.
+
+
+(* Definition BSBranch C S (CT: Context C)
+  (structure : BranchStructure C S) (ab a b : S) : Prop
+  :=
+  match structure ab with
+  | (bn_val ab) => match (structure a, structure b) with
+    | (bn_val a, bn_val b) => True
+    | _ => False
+    end
+  | (bn_branch a b) => True
+  end. *)
+
+(* Inductive CCBranch C (CT: Context C) :=
+  | cc_branch_inC ab a b : ct_branch ab a b -> 
+      CCBranch _ (bs_val ab) (bs_val a) (bs_val b)
+  | cc_branch_wrapped a b : BsBranch _ (bs_branch a b) a b
+  | cc_branch_cons S (structure : ∀ s : S, BranchNature C S) (ab a b : S)
+      : CCBranch _ s 
+      match (structure ab, structure a, structure b) with
+      | (bn_val ab, bn_val a, bn_val b) => embed s = c
+      | bn_branch a b => ct_branch (embed s) (embed a) (embed b)
+      end. *)
+
+(* Definition CCBranch C (CT: Context C) (ab a b : CompletedContext C) :=
+  match ab with
+  | cc_cons SAB structureAB ab => match structureAB ab with
+    | (bn_val ab) => match (a, b) with
+      | (cc_cons SA structureA a, cc_cons SB structureB b) =>
+        match (structureA a, structureB b) with
+        | (bn_val a, bn_val b) => True
+        | _ => False
+        end
+      end
+    | (bn_branch aS bS) => 
+    end
+  end. *)
+
+Inductive CCBVals C (CT: Context C) SAB SA SB
+ :
+  BranchNature C SAB -> BranchNature C SA -> BranchNature C SB -> Prop :=
+  | ccb_vals_cons
+    ab a b :
+    ct_branch ab a b -> CCBVals _ (bn_val _ ab) (bn_val _ a) (bn_val _ b)
+  .
+
+Inductive CCBBranch C S
+ :
+  BranchNature C S -> S -> S -> Prop :=
+  | ccb_branch_cons
+    aS bS : CCBBranch (bn_branch _ aS bS) aS bS
+  .
+
+Inductive CCBranch C (CT: Context C) :
+  CompletedContext C -> CompletedContext C -> CompletedContext C -> Prop
+  :=
+  | ccb_vals SAB SA SB
+      (sAB : BranchStructure C SAB)
+      (sA : BranchStructure C SA)
+      (sB : BranchStructure C SB) ab a b :
+      CCBVals _ (sAB ab) (sA a) (sB b) ->
+      CCBranch _ (cc_cons sAB ab) (cc_cons sA a) (cc_cons sB b)
+(* 
+      (ab : SAB)
+      (a : SA)
+      (b : SB) *)
+  
+  (* S (sAB sA sB : BranchStructure C S) (ab a b : S) :
+      match (sAB ab, sA a, sB b) with
+      | (bn_val ab, bn_val a, bn_val b) => ct_branch ab a b
+      | _ => False
+      end ->
+      CCBranch _ (cc_cons sAB ab) (cc_cons sA a) (cc_cons sB b) *)
+  | ccb_branch S (structure : BranchStructure C S) (ab a b : S)
+      :
+      CCBBranch (structure ab) a b ->
+      CCBranch _ (cc_cons structure ab) (cc_cons structure a) (cc_cons structure b)
+  .
+  
+
+Instance ccc C (CT: Context C) : Context (CompletedContext C) := {
+ct_branch := CCBranch _ }.
+
+
+(* Definition cc_collapse_embed C :
+  BranchStructure C (CompletedContext (CompletedContext C)).
+  intro c0.
+  destruct c0 as (S0, structure0, s0).
+  destruct (structure0 s0) as [c1 | a1 b1].
+  {
+    destruct c1 as (S1, structure1, s1).
+    destruct (structure1 s1) as [c2 | a2 b2].
+    exact (bn_val _ c2).
+    apply bn_branch.
+    destruct (structure1 a1) as [c2 | a2 b2].
+  } *)
+
+Inductive CCCollapseState C S0 :
+  BranchNature (CompletedContext C) S0 -> Prop :=
+  | cccs_val S1 (structure1 : BranchStructure C S1) (s1 : S1) :
+      S1 -> CCCollapseState (bn_val _ (cc_cons structure1 s1))
+  | cccs_branch a b :
+      CCCollapseState (bn_branch _ a b)
+  .
+
+Definition cc_collapse_embedding C S0
+  (structure0 : BranchStructure (CompletedContext C) S0)
+  (s0 : S0) (toEmbed : CCCollapseState (structure0 s0))
+  : BranchNature C (CCCollapseState (structure0 s0)) :=
+  match toEmbed with
+  | cccs_val _ structure1 _ s1 => match structure1 s1 with
+    | bn_val c2 => bn_val _ c2
+    | bn_branch a1 b1 => bn_branch _ (cccs_val _ _ _ a1) (cccs_val _ _ _ b1)
+    end 
+  | cccs_branch _ _ => bn_branch _ (cccs_branch _ _ _) (cccs_branch _ _ _)
+  end.
+
+Definition cc_collapse_value C S0
+  (structure0 : BranchStructure (CompletedContext C) S0)
+  (s0 : S0) : CCCollapseState (structure0 s0) :=
+  match structure0 s0 with
+  | bn_val c1 => match c1 with
+    | cc_cons S1 structure1 s1 => cccs_val _ _ _ s1
+    end
+  | bn_branch a1 b1 => cccs_branch _ _ _
+  end.
+
+Definition cc_collapse C S0
+  (structure0 : BranchStructure (CompletedContext C) S0)
+  (s0 : S0) : CompletedContext C :=
+  cc_cons
+  (cc_collapse_embedding structure0 s0)
+  (cc_collapse_value structure0 s0).
+
+
+  (* .
+Definition cc_collapse C S0
+  (structure0 : BranchStructure (CompletedContext C) S0)
+  (s0 : S0) :
+  CompletedContext C.
+  (* destruct cc0 as (S0, structure0, s0). *)
+  split with (CCCollapseState (structure0 s0)).
+  2: {
+    destruct (structure0 s0) as [cc1 | a0 b0].
+    {
+      destruct cc1 as (S1, structure1, s1).
+      exact (cccs_val _ _ _ s1).
+    }
+    exact (cccs_branch _ _ _).
+  }
+  {
+    intro toEmbed.
+    destruct toEmbed.
+    {
+      destruct (structure1 s1) as [c2 | a1 b1].
+      exact (bn_val _ c2).
+      {
+        apply bn_branch.
+        exact (cccs_val _ _ _ a1).
+        exact (cccs_val _ _ _ b1).
+      }
+    }
+    
+    apply bn_branch; apply cccs_branch.
+  }
+Defined. *)
+
+
+Lemma cc_complete C (CT: Context C)
+  : ContextComplete (ccc _).
+
+  intros S0 structure0.
+
+  exists (λ s0, cc_collapse structure0 s0).
+
+  intro s0.
+    unfold cc_collapse.
+    unfold cc_collapse_value at 2.
+    unfold cc_collapse_embedding at 2.
+  destruct (structure0 s0) as [c1 | a1 b1].
+  { 
+    (* unfold cc_collapse.
+    unfold cc_collapse_value. *)
+
+
+    destruct c1 as [S1 structure1 s1].
+
+    apply bnr_val.
+    cbn.
+    destruct (structure1 s1) as [c1 | a1 b1].
+    cbn.
+  }
+
+  cbn.
+
+
+
+      ∃ c:C, BranchNature C C
+      ∀ P : BranchNature C S -> Prop,
+        (∀ c:C, P (bn_val _ c)) -> 
+        (∀ a b:S,
+          P (bn_branch a b)) -> 
+        P s.
+      match structure s with
+      | bn_val : 
+      end.
+      embed s 
+  
+
+Definition ContextComplete C (CT: Context C) :=
+  ∀ bs : BranchStructure C,
+    ∃ x : C, BranchStructureRepresented _ bs x.
+
+
+CoInductive BranchStructure C :=
+  | bs_val : C -> BranchStructure C
+  | bs_branch : BranchStructure C -> BranchStructure C -> BranchStructure C.
+
+Definition IsVal C (CT: Context C)
+  (bs : BranchStructure C) (c : C) : Prop :=
+  match bs with
+  | bs_val d => d = c
+  | bs_branch a b => False
+  end.
+Definition IsBranch C (CT: Context C)
+  (bs : BranchStructure C) (a b : BranchStructure C) : Prop :=
+  match bs with
+  | bs_val d => False
+  | bs_branch a2 b2 => a2 = a ∧ b2 = b
+  end.
+
+
+CoInductive BranchStructureRepresented C (CT: Context C)
+  : BranchStructure C -> C -> Prop :=
+  | bsr_val c bsc : IsVal _ bsc c -> BranchStructureRepresented _ bsc c
+  | bsr_branch ab a b bsa bsb bsab :
+    (ct_branch ab a b) ->
+    IsBranch _ bsab bsa bsb ->
+    BranchStructureRepresented _ bsa a ->
+    BranchStructureRepresented _ bsb b ->
+    BranchStructureRepresented _ bsab ab
+  .
+  
+Definition ContextComplete C (CT: Context C) := ∀ bs :
+  BranchStructure C, ∃ x : C, BranchStructureRepresented _ bs x.
+
+Inductive BsBranch C (CT: Context C) : (BranchStructure C) -> (BranchStructure C) -> (BranchStructure C) -> Prop :=
+  | bs_branch_inC ab a b : ct_branch ab a b -> 
+      BsBranch _ (bs_val ab) (bs_val a) (bs_val b)
+  | bs_branch_wrapped a b : BsBranch _ (bs_branch a b) a b
+  .
+
+Instance bsc C (CT: Context C) : Context (BranchStructure C) := {
+ct_branch :=
+  BsBranch _ }.
+
+CoFixpoint bs_collapse C (bsbs:BranchStructure (BranchStructure C)) :
+  BranchStructure C.
+  destruct bsbs.
+  { exact b.
+    (* destruct b.
+    exact (bs_val c).
+    exact (bs_branch b1 b2). *)
+  }
+  exact (bs_branch (bs_collapse _ bsbs1) (bs_collapse _ bsbs2)).
+Defined.
+
+Lemma bs_complete C (CT: Context C) : ContextComplete (bsc _).
+  unfold ContextComplete; intros.
+  exists (bs_collapse bs).
+  revert bs.
+  cofix Q. destruct bs.
+  (* cofix Q. destruct bs. *)
+  {
+    revert Q b.
+    cofix R. destruct b.
+    apply bsr_val. cbn.
+
+    (* exact Q. *)
+  (* exact cheat. *)
+    destruct b.
+    apply bsr_val.
+    cbn.
+  (* exact cheat. *)
+    eapply bsr_branch; eassumption.
+
+    (* revert Q b. *)
+    (* cofix R. destruct b.
+    apply bsr_val. *)
+  }
+  eapply bsr_branch.
+  constructor.
+  exact cheat.
+Qed.
+
+(* Analogous to "sets of inference rules", we define "context sets", which are just that – sets of contexts (representing a set as a predicate). A ContextSet is required to be agnostic to everything except what's defined in Context. *)
+
+Definition ContextSet := ∀ C (CT: Context C), C -> Prop.
+Declare Scope cs_scope.
+Bind Scope cs_scope with ContextSet.
+
+Class AsCS T := {
+    as_cs : T -> ContextSet
+  }.
+Instance cs_as_cs : AsCS ContextSet := {
+    as_cs := id
+  }.
+
+(* …and analogous to "derivability between rulesets", we have the subset relation between ContextSets. (And also equivalence between ContextSets, which is the same as mutual-subset). *)
+
+Definition CsSubset (R S : ContextSet) : Prop :=
+  ∀ C (CT: Context C) c, R _ _ c -> S _ _ c.
+Notation "P '⊆' Q" := (CsSubset P Q) (at level 70, no associativity) : type_scope.
+Definition CsEquiv (R S : ContextSet) : Prop :=
+  ∀ C (CT: Context C) c, R _ _ c <-> S _ _ c.
+Notation "P '≡' Q" := (CsEquiv P Q) (at level 70, no associativity) : type_scope.
+Lemma CsSubset_of_CsEquiv R S : R ≡ S -> R ⊆ S.
+  unfold CsEquiv, CsSubset. intros. apply H. assumption.
+Qed.
+Lemma CsEquiv_refl A : A ≡ A.
+  unfold CsEquiv; intros; split; trivial.
+Qed.
+Lemma CsEquiv_sym A B : A ≡ B -> B ≡ A.
+  unfold CsEquiv; intros; split; intro; apply H; assumption.
+Qed. 
+Lemma CsEquiv_trans A B C : A ≡ B -> B ≡ C -> A ≡ C.
+  unfold CsEquiv; intros; split; intro.
+  apply H. apply H0. assumption.
+  apply H0. apply H. assumption.
+Qed.
+
+(* We are particularly interested in a specific, constrained subclass of context-relations: _Computable unification predicates_.
+
+These are (computable, infinite) trees of Boolean operations on equality constraints between subtrees of a context. *)
+
+Inductive Location :=
+  | l_root : Location
+  | l_left : Location -> Location
+  | l_right : Location -> Location
+  .
+
+Inductive SubtreeAt C (CT: Context C) : Location -> C -> C -> Prop :=
+  | sal_root c : SubtreeAt _ l_root c c
+  | sal_left l ab a b c : ct_branch ab a b -> SubtreeAt _ l a c -> SubtreeAt _ (l_left l) ab c
+  | sal_right l ab a b c : ct_branch ab a b -> SubtreeAt _ l b c -> SubtreeAt _ (l_right l) ab c
+  .
+
+Inductive CsUnify (l m : Location) C (CT: Context C) (c : C) : Prop :=
+  | cs_unify x : SubtreeAt _ l c x -> SubtreeAt _ m c x -> CsUnify l m _ c
+  .
+
+(* First, we define an expansive definition of unification predicates using Coq's `CoInductive`. Coq guarantees that any _global_ instance of this type is computable, but the programs aren't reified in Coq, so we can't prove _in Coq_ that every instance of this type is implemented by a program. Nevertheless, this is the simplest way to define it, so maybe it helps make the proofs more understandable. *)
+
+CoInductive UnificationPredicate :=
+  | up_unify : Location -> Location -> UnificationPredicate
+  | up_or : UnificationPredicate -> UnificationPredicate -> UnificationPredicate
+  | up_and : UnificationPredicate -> UnificationPredicate -> UnificationPredicate
+  .
+
+(* CoInductive CsUp (up : UnificationPredicate) C (CT: Context C) (c : C) : Prop := *)
+(* CoFixpoint CsUp (up : UnificationPredicate) : ContextSet :=
+  match up with
+  | up_unify l m => CsUnify l m
+  | up_or s t => CsOr (CsUp s) (CsUp t)
+  | up_and s t => CsAnd (CsUp s) (CsUp t)
+  end. *)
+
+CoInductive CtxObeysUp C (CT: Context C) (c : C) : UnificationPredicate -> Prop :=
+  | cou_unify l m : CsUnify l m _ c -> CtxObeysUp _ c (up_unify l m)
+  | cou_or_left R S : (CtxObeysUp _ c R) -> CtxObeysUp _ c (up_or R S)
+  | cou_or_right R S : (CtxObeysUp _ c S) -> CtxObeysUp _ c (up_or R S)
+  | cou_and R S : (CtxObeysUp _ c R) -> (CtxObeysUp _ c S) -> CtxObeysUp _ c (up_and R S)
+  .
+  
+Instance up_as_cs : AsCS UnificationPredicate := {
+    as_cs := λ up _ _ c, CtxObeysUp _ c up
+  }.
+
+
+Definition CsMonism : ContextSet := λ _ _ c, ct_branch c c c.
+(* Inductive CsMonism C (CT: Context C) (c : C) : Prop :=
+  | cs_monism : ct_branch c c c -> CsMonism _ c
+  . *)
+
+Lemma monism_element_everywhere l C (CT: Context C) (c : C) : CsMonism _ c -> SubtreeAt _ l c c.
+  intros; cbn.
+  induction l; [constructor|..].
+  all: econstructor; [apply H|assumption].
+Qed.
+
+Lemma monism_unifies_all l m : CsMonism ⊆ CsUnify l m.
+  unfold CsSubset; intros; cbn.
+  exists c; apply monism_element_everywhere; assumption.
+Qed.
+
+(* CoFixpoint monism_smallest (up : UnificationPredicate) : CsMonism ⊆ (as_cs up) :=
+  match up with
+  | up_unify l m => (monism_unifies_all l m)
+  | up_or s t => cou_or_left monism_smallest
+  | up_and s t => cou_and monism_smallest monism_smallest
+  end. *)
+  
+Lemma monism_in_all_ups (up : UnificationPredicate) : CsMonism ⊆ (as_cs up).
+  unfold CsSubset; intros; cbn.
+  revert up; cofix Q; destruct up.
+
+  apply cou_unify; apply monism_unifies_all; assumption.
+  apply cou_or_left; apply Q.
+  apply cou_and; apply Q.
+Qed.
+
+(* Explicit Computable Unification Predicates *)
+Inductive CUP :=
+  | cup_children_equal
+  | cup_pulldownLL_in (_:CUP)
+  | cup_pulldownLR_in (_:CUP)
+  | cup_right_obeys (_:CUP)
+  | cup_left_of (_:CUP)
+  | cup_or (_ _:CUP)
+  | cup_and (_ _:CUP)
+  | cup_iterate (_:CUP)
+  .
+
+Inductive CsChildrenEqual C (CT: Context C) : C -> Prop :=
+  | cs_children_equal cc c : ct_branch cc c c -> CsChildrenEqual _ cc
+  .
+
+Inductive CsPulldownLLIn (S : ContextSet) C (CT: Context C) : C -> Prop :=
+  | cs_pulldownLL_in abc ab ac a b c : ct_branch abc ab c -> ct_branch ab a b -> ct_branch ac a c -> S _ _ ac -> CsPulldownLLIn S _ abc
+  .
+
+Inductive CsPulldownLRIn (S : ContextSet) C (CT: Context C) : C -> Prop :=
+  | cs_pulldownLR_in abc ab bc a b c : ct_branch abc ab c -> ct_branch ab a b -> ct_branch bc b c -> S _ _ bc -> CsPulldownLRIn S _ abc
+  .
+
+Inductive CsRightObeys (S : ContextSet) C (CT: Context C) : C -> Prop :=
+  | cs_right_obeys ab a b : ct_branch ab a b -> S _ _ b -> CsRightObeys S _ ab
+  .
+
+Inductive CsLeftOf (S : ContextSet) C (CT: Context C) : C -> Prop :=
+  | cs_left_of ab a b : ct_branch ab a b -> S _ _ ab -> CsLeftOf S _ a
+  .
+
+Inductive CsOr (R S : ContextSet) C (CT: Context C) (c : C) : Prop :=
+  | cs_or_left : R _ _ c -> CsOr R S _ c
+  | cs_or_right : S _ _ c -> CsOr R S _ c
+  .
+
+Inductive CsAnd (R S : ContextSet) C (CT: Context C) (c : C) : Prop :=
+  | cs_and : R _ _ c -> S _ _ c -> CsAnd R S _ c
+  .
+
+CoInductive CsIterate (S : ContextSet) C (CT: Context C) : C -> Prop :=
+  | cs_iterate ab a b : ct_branch ab a b -> S _ _ ab -> CsIterate S _ b -> CsIterate S _ ab
+  .
+
+Fixpoint CsCUP (cup : CUP) : ContextSet :=
+  match cup with
+  | cup_children_equal => CsChildrenEqual
+  | cup_pulldownLL_in a => CsPulldownLLIn (CsCUP a)
+  | cup_pulldownLR_in a => CsPulldownLRIn (CsCUP a)
+  | cup_right_obeys a => CsRightObeys (CsCUP a)
+  | cup_left_of a => CsLeftOf (CsCUP a)
+  | cup_or a b => CsOr (CsCUP a) (CsCUP b)
+  | cup_and a b => CsAnd (CsCUP a) (CsCUP b)
+  | cup_iterate a => CsIterate (CsCUP a)
+  end.
+Instance cup_as_cs : AsCS CUP := {
+    as_cs := CsCUP
+  }.
+
+(* Definition CUP_to_UP (cup : CUP) : UnificationPredicate :=
+  match cup with *)
+
+Lemma monism_in_CsIterate S : CsMonism ⊆ S -> CsMonism ⊆ CsIterate S.
+  unfold CsSubset; intros; cbn.
+  cofix Q.
+  econstructor. eassumption. apply H; assumption. assumption.
+Qed.
+
+Ltac solve_monism_in_whatever := unfold CsSubset; intros; cbn in *; econstructor; eauto.
+Lemma monism_in_all_cups (cup : CUP) : CsMonism ⊆ (as_cs cup).
+  induction cup; try solve [solve_monism_in_whatever].
+  apply monism_in_CsIterate; assumption.
+Qed.
+
