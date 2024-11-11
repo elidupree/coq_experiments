@@ -23,42 +23,115 @@ Class Context C := {
   ; ct_branch_injective : ∀ a b c d,
        ((ct_branch a b) = (ct_branch c d)) ->
        (a = c) ∧ (b = d) *)
-    ct_branch : C -> C -> C -> Prop
+    (* ct_branch : C -> C -> C -> Prop *)
   (* ; ct_ *)
+    ct_BranchGuarantees : Prop
+  ; ct_is_branch : C -> C -> ct_BranchGuarantees
+  ; ct_guarantees : C -> ct_BranchGuarantees
 }.
 
-Inductive BranchNature C S : Prop :=
-  | bn_val : C -> BranchNature C S
-  | bn_branch : S -> S -> BranchNature C S
+
+Inductive BranchRequirement C S : Prop :=
+  | br_equiv_to : C -> BranchRequirement C S
+  | br_branch : S -> S -> BranchRequirement C S
   .
 
-Inductive BranchNatureRepresented C (CT: Context C) S (embed : S -> C):
-  BranchNature C S -> C -> Prop :=
-  | bnr_val c : BranchNatureRepresented _ embed (bn_val _ c) c
-  | bnr_branch ab a b :
+(* Inductive BranchGuarantee C : Prop :=
+  | bg_no_promises : BranchGuarantee C
+  | bg_branch : C -> C -> BranchGuarantee C
+  .
+
+Definition BranchGuarantees C : Prop := C -> BranchGuarantee C. *)
+  
+(* CoInductive BGEquiv C (CT: Context C):
+  ct_BranchGuarantees -> ct_BranchGuarantees -> Prop :=
+  | bge_refl g : BGEquiv _ g g
+  | bge_branch a1 b1 a2 b2 :
+    BGEquiv _ (ct_guarantees a1) (ct_guarantees a2) ->
+    BGEquiv _ (ct_guarantees b1) (ct_guarantees b2) ->
+    BGEquiv _ (ct_is_branch a1 b1) (ct_is_branch a2 b2)
+  .
+Definition CEquiv C (CT: Context C) (a b : C) :=
+  BGEquiv _ (ct_guarantees a) (ct_guarantees b). *)
+
+Inductive BGGuaranteesBranch C (CT: Context C) :
+  ct_BranchGuarantees -> C -> C -> Prop :=
+  | bggb_cons a b :
+    BGGuaranteesBranch _ (ct_is_branch a b) a b
+  .
+Definition CGuaranteesBranch C (CT: Context C) ab a b : Prop :=
+  BGGuaranteesBranch _ (ct_guarantees ab) a b
+  .
+
+(* CoInductive CEquiv C (CT: Context C) : C -> C -> Prop := *)
+(* Definition CEquivPredValid C (CT: Context C) (P : C -> C -> Prop) :=
+  ∀ c, P c c
+  ∧
+  ∀ ab1 ab2 a1 b1 a2 b2,
+    BGGuaranteesBranch _ (ct_guarantees ab1) a1 b1 ->
+    BGGuaranteesBranch _ (ct_guarantees ab2) a2 b2 ->
+    P a1 a2 -> P b1 b2 -> P ab1 ab2. *)
+
+Inductive CEquivPredMaySay C (CT: Context C) (P : C -> C -> Prop) : C -> C -> Prop :=
+  | cepv_refl c : CEquivPredMaySay _ _ c c
+  | cepv_branch ab1 ab2 a1 b1 a2 b2 :
+    CGuaranteesBranch _ ab1 a1 b1 ->
+    CGuaranteesBranch _ ab2 a2 b2 ->
+    P a1 a2 -> P b1 b2 -> CEquivPredMaySay _ _ ab1 ab2
+  .
+Definition CEquivPredValid C (CT: Context C) (P : C -> C -> Prop) :=
+  ∀ a b, CEquivPredMaySay _ P a b.
+Definition CEquiv C (CT: Context C) (a b : C) :=
+  ∃ P, CEquivPredValid _ P ∧ P a b.
+
+Inductive BRMet C (CT: Context C) S (embed : S -> C):
+  BranchRequirement C S -> C -> Prop :=
+  | brm_equiv_to c d P :
+    CEquivPredValid _ P ->
+    P c d ->
+    BRMet _ embed (br_equiv_to _ c) d
+  | brm_branch ab a b :
+    CGuaranteesBranch _ ab (embed a) (embed b) ->
+    BRMet _ embed (br_branch _ a b) ab
+  .
+
+(* CoInductive BGEquiv C (guarantees : BranchGuarantees C):
+  BranchGuarantee C -> BranchGuarantee C -> Prop :=
+  | bge_refl g : BGEquiv guarantees g g
+  | bge_branch a1 b1 a2 b2 :
+    BGEquiv guarantees (guarantees a1) (guarantees a2) ->
+    BGEquiv guarantees (guarantees b1) (guarantees b2) ->
+    BGEquiv guarantees (bg_branch a1 b1) (bg_branch a2 b2)
+  . *)
+
+
+(* Inductive BranchRequirementRepresented C (CT: Context C) S (embed : S -> C):
+  BranchRequirement C S -> C -> Prop :=
+  | brr_val c : BranchRequirementRepresented _ embed (br_equiv_to _ c) c
+  | brr_branch ab a b :
       ct_branch ab (embed a) (embed b) ->
-      BranchNatureRepresented _ embed (bn_branch _ a b) ab
-  | bnr_val_branch ab a b :
+      BranchRequirementRepresented _ embed (br_branch _ a b) ab
+  | brr_val_branch ab a b :
     ct_branch ab a b ->
-    BranchNatureRepresented _ embed (bn_val _ a) a ->
-    BranchNatureRepresented _ embed (bn_val _ b) b ->
-    BranchNatureRepresented _ embed (bn_val _ ab) ab
+    BranchRequirementRepresented _ embed (br_equiv_to _ a) a ->
+    BranchRequirementRepresented _ embed (br_equiv_to _ b) b ->
+    BranchRequirementRepresented _ embed (br_equiv_to _ ab) ab
     
-  .
+  . *)
 
-Definition BranchStructure C S := ∀ s : S, BranchNature C S.
+Definition BranchStructure C S := ∀ s : S, BranchRequirement C S.
 (* Inductive BranchStructure C :=
-  | bs_cons S : ∀ s : S, BranchNature C S -> BranchStructure C. *)
+  | bs_cons S : ∀ s : S, BranchRequirement C S -> BranchStructure C. *)
   
 Definition ContextComplete C (CT: Context C) :=
   ∀ S (structure : BranchStructure C S),
     ∃ embed : S -> C,
       ∀ s,
-        BranchNatureRepresented _ embed (structure s) (embed s).
+        BRMet _ embed (structure s) (embed s).
       (* ∀ s,
       match structure s with
-      | bn_val c => embed s = c
-      | bn_branch a b => ct_branch (embed s) (embed a) (embed b)
+      | br_equiv_to c => embed s = c
+      | br_branch a b => ct_branch (embed s) (embed a) (embed b)
       end. *)
 
 Inductive CompletedContext C : Prop :=
@@ -70,51 +143,68 @@ Inductive CompletedContext C : Prop :=
   (structure : BranchStructure C S) (ab a b : S) : Prop
   :=
   match structure ab with
-  | (bn_val ab) => match (structure a, structure b) with
-    | (bn_val a, bn_val b) => True
+  | (br_equiv_to ab) => match (structure a, structure b) with
+    | (br_equiv_to a, br_equiv_to b) => True
     | _ => False
     end
-  | (bn_branch a b) => True
+  | (br_branch a b) => True
   end. *)
 
 (* Inductive CCBranch C (CT: Context C) :=
   | cc_branch_inC ab a b : ct_branch ab a b -> 
       CCBranch _ (bs_val ab) (bs_val a) (bs_val b)
   | cc_branch_wrapped a b : BsBranch _ (bs_branch a b) a b
-  | cc_branch_cons S (structure : ∀ s : S, BranchNature C S) (ab a b : S)
+  | cc_branch_cons S (structure : ∀ s : S, BranchRequirement C S) (ab a b : S)
       : CCBranch _ s 
       match (structure ab, structure a, structure b) with
-      | (bn_val ab, bn_val a, bn_val b) => embed s = c
-      | bn_branch a b => ct_branch (embed s) (embed a) (embed b)
+      | (br_equiv_to ab, br_equiv_to a, br_equiv_to b) => embed s = c
+      | br_branch a b => ct_branch (embed s) (embed a) (embed b)
       end. *)
 
 (* Definition CCBranch C (CT: Context C) (ab a b : CompletedContext C) :=
   match ab with
   | cc_cons SAB structureAB ab => match structureAB ab with
-    | (bn_val ab) => match (a, b) with
+    | (br_equiv_to ab) => match (a, b) with
       | (cc_cons SA structureA a, cc_cons SB structureB b) =>
         match (structureA a, structureB b) with
-        | (bn_val a, bn_val b) => True
+        | (br_equiv_to a, br_equiv_to b) => True
         | _ => False
         end
       end
-    | (bn_branch aS bS) => 
+    | (br_branch aS bS) => 
     end
   end. *)
 
+(* Inductive SimpleBranchGuarantees C :=
+  | sbg_no_guarantees : SimpleBranchGuarantees C
+  | sbg_branch : C -> C -> SimpleBranchGuarantees C
+  . *)
+(* Inductive CbbBranchGuarantees C (CT: Context C) :=
+  | cbg_delegated : ct_BranchGuarantees -> CbbBranchGuarantees _
+  | cbg_branch : C -> C -> CbbBranchGuarantees _
+  . *)
+
+Definition cbb_guarantees C (CT: Context C) (c : CompletedContext C) : ct_BranchGuarantees :=
+  match c with
+  | cc_cons _ structure s => match structure s with
+    | br_equiv_to c2 => (ct_guarantees c2)
+    | br_branch a b => ct_is_branch a b
+    end
+  end.
+
 Inductive CCBVals C (CT: Context C) SAB SA SB
  :
-  BranchNature C SAB -> BranchNature C SA -> BranchNature C SB -> Prop :=
+  BranchRequirement C SAB -> BranchRequirement C SA -> BranchRequirement C SB -> Prop :=
   | ccb_vals_cons
     ab a b :
-    ct_branch ab a b -> CCBVals _ (bn_val _ ab) (bn_val _ a) (bn_val _ b)
+    CGuaranteesBranch _ ab a b -> CCBVals _ (br_equiv_to _ ab) (br_equiv_to _ a) (br_equiv_to _ b)
   .
 
 Inductive CCBBranch C S
  :
-  BranchNature C S -> S -> S -> Prop :=
+  BranchRequirement C S -> S -> S -> Prop :=
   | ccb_branch_cons
-    aS bS : CCBBranch (bn_branch _ aS bS) aS bS
+    aS bS : CCBBranch (br_branch _ aS bS) aS bS
   .
 
 Inductive CCBranch C (CT: Context C) :
@@ -133,7 +223,7 @@ Inductive CCBranch C (CT: Context C) :
   
   (* S (sAB sA sB : BranchStructure C S) (ab a b : S) :
       match (sAB ab, sA a, sB b) with
-      | (bn_val ab, bn_val a, bn_val b) => ct_branch ab a b
+      | (br_equiv_to ab, br_equiv_to a, br_equiv_to b) => ct_branch ab a b
       | _ => False
       end ->
       CCBranch _ (cc_cons sAB ab) (cc_cons sA a) (cc_cons sB b) *)
@@ -145,7 +235,8 @@ Inductive CCBranch C (CT: Context C) :
   
 
 Instance ccc C (CT: Context C) : Context (CompletedContext C) := {
-ct_branch := CCBranch _ }.
+  ct_BranchGuarantees := SimpleBranchGuarantees
+  ; ct_guarantees := CCBranch _ }.
 
 
 (* Definition cc_collapse_embed C :
@@ -156,39 +247,39 @@ ct_branch := CCBranch _ }.
   {
     destruct c1 as (S1, structure1, s1).
     destruct (structure1 s1) as [c2 | a2 b2].
-    exact (bn_val _ c2).
-    apply bn_branch.
+    exact (br_equiv_to _ c2).
+    apply br_branch.
     destruct (structure1 a1) as [c2 | a2 b2].
   } *)
 
 Inductive CCCollapseState C S0 :
-  BranchNature (CompletedContext C) S0 -> Prop :=
+  BranchRequirement (CompletedContext C) S0 -> Prop :=
   | cccs_val S1 (structure1 : BranchStructure C S1) (s1 : S1) :
-      S1 -> CCCollapseState (bn_val _ (cc_cons structure1 s1))
+      S1 -> CCCollapseState (br_equiv_to _ (cc_cons structure1 s1))
   | cccs_branch a b :
-      CCCollapseState (bn_branch _ a b)
+      CCCollapseState (br_branch _ a b)
   .
 
 Definition cc_collapse_embedding C S0
   (structure0 : BranchStructure (CompletedContext C) S0)
   (s0 : S0) (toEmbed : CCCollapseState (structure0 s0))
-  : BranchNature C (CCCollapseState (structure0 s0)) :=
+  : BranchRequirement C (CCCollapseState (structure0 s0)) :=
   match toEmbed with
   | cccs_val _ structure1 _ s1 => match structure1 s1 with
-    | bn_val c2 => bn_val _ c2
-    | bn_branch a1 b1 => bn_branch _ (cccs_val _ _ _ a1) (cccs_val _ _ _ b1)
+    | br_equiv_to c2 => br_equiv_to _ c2
+    | br_branch a1 b1 => br_branch _ (cccs_val _ _ _ a1) (cccs_val _ _ _ b1)
     end 
-  | cccs_branch _ _ => bn_branch _ (cccs_branch _ _ _) (cccs_branch _ _ _)
+  | cccs_branch _ _ => br_branch _ (cccs_branch _ _ _) (cccs_branch _ _ _)
   end.
 
 Definition cc_collapse_value C S0
   (structure0 : BranchStructure (CompletedContext C) S0)
   (s0 : S0) : CCCollapseState (structure0 s0) :=
   match structure0 s0 with
-  | bn_val c1 => match c1 with
+  | br_equiv_to c1 => match c1 with
     | cc_cons S1 structure1 s1 => cccs_val _ _ _ s1
     end
-  | bn_branch a1 b1 => cccs_branch _ _ _
+  | br_branch a1 b1 => cccs_branch _ _ _
   end.
 
 Definition cc_collapse C S0
@@ -219,15 +310,15 @@ Definition cc_collapse C S0
     destruct toEmbed.
     {
       destruct (structure1 s1) as [c2 | a1 b1].
-      exact (bn_val _ c2).
+      exact (br_equiv_to _ c2).
       {
-        apply bn_branch.
+        apply br_branch.
         exact (cccs_val _ _ _ a1).
         exact (cccs_val _ _ _ b1).
       }
     }
     
-    apply bn_branch; apply cccs_branch.
+    apply br_branch; apply cccs_branch.
   }
 Defined. *)
 
@@ -251,7 +342,7 @@ Lemma cc_complete C (CT: Context C)
 
     destruct c1 as [S1 structure1 s1].
 
-    apply bnr_val.
+    apply brr_val.
     cbn.
     destruct (structure1 s1) as [c1 | a1 b1].
     cbn.
@@ -261,14 +352,14 @@ Lemma cc_complete C (CT: Context C)
 
 
 
-      ∃ c:C, BranchNature C C
-      ∀ P : BranchNature C S -> Prop,
-        (∀ c:C, P (bn_val _ c)) -> 
+      ∃ c:C, BranchRequirement C C
+      ∀ P : BranchRequirement C S -> Prop,
+        (∀ c:C, P (br_equiv_to _ c)) -> 
         (∀ a b:S,
-          P (bn_branch a b)) -> 
+          P (br_branch a b)) -> 
         P s.
       match structure s with
-      | bn_val : 
+      | br_equiv_to : 
       end.
       embed s 
   
