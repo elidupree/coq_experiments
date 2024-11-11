@@ -18,59 +18,32 @@ Parameter cheat : ∀ {A}, A.
 
 The definition of "Context" has no opinion on what objects are at the leaves of such a tree, or whether it's finite or infinite, or even whether you can look at a Context and tell whether it's a branch or leaf: all you know is that branch nodes can exist. *)
 
+Inductive BranchGuarantees C : Prop :=
+  | bg_no_guarantees : BranchGuarantees C
+  | bg_is_branch : C -> C -> BranchGuarantees C
+  .
 Class Context C := {
-    (* ct_branch : C -> C -> C
-  ; ct_branch_injective : ∀ a b c d,
-       ((ct_branch a b) = (ct_branch c d)) ->
-       (a = c) ∧ (b = d) *)
-    (* ct_branch : C -> C -> C -> Prop *)
-  (* ; ct_ *)
-    ct_BranchGuarantees : Prop
-  ; ct_is_branch : C -> C -> ct_BranchGuarantees
-  ; ct_guarantees : C -> ct_BranchGuarantees
+  ct_guarantees : C -> BranchGuarantees C
 }.
 
 
+Inductive BaseOrWrapped C S : Prop :=
+  | bow_base : C -> BaseOrWrapped C S
+  | bow_wrapped : S -> S -> BaseOrWrapped C S
+  .
 Inductive BranchRequirement C S : Prop :=
   | br_equiv_to : C -> BranchRequirement C S
   | br_branch : S -> S -> BranchRequirement C S
   .
 
-(* Inductive BranchGuarantee C : Prop :=
-  | bg_no_promises : BranchGuarantee C
-  | bg_branch : C -> C -> BranchGuarantee C
-  .
-
-Definition BranchGuarantees C : Prop := C -> BranchGuarantee C. *)
-  
-(* CoInductive BGEquiv C (CT: Context C):
-  ct_BranchGuarantees -> ct_BranchGuarantees -> Prop :=
-  | bge_refl g : BGEquiv _ g g
-  | bge_branch a1 b1 a2 b2 :
-    BGEquiv _ (ct_guarantees a1) (ct_guarantees a2) ->
-    BGEquiv _ (ct_guarantees b1) (ct_guarantees b2) ->
-    BGEquiv _ (ct_is_branch a1 b1) (ct_is_branch a2 b2)
-  .
-Definition CEquiv C (CT: Context C) (a b : C) :=
-  BGEquiv _ (ct_guarantees a) (ct_guarantees b). *)
-
 Inductive BGGuaranteesBranch C (CT: Context C) :
-  ct_BranchGuarantees -> C -> C -> Prop :=
+  BranchGuarantees C -> C -> C -> Prop :=
   | bggb_cons a b :
-    BGGuaranteesBranch _ (ct_is_branch a b) a b
+    BGGuaranteesBranch _ (bg_is_branch a b) a b
   .
 Definition CGuaranteesBranch C (CT: Context C) ab a b : Prop :=
   BGGuaranteesBranch _ (ct_guarantees ab) a b
   .
-
-(* CoInductive CEquiv C (CT: Context C) : C -> C -> Prop := *)
-(* Definition CEquivPredValid C (CT: Context C) (P : C -> C -> Prop) :=
-  ∀ c, P c c
-  ∧
-  ∀ ab1 ab2 a1 b1 a2 b2,
-    BGGuaranteesBranch _ (ct_guarantees ab1) a1 b1 ->
-    BGGuaranteesBranch _ (ct_guarantees ab2) a2 b2 ->
-    P a1 a2 -> P b1 b2 -> P ab1 ab2. *)
 
 Inductive CEquivPredMaySay C (CT: Context C) (P : C -> C -> Prop) : C -> C -> Prop :=
   | cepv_refl c : CEquivPredMaySay _ _ c c
@@ -95,44 +68,12 @@ Inductive BRMet C (CT: Context C) S (embed : S -> C):
     BRMet _ embed (br_branch _ a b) ab
   .
 
-(* CoInductive BGEquiv C (guarantees : BranchGuarantees C):
-  BranchGuarantee C -> BranchGuarantee C -> Prop :=
-  | bge_refl g : BGEquiv guarantees g g
-  | bge_branch a1 b1 a2 b2 :
-    BGEquiv guarantees (guarantees a1) (guarantees a2) ->
-    BGEquiv guarantees (guarantees b1) (guarantees b2) ->
-    BGEquiv guarantees (bg_branch a1 b1) (bg_branch a2 b2)
-  . *)
-
-
-(* Inductive BranchRequirementRepresented C (CT: Context C) S (embed : S -> C):
-  BranchRequirement C S -> C -> Prop :=
-  | brr_val c : BranchRequirementRepresented _ embed (br_equiv_to _ c) c
-  | brr_branch ab a b :
-      ct_branch ab (embed a) (embed b) ->
-      BranchRequirementRepresented _ embed (br_branch _ a b) ab
-  | brr_val_branch ab a b :
-    ct_branch ab a b ->
-    BranchRequirementRepresented _ embed (br_equiv_to _ a) a ->
-    BranchRequirementRepresented _ embed (br_equiv_to _ b) b ->
-    BranchRequirementRepresented _ embed (br_equiv_to _ ab) ab
-    
-  . *)
-
 Definition BranchStructure C S := ∀ s : S, BranchRequirement C S.
-(* Inductive BranchStructure C :=
-  | bs_cons S : ∀ s : S, BranchRequirement C S -> BranchStructure C. *)
-  
+
 Definition ContextComplete C (CT: Context C) :=
   ∀ S (structure : BranchStructure C S),
     ∃ embed : S -> C,
-      ∀ s,
-        BRMet _ embed (structure s) (embed s).
-      (* ∀ s,
-      match structure s with
-      | br_equiv_to c => embed s = c
-      | br_branch a b => ct_branch (embed s) (embed a) (embed b)
-      end. *)
+      ∀ s, BRMet _ embed (structure s) (embed s).
 
 Inductive CompletedContext C : Prop :=
   | cc_cons S (structure : BranchStructure C S)
@@ -175,20 +116,17 @@ Inductive CompletedContext C : Prop :=
     end
   end. *)
 
-(* Inductive SimpleBranchGuarantees C :=
-  | sbg_no_guarantees : SimpleBranchGuarantees C
-  | sbg_branch : C -> C -> SimpleBranchGuarantees C
-  . *)
-(* Inductive CbbBranchGuarantees C (CT: Context C) :=
-  | cbg_delegated : ct_BranchGuarantees -> CbbBranchGuarantees _
-  | cbg_branch : C -> C -> CbbBranchGuarantees _
-  . *)
 
-Definition cbb_guarantees C (CT: Context C) (c : CompletedContext C) : ct_BranchGuarantees :=
+Definition cbb_guarantees C (CT: Context C) (c : CompletedContext C) : BranchGuarantees (CompletedContext C) :=
   match c with
-  | cc_cons _ structure s => match structure s with
-    | br_equiv_to c2 => (ct_guarantees c2)
-    | br_branch a b => ct_is_branch a b
+  | cc_cons S0 structure s => match structure s with
+    (* | br_equiv_to c2 => bg_no_guarantees _ *)
+    (* | br_equiv_to c2 => ct_guarantees c2 *)
+    | br_equiv_to c2 => match ct_guarantees c2 with
+      | bg_no_guarantees => bg_no_guarantees _
+      | bg_is_branch a b => bg_is_branch (cc_cons structure a) (br_equiv_to _ b)
+    end
+    | br_branch a b => bg_is_branch (cc_cons structure a) (cc_cons structure b)
     end
   end.
 
@@ -235,7 +173,7 @@ Inductive CCBranch C (CT: Context C) :
   
 
 Instance ccc C (CT: Context C) : Context (CompletedContext C) := {
-  ct_BranchGuarantees := SimpleBranchGuarantees
+  BranchGuarantees C := SimpleBranchGuarantees
   ; ct_guarantees := CCBranch _ }.
 
 
