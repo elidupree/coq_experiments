@@ -57,9 +57,9 @@ Class ExtensionStructure C E := {
     ext_left_child : ∀ s : E, Extension C E
   ; ext_right_child : ∀ s : E, Extension C E
 }.
-Class Embedding C E := {
-  embed : E -> C
-}.
+(* Class Embedding C E := {
+  embed : Extension C E -> C
+}. *)
 
 Definition ext_guarantees {C} {CT: Context C} {E} {ES : ExtensionStructure C E} (x : Extension C E) : BranchGuarantees (Extension C E) :=
   match x with
@@ -74,19 +74,23 @@ Instance ct_ext {C} {CT: Context C} {E} {ES : ExtensionStructure C E}
   : Context (Extension C E)
   := { ct_guarantees := ext_guarantees }.
 
-Definition embedding_referent C E {EE : Embedding C E} (x : Extension C E) :=
+(* Definition embedding_referent C E {EE : Embedding C E} (x : Extension C E) :=
   match x with
   | ext_base c => c
   | ext_ext s => embed s
-  end.
+  end. *)
   
-Definition EmbeddingAgrees C E {CT: Context C} {EE : Embedding C E} (ab : C) (a b : Extension C E) :=
-  CGuaranteesBranch ab (embedding_referent a) (embedding_referent b).
+(* Definition LocallyMatches A B {ACT: Context C} {BCT: Context B} (a : A) (b : B) : *)
+(* Definition EmbeddingAgrees C D {CT: Context C} {DT: Context D} (embed : C -> D) (ab : D) (a b : C) :=
+  CGuaranteesBranch ab (embed a) (embed b). *)
+Definition EmbeddingAgrees C D {CT: Context C} {DT: Context D} (embed : C -> D) :=
+  ∀ ab a b : C, 
+  CGuaranteesBranch ab a b -> CGuaranteesBranch (embed ab) (embed a) (embed b).
 
 Definition ContextComplete C (CT: Context C) :=
   ∀ E (ES : ExtensionStructure C E),
-    ∃ EE : Embedding C E,
-      ∀ e, EmbeddingAgrees (embed e) (ext_left_child e) (ext_right_child e).
+    ∃ embed : Extension C E -> C,
+      EmbeddingAgrees embed.
 
 Inductive AnyE C : Prop :=
   | anye E : ExtensionStructure C E -> E -> AnyE C.
@@ -155,17 +159,43 @@ Instance aece_ext_structure {C}
   end.
 Instance cc_collapse_embedding {C} : Embedding (CompletedContext C) (AnyE (CompletedContext C)) :=
   { embed := cc_collapse }. *)
-Definition cc_collapse {C} {E} {ES : ExtensionStructure (CompletedContext C) E} (e : E) : CompletedContext C :=
-  ext_ext (anye aece_ext_structure (aece_outer _ e)).
-Instance cc_collapse_embedding {C} {E} {ES : ExtensionStructure (CompletedContext C) E} : Embedding (CompletedContext C) E :=
-  { embed := cc_collapse }.
+Definition cc_collapse {C} {E} {ES : ExtensionStructure (CompletedContext C) E} (x : Extension (CompletedContext C) E) : CompletedContext C :=
+  match x with
+  | ext_base x2 => match x2 with
+    | ext_base c => ext_base c
+    | ext_ext e => ext_ext (anye aece_ext_structure (aece_inner _ e))
+    end
+  | ext_ext e => ext_ext (anye aece_ext_structure (aece_outer _ e))
+  end.
+(* Instance cc_collapse_embedding {C} {E} {ES : ExtensionStructure (CompletedContext C) E} : Embedding (CompletedContext C) (Extension E (CompletedContext C) E) :=
+  { embed := cc_collapse }. *)
 
   (* TODO: embeddings may also remap base values! *)
 
 Lemma CompletedContext_complete C {CT: Context C} : @ContextComplete (CompletedContext C) _.
   intros E ES.
-  exists cc_collapse_embedding.
-  intro e.
+  exists cc_collapse.
+  intro x.
+  unfold CGuaranteesBranch.
+  intros.
+  
+  destruct (ct_guarantees x).
+  remember bg_no_guarantees. destruct H. discriminate .
+
+  destruct x, a, b; cbn in *.
+  {
+    destruct c, c0, c1; cbn in *.
+    {
+      (* cbn. *)
+      (* unfold ct_guarantees in H. *)
+      destruct (ct_guarantees c).
+      destruct H; cbn.
+      cbn.
+      constructor.
+
+  cbn.
+
+  remember (ct_guarantees x); destruct H.
   cbn.
   (* Set Printing Implicit. *)
   unfold EmbeddingAgrees, CGuaranteesBranch; cbn.
