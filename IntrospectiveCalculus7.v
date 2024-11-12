@@ -10,6 +10,9 @@ Require Import String.
 (* Hack - remove later *)
 Parameter cheat : ∀ {A}, A.
 
+Set Typeclasses Iterative Deepening.
+Set Typeclasses Depth 3.
+
 (****************************************************
                Contexts and relations
 ****************************************************)
@@ -17,32 +20,188 @@ Parameter cheat : ∀ {A}, A.
 (* The most basic level of objects we act-upon are called "contexts". You can view a context either as a formula, which is a binary tree, or as a list of formulas, represented as a tree of formulas which are each trees.
 
 The definition of "Context" has no opinion on what objects are at the leaves of such a tree, or whether it's finite or infinite, or even whether you can look at a Context and tell whether it's a branch or leaf: all you know is that branch nodes can exist. *)
-
+Implicit Types C E : Prop.
 Inductive BranchGuarantees C : Prop :=
   | bg_no_guarantees : BranchGuarantees C
   | bg_is_branch : C -> C -> BranchGuarantees C
   .
+Arguments bg_no_guarantees {C}.
+Arguments bg_is_branch [C].
+
+Inductive BGGuaranteesBranch C :
+  BranchGuarantees C -> C -> C -> Prop :=
+  | bggb_cons a b :
+    BGGuaranteesBranch (bg_is_branch a b) a b
+  .
+
 Class Context C := {
   ct_guarantees : C -> BranchGuarantees C
 }.
 
-
-Inductive BaseOrWrapped C S : Prop :=
-  | bow_base : C -> BaseOrWrapped C S
-  | bow_wrapped : S -> BaseOrWrapped C S
-  .
-Inductive BranchRequirement C S : Prop :=
-  | br_branch : BaseOrWrapped C S -> BaseOrWrapped C S -> BranchRequirement C S
+Definition CGuaranteesBranch C [CT: Context C] ab a b : Prop :=
+  BGGuaranteesBranch (ct_guarantees ab) a b
   .
 
-Inductive BGGuaranteesBranch C (CT: Context C) :
-  BranchGuarantees C -> C -> C -> Prop :=
-  | bggb_cons a b :
-    BGGuaranteesBranch _ (bg_is_branch a b) a b
+
+Inductive Extension C E : Prop :=
+  | ext_base : C -> Extension C E
+  | ext_ext : E -> Extension C E
   .
-Definition CGuaranteesBranch C (CT: Context C) ab a b : Prop :=
-  BGGuaranteesBranch _ (ct_guarantees ab) a b
+Arguments ext_base [C] [E].
+Arguments ext_ext [C] [E].
+(* Inductive ExtChildren C E : Prop :=
+  | ext_children : Extension C E -> Extension C E -> ExtChildren C E
+  . *)
+
+Class ExtensionStructure C E := {
+    ext_left_child : ∀ s : E, Extension C E
+  ; ext_right_child : ∀ s : E, Extension C E
+}.
+Class Embedding C E := {
+  embed : E -> C
+}.
+
+Definition ext_guarantees {C} {CT: Context C} {E} {ES : ExtensionStructure C E} (x : Extension C E) : BranchGuarantees (Extension C E) :=
+  match x with
+  | ext_base c => match ct_guarantees c with
+    | bg_no_guarantees => bg_no_guarantees
+    | bg_is_branch a b => bg_is_branch (ext_base a) (ext_base b)
+    end
+  | ext_ext e => bg_is_branch (ext_left_child e) (ext_right_child e)
+  end.
+
+Instance ct_ext {C} {CT: Context C} {E} {ES : ExtensionStructure C E}
+  : Context (Extension C E)
+  := { ct_guarantees := ext_guarantees }.
+
+Definition embedding_referent C E {EE : Embedding C E} (x : Extension C E) :=
+  match x with
+  | ext_base c => c
+  | ext_ext s => embed s
+  end.
+  
+Definition EmbeddingAgrees C E {CT: Context C} {EE : Embedding C E} (ab : C) (a b : Extension C E) :=
+  CGuaranteesBranch ab (embedding_referent a) (embedding_referent b).
+
+Definition ContextComplete C (CT: Context C) :=
+  ∀ E (ES : ExtensionStructure C E),
+    ∃ EE : Embedding C E,
+      ∀ e, EmbeddingAgrees (embed e) (ext_left_child e) (ext_right_child e).
+
+Inductive AnyE C : Prop :=
+  | anye E : ExtensionStructure C E -> E -> AnyE C.
+
+Definition CompletedContext C := Extension C (AnyE C).
+Definition cc_rewrap C E {ES : ExtensionStructure C E} (x : Extension C E) : Extension C (AnyE C) :=
+  match x with
+  | ext_base c => ext_base c
+  | ext_ext e => ext_ext (anye ES e)
+  end.
+Definition cc_left_child {C} (e : AnyE C) : Extension C (AnyE C) :=
+  match e with
+  | anye _ _ e => cc_rewrap (ext_left_child e)
+  end.
+Definition cc_right_child {C} (e : AnyE C) : Extension C (AnyE C) :=
+  match e with
+  | anye _ _ e => cc_rewrap (ext_right_child e)
+  end.
+  
+Instance cc_ext_structure {C} {E} {ES : ExtensionStructure C E}
+  : ExtensionStructure C (AnyE C)
+  := {
+    ext_left_child := cc_left_child
+  ; ext_right_child := cc_right_child }.
+
+
+
+Inductive AECollapseE C : Prop :=
+  | aece_inner E : ExtensionStructure C E -> E -> AECollapseE C
+  | aece_outer E : ExtensionStructure (CompletedContext C) E -> E -> AECollapseE C
   .
+Definition aece_rewrap_inner C E {ES : ExtensionStructure C E} (x : Extension C E) : Extension C (AECollapseE C) :=
+  match x with
+  | ext_base c => ext_base c
+  | ext_ext e => ext_ext (aece_inner ES e)
+  end.
+Definition aece_rewrap_outer C E {ES : ExtensionStructure (CompletedContext C) E} (x : Extension (CompletedContext C) E) : Extension C (AECollapseE C) :=
+  match x with
+  | ext_base x2 => match x2 with
+    | ext_base c => ext_base c
+    | ext_ext e => match e with
+      | anye _ _ e => ext_ext (aece_inner _ e)
+      end
+    end
+  | ext_ext e => ext_ext (aece_outer _ e)
+  end.
+Definition aece_left_child {C} (e : AECollapseE C) : Extension C (AECollapseE C) :=
+  match e with
+  | aece_inner E _ e => aece_rewrap_inner (ext_left_child e)
+  | aece_outer E _ e => aece_rewrap_outer (ext_left_child e)
+  end.
+Definition aece_right_child {C} (e : AECollapseE C) : Extension C (AECollapseE C) :=
+  match e with
+  | aece_inner E _ e => aece_rewrap_inner (ext_right_child e)
+  | aece_outer E _ e => aece_rewrap_outer (ext_right_child e)
+  end.
+Instance aece_ext_structure {C}
+  : ExtensionStructure C (AECollapseE C)
+  := {
+    ext_left_child := aece_left_child
+  ; ext_right_child := aece_right_child }.
+
+(* Definition cc_collapse {C} (e: AnyE (CompletedContext C)) : CompletedContext C :=
+  match e with
+  | anye _ ES e => ext_ext (anye aece_ext_structure (aece_outer _ e)) 
+  end.
+Instance cc_collapse_embedding {C} : Embedding (CompletedContext C) (AnyE (CompletedContext C)) :=
+  { embed := cc_collapse }. *)
+Definition cc_collapse {C} {E} {ES : ExtensionStructure (CompletedContext C) E} (e : E) : CompletedContext C :=
+  ext_ext (anye aece_ext_structure (aece_outer _ e)).
+Instance cc_collapse_embedding {C} {E} {ES : ExtensionStructure (CompletedContext C) E} : Embedding (CompletedContext C) E :=
+  { embed := cc_collapse }.
+
+  (* TODO: embeddings may also remap base values! *)
+
+Lemma CompletedContext_complete C {CT: Context C} : @ContextComplete (CompletedContext C) _.
+  intros E ES.
+  exists cc_collapse_embedding.
+  intro e.
+  cbn.
+  (* Set Printing Implicit. *)
+  unfold EmbeddingAgrees, CGuaranteesBranch; cbn.
+
+  (* remember (ext_left_child e).
+  destruct e0. *)
+  destruct (ext_left_child e).
+  {
+    destruct c.
+    {
+      cbn.
+      destruct (ext_right_child e).
+      {
+        destruct c0.
+        constructor.
+        {
+          destruct a.
+          (* unfold embedding_referent. *)
+          Set Printing Implicit.
+          cbn.
+          constructor.
+    }
+  {
+  cbn.
+  constructor.
+  }
+
+  constructor.
+  unfold aece_rewrap_outer.
+  (* destruct (ext_right_child e).
+  remember (ext_left_child e). *)
+  destruct (cc_rewrap (aece_rewrap_outer (ext_left_child e))).
+  destruct (cc_rewrap (aece_rewrap_outer (ext_right_child e))).
+  constructor.
+  destruct .
+  constructor.
 
 Inductive CEquivPredMaySay C (CT: Context C) (P : C -> C -> Prop) : C -> C -> Prop :=
   | cepv_refl c : CEquivPredMaySay _ _ c c
