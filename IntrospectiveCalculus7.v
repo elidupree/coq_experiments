@@ -29,11 +29,10 @@ Class Context C := {
 
 Inductive BaseOrWrapped C S : Prop :=
   | bow_base : C -> BaseOrWrapped C S
-  | bow_wrapped : S -> S -> BaseOrWrapped C S
+  | bow_wrapped : S -> BaseOrWrapped C S
   .
 Inductive BranchRequirement C S : Prop :=
-  | br_equiv_to : C -> BranchRequirement C S
-  | br_branch : S -> S -> BranchRequirement C S
+  | br_branch : BaseOrWrapped C S -> BaseOrWrapped C S -> BranchRequirement C S
   .
 
 Inductive BGGuaranteesBranch C (CT: Context C) :
@@ -53,30 +52,46 @@ Inductive CEquivPredMaySay C (CT: Context C) (P : C -> C -> Prop) : C -> C -> Pr
     P a1 a2 -> P b1 b2 -> CEquivPredMaySay _ _ ab1 ab2
   .
 Definition CEquivPredValid C (CT: Context C) (P : C -> C -> Prop) :=
-  ∀ a b, CEquivPredMaySay _ P a b.
+  ∀ a b, P a b -> CEquivPredMaySay _ P a b.
 Definition CEquiv C (CT: Context C) (a b : C) :=
   ∃ P, CEquivPredValid _ P ∧ P a b.
 
-Inductive BRMet C (CT: Context C) S (embed : S -> C):
-  BranchRequirement C S -> C -> Prop :=
-  | brm_equiv_to c d P :
+Inductive BOWRepresented C (CT: Context C) S (embed : S -> C) :
+  BaseOrWrapped C S -> C -> Prop :=
+  | bowr_equiv_to c d P :
     CEquivPredValid _ P ->
     P c d ->
-    BRMet _ embed (br_equiv_to _ c) d
-  | brm_branch ab a b :
-    CGuaranteesBranch _ ab (embed a) (embed b) ->
-    BRMet _ embed (br_branch _ a b) ab
+    BOWRepresented _ embed (bow_base _ c) d
+  | bowr_embedded s : 
+    BOWRepresented _ embed (bow_wrapped _ s) (embed s)
   .
 
+(* Definition BranchRepresented C (CT: Context C) S (embed : S -> C) (a b : BaseOrWrapped C S) ab :=
+  BOWRepresented _ embed a cb
+  CGuaranteesBranch _ ab (embed a) (embed b) *)
+Inductive BranchRepresented C (CT: Context C) S (embed : S -> C) (a b : BaseOrWrapped C S) (cab : C) : Prop :=
+  | branch_represented_cons ca cb :
+    BOWRepresented _ embed a ca ->
+    BOWRepresented _ embed b cb ->
+    CGuaranteesBranch _ cab ca cb ->
+    BranchRepresented _ embed a b cab
+  .
+
+Definition BRRepresented C (CT: Context C) S (embed : S -> C) (branch : BranchRequirement C S) :=
+  match branch with
+  | br_branch a b => BranchRepresented _ embed a b
+  end.
+  
 Definition BranchStructure C S := ∀ s : S, BranchRequirement C S.
 
 Definition ContextComplete C (CT: Context C) :=
   ∀ S (structure : BranchStructure C S),
     ∃ embed : S -> C,
-      ∀ s, BRMet _ embed (structure s) (embed s).
+      ∀ s, BRRepresented _ embed (structure s) (embed s).
 
 Inductive CompletedContext C : Prop :=
-  | cc_cons S (structure : BranchStructure C S)
+  | cc_base : C -> CompletedContext C
+  | cc_extra_branch S (structure : BranchStructure C S)
       : S -> CompletedContext C.
 
 
@@ -117,64 +132,26 @@ Inductive CompletedContext C : Prop :=
   end. *)
 
 
+Definition cbb_referent C S structure (bow : BaseOrWrapped C S) :=
+  match bow with
+  | bow_base c => cc_base c
+  | bow_wrapped s => cc_extra_branch structure s
+  end.
 Definition cbb_guarantees C (CT: Context C) (c : CompletedContext C) : BranchGuarantees (CompletedContext C) :=
   match c with
-  | cc_cons S0 structure s => match structure s with
-    (* | br_equiv_to c2 => bg_no_guarantees _ *)
-    (* | br_equiv_to c2 => ct_guarantees c2 *)
-    | br_equiv_to c2 => match ct_guarantees c2 with
-      | bg_no_guarantees => bg_no_guarantees _
-      | bg_is_branch a b => bg_is_branch (cc_cons structure a) (br_equiv_to _ b)
+  | cc_base c => match ct_guarantees c with
+    | bg_no_guarantees => bg_no_guarantees _
+    | bg_is_branch a b => bg_is_branch (cc_base a) (cc_base b)
     end
-    | br_branch a b => bg_is_branch (cc_cons structure a) (cc_cons structure b)
+    (* | br_branch a b => bg_is_branch (cc_cons structure a) (cc_cons structure b)
+    end *)
+  | cc_extra_branch S0 structure s => match structure s with
+    | br_branch a b => bg_is_branch (cbb_referent structure a) (cbb_referent structure b)
     end
-  end.
-
-Inductive CCBVals C (CT: Context C) SAB SA SB
- :
-  BranchRequirement C SAB -> BranchRequirement C SA -> BranchRequirement C SB -> Prop :=
-  | ccb_vals_cons
-    ab a b :
-    CGuaranteesBranch _ ab a b -> CCBVals _ (br_equiv_to _ ab) (br_equiv_to _ a) (br_equiv_to _ b)
-  .
-
-Inductive CCBBranch C S
- :
-  BranchRequirement C S -> S -> S -> Prop :=
-  | ccb_branch_cons
-    aS bS : CCBBranch (br_branch _ aS bS) aS bS
-  .
-
-Inductive CCBranch C (CT: Context C) :
-  CompletedContext C -> CompletedContext C -> CompletedContext C -> Prop
-  :=
-  | ccb_vals SAB SA SB
-      (sAB : BranchStructure C SAB)
-      (sA : BranchStructure C SA)
-      (sB : BranchStructure C SB) ab a b :
-      CCBVals _ (sAB ab) (sA a) (sB b) ->
-      CCBranch _ (cc_cons sAB ab) (cc_cons sA a) (cc_cons sB b)
-(* 
-      (ab : SAB)
-      (a : SA)
-      (b : SB) *)
-  
-  (* S (sAB sA sB : BranchStructure C S) (ab a b : S) :
-      match (sAB ab, sA a, sB b) with
-      | (br_equiv_to ab, br_equiv_to a, br_equiv_to b) => ct_branch ab a b
-      | _ => False
-      end ->
-      CCBranch _ (cc_cons sAB ab) (cc_cons sA a) (cc_cons sB b) *)
-  | ccb_branch S (structure : BranchStructure C S) (ab a b : S)
-      :
-      CCBBranch (structure ab) a b ->
-      CCBranch _ (cc_cons structure ab) (cc_cons structure a) (cc_cons structure b)
-  .
-  
+  end.  
 
 Instance ccc C (CT: Context C) : Context (CompletedContext C) := {
-  BranchGuarantees C := SimpleBranchGuarantees
-  ; ct_guarantees := CCBranch _ }.
+  ct_guarantees := cbb_guarantees _ }.
 
 
 (* Definition cc_collapse_embed C :
@@ -190,15 +167,7 @@ Instance ccc C (CT: Context C) : Context (CompletedContext C) := {
     destruct (structure1 a1) as [c2 | a2 b2].
   } *)
 
-Inductive CCCollapseState C S0 :
-  BranchRequirement (CompletedContext C) S0 -> Prop :=
-  | cccs_val S1 (structure1 : BranchStructure C S1) (s1 : S1) :
-      S1 -> CCCollapseState (br_equiv_to _ (cc_cons structure1 s1))
-  | cccs_branch a b :
-      CCCollapseState (br_branch _ a b)
-  .
-
-Definition cc_collapse_embedding C S0
+(* Definition cc_collapse_embedding C S0
   (structure0 : BranchStructure (CompletedContext C) S0)
   (s0 : S0) (toEmbed : CCCollapseState (structure0 s0))
   : BranchRequirement C (CCCollapseState (structure0 s0)) :=
@@ -225,51 +194,110 @@ Definition cc_collapse C S0
   (s0 : S0) : CompletedContext C :=
   cc_cons
   (cc_collapse_embedding structure0 s0)
-  (cc_collapse_value structure0 s0).
+  (cc_collapse_value structure0 s0). *)
+
+Inductive CCCollapseState C : Prop :=
+  | cccs_inner S1 : BranchStructure C S1 -> S1 -> CCCollapseState C
+  | cccs_wrapped S0 : BranchStructure (CompletedContext C) S0 -> S0 -> CCCollapseState C
+  .
+
+Definition cccs_inner_referent C S1 structure1 (bow : BaseOrWrapped C S1) : BaseOrWrapped C (CCCollapseState C) :=
+  match bow with
+  | bow_base c => bow_base _ c
+  | bow_wrapped s1 => bow_wrapped _ (cccs_inner structure1 s1)
+  end.
+Definition cccs_outer_referent C S0 structure0 (bow : BaseOrWrapped (CompletedContext C) S0) : BaseOrWrapped C (CCCollapseState C) :=
+  match bow with
+  | bow_base cc1 => match cc1 with
+    | cc_base c => bow_base _ c
+    | cc_extra_branch S1 structure1 s1 => bow_wrapped _ (cccs_inner structure1 s1)
+    end
+  | bow_wrapped s0 => bow_wrapped _ (cccs_wrapped structure0 s0)
+  end.
+Definition cc_collapse_structure C (s : CCCollapseState C) : BranchRequirement C (CCCollapseState C) :=
+  match s with
+  | cccs_inner S1 structure1 s1 => match structure1 s1 with
+    | br_branch a b => br_branch (cccs_inner_referent structure1 a) (cccs_inner_referent structure1 b)
+    end
+  | cccs_wrapped S0 structure0 s0 => match structure0 s0 with
+    | br_branch a b => br_branch (cccs_outer_referent structure0 a) (cccs_outer_referent structure0 b)
+    end
+  end
+  .
 
 
-  (* .
-Definition cc_collapse C S0
-  (structure0 : BranchStructure (CompletedContext C) S0)
-  (s0 : S0) :
-  CompletedContext C.
-  (* destruct cc0 as (S0, structure0, s0). *)
-  split with (CCCollapseState (structure0 s0)).
-  2: {
-    destruct (structure0 s0) as [cc1 | a0 b0].
-    {
-      destruct cc1 as (S1, structure1, s1).
-      exact (cccs_val _ _ _ s1).
-    }
-    exact (cccs_branch _ _ _).
-  }
-  {
-    intro toEmbed.
-    destruct toEmbed.
-    {
-      destruct (structure1 s1) as [c2 | a1 b1].
-      exact (br_equiv_to _ c2).
-      {
-        apply br_branch.
-        exact (cccs_val _ _ _ a1).
-        exact (cccs_val _ _ _ b1).
-      }
-    }
-    
-    apply br_branch; apply cccs_branch.
-  }
-Defined. *)
+(* Definition cc_collapse C
+  (cc0 : CompletedContext (CompletedContext C)) : CompletedContext C :=
+  match cc0 with
+  | cc_base cc1 => match cc1 with
+    | cc_base c => cc_base c
+    | cc_extra_branch S1 structure1 s1 => cc_extra_branch (@cc_collapse_structure C) (cccs_inner structure1 s1)
+    end
+  | cc_extra_branch S0 structure0 s0 => match structure0 s0 with
+    | br_branch a b => cc_extra_branch (@cc_collapse_structure C) (cccs_wrapped structure0 s0)
+    end
+  end. *)
 
+Definition cc_collapse C S0 
+  (structure0 : BranchStructure
+  (CompletedContext C) S0) (s0 : S0) : CompletedContext C :=
+  match structure0 s0 with
+  | br_branch a b => cc_extra_branch (@cc_collapse_structure C) (cccs_wrapped structure0 s0)
+  end.
+
+Definition cc_collapse_bow_represented C S0 
+  (structure0 : BranchStructure
+  (CompletedContext C) S0) (bow0 : BaseOrWrapped (CompletedContext C) S0) :=
+  match bow0 with
+  | bow_base cc1 => match cc1 with
+    | cc_base c => cc_base c
+    | cc_extra_branch S1 structure1 s1 => cc_extra_branch (@cc_collapse_structure C) (cccs_inner structure1 s1)
+    end
+  | bow_wrapped s0 => cc_extra_branch (@cc_collapse_structure C) (cccs_wrapped structure0 s0)
+  end.
+
+Inductive CcCollapseEquivalence C (CT: Context C) :
+  (CompletedContext C) -> (CompletedContext C) -> Prop :=
+  | ccce_refl c : CcCollapseEquivalence _ c c
+  | ccce_collapsed S0 structure0 (s0 : S0) :
+    CcCollapseEquivalence _ (cc_extra_branch structure0 s0) (cc_extra_branch (@cc_collapse_structure C) (cccs_))
+  .
 
 Lemma cc_complete C (CT: Context C)
   : ContextComplete (ccc _).
 
   intros S0 structure0.
 
-  exists (λ s0, cc_collapse structure0 s0).
+  exists (cc_collapse structure0).
 
   intro s0.
-    unfold cc_collapse.
+  (* unfold cc_collapse at 2. *)
+  destruct (structure0 s0) as [a0 b0].
+
+  apply branch_represented_cons with (cc_collapse_bow_represented structure0 a0) (cc_collapse_bow_represented structure0 b0).
+  
+  {
+    destruct a0.
+    eapply bowr_equiv_to.
+    (* destruct c. cbn.
+    eapply bowr_equiv_to. *)
+    admit.
+    admit.
+    (* eapply bowr_equiv_to. *)
+    (* admit. *)
+    refine (bowr_embedded _ _ _).
+    eapply bowr_equiv_to.
+    eapply bowr_embedded.
+    CEquivPredValid 
+    .
+  }
+  
+  cbn.
+
+  econstructor.
+
+
+  
     unfold cc_collapse_value at 2.
     unfold cc_collapse_embedding at 2.
   destruct (structure0 s0) as [c1 | a1 b1].
