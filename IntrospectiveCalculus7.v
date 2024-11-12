@@ -20,8 +20,8 @@ Set Typeclasses Depth 3.
 (* The most basic level of objects we act-upon are called "contexts". You can view a context either as a formula, which is a binary tree, or as a list of formulas, represented as a tree of formulas which are each trees.
 
 The definition of "Context" has no opinion on what objects are at the leaves of such a tree, or whether it's finite or infinite, or even whether you can look at a Context and tell whether it's a branch or leaf: all you know is that branch nodes can exist. *)
-Implicit Types C E : Prop.
-Inductive BranchGuarantees C : Prop :=
+(* Implicit Types C E : Prop. *)
+Inductive BranchGuarantees C :=
   | bg_no_guarantees : BranchGuarantees C
   | bg_is_branch : C -> C -> BranchGuarantees C
   .
@@ -43,7 +43,7 @@ Definition CGuaranteesBranch C [CT: Context C] ab a b : Prop :=
   .
 
 
-Inductive Extension C E : Prop :=
+Inductive Extension C E :=
   | ext_base : C -> Extension C E
   | ext_ext : E -> Extension C E
   .
@@ -92,33 +92,82 @@ Definition ContextComplete C (CT: Context C) :=
     ∃ embed : Extension C E -> C,
       EmbeddingAgrees embed.
 
-Inductive AnyE C : Prop :=
-  | anye E : ExtensionStructure C E -> E -> AnyE C.
+(* Inductive ProgramThatSpitsOutPrograms :=
+  | ptsop_cons : (nat -> (nat + ProgramThatSpitsOutPrograms)) -> ProgramThatSpitsOutPrograms. *)
 
-Definition CompletedContext C := Extension C (AnyE C).
-Definition cc_rewrap C E {ES : ExtensionStructure C E} (x : Extension C E) : Extension C (AnyE C) :=
+(* Inductive ProgramThatSpitsOutPrograms C :=
+  | ptsop_cons : (nat -> (C + ProgramThatSpitsOutPrograms C)) -> ProgramThatSpitsOutPrograms C. *)
+
+(* Inductive Program C :=
+  | prg_cons : (nat -> (C + (Program C * nat))) -> Program C. *)
+(* Inductive Program C :=
+  | prg_cons : (nat -> Program C -> (C + (Program C * nat))) -> Program C. *)
+(* Definition foo := Program foo.
+Definition PTSOP C := Program (Program C). *)
+
+Inductive RecEChildImpl C E RE :=
+  | recec_base : C -> RecEChildImpl C E RE
+  | recec_same : E -> RecEChildImpl C E RE
+  | recec_other : RE -> RecEChildImpl C E RE
+  .
+Inductive RecursiveE C :=
+  | rece E
+    (left_child_fn : E -> RecEChildImpl C E (RecursiveE C))
+    (right_child_fn : E -> RecEChildImpl C E (RecursiveE C))
+    (e : E) : RecursiveE C.
+
+Definition RecEChild C E := RecEChildImpl C E (RecursiveE C).
+Definition RecEChildFn C E := (E -> RecEChild C E).
+(* Inductive AnyE C :=
+  | anye E : ExtensionStructure C E -> E -> AnyE C. *)
+
+Definition CompletedContext C := Extension C (RecursiveE C).
+Definition cc_rewrap C E (lc rc : RecEChildFn C E) (x : RecEChild C E) : Extension C (RecursiveE C) :=
   match x with
-  | ext_base c => ext_base c
-  | ext_ext e => ext_ext (anye ES e)
+  | recec_base c => ext_base c
+  | recec_same e => ext_ext (rece lc rc e)
+  | recec_other re => match re with
+    | rece _ lc rc e => ext_ext (rece lc rc e)
+    end
   end.
-Definition cc_left_child {C} (e : AnyE C) : Extension C (AnyE C) :=
+Definition cc_left_child {C} (e : RecursiveE C) : Extension C (RecursiveE C) :=
   match e with
-  | anye _ _ e => cc_rewrap (ext_left_child e)
+  | rece _ lc rc e => cc_rewrap lc rc (lc e)
   end.
-Definition cc_right_child {C} (e : AnyE C) : Extension C (AnyE C) :=
+Definition cc_right_child {C} (e : RecursiveE C) : Extension C (RecursiveE C) :=
   match e with
-  | anye _ _ e => cc_rewrap (ext_right_child e)
+  | rece _ lc rc e => cc_rewrap lc rc (rc e)
   end.
   
-Instance cc_ext_structure {C} {E} {ES : ExtensionStructure C E}
-  : ExtensionStructure C (AnyE C)
+Instance cc_ext_structure {C}
+  : ExtensionStructure C (RecursiveE C)
   := {
     ext_left_child := cc_left_child
   ; ext_right_child := cc_right_child }.
 
+Definition cc_collapse_child {C} {E} (x : Extension (CompletedContext C) E) : RecEChild C E :=
+  match x with
+  | ext_base x => match x with
+    | ext_base c => recec_base _ _ c
+    | ext_ext e => match e with
+      | rece _ lc rc e => recec_other _ _ (rece lc rc e)
+      end
+    end
+  | ext_ext x => recec_same _ _ x
+  end.
 
+Definition cc_collapse_left_child {C} {E} {ES : ExtensionStructure (CompletedContext C) E} : RecEChildFn C E := λ e,
+  cc_collapse_child (ext_left_child e).
+Definition cc_collapse_right_child {C} {E} {ES : ExtensionStructure (CompletedContext C) E} : RecEChildFn C E := λ e,
+  cc_collapse_child (ext_right_child e).
 
-Inductive AECollapseE C : Prop :=
+Definition cc_collapse {C} {E} {ES : ExtensionStructure (CompletedContext C) E} (x : Extension (CompletedContext C) E) : CompletedContext C :=
+  match x with
+  | ext_base x2 => x2
+  | ext_ext e => ext_ext (rece cc_collapse_left_child cc_collapse_right_child e)
+  end.
+
+(* Inductive AECollapseE C :=
   | aece_inner E : ExtensionStructure C E -> E -> AECollapseE C
   | aece_outer E : ExtensionStructure (CompletedContext C) E -> E -> AECollapseE C
   .
@@ -151,7 +200,7 @@ Instance aece_ext_structure {C}
   : ExtensionStructure C (AECollapseE C)
   := {
     ext_left_child := aece_left_child
-  ; ext_right_child := aece_right_child }.
+  ; ext_right_child := aece_right_child }. *)
 
 (* Definition cc_collapse {C} (e: AnyE (CompletedContext C)) : CompletedContext C :=
   match e with
@@ -159,28 +208,104 @@ Instance aece_ext_structure {C}
   end.
 Instance cc_collapse_embedding {C} : Embedding (CompletedContext C) (AnyE (CompletedContext C)) :=
   { embed := cc_collapse }. *)
-Definition cc_collapse {C} {E} {ES : ExtensionStructure (CompletedContext C) E} (x : Extension (CompletedContext C) E) : CompletedContext C :=
+(* Definition cc_collapse {C} {E} {ES : ExtensionStructure (CompletedContext C) E} (x : Extension (CompletedContext C) E) : CompletedContext C :=
   match x with
   | ext_base x2 => match x2 with
     | ext_base c => ext_base c
     | ext_ext e => ext_ext (anye aece_ext_structure (aece_inner _ e))
     end
   | ext_ext e => ext_ext (anye aece_ext_structure (aece_outer _ e))
-  end.
+  end. *)
 (* Instance cc_collapse_embedding {C} {E} {ES : ExtensionStructure (CompletedContext C) E} : Embedding (CompletedContext C) (Extension E (CompletedContext C) E) :=
   { embed := cc_collapse }. *)
 
   (* TODO: embeddings may also remap base values! *)
 
-Lemma CompletedContext_complete C {CT: Context C} : @ContextComplete (CompletedContext C) _.
+Lemma CompletedContext_complete C {CT: Context C} : @ContextComplete (CompletedContext C) ct_ext.
   intros E ES.
   exists cc_collapse.
   intro x.
   unfold CGuaranteesBranch.
   intros.
   
+  destruct x; cbn in *.
+
+  {
+    destruct (ext_guarantees c).
+    remember bg_no_guarantees; destruct H; discriminate.
+    dependent destruction H.
+    constructor.
+  }
+  {
+    dependent destruction H.
+    unfold cc_rewrap, cc_collapse_left_child, cc_collapse_right_child.
+    destruct (ext_left_child e); cbn.
+    {
+      destruct c; cbn.
+      {
+        destruct (ext_right_child e); cbn.
+        {
+          destruct c0; cbn.
+          {
+            constructor.
+          }
+          {
+            destruct r.
+            constructor.
+          }
+        }
+        {
+          constructor.
+        }
+      }
+      {
+        destruct (ext_right_child e); cbn.
+        {
+          destruct r; cbn.
+          destruct c; cbn.
+          {
+            constructor.
+          }
+          {
+            destruct r; cbn.
+            constructor.
+          }
+        }
+        {
+          destruct r; cbn.
+          constructor.
+        }
+      }
+    }
+    {
+      destruct (ext_right_child e); cbn.
+      {
+        destruct c; cbn.
+        {
+          constructor.
+        }
+        {
+          destruct r; cbn.
+          constructor.
+        }
+      }
+      {
+        constructor.
+      }
+    }
+  }
+Qed.
+
+(* 
+
+  (* destruct H. *)
+  remember (@ext_base _ E e); destruct H.
+  remember (bg_is_branch (@ext_base _ E e)
+  (ext_base e0)); destruct H.
+    injection Heqb0 as <- <-.
+
   destruct (ct_guarantees x).
-  remember bg_no_guarantees. destruct H. discriminate .
+  remember bg_no_guarantees; destruct H; discriminate.
 
   destruct x, a, b; cbn in *.
   {
@@ -231,7 +356,7 @@ Lemma CompletedContext_complete C {CT: Context C} : @ContextComplete (CompletedC
   destruct (cc_rewrap (aece_rewrap_outer (ext_right_child e))).
   constructor.
   destruct .
-  constructor.
+  constructor. *)
 
 Inductive CEquivPredMaySay C (CT: Context C) (P : C -> C -> Prop) : C -> C -> Prop :=
   | cepv_refl c : CEquivPredMaySay _ _ c c
