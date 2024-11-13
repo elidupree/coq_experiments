@@ -296,6 +296,99 @@ Lemma CompletedContext_complete C {CT: Context C} : @ContextComplete (CompletedC
   }
 Qed.
 
+CoInductive RecursiveE2 C :=
+  | rece2_branch :
+    Extension C (RecursiveE2 C) -> Extension C (RecursiveE2 C) -> RecursiveE2 C.
+
+Definition CompletedContext2 C := Extension C (RecursiveE2 C).
+
+CoFixpoint re2_collapseE {C} {E} {ES : ExtensionStructure (CompletedContext2 C) E} (e : E) : RecursiveE2 C :=
+  @rece2_branch C
+    (match ext_left_child e with
+    | ext_base cc2 => match cc2 with
+      | ext_base c => ext_base c
+      | ext_ext e => ext_ext e
+      end
+    | ext_ext e => ext_ext (re2_collapseE e)
+    end)
+    (match ext_right_child e with
+    | ext_base cc2 => match cc2 with
+      | ext_base c => ext_base c
+      | ext_ext e => ext_ext e
+      end
+    | ext_ext e => ext_ext (re2_collapseE e)
+    end) .
+
+Definition cc2_collapse {C} {E} {ES : ExtensionStructure (CompletedContext2 C) E} (x : Extension (CompletedContext2 C) E) : CompletedContext2 C :=
+  match x with
+  | ext_base x2 => x2
+  | ext_ext e => ext_ext (re2_collapseE e)
+  end.
+
+Definition cc2_left_child {C} (e : RecursiveE2 C) : Extension C (RecursiveE2 C) :=
+  match e with
+  | rece2_branch l r => l
+  end.
+Definition cc2_right_child {C} (e : RecursiveE2 C) : Extension C (RecursiveE2 C) :=
+  match e with
+  | rece2_branch l r => r
+  end.
+Instance cc2_ext_structure {C}
+  : ExtensionStructure C (RecursiveE2 C)
+  := {
+    ext_left_child := cc2_left_child
+  ; ext_right_child := cc2_right_child }.
+  
+Lemma CompletedContext2_complete C {CT: Context C} : @ContextComplete (CompletedContext2 C) ct_ext.
+  intros E ES.
+  exists cc2_collapse.
+  intro x.
+  unfold CGuaranteesBranch.
+  intros.
+  
+  destruct x; cbn in *.
+
+  {
+    destruct (ext_guarantees c).
+    remember bg_no_guarantees; destruct H; discriminate.
+    dependent destruction H.
+    constructor.
+  }
+  {
+    dependent destruction H.
+    destruct (ext_left_child e); cbn.
+    {
+      destruct (ext_right_child e); cbn.
+      {
+        destruct e0; cbn.
+        {
+          destruct e1; cbn.
+          constructor.
+          constructor.
+        }
+        {
+          destruct e1; cbn.
+          constructor.
+          constructor.
+        }
+      }
+      {
+        destruct e0; cbn.
+        constructor.
+        constructor.
+      }
+    }
+    {
+      destruct (ext_right_child e); cbn.
+      {
+        destruct e1; cbn.
+        constructor.
+        constructor.
+      }
+      constructor.
+    }
+  }
+Qed.
 (* 
 
   (* destruct H. *)
