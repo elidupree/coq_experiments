@@ -224,65 +224,14 @@ Lemma CompletedContext_complete C {CT: Context C} : @ContextComplete (CompletedC
   intro e.
   unfold CGuaranteesBranch.
   
-  {
-    (* dependent destruction H. *)
-    cbn; unfold cc_rewrap, cc_collapse_left_child, cc_collapse_right_child.
-    destruct (ext_left_child e); cbn.
-    {
-      destruct c; cbn.
-      {
-        destruct (ext_right_child e); cbn.
-        {
-          destruct c0; cbn.
-          {
-            constructor.
-          }
-          {
-            destruct r.
-            constructor.
-          }
-        }
-        {
-          constructor.
-        }
-      }
-      {
-        destruct (ext_right_child e); cbn.
-        {
-          destruct r; cbn.
-          destruct c; cbn.
-          {
-            constructor.
-          }
-          {
-            destruct r; cbn.
-            constructor.
-          }
-        }
-        {
-          destruct r; cbn.
-          constructor.
-        }
-      }
-    }
-    {
-      destruct (ext_right_child e); cbn.
-      {
-        destruct c; cbn.
-        {
-          constructor.
-        }
-        {
-          destruct r; cbn.
-          constructor.
-        }
-      }
-      {
-        constructor.
-      }
-    }
-  }
+  cbn; unfold cc_rewrap, cc_collapse_left_child, cc_collapse_right_child.
+
+  destruct (ext_left_child e) as [[?|(?,?,?,?)]|?];
+    destruct (ext_right_child e) as [[?|(?,?,?,?)]|?];
+    constructor.
 Qed.
+
+
 
 CoInductive RecursiveE2 C := rece2_branch {
     re2_left_child : Extension C (RecursiveE2 C)
@@ -322,10 +271,9 @@ Lemma CompletedContext2_complete C {CT: Context C} : @ContextComplete (Completed
   exists cc2_collapse_embedding.
   intro e.
   unfold CGuaranteesBranch; cbn.
-  destruct (ext_left_child e);
-    destruct (ext_right_child e);
-    try destruct c;
-    try destruct c0;
+  (* This is just 9 trivial cases *)
+  destruct (ext_left_child e) as [[?|?]|?];
+    destruct (ext_right_child e) as [[?|?]|?];
     constructor.
 Qed.
 
