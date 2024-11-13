@@ -57,9 +57,9 @@ Class ExtensionStructure C E := {
     ext_left_child : ∀ s : E, Extension C E
   ; ext_right_child : ∀ s : E, Extension C E
 }.
-(* Class Embedding C E := {
-  embed : Extension C E -> C
-}. *)
+Class Embedding C E := {
+  embed : E -> C
+}.
 
 Definition ext_guarantees {C} {CT: Context C} {E} {ES : ExtensionStructure C E} (x : Extension C E) : BranchGuarantees (Extension C E) :=
   match x with
@@ -74,23 +74,21 @@ Instance ct_ext {C} {CT: Context C} {E} {ES : ExtensionStructure C E}
   : Context (Extension C E)
   := { ct_guarantees := ext_guarantees }.
 
-(* Definition embedding_referent C E {EE : Embedding C E} (x : Extension C E) :=
+Definition embed_sum C E {EE : Embedding C E} (x : Extension C E) :=
   match x with
   | ext_base c => c
   | ext_ext s => embed s
-  end. *)
+  end.
   
 (* Definition LocallyMatches A B {ACT: Context C} {BCT: Context B} (a : A) (b : B) : *)
 (* Definition EmbeddingAgrees C D {CT: Context C} {DT: Context D} (embed : C -> D) (ab : D) (a b : C) :=
   CGuaranteesBranch ab (embed a) (embed b). *)
-Definition EmbeddingAgrees C D {CT: Context C} {DT: Context D} (embed : C -> D) :=
-  ∀ ab a b : C, 
-  CGuaranteesBranch ab a b -> CGuaranteesBranch (embed ab) (embed a) (embed b).
+Definition EmbeddingAgrees C E {CT: Context C} {ES : ExtensionStructure C E} (EE : Embedding C E) :=
+  ∀ ab, CGuaranteesBranch (embed ab) (embed_sum (ext_left_child ab)) (embed_sum (ext_right_child ab)).
 
 Definition ContextComplete C (CT: Context C) :=
   ∀ E (ES : ExtensionStructure C E),
-    ∃ embed : Extension C E -> C,
-      EmbeddingAgrees embed.
+    ∃ EE : Embedding C E, EmbeddingAgrees EE.
 
 (* Inductive ProgramThatSpitsOutPrograms :=
   | ptsop_cons : (nat -> (nat + ProgramThatSpitsOutPrograms)) -> ProgramThatSpitsOutPrograms. *)
@@ -161,11 +159,10 @@ Definition cc_collapse_left_child {C} {E} {ES : ExtensionStructure (CompletedCon
 Definition cc_collapse_right_child {C} {E} {ES : ExtensionStructure (CompletedContext C) E} : RecEChildFn C E := λ e,
   cc_collapse_child (ext_right_child e).
 
-Definition cc_collapse {C} {E} {ES : ExtensionStructure (CompletedContext C) E} (x : Extension (CompletedContext C) E) : CompletedContext C :=
-  match x with
-  | ext_base x2 => x2
-  | ext_ext e => ext_ext (rece cc_collapse_left_child cc_collapse_right_child e)
-  end.
+Definition cc_collapse {C} {E} {ES : ExtensionStructure (CompletedContext C) E} (e : E) : CompletedContext C :=
+  ext_ext (rece cc_collapse_left_child cc_collapse_right_child e).
+Instance cc_collapse_embedding {C} {E} {ES : ExtensionStructure (CompletedContext C) E} : Embedding (CompletedContext C) E :=
+  { embed := cc_collapse }.
 
 (* Inductive AECollapseE C :=
   | aece_inner E : ExtensionStructure C E -> E -> AECollapseE C
@@ -223,22 +220,13 @@ Instance cc_collapse_embedding {C} : Embedding (CompletedContext C) (AnyE (Compl
 
 Lemma CompletedContext_complete C {CT: Context C} : @ContextComplete (CompletedContext C) ct_ext.
   intros E ES.
-  exists cc_collapse.
-  intro x.
+  exists cc_collapse_embedding.
+  intro e.
   unfold CGuaranteesBranch.
-  intros.
   
-  destruct x; cbn in *.
-
   {
-    destruct (ext_guarantees c).
-    remember bg_no_guarantees; destruct H; discriminate.
-    dependent destruction H.
-    constructor.
-  }
-  {
-    dependent destruction H.
-    unfold cc_rewrap, cc_collapse_left_child, cc_collapse_right_child.
+    (* dependent destruction H. *)
+    cbn; unfold cc_rewrap, cc_collapse_left_child, cc_collapse_right_child.
     destruct (ext_left_child e); cbn.
     {
       destruct c; cbn.
@@ -296,99 +284,51 @@ Lemma CompletedContext_complete C {CT: Context C} : @ContextComplete (CompletedC
   }
 Qed.
 
-CoInductive RecursiveE2 C :=
-  | rece2_branch :
-    Extension C (RecursiveE2 C) -> Extension C (RecursiveE2 C) -> RecursiveE2 C.
+CoInductive RecursiveE2 C := rece2_branch {
+    re2_left_child : Extension C (RecursiveE2 C)
+  ; re2_right_child : Extension C (RecursiveE2 C)
+}.
+Arguments re2_left_child {C}.
+Arguments re2_right_child {C}.
 
 Definition CompletedContext2 C := Extension C (RecursiveE2 C).
 
-CoFixpoint re2_collapseE {C} {E} {ES : ExtensionStructure (CompletedContext2 C) E} (e : E) : RecursiveE2 C :=
-  @rece2_branch C
-    (match ext_left_child e with
-    | ext_base cc2 => match cc2 with
-      | ext_base c => ext_base c
-      | ext_ext e => ext_ext e
-      end
-    | ext_ext e => ext_ext (re2_collapseE e)
-    end)
-    (match ext_right_child e with
-    | ext_base cc2 => match cc2 with
-      | ext_base c => ext_base c
-      | ext_ext e => ext_ext e
-      end
-    | ext_ext e => ext_ext (re2_collapseE e)
-    end) .
-
-Definition cc2_collapse {C} {E} {ES : ExtensionStructure (CompletedContext2 C) E} (x : Extension (CompletedContext2 C) E) : CompletedContext2 C :=
+Definition re2_collapse_child C E (x : Extension (CompletedContext2 C) E) (re2_collapseE : E -> RecursiveE2 C) :=
   match x with
-  | ext_base x2 => x2
+  | ext_base cc2 => match cc2 with
+    | ext_base c => ext_base c
+    | ext_ext e => ext_ext e
+    end
   | ext_ext e => ext_ext (re2_collapseE e)
   end.
+CoFixpoint re2_collapseE {C} {E} {ES : ExtensionStructure (CompletedContext2 C) E} (e : E) : RecursiveE2 C :=
+  rece2_branch
+    (re2_collapse_child (ext_left_child e) re2_collapseE)
+    (re2_collapse_child (ext_right_child e) re2_collapseE).
 
-Definition cc2_left_child {C} (e : RecursiveE2 C) : Extension C (RecursiveE2 C) :=
-  match e with
-  | rece2_branch l r => l
-  end.
-Definition cc2_right_child {C} (e : RecursiveE2 C) : Extension C (RecursiveE2 C) :=
-  match e with
-  | rece2_branch l r => r
-  end.
+Definition cc2_collapse {C} {E} {ES : ExtensionStructure (CompletedContext2 C) E} (e : E) : CompletedContext2 C :=
+  ext_ext (re2_collapseE e).
+Instance cc2_collapse_embedding {C} {E} {ES : ExtensionStructure (CompletedContext2 C) E} : Embedding (CompletedContext2 C) E :=
+  { embed := cc2_collapse }.
+
 Instance cc2_ext_structure {C}
   : ExtensionStructure C (RecursiveE2 C)
   := {
-    ext_left_child := cc2_left_child
-  ; ext_right_child := cc2_right_child }.
+    ext_left_child := re2_left_child
+  ; ext_right_child := re2_right_child }.
   
 Lemma CompletedContext2_complete C {CT: Context C} : @ContextComplete (CompletedContext2 C) ct_ext.
   intros E ES.
-  exists cc2_collapse.
-  intro x.
-  unfold CGuaranteesBranch.
-  intros.
-  
-  destruct x; cbn in *.
-
-  {
-    destruct (ext_guarantees c).
-    remember bg_no_guarantees; destruct H; discriminate.
-    dependent destruction H.
+  exists cc2_collapse_embedding.
+  intro e.
+  unfold CGuaranteesBranch; cbn.
+  destruct (ext_left_child e);
+    destruct (ext_right_child e);
+    try destruct c;
+    try destruct c0;
     constructor.
-  }
-  {
-    dependent destruction H.
-    destruct (ext_left_child e); cbn.
-    {
-      destruct (ext_right_child e); cbn.
-      {
-        destruct e0; cbn.
-        {
-          destruct e1; cbn.
-          constructor.
-          constructor.
-        }
-        {
-          destruct e1; cbn.
-          constructor.
-          constructor.
-        }
-      }
-      {
-        destruct e0; cbn.
-        constructor.
-        constructor.
-      }
-    }
-    {
-      destruct (ext_right_child e); cbn.
-      {
-        destruct e1; cbn.
-        constructor.
-        constructor.
-      }
-      constructor.
-    }
-  }
 Qed.
+
 (* 
 
   (* destruct H. *)
