@@ -242,12 +242,16 @@ Arguments re2_right_child {C}.
 
 Definition CompletedContext2 C := Extension C (RecursiveE2 C).
 
+Instance cc2_ext_structure {C}
+  : ExtensionStructure C (RecursiveE2 C)
+  := {
+    ext_left_child := re2_left_child
+  ; ext_right_child := re2_right_child }.
+
+
 Definition re2_collapse_child C E (x : Extension (CompletedContext2 C) E) (re2_collapseE : E -> RecursiveE2 C) :=
   match x with
-  | ext_base cc2 => match cc2 with
-    | ext_base c => ext_base c
-    | ext_ext e => ext_ext e
-    end
+  | ext_base cc2 => cc2
   | ext_ext e => ext_ext (re2_collapseE e)
   end.
 CoFixpoint re2_collapseE {C} {E} {ES : ExtensionStructure (CompletedContext2 C) E} (e : E) : RecursiveE2 C :=
@@ -255,16 +259,9 @@ CoFixpoint re2_collapseE {C} {E} {ES : ExtensionStructure (CompletedContext2 C) 
     (re2_collapse_child (ext_left_child e) re2_collapseE)
     (re2_collapse_child (ext_right_child e) re2_collapseE).
 
-Definition cc2_collapse {C} {E} {ES : ExtensionStructure (CompletedContext2 C) E} (e : E) : CompletedContext2 C :=
-  ext_ext (re2_collapseE e).
 Instance cc2_collapse_embedding {C} {E} {ES : ExtensionStructure (CompletedContext2 C) E} : Embedding (CompletedContext2 C) E :=
-  { embed := cc2_collapse }.
+  { embed := λ e, ext_ext (re2_collapseE e) }.
 
-Instance cc2_ext_structure {C}
-  : ExtensionStructure C (RecursiveE2 C)
-  := {
-    ext_left_child := re2_left_child
-  ; ext_right_child := re2_right_child }.
   
 Lemma CompletedContext2_complete C {CT: Context C} : @ContextComplete (CompletedContext2 C) ct_ext.
   intros E ES.
