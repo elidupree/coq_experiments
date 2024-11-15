@@ -11,7 +11,7 @@ Require Import String.
 Parameter cheat : ∀ {A}, A.
 
 (* Protect myself from accidental infinite loops during dev work *)
-Set Typeclasses Iterative Deepening.
+(* Set Typeclasses Iterative Deepening. *)
 Set Typeclasses Depth 3.
 
 (****************************************************
@@ -30,13 +30,19 @@ Ltac autouse_shelving_db steps db :=
   end.
 
 Create HintDb simplify.
-Ltac simplify := autouse_shelving_db 20 ident:(simplify); trivial.
+Ltac simplify := autouse_shelving_db 20 ident:(simplify).
 
-(* One notable simplification step is to rewrite equality hypotheses when one side is just another hypothesis. *)
-Hint Extern 6 => progress match goal with
-  | H : _ |- _ => match goal with
-    | eq : H = _ |- _ => rewrite eq in *; clear eq
-    | eq : _ = H |- _ => rewrite <- eq in *; clear eq
+(* We *do* want to apply intros if it helps simplify, but not if it doesn't, so don't shelve here. Also, since it's the second-choice and can duplicate work, make it high-cost. *)
+(* Hint Extern 12 => intro; intros : simplify. *)
+
+(* ...and if we *can* solve easily, might as well. *)
+Hint Extern 1 => solve [trivial | constructor | discriminate] : simplify.
+
+(* One notable simplification step is to rewrite equality hypotheses when one side is just another hypothesis. But it's kinda expensive. *)
+Hint Extern 9 => progress match goal with
+  | x : _ |- _ => match goal with
+    | eq : x = _ |- _ => rewrite eq in *; clear x eq
+    | eq : _ = x |- _ => rewrite <- eq in *; clear x eq
     end
   end; shelve
   : simplify.
@@ -100,15 +106,13 @@ Definition EmbeddingAgrees C E {CT: Context C} {ES : Extension C E} (EE : Embedd
     (embed_sum (ext_right_child ab)).
 
 Class CompleteContext C := {
-    cc_ct : Context C
+    cc_ct :: Context C
   ; cc_complete : ∀ E (ES : Extension C E), ∃ EE : Embedding C E, EmbeddingAgrees EE
   }.
 
 (****************************************************
-            Example of complete context
+      Explicit construction of complete context
 ****************************************************)
-
-(* Most of our theorems are of the form "for all complete context types...", and don't actually require us to *construct* a complete context type. But let's at least demonstrate that it's possible. *)
 
 CoInductive CoinductiveExtension C := {
     cie_left_child : C + (CoinductiveExtension C)
@@ -148,6 +152,16 @@ Lemma CompletedContext2_complete C {CT: Context C} : CompleteContext (CompletedC
 Qed.
 
 (****************************************************
+                More about contexts
+****************************************************)
+
+CoInductive CEquiv C {CT : Context C} : C -> C -> Prop :=
+  | ceq_refl c : CEquiv c c
+  | ceq_branch ab1 a1 b1 ab2 a2 b2: CEquiv a1 a2 -> CEquiv b1 b2 -> IsBranch ab1 a1 a2 -> IsBranch ab1 a1 a2 -> CEquiv ab1 ab2.
+
+Notation "a '≜' b" := (CEquiv a b) (at level 70, no associativity) : type_scope.
+
+(****************************************************
                    Context sets
 ****************************************************)
 
@@ -164,15 +178,26 @@ Class AsCS T := {
 Instance cs_as_cs : AsCS ContextSet := {
     as_cs := id
   }.
+Definition InCS {C} {CT: Context C} (c : C) (S : ContextSet) := S _ _ c.
+Notation "c '∈' S" := (InCS c S) (at level 70, no associativity) : type_scope.
+Notation "c '⋵' S" := (InCS c (as_cs S)) (at level 70, no associativity) : type_scope.
+Hint Extern 4 => progress match goal with
+  | |- ?S _ _ ?x => change (x ∈ S)
+  end; shelve : simplify.
+Hint Extern 5 => progress match goal with
+  | H : ?S _ _ ?x |- _ => change (x ∈ S) in H
+  end; shelve : simplify.
 
 (* …and analogous to "derivability between rulesets", we have the subset relation between ContextSets. (And also equivalence between ContextSets, which is the same as mutual-subset). *)
 
 Definition CsSubset (R S : ContextSet) : Prop :=
-  ∀ C (CT: Context C) c, R _ _ c -> S _ _ c.
+  ∀ C (CT: CompleteContext C) c, R _ _ c -> S _ _ c.
 Notation "P '⊆' Q" := (CsSubset P Q) (at level 70, no associativity) : type_scope.
+Notation "P '⊑' Q" := (CsSubset (as_cs P) (as_cs Q)) (at level 70, no associativity) : type_scope.
 Definition CsEquiv (R S : ContextSet) : Prop :=
-  ∀ C (CT: Context C) c, R _ _ c <-> S _ _ c.
+  ∀ C (CT: CompleteContext C) c, R _ _ c <-> S _ _ c.
 Notation "P '≡' Q" := (CsEquiv P Q) (at level 70, no associativity) : type_scope.
+Notation "P '≐' Q" := (CsEquiv (as_cs P) (as_cs Q)) (at level 70, no associativity) : type_scope.
 Lemma CsSubset_of_CsEquiv R S : R ≡ S -> R ⊆ S.
   unfold CsEquiv, CsSubset. intros. apply H. assumption.
 Qed.
@@ -188,7 +213,7 @@ Lemma CsEquiv_trans A B C : A ≡ B -> B ≡ C -> A ≡ C.
   apply H. apply H0. assumption.
 Qed.
 
-(* We are particularly interested in a specific, constrained subclass of context-relations: _Computable unification predicates_.
+(* We are particularly interested in a specific, constrained subclass of context-relations: *Computable unification predicates*.
 
 These are (computable, infinite) trees of Boolean operations on equality constraints between subtrees of a context. *)
 
@@ -222,10 +247,12 @@ CoInductive CtxObeysUP C (CT: Context C) (c : C) : UnificationPredicate -> Prop 
   | cou_or_right R S : (CtxObeysUP _ c S) -> CtxObeysUP _ c (up_or R S)
   | cou_and R S : (CtxObeysUP _ c R) -> (CtxObeysUP _ c S) -> CtxObeysUP _ c (up_and R S)
   .
-  
+
+Definition CsUP (up : UnificationPredicate) : ContextSet := λ C (CT: Context C) (c : C), CtxObeysUP _ c up.
 Instance up_as_cs : AsCS UnificationPredicate := {
-    as_cs := λ up _ _ c, CtxObeysUP _ c up
+    as_cs := CsUP
   }.
+Coercion CsUP : UnificationPredicate >-> ContextSet.
 
 (* One notable ContextSet is the *smallest unification predicate*: The set that requires every possible equality constraint. This is equivalent to saying that any member of the set must be equal to its own left and right children. We name this "Monism", after the philosophical perspective that only one object exists. (Technically, there may be other members of the context type that are distinct; but anything *visible to the predicate* must be the same.) *)
 Definition CsMonism : ContextSet := λ _ _ c, IsBranch c c c.
@@ -261,6 +288,18 @@ Inductive CUP :=
   | cup_and (_ _:CUP)
   | cup_iterate (_:CUP)
   .
+Declare Scope cup_scope.
+Bind Scope cup_scope with CUP.
+
+Class AsCUP T := {
+    as_cup : T -> CUP
+  }.
+Instance cup_as_cup : AsCUP CUP := {
+    as_cup := id
+  }.
+
+Notation "a '∧' b" := (cup_and a b) (at level 80, right associativity) : cup_scope.
+Notation "a '∨' b" := (cup_or a b) (at level 85, right associativity) : cup_scope.
 
 Inductive CsChildrenEqual C (CT: Context C) : C -> Prop :=
   | cs_children_equal cc c : IsBranch cc c c -> CsChildrenEqual _ cc
@@ -309,6 +348,39 @@ Fixpoint CsCUP (cup : CUP) : ContextSet :=
 Instance cup_as_cs : AsCS CUP := {
     as_cs := CsCUP
   }.
+Coercion CsCUP : CUP >-> ContextSet.
+
+Definition ascup_ascs T {tcup : AsCUP T} : AsCS T := {|
+    as_cs := λ t, as_cs (as_cup t)
+  |}.
+Hint Extern 2 (AsCS _) => simple apply ascup_ascs : typeclass_instances.
+
+Hint Extern 5 => progress change (?as_cs (cup_children_equal)) with CsChildrenEqual in *; shelve : simplify.
+Hint Extern 5 => progress change (?as_cs (cup_pulldownLL_in ?fup)) with (CsPulldownLLIn (as_cs fup)) in *; shelve : simplify.
+Hint Extern 5 => progress change (?as_cs (cup_pulldownLR_in ?fup)) with (CsPulldownLRIn (as_cs fup)) in *; shelve : simplify.
+Hint Extern 5 => progress change (?as_cs (cup_right_obeys ?fup)) with (CsRightObeys (as_cs fup)) in *; shelve : simplify.
+Hint Extern 5 => progress change (?as_cs (cup_left_of ?fup)) with (CsLeftOf (as_cs fup)) in *; shelve : simplify.
+Hint Extern 5 => progress change (?as_cs (cup_or ?a ?b)) with (CsOr (as_cs a) (as_cs b)) in *; shelve : simplify.
+Hint Extern 5 => progress change (?as_cs (cup_and ?a ?b)) with (CsAnd (as_cs a) (as_cs b)) in *; shelve : simplify.
+
+Ltac dontforget term :=
+  lazymatch term with
+  | (_ _) => lazymatch goal with
+    | _ : _ = term |- _ => idtac
+    | _ : term = _ |- _ => idtac
+    | _ => remember term
+    end
+  | _ => idtac 
+  end.
+
+Hint Extern 5 => progress match goal with
+  | H : ?c ∈ CsChildrenEqual |- _ => dontforget c; destruct H
+  | H : ?c ∈ CsPulldownLLIn _ |- _ => dontforget c; destruct H
+  | H : ?c ∈ CsPulldownLRIn _ |- _ => dontforget c; destruct H
+  | H : ?c ∈ CsRightObeys _ |- _ => dontforget c; destruct H
+  | H : ?c ∈ CsLeftOf _ |- _ => dontforget c; destruct H
+  | H : ?c ∈ CsAnd _ _ |- _ => dontforget c; destruct H
+  end : simplify.
 
 Lemma monism_in_CsIterate S : CsMonism ⊆ S -> CsMonism ⊆ CsIterate S.
   unfold CsSubset; intros; cbn.
@@ -321,3 +393,288 @@ Lemma monism_in_all_cups (cup : CUP) : CsMonism ⊆ (as_cs cup).
   induction cup; try solve [solve_monism_in_whatever].
   apply monism_in_CsIterate; assumption.
 Qed.
+
+Lemma cups_respect_branch_meaning (cup : CUP) C (CT: Context C) (a b : C) : CEquiv a b -> a ∈ cup -> b ∈ cup.
+  intros.
+  induction cup.
+
+(****************************************************
+                Finitude or something
+****************************************************)
+
+(* And a more restrictive type containing only the *finite* constructors: *)
+Inductive FUP :=
+  | fup_children_equal
+  | fup_pulldownLL_in (_:FUP)
+  | fup_pulldownLR_in (_:FUP)
+  | fup_right_obeys (_:FUP)
+  | fup_left_of (_:FUP)
+  | fup_or (_ _:FUP)
+  | fup_and (_ _:FUP)
+  .
+Declare Scope fup_scope.
+Bind Scope fup_scope with FUP.
+Notation "a '∧' b" := (fup_and a b) (at level 80, right associativity) : fup_scope.
+Notation "a '∨' b" := (fup_or a b) (at level 85, right associativity) : fup_scope.
+
+Fixpoint CupFup (fup : FUP) : CUP :=
+  match fup with
+  | fup_children_equal => cup_children_equal
+  | fup_pulldownLL_in a => cup_pulldownLL_in (CupFup a)
+  | fup_pulldownLR_in a => cup_pulldownLR_in (CupFup a)
+  | fup_right_obeys a => cup_right_obeys (CupFup a)
+  | fup_left_of a => cup_left_of (CupFup a)
+  | fup_or a b => cup_or (CupFup a) (CupFup b)
+  | fup_and a b => cup_and (CupFup a) (CupFup b)
+  end.
+Instance fup_as_cup : AsCUP FUP := {
+    as_cup := CupFup
+  }.
+Hint Extern 5 => progress change (?as_cs (fup_children_equal)) with CsChildrenEqual in *; shelve : simplify.
+Hint Extern 5 => progress change (?as_cs (fup_pulldownLL_in ?fup)) with (CsPulldownLLIn (as_cs fup)) in *; shelve : simplify.
+Hint Extern 5 => progress change (?as_cs (fup_pulldownLR_in ?fup)) with (CsPulldownLRIn (as_cs fup)) in *; shelve : simplify.
+Hint Extern 5 => progress change (?as_cs (fup_right_obeys ?fup)) with (CsRightObeys (as_cs fup)) in *; shelve : simplify.
+Hint Extern 5 => progress change (?as_cs (fup_left_of ?fup)) with (CsLeftOf (as_cs fup)) in *; shelve : simplify.
+Hint Extern 5 => progress change (?as_cs (fup_or ?a ?b)) with (CsOr (as_cs a) (as_cs b)) in *; shelve : simplify.
+Hint Extern 5 => progress change (?as_cs (fup_and ?a ?b)) with (CsAnd (as_cs a) (as_cs b)) in *; shelve : simplify.
+
+Coercion CsFUP (fup : FUP) : ContextSet := CsCUP (CupFup fup).
+Coercion CupFup : FUP >-> CUP.
+
+Inductive FiniteTree T :=
+  | ft_leaf (_:T)
+  | ft_branch (_ _ : FiniteTree T)
+  .
+(* Arguments ft_branch {T}. *)
+(* Declare Scope ft_scope.
+Bind Scope ft_scope with FiniteTree. *)
+Notation "( a , b )" := (ft_branch a b).
+
+Instance ct_ft T : Context (FiniteTree T) := {
+    ct_node_links := λ ft, match ft with
+    | ft_leaf s => nl_leaf
+    | ft_branch a b => nl_branch a b
+    end
+  }.
+Definition ft_branch_is_branch T (ab a b : FiniteTree T) : IsBranch (a, b) a b := ltac:(constructor).
+Hint Immediate ft_branch_is_branch : simplify.
+Lemma ft_only_branch T (ab a b : FiniteTree T) : IsBranch ab a b -> ab = (a, b).
+  unfold IsBranch; remember (ct_node_links ab).
+  destruct 1; destruct ab.
+  discriminate.
+  injection Heqn as <- <-.
+  reflexivity.
+Qed.
+Hint Extern 5 => progress match goal with
+  | H : @IsBranch _ (ct_ft _) _ _ _ |- _ => apply ft_only_branch in H
+  end; shelve : simplify.
+
+Inductive FtBranchEmbeddedStuff T ab (ca cb : CompletedContext (FiniteTree T)) : Prop :=
+  | ft_branch_embedded (a b : FiniteTree T) :
+    ca = inl a ->
+    cb = inl b ->
+    ab = (a, b) ->
+    FtBranchEmbeddedStuff ab ca cb.
+Lemma extended_ft_branch T (ab : FiniteTree T) a b : IsBranch (inl ab) a b -> FtBranchEmbeddedStuff ab a b.
+  unfold IsBranch; remember (ct_node_links (inl ab)).
+  destruct 1; destruct ab as [uh | a0 b0].
+  discriminate.
+  injection Heqn as -> ->.
+  econstructor; reflexivity.
+Qed.
+Hint Extern 5 => progress match goal with
+  | H : @IsBranch _ _ (inl _) _ _ |- _ => destruct (extended_ft_branch H); clear H
+  end; shelve : simplify.
+
+Lemma ft_children_equal T (c : FiniteTree T) : CsChildrenEqual _ (c, c).
+  econstructor. constructor.
+Qed.
+Hint Extern 1 (CsChildrenEqual _ (_, _)) => solve [apply ft_children_equal] : simplify.
+Hint Extern 1 ((_, _) ∈ CsChildrenEqual) => solve [apply ft_children_equal] : simplify.
+Lemma ft_children_equal_equal T (a b : FiniteTree T) : a = b -> CsChildrenEqual _ (a, b).
+  intros <-.
+  apply ft_children_equal.
+Qed.
+Hint Extern 2 (CsChildrenEqual _ (_, _)) => progress apply ft_children_equal_equal; shelve : simplify.
+Hint Extern 1 ((_, _) ∈ CsChildrenEqual) => progress apply ft_children_equal_equal; shelve : simplify.
+
+Inductive CsBranch (R S : ContextSet) C (CT: Context C) : C -> Prop :=
+  | cs_branch ab a b :
+      IsBranch ab a b ->
+      R _ _ a ->
+      S _ _ b ->
+      CsBranch R S _ ab.
+
+Fixpoint CsFt S {scs : AsCS S} ft := match ft with
+  | ft_leaf s => as_cs s
+  | ft_branch a b => CsBranch (CsFt a) (CsFt b)
+  end.
+
+Instance ft_as_cs S {scs : AsCS S} : AsCS (FiniteTree S) := {
+    as_cs := @CsFt _ _
+  }.
+(* Coercion CsFt : FiniteTree >-> ContextSet. *)
+(* Coercion FtCs S {scs: AsCS S} (ft : FiniteTree S) := as_cs ft. *)
+(* Print Graph. *)
+
+Inductive CsLeftObeys (S : ContextSet) C (CT: Context C) : C -> Prop :=
+  | cs_left_obeys ab a b : IsBranch ab a b -> S _ _ a -> CsLeftObeys S _ ab
+  .
+Definition cup_left_obeys (a : CUP) : CUP :=
+  (cup_left_of (cup_right_obeys a ∧ (cup_pulldownLL_in cup_children_equal))).
+Definition cup_branch (a b : CUP) : CUP :=
+  (cup_left_obeys a) ∧ (cup_right_obeys b).
+Fixpoint CupFt S {scup : AsCUP S} ft := match ft with
+  | ft_leaf s => as_cup s
+  | ft_branch a b => cup_branch (CupFt a) (CupFt b)
+  end.
+
+Instance ft_as_cup T {tcup : AsCUP T} : AsCUP (FiniteTree T) := {
+    as_cup := @CupFt _ _
+  }.
+
+(* Definition finite_member_which_contains T (container : CUP) (member : FiniteTree T) (is_member : member ⋵ container) : FUP.
+  induction container.
+  exact fup_children_equal.
+  destruct is_member. *)
+
+Lemma finite_member_is_member_of_finite_subset T
+  (container : CUP) (member : FiniteTree T) (is_member : (inl member) ⋵ container)
+  : ∃ fcontainer : FUP, (fcontainer ⊑ container) ∧ (inl member ⋵ fcontainer).
+  revert member is_member.
+  (* Set Typeclasses Debug. *)
+  induction container; intros.
+  exists fup_children_equal; split; simplify; try intro; simplify.
+  {
+    simplify.
+    (* TODO reduce duplicate code ID 3457u842h *)
+    destruct (IHcontainer _ H2) as (fc, (fc_in_cont, m_in_fc)); clear IHcontainer.
+    exists (fup_pulldownLL_in fc).
+    split.
+    {
+      intro; simplify.
+      econstructor; try eassumption.
+      (* TODO: auto-apply member/subset stuff *)
+      apply fc_in_cont; assumption.
+    }
+    {
+      econstructor; simplify.
+    }
+  }
+  {
+    (* TODO reduce duplicate code ID 3457u842h *)
+    simplify.
+    destruct (IHcontainer _ H2) as (fc, (fc_in_cont, m_in_fc)); clear IHcontainer.
+    exists (fup_pulldownLR_in fc).
+    split.
+    {
+      intro; simplify.
+      econstructor; try eassumption.
+      (* TODO: auto-apply member/subset stuff *)
+      apply fc_in_cont; assumption.
+    }
+    {
+      econstructor; simplify.
+    }
+  }
+  {
+    (* TODO reduce duplicate code ID 3457u842h *)
+    simplify.
+    destruct (IHcontainer _ H0) as (fc, (fc_in_cont, m_in_fc)); clear IHcontainer.
+    exists (fup_right_obeys fc).
+    split.
+    {
+      intro; simplify.
+      econstructor; try eassumption.
+      (* TODO: auto-apply member/subset stuff *)
+      apply fc_in_cont; assumption.
+    }
+    {
+      econstructor; simplify.
+    }
+  }
+  {
+    (* TODO reduce duplicate code ID 3457u842h *)
+    simplify.
+    destruct (IHcontainer _ H0) as (fc, (fc_in_cont, m_in_fc)); clear IHcontainer.
+    exists (fup_left_of fc).
+    split.
+    {
+      intro; simplify.
+      econstructor; try eassumption.
+      (* TODO: auto-apply member/subset stuff *)
+      apply fc_in_cont; assumption.
+    }
+    {
+      econstructor; simplify.
+    }
+  }
+  {
+    (* TODO reduce duplicate code ID 3457u842h *)
+    simplify.
+    destruct is_member.
+    {
+      destruct (IHcontainer1 _ H) as (fc, (fc_in_cont, m_in_fc)); clear IHcontainer1.
+      exists fc.
+      split.
+      { 
+        intro; simplify. apply cs_or_left.
+        apply fc_in_cont; assumption.
+      }
+      assumption.
+    }
+    {
+      destruct (IHcontainer2 _ H) as (fc, (fc_in_cont, m_in_fc)); clear IHcontainer2.
+      exists fc.
+      split.
+      {
+        intro; simplify. apply cs_or_right.
+        apply fc_in_cont; assumption.
+      }
+      assumption.
+    }
+  }
+  {
+    (* TODO reduce duplicate code ID 3457u842h *)
+    simplify.
+    destruct (IHcontainer1 _ H) as (fc1, (fc1_in_cont, m_in_fc1)); clear IHcontainer1.
+    destruct (IHcontainer2 _ H0) as (fc2, (fc2_in_cont, m_in_fc2)); clear IHcontainer2.
+    exists (fup_and fc1 fc2).
+    split.
+    {
+      intro; simplify.
+      econstructor; try eassumption.
+      (* TODO: auto-apply member/subset stuff *)
+      apply fc1_in_cont; assumption.
+      apply fc2_in_cont; assumption.
+    }
+    {
+      econstructor; simplify.
+    }
+  }
+  {
+    induction member.
+    
+  }
+
+  Set Typeclasses Debug.
+  destruct is_member.
+    simplify.
+  Set Printing Implicit.
+  apply ft_only_branch in H.
+  match goal with
+  | H : @IsBranch _ (ct_ft _) _ _ _ |- _ => apply ft_only_branch in H
+  end.
+  remember abc.
+  remember c.
+  remember ab. destruct H.
+  simplify.
+  destruct (IHcontainer is_member). exists (fup_pulldownLL_in _); split; simplify.
+
+
+
+Lemma cup_containing_cup_ft_members_also_has_them_as_subsets T {tcup : AsCUP T} (container : CUP) (member : FiniteTree T) :
+  (member ⋵ container) -> member ⊆ container.
+  repeat intro.
+  induction container.
+  induction ft; cbn in *.
