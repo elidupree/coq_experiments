@@ -27,53 +27,49 @@ Parameter LChain : Location -> Location -> Location -> Prop.
 Parameter l_left_child : Location -> Location.
 Parameter l_right_child : Location -> Location.
 
-Definition UnificationPredicate :=
+Definition Unifications :=
   Location -> Location -> Prop.
 
-Definition UPRespectsSubtrees (UP : UnificationPredicate) :=
+Definition URespectsSubtrees (U : Unifications) :=
   ∀ l m,
-    UP l m <->
-    (UP (l_left_child l) (l_left_child m) ∧
-     UP (l_right_child l) (l_right_child m)).
+    U l m <->
+    (U (l_left_child l) (l_left_child m) ∧
+     U (l_right_child l) (l_right_child m)).
 
-Definition UPComplete (UP : UnificationPredicate) :=
+Definition UMeansYouCanRewriteInItself (U : Unifications) :=
   ∀ l m,
-    UP l m <-> (
-      ∀ n, (UP n l -> UP n m) ∧ (UP l n -> UP m n)
+    U l m <-> (
+      ∀ n, (U n l -> U n m) ∧ (U l n -> U m n)
     ).
 
-Lemma complete_trans UP a b c : UPComplete UP -> UP a b -> UP b c -> UP a c.
+Definition UComplete U :=
+  UMeansYouCanRewriteInItself U ∧ URespectsSubtrees U.
+Lemma complete_trans U a b c : UMeansYouCanRewriteInItself U -> U a b -> U b c -> U a c.
   intros.
   destruct (H b c).
   destruct (H2 H1 a).
   apply H4. assumption.
 Qed.
-Lemma complete_refl UP a : UPComplete UP -> UP a a.
+Lemma complete_refl U a : UMeansYouCanRewriteInItself U -> U a a.
   intros.
   (* destruct (H a a). *)
   apply H. intros. split.
   trivial.
   trivial.
 Qed.
-Lemma complete_sym UP a b : UPComplete UP ->  UP a b -> UP b a.
+Lemma complete_sym U a b : UMeansYouCanRewriteInItself U ->  U a b -> U b a.
   intros.
   destruct (H a b).
   destruct (H1 H0 a).
   apply H4.
   apply complete_refl.
   apply H.
-  destruct (H1 H0 b).
-  apply H. intros. split.
-  intro.
-  destruct (H n b).
-  destruct (H2 H1 b).
-  apply H4. assumption.
 Qed.
-Lemma its_just_equivalence UP
-  (refl : ∀ a, UP a a)
-  (sym : ∀ a b, UP a b -> UP b a)
-  (trans : ∀ a b c, UP a b -> UP b c -> UP a c)
-  : UPComplete UP.
+Lemma its_just_equivalence U
+  (refl : ∀ a, U a a)
+  (sym : ∀ a b, U a b -> U b a)
+  (trans : ∀ a b c, U a b -> U b c -> U a c)
+  : UMeansYouCanRewriteInItself U.
   split; intros.
   split; intros.
   eapply trans; eassumption.
@@ -81,15 +77,65 @@ Lemma its_just_equivalence UP
   apply H. apply refl.
 Qed.
 
-Definition UPNaiveSubset (A B : UnificationPredicate) :=
+Definition UNaiveSubset (A B : Unifications) :=
   ∀ l m, A l m -> B l m.
 
-Definition CompletedUP (UP : UnificationPredicate) : UnificationPredicate :=
-  λ l m, ∀ UP2, UPNaiveSubset UP UP2 -> UPRespectsSubtrees UP2 -> UP2 l m.
+Definition CompletedU (U : Unifications) : Unifications :=
+  λ l m, ∀ U2, UNaiveSubset U U2 -> UComplete U2 -> U2 l m.
 
-Definition UPSubset (A B : UnificationPredicate) :=
-  ∀ l m, CompletedUP A l m -> CompletedUP B l m.
+Definition USubset (A B : Unifications) :=
+  ∀ l m, CompletedU A l m -> CompletedU B l m.
 
+
+
+Definition USet := Unifications -> Prop.
+
+Definition USComplete US :=
+  ∀ U, US U -> UComplete U
+  ∧
+  ∀ U1 U2, UNaiveSubset U1 U2 -> US U1 -> US U2.
+
+(* Definition USMoreOptions (A B : USet) :=
+  ∀ U, A U -> B U. *)
+
+Definition CompletedUS (US : USet) : USet :=
+  λ U, ∀ US2, USComplete US2 -> (∀ U, US U -> US2 U) -> US2 U.
+
+Definition URequireBoth A B :=
+  CompletedU (λ l m, A l m ∨ B l m).
+
+Definition USMap2
+  (UOp : Unifications -> Unifications -> Unifications)
+  (A B : USet) : USet :=
+  λ U, ∃ a b, (USubset (UOp a b) U).
+
+Definition USOr (A B : USet) : USet :=
+  λ U, A U ∨ B U.
+
+Inductive URightObeys U : Unifications :=
+  u_right_obeys l m : U l m -> URightObeys U (l_left l) (l_left m).
+
+CoInductive USIterate (US : USet) : USet :=
+  | usi_cons U : USIterate US (URightObeys U) -> USIterate US U.
+
+(* Inductive USIterate (US : USet) : USet :=
+  | usi_cons : USIterate US (λ l m, ∃ U, US U ∧ U l m). *)
+
+(* Inductive USIterate US : USet :=
+  | usi_asd :
+  | usi_jkfjgkf : USIterate US
+Definition USIterate : *)
+  
+Inductive USIterate (BaseOptions StepOptions : USet) : USet :=
+  | usi_base Base :
+      BaseOptions Base ->
+      USIterate BaseOptions StepOptions Base
+  | usi_iterate Tail Step :
+      StepOptions Step ->
+      USIterate BaseOptions StepOptions Tail ->
+      USIterate BaseOptions StepOptions
+        (URequireBoth Step (URightObeys Tail)).
+  
 
 
 
