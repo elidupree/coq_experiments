@@ -113,19 +113,35 @@ Instance d_us : Derives USet USet := {
     derives := USNaiveSuperset
   }.
 
+(* Definition MinimumUSContaining (U : LRelation) : USet
+  := λ u, ∀ US, US U -> (∀ U1 U2,
+      UNaiveSubset U1 U2 -> Unifications U2 -> US U1 -> US U2) -> US u. *)
+Inductive MinimumUSContaining (U : LRelation) : USet :=
+  | us_singleton V : Unifications V -> U ⊢ V -> MinimumUSContaining U V.
 
 (****************************************************
                 Reified unifications
 ****************************************************)
 
+(* Reified Finite Unifications *)
+Inductive RFU :=
+  | rfu_unify_children
+  | rfu_pullL (_:RFU)
+  | rfu_pushR (_:RFU)
+  | rfu_pushLL (_:RFU)
+  | rfu_pushLR (_:RFU)
+  | rfu_require_both (_ _:RFU)
+  .
+
+(* Reified Unifications Set *)
 Inductive RUS :=
   | rus_unify_children
   | rus_pullL (_:RUS)
   | rus_pushR (_:RUS)
   | rus_pushLL (_:RUS)
   | rus_pushLR (_:RUS)
-  | rus_union (_ _:RUS)
   | rus_require_both (_ _:RUS)
+  | rus_union (_ _:RUS)
   | rus_iterate (base step:RUS)
   .
 Declare Scope rus_scope.
@@ -135,11 +151,8 @@ Bind Scope rus_scope with RUS.
 Inductive LeftToRight : LRelation :=
   | u_children_equal : LeftToRight (l_left l_root) (l_right l_root).
 Definition UUnifyChildren := MinimumUnificationsContaining LeftToRight.
-
-Inductive USSingleton (U : LRelation) : USet :=
-  | us_singleton V : U ⊢ V -> USSingleton U V.
-
-Definition USUnifyChildren := USSingleton UUnifyChildren.
+ 
+Definition USUnifyChildren := MinimumUSContaining UUnifyChildren.
 
 (* Inductive URightObeys (U : LRelation) : LRelation :=
   | u_right_obeys l m : U l m -> URightObeys U (l_right l) (l_right m).
@@ -180,6 +193,12 @@ Definition USPushLR := USApplyInAllCases UPushLR.
 
 Definition USUnion (A B : USet) : USet := λ u, A u ∨ B u.
 (* Definition USRequireBoth (A B : USet) : USet := λ u, A u ∨ B u. *)
+(* Definition URequireBoth (A B : LRelation) : LRelation := λ l m, A u ∨ B u. *)
+Inductive URequireBoth (A B : LRelation) : LRelation :=
+  | urb_left : UNaiveSubset A (URequireBoth A B)
+  | urb_right : UNaiveSubset B (URequireBoth A B)
+  | urb_trans : LRTransitive (URequireBoth A B)
+  .
 Inductive USRequireBoth (A B : USet) : USet :=
   | us_require_both a b c :
       A a -> B b -> (a ⊢ c) -> (b ⊢ c) ->
@@ -203,7 +222,16 @@ Inductive USIterate (Base Step : USet) : USet :=
         (USRequireBoth Step (USPushR (USIterate Base Step)))
   .
 
-Fixpoint UsRus rus := match rus with
+Fixpoint URfu rfu : LRelation := match rfu with
+  | rfu_unify_children => UUnifyChildren
+  | rfu_pullL a => UPullL (URfu a)
+  | rfu_pushR a => UPushR (URfu a)
+  | rfu_pushLL a => UPushLL (URfu a)
+  | rfu_pushLR a => UPushLR (URfu a)
+  | rfu_require_both a b => URequireBoth (URfu a) (URfu b)
+  end.
+
+Fixpoint UsRus rus : USet := match rus with
   | rus_unify_children => USUnifyChildren
   | rus_pullL a => USPullL (UsRus a)
   | rus_pushR a => USPushR (UsRus a)
@@ -214,10 +242,36 @@ Fixpoint UsRus rus := match rus with
   | rus_iterate base step => USIterate (UsRus base) (UsRus step)
   end.
 
+Fixpoint rus_rfu rfu : RUS := match rfu with
+  | rfu_unify_children => rus_unify_children
+  | rfu_pullL a => rus_pullL (rus_rfu a)
+  | rfu_pushR a => rus_pushR (rus_rfu a)
+  | rfu_pushLL a => rus_pushLL (rus_rfu a)
+  | rfu_pushLR a => rus_pushLR (rus_rfu a)
+  | rfu_require_both a b => rus_require_both (rus_rfu a) (rus_rfu b)
+  end.
+
   
 (****************************************************
-                Finitude or something
+                      Something
 ****************************************************)
+
+Lemma mapped_set_transpose U map : Unifications U -> USApplyInAllCases map (MinimumUSContaining U) ⊣⊢ MinimumUSContaining (map U).
+  (* unfold USApplyInAllCases. *)
+  split; repeat intro.
+  destruct H, H0.
+  
+  constructor.
+Qed.
+
+Lemma rus_rfu_correct rfu : UsRus (rus_rfu rfu) ⊣⊢ (MinimumUSContaining (URfu rfu)).
+  red.
+  induction rfu; cbn.
+  split; repeat intro; assumption.
+  split; repeat intro.
+
+
+
 
 Inductive FiniteTree T :=
   | ft_leaf (_:T)
