@@ -41,12 +41,12 @@ Definition l_right_child := l_extend (l_right l_root).
                    Unifications
 ****************************************************)
 
-Definition LRelation :=
+Definition LRel :=
   Location -> Location -> Prop.
 
-Definition LRTransitive (R : LRelation) := ∀ a b c, R a b -> R b c -> R a c.
+Definition LRTrans (R : LRel) := ∀ a b c, R a b -> R b c -> R a c.
 
-Class Unifications (U : LRelation) : Prop := {
+Class Unifications (U : LRel) : Prop := {
       uv_means_you_can_rewrite : ∀ l m,
         U l m <-> (
           ∀ n, (U n l -> U n m) ∧ (U l n -> U m n)
@@ -66,18 +66,18 @@ Definition equiv A B {_dab : Derives A B} {_dba : Derives B A} (a:A) (b:B) := de
 Notation "P '⊣⊢' Q" := (equiv P Q) (at level 70, no associativity)
   : type_scope.
 
-Definition UNaiveSubset (A B : LRelation) :=
+Definition UNaiveSubset (A B : LRel) :=
   ∀ l m, A l m -> B l m.
   
-Instance d_u : Derives LRelation LRelation := {
+Instance d_u : Derives LRel LRel := {
     derives := UNaiveSubset
   }.
 
-Definition MinimumUnificationsContaining (R : LRelation) : LRelation
+Definition MinimumUContaining (R : LRel) : LRel
   := λ l m, ∀ U, R ⊢ U -> Unifications U -> U l m.
 
-(* Instance MUC_U R : Unifications (MinimumUnificationsContaining R).
-  unfold MinimumUnificationsContaining; constructor; intuition idtac.
+(* Instance MUC_U R : Unifications (MinimumUContaining R).
+  unfold MinimumUContaining; constructor; intuition idtac.
   {
     pose (H0 _ H1 H2) as unl.
     pose (H _ H1 H2) as ulm.
@@ -97,27 +97,27 @@ Definition MinimumUnificationsContaining (R : LRelation) : LRelation
 Qed. *)
 
 
-Definition USet := LRelation -> Prop.
+Definition LRSet := LRel -> Prop.
 
 
-Class USValid US := {
-    usv_members_valid : ∀ U, US U -> Unifications U
-  ; usv_contains_subsets: ∀ U1 U2,
+Class UPossibilities (US : LRSet) := {
+    upo_members_are_unifications : ∀ U, US U -> Unifications U
+  ; upo_supersets_also_possible: ∀ U1 U2,
       UNaiveSubset U1 U2 -> US U1 -> US U2
   }.
   
-Definition USNaiveSuperset (A B : USet) :=
+Definition USNaiveSuperset (A B : LRSet) :=
   ∀ u, B u -> A u.
 
-Instance d_us : Derives USet USet := {
+Instance d_us : Derives LRSet LRSet := {
     derives := USNaiveSuperset
   }.
 
-(* Definition MinimumUSContaining (U : LRelation) : USet
+(* Definition MinimumUSContaining (U : LRel) : LRSet
   := λ u, ∀ US, US U -> (∀ U1 U2,
       UNaiveSubset U1 U2 -> Unifications U2 -> US U1 -> US U2) -> US u. *)
-Inductive MinimumUSContaining (U : LRelation) : USet :=
-  | us_singleton V : Unifications V -> U ⊢ V -> MinimumUSContaining U V.
+Inductive MinimumUSContaining (U : LRel) : LRSet :=
+  | muc_cons V : Unifications V -> U ⊢ V -> MinimumUSContaining U V.
 
 (****************************************************
                 Reified unifications
@@ -140,7 +140,7 @@ Inductive RUS :=
   | rus_pushR (_:RUS)
   | rus_pushLL (_:RUS)
   | rus_pushLR (_:RUS)
-  | rus_require_both (_ _:RUS)
+  | rus_intersection (_ _:RUS)
   | rus_union (_ _:RUS)
   | rus_iterate (base step:RUS)
   .
@@ -148,35 +148,35 @@ Declare Scope rus_scope.
 Bind Scope rus_scope with RUS.
 
 
-Inductive LeftToRight : LRelation :=
+Inductive LeftToRight : LRel :=
   | u_children_equal : LeftToRight (l_left l_root) (l_right l_root).
-Definition UUnifyChildren := MinimumUnificationsContaining LeftToRight.
- 
+Definition UUnifyChildren := MinimumUContaining LeftToRight.
+
 Definition USUnifyChildren := MinimumUSContaining UUnifyChildren.
 
-(* Inductive URightObeys (U : LRelation) : LRelation :=
+(* Inductive URightObeys (U : LRel) : LRel :=
   | u_right_obeys l m : U l m -> URightObeys U (l_right l) (l_right m).
 
-Inductive ULeftOf (U : LRelation) : LRelation :=
+Inductive ULeftOf (U : LRel) : LRel :=
   | u_left_of l m : U (l_left l) (l_left m) -> ULeftOf U l m. *)
 (* Definition LocationCorrespondence := Location -> Location -> Prop. *)
-Inductive UChangeLocations (R : LRelation) (U : LRelation) : LRelation :=
+Inductive UChangeLocations (R : LRel) (U : LRel) : LRel :=
   | u_change_locations_in l1 l2 m1 m2 :
     R l1 l2 -> R m1 m2 -> U l1 m1 ->
       UChangeLocations R U l2 m2.
 
-Inductive PushLL : LRelation :=
+Inductive PushLL : LRel :=
   | pushll_left l : PushLL (l_left l) (l_left (l_left l))
   | pushll_right l : PushLL (l_right l) (l_right l).
 
-Inductive PushLR : LRelation :=
+Inductive PushLR : LRel :=
   | pushlr_left l : PushLR (l_left l) (l_left (l_right l))
   | pushlr_right l : PushLR (l_right l) (l_right l).
 
-Inductive PushR : LRelation := pushr l : PushR l (l_right l).
-Inductive PullL : LRelation := pulll l : PullL (l_left l) l.
+Inductive PushR : LRel := pushr l : PushR l (l_right l).
+Inductive PullL : LRel := pulll l : PullL (l_left l) l.
 
-(* Inductive UMapLocations (map : Location -> Location) (U : LRelation) : LRelation :=
+(* Inductive UMapLocations (map : Location -> Location) (U : LRel) : LRel :=
   | u_pulldownLLin l m : U l m -> UMapLocations map U (map l) (map m). *)
 
 Definition UPullL := UChangeLocations PullL.
@@ -184,27 +184,29 @@ Definition UPushR := UChangeLocations PushR.
 Definition UPushLL := UChangeLocations PushLL.
 Definition UPushLR := UChangeLocations PushLR.
 
-Inductive USApplyInAllCases (map : LRelation -> LRelation) (US : USet) : USet :=
+Inductive USApplyInAllCases (map : LRel -> LRel) (US : LRSet) : LRSet :=
   us_apply_in_all_cases u : US u -> USApplyInAllCases map US (map u).
 Definition USPullL := USApplyInAllCases UPullL.
 Definition USPushR := USApplyInAllCases UPushR.
 Definition USPushLL := USApplyInAllCases UPushLL.
 Definition USPushLR := USApplyInAllCases UPushLR.
 
-Definition USUnion (A B : USet) : USet := λ u, A u ∨ B u.
-(* Definition USRequireBoth (A B : USet) : USet := λ u, A u ∨ B u. *)
-(* Definition URequireBoth (A B : LRelation) : LRelation := λ l m, A u ∨ B u. *)
-Inductive URequireBoth (A B : LRelation) : LRelation :=
+Definition USUnion (A B : LRSet) : LRSet := λ u, A u ∨ B u.
+Definition USIntersection (A B : LRSet) : LRSet := λ u, A u ∧ B u.
+(* Definition USRequireBoth (A B : LRSet) : LRSet := λ u, A u ∨ B u. *)
+(* Definition URequireBoth (A B : LRel) : LRel := λ l m, A u ∨ B u. *)
+Inductive URequireBoth (A B : LRel) : LRel :=
   | urb_left : UNaiveSubset A (URequireBoth A B)
   | urb_right : UNaiveSubset B (URequireBoth A B)
-  | urb_trans : LRTransitive (URequireBoth A B)
+  | urb_trans : LRTrans (URequireBoth A B)
   .
-Inductive USRequireBoth (A B : USet) : USet :=
+(* Inductive USRequireBoth (A B : LRSet) : LRSet :=
   | us_require_both a b c :
       A a -> B b -> (a ⊢ c) -> (b ⊢ c) ->
-      LRTransitive c -> USRequireBoth A B c.
+      LRTrans c -> USRequireBoth A B c. *)
 
-Inductive USIterate (Base Step : USet) : USet :=
+
+Inductive USIterate (Base Step : LRSet) : LRSet :=
   (* | usi_base Base :
       Base B -> USIterate Base Step B *)
   (* | usi_base : (USIterate Base Step) ⊢ Base *)
@@ -219,10 +221,10 @@ Inductive USIterate (Base Step : USet) : USet :=
       USIterate Base Step Combined *)
   | usi_iterate :
       USNaiveSuperset (USIterate Base Step) 
-        (USRequireBoth Step (USPushR (USIterate Base Step)))
+        (USIntersection Step (USPushR (USIterate Base Step)))
   .
 
-Fixpoint URfu rfu : LRelation := match rfu with
+Fixpoint URfu rfu : LRel := match rfu with
   | rfu_unify_children => UUnifyChildren
   | rfu_pullL a => UPullL (URfu a)
   | rfu_pushR a => UPushR (URfu a)
@@ -231,14 +233,14 @@ Fixpoint URfu rfu : LRelation := match rfu with
   | rfu_require_both a b => URequireBoth (URfu a) (URfu b)
   end.
 
-Fixpoint UsRus rus : USet := match rus with
+Fixpoint UsRus rus : LRSet := match rus with
   | rus_unify_children => USUnifyChildren
   | rus_pullL a => USPullL (UsRus a)
   | rus_pushR a => USPushR (UsRus a)
   | rus_pushLL a => USPushLL (UsRus a)
   | rus_pushLR a => USPushLR (UsRus a)
   | rus_union a b => USUnion (UsRus a) (UsRus b)
-  | rus_require_both a b => USRequireBoth (UsRus a) (UsRus b)
+  | rus_intersection a b => USIntersection (UsRus a) (UsRus b)
   | rus_iterate base step => USIterate (UsRus base) (UsRus step)
   end.
 
@@ -248,7 +250,7 @@ Fixpoint rus_rfu rfu : RUS := match rfu with
   | rfu_pushR a => rus_pushR (rus_rfu a)
   | rfu_pushLL a => rus_pushLL (rus_rfu a)
   | rfu_pushLR a => rus_pushLR (rus_rfu a)
-  | rfu_require_both a b => rus_require_both (rus_rfu a) (rus_rfu b)
+  | rfu_require_both a b => rus_intersection (rus_rfu a) (rus_rfu b)
   end.
 
   
@@ -278,5 +280,5 @@ Inductive FiniteTree T :=
   | ft_branch (_ _ : FiniteTree T)
   .
 
-Inductive FtEqualities : FiniteTree T -> LRelation :=
+Inductive FtEqualities : FiniteTree T -> LRel :=
   λ l m, 
