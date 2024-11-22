@@ -41,21 +41,75 @@ Definition l_right_child := l_extend (l_right l_root).
                    Unifications
 ****************************************************)
 
+Notation "P '⊆1' Q" := (∀ x, P x -> Q x) (at level 70, no associativity)
+  : type_scope.
+Notation "P '≡1' Q" := (∀ x, P x <-> Q x) (at level 70, no associativity)
+  : type_scope.
+Notation "P '⊆2' Q" := (∀ x y, P x y -> Q x y) (at level 70, no associativity)
+  : type_scope.
+Notation "P '≡2' Q" := (∀ x y, P x y <-> Q x y) (at level 70, no associativity)
+  : type_scope.
+
 Definition LRel :=
   Location -> Location -> Prop.
 
-Definition LRTrans (R : LRel) := ∀ a b c, R a b -> R b c -> R a c.
-
-Class Unifications (U : LRel) : Prop := {
-      uv_means_you_can_rewrite : ∀ l m,
-        U l m <-> (
-          ∀ n, (U n l -> U n m) ∧ (U l n -> U m n)
-        )
-    ; uv_respects_subtrees : ∀ l m,
-        U l m <->
-        (U (l_left_child l) (l_left_child m) ∧
-        U (l_right_child l) (l_right_child m))
+Class LRRefl (R : LRel) := {
+  lr_refl : ∀ a, R a a
   }.
+Class LRSym (R : LRel) := {
+  lr_sym : ∀ a b, R a b -> R b a
+  }.
+Class LRTrans (R : LRel) := {
+  lr_trans : ∀ a b c, R a b -> R b c -> R a c
+  }.
+Class LREquivalence (R : LRel) := lre_cons {
+    lre_refl :: LRRefl R
+  ; lre_sym :: LRSym R
+  ; lre_trans :: LRTrans R
+  }.
+Hint Immediate lre_cons : typeclass_instances.
+Definition RewritesPossibleInLR (R : LRel) : LRel :=
+  λ l m, ∀ n, (R n l -> R n m) ∧ (R l n -> R m n).
+Definition PairsWithChildrenRelatedBy (R : LRel) : LRel :=
+  λ l m, (R (l_left_child l) (l_left_child m) ∧
+        R (l_right_child l) (l_right_child m)).
+
+Class LRIncludesAllWaysToRewriteItself (R : LRel) := {
+  lr_includes_all_ways_to_rewrite_itself : RewritesPossibleInLR R ⊆2 R
+  }.
+Class LRCanRewriteItself (R : LRel) := {
+  lr_can_rewrite_itself : R ⊆2 RewritesPossibleInLR R
+  }.
+Class LRRelatesLocsWhoseChildrenItRelates (R : LRel) := {
+  lr_relates_locs_whose_children_it_relates : PairsWithChildrenRelatedBy R ⊆2 R
+  }.
+Class LRRelatesLocsWhoseParentItRelates (R : LRel) := {
+  lr_relates_locs_whose_parent_it_relates : R ⊆2 PairsWithChildrenRelatedBy R
+  }.
+
+Instance lre_rewrites R : LREquivalence R -> LRCanRewriteItself R.
+  constructor. split; intro.
+  eapply lr_trans; eassumption.
+  eapply lr_trans; [apply lr_sym|]; eassumption.
+Qed.
+Instance lre_includes_rewrites R : LRRefl R -> LRIncludesAllWaysToRewriteItself R.
+  constructor. intros.
+  apply H0. apply lr_refl.
+Qed.
+
+Class Unifications (R : LRel) := u_cons {
+    u_equiv :: LREquivalence R
+  ; u_children_parent :: LRRelatesLocsWhoseChildrenItRelates R
+  ; u_parent_children :: LRRelatesLocsWhoseParentItRelates R
+  }.
+Hint Immediate u_cons : typeclass_instances.
+
+(* Definition LRCanRewriteWithLR (R Rewriter : LRel) :=
+  ∀ 
+Definition LRMeansItCanRewritesItself R :=
+  
+Definition LRCanRewriteWithLR (Rewriter R : LRel) :=
+  ∀  *)
 
 Class Derives A B := {
     derives : A -> B -> Prop
@@ -66,58 +120,91 @@ Definition equiv A B {_dab : Derives A B} {_dba : Derives B A} (a:A) (b:B) := de
 Notation "P '⊣⊢' Q" := (equiv P Q) (at level 70, no associativity)
   : type_scope.
 
-Definition UNaiveSubset (A B : LRel) :=
-  ∀ l m, A l m -> B l m.
+(* Class Unifications (U : LRel) : Prop := {
+      uv_means_you_can_rewrite : ∀ l m,
+        U l m <-> (
+          ∀ n, (U n l -> U n m) ∧ (U l n -> U m n)
+        )
+    ; uv_respects_subtrees : ∀ l m,
+        U l m <->
+        (U (l_left_child l) (l_left_child m) ∧
+        U (l_right_child l) (l_right_child m))
+  }. *)
+
+(* Definition UNaiveSubset (A B : LRel) :=
+  ∀ l m, A l m -> B l m. *)
   
 Instance d_u : Derives LRel LRel := {
-    derives := UNaiveSubset
+    derives := λ A B, A ⊆2 B
   }.
 
-Definition MinimumUContaining (R : LRel) : LRel
+Definition MinimumUSuperset (R : LRel) : LRel
   := λ l m, ∀ U, R ⊢ U -> Unifications U -> U l m.
 
-(* Instance MUC_U R : Unifications (MinimumUContaining R).
-  unfold MinimumUContaining; constructor; intuition idtac.
-  {
-    pose (H0 _ H1 H2) as unl.
-    pose (H _ H1 H2) as ulm.
-    destruct H2.
-    apply (uv_means_you_can_rewrite0 l m); assumption.
-  }
-  {
-    pose (H0 _ H1 H2) as uml.
-    pose (H _ H1 H2) as uln.
-    destruct H2.
-    apply (uv_means_you_can_rewrite0 l m); assumption.
-  }
-  {
-    destruct (H l).
-    apply H3.
-    }
-Qed. *)
+Lemma MUC_Superset R : R ⊆2 MinimumUSuperset R.
+  unfold MinimumUSuperset; intros. apply H0; assumption.
+Qed.
+Instance MUC_Refl R : LRRefl (MinimumUSuperset R).
+  unfold MinimumUSuperset; constructor; intros.
+  apply lr_refl.
+Qed.
+Instance MUC_Sym R : LRSym (MinimumUSuperset R).
+  unfold MinimumUSuperset; constructor; intros.
+  apply lr_sym; apply H; assumption.
+Qed.
+Instance MUC_Trans R : LRTrans (MinimumUSuperset R).
+  unfold MinimumUSuperset; constructor; intros.
+  eapply lr_trans; [apply H|apply H0]; eassumption.
+Qed.
+Instance MUC_children_parent R : LRRelatesLocsWhoseChildrenItRelates (MinimumUSuperset R).
+  unfold MinimumUSuperset; constructor; intros.
+  apply lr_relates_locs_whose_children_it_relates.
+  destruct H.
+  constructor; [apply H|apply H2]; assumption.
+Qed.
+Instance MUC_parent_children R : LRRelatesLocsWhoseParentItRelates (MinimumUSuperset R).
+  unfold MinimumUSuperset; constructor; intros.
+  split; intros; apply (@lr_relates_locs_whose_parent_it_relates U _ _ _); apply H; assumption.
+Qed.
+Instance MUC_Equiv R : LREquivalence (MinimumUSuperset R) := _.
+Instance MUC_U R : Unifications (MinimumUSuperset R) := _.
 
+Inductive LRelSingleton x y : LRel :=
+  lr_singleton : LRelSingleton x y x y.
+Definition MinimumURelating x y := MinimumUSuperset (LRelSingleton x y).
 
 Definition LRSet := LRel -> Prop.
 
-
+Class USet (US : LRSet) := {
+    uset_members_are_unifications : US ⊆1 Unifications
+  }.
 Class UPossibilities (US : LRSet) := {
-    upo_members_are_unifications : ∀ U, US U -> Unifications U
-  ; upo_supersets_also_possible: ∀ U1 U2,
-      UNaiveSubset U1 U2 -> US U1 -> US U2
+    upo_uset :: USet US
+  ; upo_includes_supersets : 
+      ∀ U1 U2, Unifications U2 -> U1 ⊆2 U2 -> US U1 -> US U2
   }.
   
-Definition USNaiveSuperset (A B : LRSet) :=
-  ∀ u, B u -> A u.
+(* Definition USNaiveSuperset (A B : LRSet) :=
+  ∀ u, B u -> A u. *)
 
 Instance d_us : Derives LRSet LRSet := {
-    derives := USNaiveSuperset
+    derives := λ A B, B ⊆1 A
   }.
 
-(* Definition MinimumUSContaining (U : LRel) : LRSet
-  := λ u, ∀ US, US U -> (∀ U1 U2,
-      UNaiveSubset U1 U2 -> Unifications U2 -> US U1 -> US U2) -> US u. *)
-Inductive MinimumUSContaining (U : LRel) : LRSet :=
-  | muc_cons V : Unifications V -> U ⊢ V -> MinimumUSContaining U V.
+Inductive MinimumUPosContaining (U : LRel) : LRSet :=
+  | muc_cons V : Unifications V -> U ⊆2 V -> MinimumUPosContaining U V.
+
+Lemma MUSC_U U : Unifications U -> MinimumUPosContaining U U.
+  constructor; trivial.
+Qed.
+Instance MUSC_USet R : USet (MinimumUPosContaining R).
+  constructor; intros; destruct H. assumption.
+Qed.
+Instance MUSC_UPoss R : UPossibilities (MinimumUPosContaining R).
+  constructor; [exact _|]. intros; destruct H.
+  constructor; [exact _|]. destruct H1.
+  intros l m Rlm. apply H0. apply H1. assumption.
+Qed.
 
 (****************************************************
                 Reified unifications
@@ -148,11 +235,9 @@ Declare Scope rus_scope.
 Bind Scope rus_scope with RUS.
 
 
-Inductive LeftToRight : LRel :=
-  | u_children_equal : LeftToRight (l_left l_root) (l_right l_root).
-Definition UUnifyChildren := MinimumUContaining LeftToRight.
+Definition UUnifyChildren := MinimumURelating (l_left l_root) (l_right l_root).
 
-Definition USUnifyChildren := MinimumUSContaining UUnifyChildren.
+Definition USUnifyChildren := MinimumUPosContaining UUnifyChildren.
 
 (* Inductive URightObeys (U : LRel) : LRel :=
   | u_right_obeys l m : U l m -> URightObeys U (l_right l) (l_right m).
@@ -160,10 +245,46 @@ Definition USUnifyChildren := MinimumUSContaining UUnifyChildren.
 Inductive ULeftOf (U : LRel) : LRel :=
   | u_left_of l m : U (l_left l) (l_left m) -> ULeftOf U l m. *)
 (* Definition LocationCorrespondence := Location -> Location -> Prop. *)
-Inductive UChangeLocations (R : LRel) (U : LRel) : LRel :=
-  | u_change_locations_in l1 l2 m1 m2 :
+Inductive LRChangeLocations (R : LRel) (U : LRel) : LRel :=
+  | lr_change_locations_in l1 l2 m1 m2 :
     R l1 l2 -> R m1 m2 -> U l1 m1 ->
-      UChangeLocations R U l2 m2.
+      LRChangeLocations R U l2 m2.
+
+Inductive LRInSomeSubtree (R : LRel) : LRel :=
+  | lriss_r : R ⊆2 LRInSomeSubtree R
+  | lriss_in_left a b : LRInSomeSubtree R a b -> LRInSomeSubtree R (l_left a) (l_left b)
+  | lriss_in_right a b : LRInSomeSubtree R a b -> LRInSomeSubtree R (l_right a) (l_right b)
+  .
+Inductive LDisjoint : LRel :=
+  | ld_split a b : LDisjoint (l_left a) (l_right b)
+  | ld_in_left a b : LDisjoint a b -> LDisjoint (l_left a) (l_left b)
+  | ld_in_right a b : LDisjoint a b -> LDisjoint (l_right a) (l_right b)
+  .
+
+
+Lemma UCL_Sym R U : LRSym U -> LRSym (LRChangeLocations R U).
+  constructor; intros.
+  destruct H0.
+  econstructor; [eassumption|eassumption|].
+  apply lr_sym; assumption.
+Qed.
+Lemma UCL_Trans R U : R ⊆2 LDisjoint -> LRTrans U -> LRTrans (LRChangeLocations R U).
+  constructor; intros.
+  destruct H0 as (a1, a2, b1, b2, Ra, Rb, Uab).
+  destruct H1 as (bb1, bb2, c1, c2, Rbb, Rc, Ubc).
+  econstructor; [eassumption|eassumption|].
+  eapply lr_trans.
+  rename n3 into m3.
+  rename l3 into m2.
+
+Lemma UCL_U R U : Unifications U -> Unifications (UChangeLocations R U).
+  intro UU.
+  repeat constructor; intros.
+  admit.
+  {
+    destruct H.
+    econstructor.
+  }
 
 Inductive PushLL : LRel :=
   | pushll_left l : PushLL (l_left l) (l_left (l_left l))
@@ -258,7 +379,7 @@ Fixpoint rus_rfu rfu : RUS := match rfu with
                       Something
 ****************************************************)
 
-Lemma mapped_set_transpose U map : Unifications U -> USApplyInAllCases map (MinimumUSContaining U) ⊣⊢ MinimumUSContaining (map U).
+Lemma mapped_set_transpose U map : Unifications U -> USApplyInAllCases map (MinimumUPosContaining U) ⊣⊢ MinimumUPosContaining (map U).
   (* unfold USApplyInAllCases. *)
   split; repeat intro.
   destruct H, H0.
@@ -266,7 +387,7 @@ Lemma mapped_set_transpose U map : Unifications U -> USApplyInAllCases map (Mini
   constructor.
 Qed.
 
-Lemma rus_rfu_correct rfu : UsRus (rus_rfu rfu) ⊣⊢ (MinimumUSContaining (URfu rfu)).
+Lemma rus_rfu_correct rfu : UsRus (rus_rfu rfu) ⊣⊢ (MinimumUPosContaining (URfu rfu)).
   red.
   induction rfu; cbn.
   split; repeat intro; assumption.
