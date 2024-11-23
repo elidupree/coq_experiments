@@ -22,38 +22,36 @@ Set Typeclasses Depth 3.
                    Tree structure
 ****************************************************)
 
-Inductive Location :=
-  | l_root : Location
-  | l_left : Location -> Location
-  | l_right : Location -> Location
-  .
+Inductive WhichChild := wc_left | wc_right.
+Definition Location := list WhichChild.
+
 (* Definition ℒ := l_left. *)
-Notation "'𝕃,' l" := (l_left l) (at level 5, format "'𝕃,' l").
+(* Notation "'𝕃,' l" := (l_left l) (at level 5, format "'𝕃,' l").
 Notation "'ℝ,' l" := (l_right l) (at level 5).
 Notation "'𝕃'" := (l_left l_root) (at level 5).
-Notation "'ℝ'" := (l_right l_root) (at level 5).
+Notation "'ℝ'" := (l_right l_root) (at level 5). *)
 
-Fixpoint l_extend (l extension : Location) := match l with 
+(* Fixpoint l_extend (l extension : Location) := match l with 
   | l_root => extension
   | l_left l => l_left (l_extend l extension)
   | l_right l => l_right (l_extend l extension)
-  end.
+  end. *)
 
-Definition l_left_child := l_extend (l_left l_root).
-Definition l_right_child := l_extend (l_right l_root).
+(* Notation  *)
+
+(* Definition l_left_child := l_extend (l_left l_root).
+Definition l_right_child := l_extend (l_right l_root). *)
 
 (****************************************************
                    Unifications
 ****************************************************)
 
-Notation "P '⊆1' Q" := (∀ x, P x -> Q x) (at level 70, no associativity)
-  : type_scope.
-Notation "P '≡1' Q" := (∀ x, P x <-> Q x) (at level 70, no associativity)
-  : type_scope.
-Notation "P '⊆2' Q" := (∀ x y, P x y -> Q x y) (at level 70, no associativity)
-  : type_scope.
-Notation "P '≡2' Q" := (∀ x y, P x y <-> Q x y) (at level 70, no associativity)
-  : type_scope.
+Notation "P '⊆1' Q" := (∀ x, P x -> Q x) (at level 70, no associativity) : type_scope.
+(* Notation "P '⊇1' Q" := (Q ⊆1 P) (at level 70, no associativity) : type_scope. *)
+Notation "P '≡1' Q" := (∀ x, P x <-> Q x) (at level 70, no associativity) : type_scope.
+Notation "P '⊆2' Q" := (∀ x y, P x y -> Q x y) (at level 70, no associativity) : type_scope.
+(* Notation "P '⊇2' Q" := (Q ⊆2 P) (at level 70, no associativity) : type_scope. *)
+Notation "P '≡2' Q" := (∀ x y, P x y <-> Q x y) (at level 70, no associativity) : type_scope.
 
 Definition LRel :=
   Location -> Location -> Prop.
@@ -75,8 +73,8 @@ Definition ViewRefl2 R a b :=
   | sd_same x : SameDescendant l_root x l_root x
   | sd_cons ax dx ay dy : SameDescendant ax dx ay dy -> SameDescendant (𝕃,ax) (𝕃,dx) ay dy. *)
 
-Definition LeftPrefixRewrites (R : LRel) x y :=
-  ∀ z w, R (l_extend x z) w -> R (l_extend y z) w.
+Definition LeftPrefixRewrites (R : LRel) : LRel :=
+  λ x y, ∀ z w, R (x++z) w -> R (y++z) w.
 
 Definition Unif (R : LRel) := 
   R ≡2 LeftPrefixRewrites R.
@@ -96,34 +94,48 @@ Class LREquivalence (R : LRel) := lre_cons {
   ; lre_trans :: LRTrans R
   }.
 Hint Immediate lre_cons : typeclass_instances.
-Definition RewritesPossibleInLR (R : LRel) : LRel :=
+(* Definition RewritesPossibleInLR (R : LRel) : LRel :=
   λ l m, ∀ n, (R n l -> R n m) ∧ (R l n -> R m n).
 Definition PrefixRewritesPossibleInLR (R : LRel) : LRel :=
   λ l m, ∀ n, (R n l? -> R n m?) ∧ (R l? n -> R m? n).
 Definition PairsWithChildrenRelatedBy (R : LRel) : LRel :=
   λ l m, (R (l_left_child l) (l_left_child m) ∧
-        R (l_right_child l) (l_right_child m)).
+        R (l_right_child l) (l_right_child m)). *)
 
-Class LRIncludesAllWaysToRewriteItself (R : LRel) := {
+(* Class LRIncludesAllWaysToRewriteItself (R : LRel) := {
   lr_includes_all_ways_to_rewrite_itself : RewritesPossibleInLR R ⊆2 R
   }.
 Class LRCanRewriteItself (R : LRel) := {
   lr_can_rewrite_itself : R ⊆2 RewritesPossibleInLR R
-  }.
-Class LRRelatesLocsWhoseChildrenItRelates (R : LRel) := {
+  }. *)
+(* Class LRRelatesLocsWhoseChildrenItRelates (R : LRel) := {
   lr_relates_locs_whose_children_it_relates : PairsWithChildrenRelatedBy R ⊆2 R
   }.
 Class LRRelatesLocsWhoseParentItRelates (R : LRel) := {
   lr_relates_locs_whose_parent_it_relates : R ⊆2 PairsWithChildrenRelatedBy R
-  }.
+  }. *)
 
-Instance lre_rewrites R : LREquivalence R -> LRCanRewriteItself R.
+(* Instance lre_rewrites R : LREquivalence R -> LRCanRewriteItself R.
   constructor. split; intro.
   eapply lr_trans; eassumption.
   eapply lr_trans; [apply lr_sym|]; eassumption.
+Qed. *)
+Lemma uhhhh R : (LeftPrefixRewrites R ⊆2 R) -> LRRefl R.
+  unfold LeftPrefixRewrites; constructor; intros.
+  apply H; intros; assumption.
 Qed.
-Instance lre_includes_rewrites R : LRRefl R -> LRIncludesAllWaysToRewriteItself R.
+Lemma rewrites_sym R : (R ⊆2 LeftPrefixRewrites R) -> LRRefl R -> LRSym R.
   constructor. intros.
+  rewrite <- (app_nil_r b).
+  apply (H _ _ H1).
+  rewrite (app_nil_r a).
+  apply lr_refl.
+Qed.
+Lemma lrr_includes_rewrites R : (R ⊆2 LeftPrefixRewrites R) -> LRRefl R -> (LeftPrefixRewrites R ⊆2 R).
+  intros.
+  rewrite <- (app_nil_r x).
+  eapply H.
+  unfold LeftPrefixRewrites in H0.
   apply H0. apply lr_refl.
 Qed.
 
