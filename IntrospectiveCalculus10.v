@@ -18,6 +18,46 @@ Set Typeclasses Depth 3.
                  Proof bureaucracy
 ****************************************************)
 
+(* When proving, there are a lot of simplification steps that I want to be applied automatically, with very little effort. As the definitions and lemmas proceed, I want to add more simplification steps to a hints database.
+
+Unfortunately, the `auto` family of tactics, which apply hints from a database, cancel all the applications if you didn't solve the entire goal. That's not what I want. As a hack to work around this, it's possible to shelve an incomplete goal, and `auto` will interpret this as "success". So we just end every hint with `shelve`. *)
+
+Ltac autouse_shelving_db steps db :=
+  idtac steps; match steps with
+    | S ?p => try ((progress (unshelve typeclasses eauto 99 with db));
+      autouse_shelving_db p db)
+    | _ => idtac "Warning: steps ran out"
+  end.
+
+Create HintDb simplify.
+Ltac simplify := autouse_shelving_db 20 ident:(simplify).
+
+(* We *do* want to apply intros if it helps simplify, but not if it doesn't, so don't shelve here. Also, since it's the second-choice and can duplicate work, make it high-cost. *)
+(* Hint Extern 12 => intro; intros : simplify. *)
+
+(* ...and if we *can* solve easily, might as well. *)
+Hint Extern 1 => solve [trivial | constructor | discriminate] : simplify.
+
+(* One notable simplification step is to rewrite equality hypotheses when one side is just another hypothesis. But it's kinda expensive, so we give it a high-ish cost. *)
+Hint Extern 9 => progress match goal with
+  | x : _ |- _ => match goal with
+    | eq : x = _ |- _ => rewrite eq in *; clear x eq
+    | eq : _ = x |- _ => rewrite <- eq in *; clear x eq
+    end
+  end; shelve
+  : simplify.
+
+(* `remember`, but not if it's redundant *)
+Ltac dontforget term :=
+  lazymatch term with
+  | (_ _) => lazymatch goal with
+    | _ : _ = term |- _ => idtac
+    | _ : term = _ |- _ => idtac
+    | _ => remember term
+    end
+  | _ => idtac 
+  end.
+
 (****************************************************
                    Tree structure
 ****************************************************)
@@ -262,13 +302,13 @@ Qed.
 Instance MUC_Equiv R : LREquivalence (MinimumUSuperset R) := _.
 Instance MUC_U R : Unif (MinimumUSuperset R) := _. *)
 
-Inductive LRSingeleton x y : LRel :=
-  lr_singleton : LRSingeleton x y x y.
-Definition MinimumURelating x y := MinimumUSuperset (LRSingeleton x y).
+Inductive LRSingleton x y : LRel :=
+  lr_singleton : LRSingleton x y x y.
+Definition MinimumURelating x y := MinimumUSuperset (LRSingleton x y).
 
 Definition LRSet := LRel -> Prop.
-Inductive LSSingeleton x : LRSet :=
-  ls_singleton : LSSingeleton x x.
+Inductive LSSingleton x : LRSet :=
+  ls_singleton : LSSingleton x x.
 
 Class USet (US : LRSet) := {
     uset_members_are_unifications : US ⊆1 Unif
@@ -292,7 +332,7 @@ Inductive MinimumUPosSuperset (US : LRSet) : LRSet :=
   | muc_cons V : Unif V -> U ⊆2 V -> MinimumUPosContaining U V. *)
 (* Definition MinimumUPosSuperset (US : LRSet) : LRSet
   := λ u, ∀ VS, US ⊆1 VS -> UPossibilities VS -> VS u. *)
-Definition MinimumUPosContaining (U : LRel) := MinimumUPosSuperset (LSSingeleton U).
+Definition MinimumUPosContaining (U : LRel) := MinimumUPosSuperset (LSSingleton U).
 
 Lemma MUSC_U U : Unif U -> MinimumUPosContaining U U.
   econstructor. constructor. assumption. trivial.
@@ -348,6 +388,10 @@ Inductive UPushL (U : LRel) : LRel :=
 
 Inductive UPullR (U : LRel) : LRel :=
   | u_pullR l m : U (ℝ::l) (ℝ::m) -> UPullR U l m.
+Hint Extern 1 (UPullR _ _ _) => progress apply u_pullR; shelve : simplify.
+Hint Extern 5 => progress match goal with
+  | H : UPullR _ ?x ?y |- _ => dontforget x; dontforget y; destruct H
+  end; shelve : simplify.
 
 Instance UPushL_Refl U : LRRefl (UPushL U).
   constructor; apply u_pushL_refl.
@@ -646,7 +690,172 @@ Lemma rus_rfu_correct rfu : UsRus (rus_rfu rfu) ≡1 MinimumUPosContaining (URfu
   }
 Qed.
 
+Inductive DisjointLocations :=
+  | dl_root
+  | dl_branch (l r : DisjointLocations).
+
+Inductive InDL : DisjointLocations -> Location -> Prop :=
+  | idl_root : InDL dl_root nil
+  | idl_left l r x : InDL l x -> InDL (dl_branch l r) (𝕃::x)
+  | idl_right l r x : InDL r x -> InDL (dl_branch l r) (ℝ::x)
+  .
+
+Inductive UniteDL (dl : DisjointLocations) : LRel :=
+  | udl_refl x : UniteDL dl x x
+  | udl_cousins (x y d : Location) :
+      InDL dl x -> InDL dl y -> UniteDL dl (x++d) (y++d)
+  .
+
+Instance UniteDL_Refl dl : LRRefl (UniteDL dl).
+  constructor. intros. apply udl_refl.
+Qed.
+
+Lemma DLs_same_suffix [dl x y d0 d1] :
+  InDL dl x -> InDL dl y -> (x ++ d0) = (y ++ d1) -> d0 = d1.
+  revert x y d0 d1.
+  induction dl.
+  intros.
+  dependent destruction H;
+  dependent destruction H0.
+  rewrite 2 app_nil_l in H1; assumption.
+
+  intros.
+  dependent destruction H;
+  dependent destruction H0;
+  rewrite <- 2 app_comm_cons in H1;
+  try discriminate.
+
+  {
+    injection H1 as H2.
+    refine (IHdl1 _ _ _ _ _ _ H2); assumption.
+  }
+  {
+    injection H1 as H2.
+    refine (IHdl2 _ _ _ _ _ _ H2); assumption.
+  }
+Qed.
+  
+
+Instance UniteDL_U dl : Unif (UniteDL dl).
+  apply u_from_rewrites_and_refl; [exact _|].
+
+  intros xd yd Uxyd l m Uxdm.
+  destruct Uxyd; simplify.
+  remember ((x ++ d) ++ l).
+  destruct Uxdm; simplify.
+  {
+    rewrite <- 2 app_assoc.
+    apply udl_cousins; assumption.
+  }
+  {
+    rewrite <- app_assoc in Heql0.
+    rewrite (DLs_same_suffix H1 H Heql0).
+    rewrite <- app_assoc.
+    apply udl_cousins; assumption.
+  }
+Qed.
+
+Inductive ReflOrCousins (x y xd yd : Location) : Prop :=
+  | cor_refl : xd = yd -> ReflOrCousins x y xd yd
+  | cor_cousins_xy (d : Location) : xd = x++d -> yd = y++d -> ReflOrCousins x y xd yd
+  | cor_cousins_yx (d : Location) : xd = y++d -> yd = x++d -> ReflOrCousins x y xd yd
+  .
+
+Instance ReflOrCousins_Refl x y : LRRefl (ReflOrCousins x y).
+  constructor. intros. apply cor_refl. reflexivity.
+Qed.
+Instance ReflOrCousins_U x y : Unif (ReflOrCousins x y).
+  apply u_from_rewrites_and_refl; [exact _|].
+  intros xd yd Rxyd l m R.
+  destruct Rxyd; simplify.
+  {
+    destruct R; simplify.
+    apply cor_cousins_yx with (d ++ l); apply eq_sym; apply app_assoc.
+    {
+      rewrite <- app_assoc in H.
+      apply app_inv_head_iff in H.
+      rewrite <- H.
+      apply cor_refl.
+      apply eq_sym; apply app_assoc.
+    }
+    apply cor_cousins_xy with (d ++ l).
+    ; apply eq_sym; apply app_assoc.
+    {
+      rewrite <- app_assoc in H.
+      apply app_inv_head_iff in H.
+      rewrite <- H.
+      apply cor_refl.
+      apply eq_sym; apply app_assoc.
+    }
+  }
+  
+  ; apply eq_sym; apply app_assoc.
+
+  destruct R; simplify.
+  apply cor_cousins with (d ++ l).
+  simplify.
+  remember (x0 ++ z). destruct H0. assumption.
+Qed.
+Lemma MUR_cousins_or_refl x y xd yd :
+  MinimumURelating x y xd yd -> ReflOrCousins x y xd yd.
+  intro H.
+  unfold MinimumURelating,MinimumUSuperset in H.
+  apply H.
+  intros x0 y0 l. destruct l.
+  apply cor_cousins with nil; apply eq_sym; apply app_nil_r.
+
+
 Definition rfu_L_R := rfu_pullR (rfu_pullR (rfu_require_both rfu_LR_RRL rfu_LR_RRR)).
+Lemma rfu_L_R_correct : URfu rfu_L_R ≡2 MinimumURelating (𝕃::nil) (ℝ::nil).
+  split; cbn; intro.
+  {
+    simplify.
+  }
+  {
+    simplify.
+  }
+
+
+
+
+    remember (ℝ :: ℝ :: l). remember (ℝ :: ℝ :: m).
+    destruct H; simplify.
+    
+    (* destruct H. *)
+    (* simplify. *)
+    (* cbv in H. *)
+    {
+      assert (l=m).
+      unfold U_LR_RRL,MinimumURelating,MinimumUSuperset in H.
+      apply H.
+      admit.
+      rewrite H0.
+      apply lr_refl.
+    }
+    {
+      admit.
+    }
+    {
+      assert (Unif (URequireBoth U_LR_RRL U_LR_RRR)); [exact _|].
+      pose (lr_trans _ _ _ H H0).
+    }
+
+    exfalso.
+    refine (H (λ x y, ¬ LRSingleton (ℝ :: ℝ :: l) (ℝ :: ℝ :: m) x y) _ _ _).
+    {
+      intros.
+      destruct H0.
+      intro.
+      dependent destruction H0.
+    }
+
+    pose (H eq).
+    intros.
+    (* remember (𝕃 :: ℝ :: nil).
+    remember (ℝ :: ℝ :: 𝕃 :: nil). *)
+    destruct H0.
+    destruct H.
+  
 
 Definition rfu_pushR (r : RFU) : RFU :=
   rfu_require_both rfu_L_R (rfu_pushL r).
