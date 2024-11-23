@@ -27,8 +27,13 @@ Inductive Location :=
   | l_left : Location -> Location
   | l_right : Location -> Location
   .
+(* Definition ℒ := l_left. *)
+Notation "'𝕃,' l" := (l_left l) (at level 5, format "'𝕃,' l").
+Notation "'ℝ,' l" := (l_right l) (at level 5).
+Notation "'𝕃'" := (l_left l_root) (at level 5).
+Notation "'ℝ'" := (l_right l_root) (at level 5).
 
-Fixpoint l_extend (l : Location) (extension : Location) := match l with 
+Fixpoint l_extend (l extension : Location) := match l with 
   | l_root => extension
   | l_left l => l_left (l_extend l extension)
   | l_right l => l_right (l_extend l extension)
@@ -53,6 +58,29 @@ Notation "P '≡2' Q" := (∀ x y, P x y <-> Q x y) (at level 70, no associativi
 Definition LRel :=
   Location -> Location -> Prop.
 
+(* Inductive View R a b : LRel :=
+  | view_cons x y : R (l_extend a x) (l_extend b y) -> View R a b x y.
+Print View_ind.
+
+Definition ViewRefl R a b :=
+  ∀ P,
+    (∀ x y, R (l_extend a x) (l_extend b y) → P x y) →
+    (∀ x, P x x).
+Definition ViewRefl2 R a b :=
+  (∀ x, R (l_extend a x) (l_extend b x)). *)
+
+(* Definition RewriteThingy R a b := *)
+
+(* Inductive SameDescendant  : Location -> Location -> LRel :=
+  | sd_same x : SameDescendant l_root x l_root x
+  | sd_cons ax dx ay dy : SameDescendant ax dx ay dy -> SameDescendant (𝕃,ax) (𝕃,dx) ay dy. *)
+
+Definition LeftPrefixRewrites (R : LRel) x y :=
+  ∀ z w, R (l_extend x z) w -> R (l_extend y z) w.
+
+Definition Unif (R : LRel) := 
+  R ≡2 LeftPrefixRewrites R.
+
 Class LRRefl (R : LRel) := {
   lr_refl : ∀ a, R a a
   }.
@@ -70,6 +98,8 @@ Class LREquivalence (R : LRel) := lre_cons {
 Hint Immediate lre_cons : typeclass_instances.
 Definition RewritesPossibleInLR (R : LRel) : LRel :=
   λ l m, ∀ n, (R n l -> R n m) ∧ (R l n -> R m n).
+Definition PrefixRewritesPossibleInLR (R : LRel) : LRel :=
+  λ l m, ∀ n, (R n l? -> R n m?) ∧ (R l? n -> R m? n).
 Definition PairsWithChildrenRelatedBy (R : LRel) : LRel :=
   λ l m, (R (l_left_child l) (l_left_child m) ∧
         R (l_right_child l) (l_right_child m)).
@@ -212,40 +242,92 @@ Qed.
 
 (* Reified Finite Unifications *)
 Inductive RFU :=
-  | rfu_unify_children
-  | rfu_pullL (_:RFU)
-  | rfu_pushR (_:RFU)
-  | rfu_pushLL (_:RFU)
-  | rfu_pushLR (_:RFU)
+  | rfu_L_R
+  | rfu_L_RL
+  | rfu_pushL (_:RFU)
+  | rfu_pullR (_:RFU)
   | rfu_require_both (_ _:RFU)
   .
 
 (* Reified Unifications Set *)
 Inductive RUS :=
-  | rus_unify_children
-  | rus_pullL (_:RUS)
-  | rus_pushR (_:RUS)
-  | rus_pushLL (_:RUS)
-  | rus_pushLR (_:RUS)
+  | rus_L_R
+  | rus_L_RL
+  | rus_pushL (_:RUS)
+  | rus_pullR (_:RUS)
   | rus_intersection (_ _:RUS)
-  | rus_union (_ _:RUS)
+  (* | rus_union (_ _:RUS) *)
   | rus_iterate (base step:RUS)
   .
 Declare Scope rus_scope.
 Bind Scope rus_scope with RUS.
 
+Definition U_L_R := MinimumURelating 𝕃 ℝ.
+Definition U_L_RL := MinimumURelating 𝕃 ℝ,𝕃.
 
-Definition UUnifyChildren := MinimumURelating (l_left l_root) (l_right l_root).
+Definition US_L_R := MinimumUPosContaining U_L_R.
+Definition US_L_RL := MinimumUPosContaining U_L_RL.
 
-Definition USUnifyChildren := MinimumUPosContaining UUnifyChildren.
+Inductive UPushL (U : LRel) : LRel :=
+  | u_pushL l m : U l m -> UPushL U (𝕃,l) (𝕃,m)
+  | u_pushL_refl l : UPushL U l l.
 
-(* Inductive URightObeys (U : LRel) : LRel :=
-  | u_right_obeys l m : U l m -> URightObeys U (l_right l) (l_right m).
+Inductive UPullR (U : LRel) : LRel :=
+  | u_pullR l m : U (ℝ,l) (ℝ,m) -> UPullR U l m.
 
-Inductive ULeftOf (U : LRel) : LRel :=
-  | u_left_of l m : U (l_left l) (l_left m) -> ULeftOf U l m. *)
+Instance UPushL_Refl U : LRRefl (UPushL U).
+  constructor. apply u_pushL_refl.
+Qed.
+Instance UPullR_Refl U : LRRefl U -> LRRefl (UPullR U).
+  constructor; intros. constructor. apply lr_refl.
+Qed.
+Instance UPushL_Sym U : LRSym U -> LRSym (UPushL U).
+  constructor; intros. destruct H0; [constructor|apply u_pushL_refl].
+  apply lr_sym; assumption.
+Qed.
+Instance UPullR_Sym U : LRSym U -> LRSym (UPullR U).
+  constructor; intros. constructor. destruct H0.
+  apply lr_sym; assumption.
+Qed.
+Instance UPushL_Trans U : LRTrans U -> LRTrans (UPushL U).
+  constructor; intros. destruct H0. remember 𝕃,m. destruct H1. injection Heql0 as ->; econstructor; eapply lr_trans; eassumption.
+  rewrite Heql0; constructor; assumption.
+  assumption.
+Qed.
+Instance UPullR_Trans U : LRTrans U -> LRTrans (UPullR U).
+  constructor; intros. constructor. destruct H0. destruct H1.
+  eapply lr_trans; eassumption.
+Qed.
+Instance UPushL_Equiv U : LREquivalence U -> LREquivalence (UPushL U).
+  constructor; exact _.
+Qed.
+Instance UPullR_Equiv U : LREquivalence U -> LREquivalence (UPullR U).
+  constructor; exact _.
+Qed.
+Instance UPushL_children_parent U : LRRelatesLocsWhoseChildrenItRelates (UPushL U).
+  constructor; intros. destruct H.
+  remember (l_left_child x). remember (l_left_child y).
+  remember (l_right_child x). remember (l_right_child y).
+  destruct H, H0.
+
+  apply lr_relates_locs_whose_children_it_relates.
+  destruct H.
+  constructor; [apply H|apply H2]; assumption.
+  all: apply cheat.
+Qed.
+
+Instance UPushL_parent_children U : LRRelatesLocsWhoseParentItRelates U -> LRRelatesLocsWhoseParentItRelates (UPushL U).
+  intro; constructor; intros l m UUlm.
+  destruct UUlm.
+  destruct (lr_relates_locs_whose_parent_it_relates _ _ H0).
+   constructor.
+  constructor; assumption.
+  split; intros; apply (@lr_relates_locs_whose_parent_it_relates U _ _ _); apply H; assumption.
+Qed.
+
+
 (* Definition LocationCorrespondence := Location -> Location -> Prop. *)
-Inductive LRChangeLocations (R : LRel) (U : LRel) : LRel :=
+(* Inductive LRChangeLocations (R : LRel) (U : LRel) : LRel :=
   | lr_change_locations_in l1 l2 m1 m2 :
     R l1 l2 -> R m1 m2 -> U l1 m1 ->
       LRChangeLocations R U l2 m2.
@@ -295,15 +377,15 @@ Inductive PushLR : LRel :=
   | pushlr_right l : PushLR (l_right l) (l_right l).
 
 Inductive PushR : LRel := pushr l : PushR l (l_right l).
-Inductive PullL : LRel := pulll l : PullL (l_left l) l.
+Inductive PullL : LRel := pulll l : PullL (l_left l) l. *)
 
 (* Inductive UMapLocations (map : Location -> Location) (U : LRel) : LRel :=
   | u_pulldownLLin l m : U l m -> UMapLocations map U (map l) (map m). *)
 
-Definition UPullL := UChangeLocations PullL.
+(* Definition UPullL := UChangeLocations PullL.
 Definition UPushR := UChangeLocations PushR.
 Definition UPushLL := UChangeLocations PushLL.
-Definition UPushLR := UChangeLocations PushLR.
+Definition UPushLR := UChangeLocations PushLR. *)
 
 Inductive USApplyInAllCases (map : LRel -> LRel) (US : LRSet) : LRSet :=
   us_apply_in_all_cases u : US u -> USApplyInAllCases map US (map u).
