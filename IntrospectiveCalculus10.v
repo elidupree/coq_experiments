@@ -24,6 +24,9 @@ Set Typeclasses Depth 3.
 
 Inductive WhichChild := wc_left | wc_right.
 Definition Location := list WhichChild.
+Bind Scope list_scope with Location.
+Notation "'𝕃'" := wc_left.
+Notation "'ℝ'" := wc_right.
 
 (* Definition ℒ := l_left. *)
 (* Notation "'𝕃,' l" := (l_left l) (at level 5, format "'𝕃,' l").
@@ -43,10 +46,12 @@ Notation "'ℝ'" := (l_right l_root) (at level 5). *)
 Definition l_right_child := l_extend (l_right l_root). *)
 
 (****************************************************
-                   Unifications
+                   Unif
 ****************************************************)
 
 Notation "P '⊆1' Q" := (∀ x, P x -> Q x) (at level 70, no associativity) : type_scope.
+Notation "P '∧1' Q" := (λ x, P x ∧ Q x) (at level 80, right associativity) : type_scope.
+Notation "P '∨1' Q" := (λ x, P x ∨ Q x) (at level 85, right associativity) : type_scope.
 (* Notation "P '⊇1' Q" := (Q ⊆1 P) (at level 70, no associativity) : type_scope. *)
 Notation "P '≡1' Q" := (∀ x, P x <-> Q x) (at level 70, no associativity) : type_scope.
 Notation "P '⊆2' Q" := (∀ x y, P x y -> Q x y) (at level 70, no associativity) : type_scope.
@@ -72,12 +77,6 @@ Definition ViewRefl2 R a b :=
 (* Inductive SameDescendant  : Location -> Location -> LRel :=
   | sd_same x : SameDescendant l_root x l_root x
   | sd_cons ax dx ay dy : SameDescendant ax dx ay dy -> SameDescendant (𝕃,ax) (𝕃,dx) ay dy. *)
-
-Definition LeftPrefixRewrites (R : LRel) : LRel :=
-  λ x y, ∀ z w, R (x++z) w -> R (y++z) w.
-
-Definition Unif (R : LRel) := 
-  R ≡2 LeftPrefixRewrites R.
 
 Class LRRefl (R : LRel) := {
   lr_refl : ∀ a, R a a
@@ -120,31 +119,71 @@ Class LRRelatesLocsWhoseParentItRelates (R : LRel) := {
   eapply lr_trans; eassumption.
   eapply lr_trans; [apply lr_sym|]; eassumption.
 Qed. *)
+
+Definition LeftPrefixRewrites (R : LRel) : LRel :=
+  λ x y, ∀ z w, R (x++z) w -> R (y++z) w.
+
+(* "IsUnificationPredicate" perhaps, but that's long *)
+Class Unif (R : LRel) := {
+  unif : R ≡2 LeftPrefixRewrites R
+}.
+
+Lemma left_rewrite_exact R [x y z] :
+  LeftPrefixRewrites R x y -> R x z -> R y z.
+  intros.
+  rewrite <- (app_nil_r y).
+  apply H.
+  rewrite (app_nil_r x).
+  assumption.
+Qed.
 Lemma uhhhh R : (LeftPrefixRewrites R ⊆2 R) -> LRRefl R.
   unfold LeftPrefixRewrites; constructor; intros.
   apply H; intros; assumption.
 Qed.
 Lemma rewrites_sym R : (R ⊆2 LeftPrefixRewrites R) -> LRRefl R -> LRSym R.
   constructor. intros.
-  rewrite <- (app_nil_r b).
-  apply (H _ _ H1).
-  rewrite (app_nil_r a).
+  apply (left_rewrite_exact (H _ _ H1)).
   apply lr_refl.
 Qed.
 Lemma lrr_includes_rewrites R : (R ⊆2 LeftPrefixRewrites R) -> LRRefl R -> (LeftPrefixRewrites R ⊆2 R).
   intros.
-  rewrite <- (app_nil_r x).
-  eapply H.
-  unfold LeftPrefixRewrites in H0.
-  apply H0. apply lr_refl.
+  apply rewrites_sym; trivial.
+  apply (left_rewrite_exact H1).
+  apply lr_refl.
+Qed.
+Lemma u_from_rewrites_and_refl R {rrefl : LRRefl R} : (R ⊆2 LeftPrefixRewrites R) -> Unif R.
+  constructor; split; intros.
+  apply H; assumption.
+  apply lrr_includes_rewrites; assumption.
 Qed.
 
-Class Unifications (R : LRel) := u_cons {
+Lemma u_refl R : Unif R -> LRRefl R.
+  intros. apply uhhhh. apply unif.
+Qed.
+Hint Immediate u_refl : typeclass_instances.
+Lemma u_sym R : Unif R -> LRSym R.
+  intros. apply rewrites_sym. apply unif. apply u_refl; assumption.
+Qed.
+Hint Immediate u_sym : typeclass_instances.
+Lemma u_trans R : Unif R -> LRTrans R.
+  constructor; intros.
+  apply lr_sym in H0.
+  apply unif in H0.
+  apply (left_rewrite_exact H0).
+  assumption.
+Qed.
+Hint Immediate u_trans : typeclass_instances.
+Lemma u_equiv R : Unif R -> LREquivalence R.
+  constructor; exact _.
+Qed.
+Hint Immediate u_equiv : typeclass_instances.
+
+(* Class Unif (R : LRel) := u_cons {
     u_equiv :: LREquivalence R
   ; u_children_parent :: LRRelatesLocsWhoseChildrenItRelates R
   ; u_parent_children :: LRRelatesLocsWhoseParentItRelates R
   }.
-Hint Immediate u_cons : typeclass_instances.
+Hint Immediate u_cons : typeclass_instances. *)
 
 (* Definition LRCanRewriteWithLR (R Rewriter : LRel) :=
   ∀ 
@@ -162,7 +201,7 @@ Definition equiv A B {_dab : Derives A B} {_dba : Derives B A} (a:A) (b:B) := de
 Notation "P '⊣⊢' Q" := (equiv P Q) (at level 70, no associativity)
   : type_scope.
 
-(* Class Unifications (U : LRel) : Prop := {
+(* Class Unif (U : LRel) : Prop := {
       uv_means_you_can_rewrite : ∀ l m,
         U l m <-> (
           ∀ n, (U n l -> U n m) ∧ (U l n -> U m n)
@@ -181,12 +220,24 @@ Instance d_u : Derives LRel LRel := {
   }.
 
 Definition MinimumUSuperset (R : LRel) : LRel
-  := λ l m, ∀ U, R ⊢ U -> Unifications U -> U l m.
+  := λ l m, ∀ U, R ⊆2 U -> Unif U -> U l m.
 
-Lemma MUC_Superset R : R ⊆2 MinimumUSuperset R.
+Lemma MUS_Superset R : R ⊆2 MinimumUSuperset R.
   unfold MinimumUSuperset; intros. apply H0; assumption.
 Qed.
-Instance MUC_Refl R : LRRefl (MinimumUSuperset R).
+Instance MUS_Refl R : LRRefl (MinimumUSuperset R).
+  unfold MinimumUSuperset; constructor; intros.
+  apply lr_refl.
+Qed.
+Instance MUS_U R : Unif (MinimumUSuperset R).
+  apply u_from_rewrites_and_refl; [exact _|].
+  unfold MinimumUSuperset; unfold LeftPrefixRewrites; intros.
+  specialize (H _ H1 H2).
+  specialize (H0 _ H1 H2).
+  apply unif in H. apply H; assumption.
+Qed.
+
+(* Instance MUC_Refl R : LRRefl (MinimumUSuperset R).
   unfold MinimumUSuperset; constructor; intros.
   apply lr_refl.
 Qed.
@@ -209,21 +260,23 @@ Instance MUC_parent_children R : LRRelatesLocsWhoseParentItRelates (MinimumUSupe
   split; intros; apply (@lr_relates_locs_whose_parent_it_relates U _ _ _); apply H; assumption.
 Qed.
 Instance MUC_Equiv R : LREquivalence (MinimumUSuperset R) := _.
-Instance MUC_U R : Unifications (MinimumUSuperset R) := _.
+Instance MUC_U R : Unif (MinimumUSuperset R) := _. *)
 
-Inductive LRelSingleton x y : LRel :=
-  lr_singleton : LRelSingleton x y x y.
-Definition MinimumURelating x y := MinimumUSuperset (LRelSingleton x y).
+Inductive LRSingeleton x y : LRel :=
+  lr_singleton : LRSingeleton x y x y.
+Definition MinimumURelating x y := MinimumUSuperset (LRSingeleton x y).
 
 Definition LRSet := LRel -> Prop.
+Inductive LSSingeleton x : LRSet :=
+  ls_singleton : LSSingeleton x x.
 
 Class USet (US : LRSet) := {
-    uset_members_are_unifications : US ⊆1 Unifications
+    uset_members_are_unifications : US ⊆1 Unif
   }.
 Class UPossibilities (US : LRSet) := {
     upo_uset :: USet US
   ; upo_includes_supersets : 
-      ∀ U1 U2, Unifications U2 -> U1 ⊆2 U2 -> US U1 -> US U2
+      ∀ U1 U2, Unif U2 -> U1 ⊆2 U2 -> US U1 -> US U2
   }.
   
 (* Definition USNaiveSuperset (A B : LRSet) :=
@@ -233,38 +286,44 @@ Instance d_us : Derives LRSet LRSet := {
     derives := λ A B, B ⊆1 A
   }.
 
-Inductive MinimumUPosContaining (U : LRel) : LRSet :=
-  | muc_cons V : Unifications V -> U ⊆2 V -> MinimumUPosContaining U V.
+Inductive MinimumUPosSuperset (US : LRSet) : LRSet :=
+  | muc_cons U V : US U -> Unif V -> U ⊆2 V -> MinimumUPosSuperset US V.
+(* Inductive MinimumUPosContaining (U : LRel) : LRSet :=
+  | muc_cons V : Unif V -> U ⊆2 V -> MinimumUPosContaining U V. *)
+(* Definition MinimumUPosSuperset (US : LRSet) : LRSet
+  := λ u, ∀ VS, US ⊆1 VS -> UPossibilities VS -> VS u. *)
+Definition MinimumUPosContaining (U : LRel) := MinimumUPosSuperset (LSSingeleton U).
 
-Lemma MUSC_U U : Unifications U -> MinimumUPosContaining U U.
-  constructor; trivial.
+Lemma MUSC_U U : Unif U -> MinimumUPosContaining U U.
+  econstructor. constructor. assumption. trivial.
 Qed.
-Instance MUSC_USet R : USet (MinimumUPosContaining R).
+Instance MUSC_USet R : USet (MinimumUPosSuperset R).
   constructor; intros; destruct H. assumption.
 Qed.
-Instance MUSC_UPoss R : UPossibilities (MinimumUPosContaining R).
-  constructor; [exact _|]. intros; destruct H.
-  constructor; [exact _|]. destruct H1.
-  intros l m Rlm. apply H0. apply H1. assumption.
+Instance MUSC_UPoss R : UPossibilities (MinimumUPosSuperset R).
+  constructor; [apply MUSC_USet|]. intros. destruct H1.
+  econstructor; trivial. exact H1. intros l m Ulm. apply H0. apply H3. assumption.
 Qed.
 
 (****************************************************
                 Reified unifications
 ****************************************************)
 
-(* Reified Finite Unifications *)
+(* Reified Finite Unif *)
 Inductive RFU :=
-  | rfu_L_R
-  | rfu_L_RL
+  | rfu_LL_RL
+  | rfu_LR_RRL
+  | rfu_LR_RRR
   | rfu_pushL (_:RFU)
   | rfu_pullR (_:RFU)
   | rfu_require_both (_ _:RFU)
   .
 
-(* Reified Unifications Set *)
+(* Reified Unif Set *)
 Inductive RUS :=
-  | rus_L_R
-  | rus_L_RL
+  | rus_LL_RL
+  | rus_LR_RRL
+  | rus_LR_RRR
   | rus_pushL (_:RUS)
   | rus_pullR (_:RUS)
   | rus_intersection (_ _:RUS)
@@ -274,150 +333,159 @@ Inductive RUS :=
 Declare Scope rus_scope.
 Bind Scope rus_scope with RUS.
 
-Definition U_L_R := MinimumURelating 𝕃 ℝ.
-Definition U_L_RL := MinimumURelating 𝕃 ℝ,𝕃.
+Locate "[]".
+Definition U_LL_RL := MinimumURelating (𝕃::𝕃::nil) (ℝ::𝕃::nil).
+Definition U_LR_RRL := MinimumURelating (𝕃::ℝ::nil) (ℝ::ℝ::𝕃::nil).
+Definition U_LR_RRR := MinimumURelating (𝕃::ℝ::nil) (ℝ::ℝ::ℝ::nil).
 
-Definition US_L_R := MinimumUPosContaining U_L_R.
-Definition US_L_RL := MinimumUPosContaining U_L_RL.
+Definition US_LL_RL := MinimumUPosContaining U_LL_RL.
+Definition US_LR_RRL := MinimumUPosContaining U_LR_RRL.
+Definition US_LR_RRR := MinimumUPosContaining U_LR_RRR.
 
 Inductive UPushL (U : LRel) : LRel :=
-  | u_pushL l m : U l m -> UPushL U (𝕃,l) (𝕃,m)
+  | u_pushL l m : U l m -> UPushL U (𝕃::l) (𝕃::m)
   | u_pushL_refl l : UPushL U l l.
 
 Inductive UPullR (U : LRel) : LRel :=
-  | u_pullR l m : U (ℝ,l) (ℝ,m) -> UPullR U l m.
+  | u_pullR l m : U (ℝ::l) (ℝ::m) -> UPullR U l m.
 
 Instance UPushL_Refl U : LRRefl (UPushL U).
-  constructor. apply u_pushL_refl.
+  constructor; apply u_pushL_refl.
 Qed.
-Instance UPullR_Refl U : LRRefl U -> LRRefl (UPullR U).
-  constructor; intros. constructor. apply lr_refl.
-Qed.
-Instance UPushL_Sym U : LRSym U -> LRSym (UPushL U).
-  constructor; intros. destruct H0; [constructor|apply u_pushL_refl].
-  apply lr_sym; assumption.
-Qed.
-Instance UPullR_Sym U : LRSym U -> LRSym (UPullR U).
-  constructor; intros. constructor. destruct H0.
-  apply lr_sym; assumption.
-Qed.
-Instance UPushL_Trans U : LRTrans U -> LRTrans (UPushL U).
-  constructor; intros. destruct H0. remember 𝕃,m. destruct H1. injection Heql0 as ->; econstructor; eapply lr_trans; eassumption.
-  rewrite Heql0; constructor; assumption.
-  assumption.
-Qed.
-Instance UPullR_Trans U : LRTrans U -> LRTrans (UPullR U).
-  constructor; intros. constructor. destruct H0. destruct H1.
-  eapply lr_trans; eassumption.
-Qed.
-Instance UPushL_Equiv U : LREquivalence U -> LREquivalence (UPushL U).
-  constructor; exact _.
-Qed.
-Instance UPullR_Equiv U : LREquivalence U -> LREquivalence (UPullR U).
-  constructor; exact _.
-Qed.
-Instance UPushL_children_parent U : LRRelatesLocsWhoseChildrenItRelates (UPushL U).
-  constructor; intros. destruct H.
-  remember (l_left_child x). remember (l_left_child y).
-  remember (l_right_child x). remember (l_right_child y).
-  destruct H, H0.
-
-  apply lr_relates_locs_whose_children_it_relates.
-  destruct H.
-  constructor; [apply H|apply H2]; assumption.
-  all: apply cheat.
-Qed.
-
-Instance UPushL_parent_children U : LRRelatesLocsWhoseParentItRelates U -> LRRelatesLocsWhoseParentItRelates (UPushL U).
-  intro; constructor; intros l m UUlm.
-  destruct UUlm.
-  destruct (lr_relates_locs_whose_parent_it_relates _ _ H0).
-   constructor.
-  constructor; assumption.
-  split; intros; apply (@lr_relates_locs_whose_parent_it_relates U _ _ _); apply H; assumption.
-Qed.
-
-
-(* Definition LocationCorrespondence := Location -> Location -> Prop. *)
-(* Inductive LRChangeLocations (R : LRel) (U : LRel) : LRel :=
-  | lr_change_locations_in l1 l2 m1 m2 :
-    R l1 l2 -> R m1 m2 -> U l1 m1 ->
-      LRChangeLocations R U l2 m2.
-
-Inductive LRInSomeSubtree (R : LRel) : LRel :=
-  | lriss_r : R ⊆2 LRInSomeSubtree R
-  | lriss_in_left a b : LRInSomeSubtree R a b -> LRInSomeSubtree R (l_left a) (l_left b)
-  | lriss_in_right a b : LRInSomeSubtree R a b -> LRInSomeSubtree R (l_right a) (l_right b)
-  .
-Inductive LDisjoint : LRel :=
-  | ld_split a b : LDisjoint (l_left a) (l_right b)
-  | ld_in_left a b : LDisjoint a b -> LDisjoint (l_left a) (l_left b)
-  | ld_in_right a b : LDisjoint a b -> LDisjoint (l_right a) (l_right b)
-  .
-
-
-Lemma UCL_Sym R U : LRSym U -> LRSym (LRChangeLocations R U).
-  constructor; intros.
-  destruct H0.
-  econstructor; [eassumption|eassumption|].
-  apply lr_sym; assumption.
-Qed.
-Lemma UCL_Trans R U : R ⊆2 LDisjoint -> LRTrans U -> LRTrans (LRChangeLocations R U).
-  constructor; intros.
-  destruct H0 as (a1, a2, b1, b2, Ra, Rb, Uab).
-  destruct H1 as (bb1, bb2, c1, c2, Rbb, Rc, Ubc).
-  econstructor; [eassumption|eassumption|].
-  eapply lr_trans.
-  rename n3 into m3.
-  rename l3 into m2.
-
-Lemma UCL_U R U : Unifications U -> Unifications (UChangeLocations R U).
-  intro UU.
-  repeat constructor; intros.
-  admit.
+Instance UPushL_U U : Unif U -> Unif (UPushL U).
+  intro. apply u_from_rewrites_and_refl; [exact _|].
+  unfold LeftPrefixRewrites; intros.
+  
+  remember (x ++ z).
+  remember (y ++ z).
+  destruct H0, H1.
   {
-    destruct H.
-    econstructor.
+    rewrite <- app_comm_cons in Heql.
+    rewrite <- app_comm_cons in Heql0.
+    injection Heql as ->.
+    rewrite Heql0; clear Heql0.
+    apply u_pushL.
+    apply unif in H0. apply H0. assumption.
   }
+  {
+    rewrite <- app_comm_cons in Heql.
+    rewrite <- app_comm_cons in Heql0.
+    rewrite Heql; clear Heql.
+    rewrite Heql0; clear Heql0.
+    apply u_pushL.
+    apply unif in H0. apply H0. apply lr_refl.
+  }
+  {
+    rewrite <- Heql0 in Heql; clear Heql0.
+    rewrite <- Heql; clear Heql.
+    apply u_pushL; assumption.
+  }
+  {
+    rewrite Heql; clear Heql.
+    rewrite Heql0; clear Heql0.
+    apply u_pushL_refl.
+  }
+Qed.
+Lemma UPushL_monotonic [U V : LRel] : U ⊆2 V -> UPushL U ⊆2 UPushL V.
+  intros U_V l m UUlm.
+  destruct UUlm.
+  apply u_pushL; apply U_V; assumption.
+  apply u_pushL_refl.
+Qed.
 
-Inductive PushLL : LRel :=
-  | pushll_left l : PushLL (l_left l) (l_left (l_left l))
-  | pushll_right l : PushLL (l_right l) (l_right l).
+Instance UPullR_Refl U : LRRefl U -> LRRefl (UPullR U).
+  constructor. constructor. apply lr_refl.
+Qed.
+Instance UPullR_U U : Unif U -> Unif (UPullR U).
+  intro. apply u_from_rewrites_and_refl; [exact _|].
+  unfold LeftPrefixRewrites; intros.
+  
+  remember (x ++ z).
+  remember (y ++ z).
+  destruct H0, H1.
+  constructor.
+  
+  rewrite Heql in H1; clear l Heql.
+  rewrite Heql0; clear l0 Heql0.
+  apply unif in H0. apply H0. assumption.
+Qed.
+Lemma UPullR_monotonic [U V : LRel] : U ⊆2 V -> UPullR U ⊆2 UPullR V.
+  intros U_V l m UUlm.
+  destruct UUlm.
+  apply u_pullR; apply U_V; assumption.
+Qed.
 
-Inductive PushLR : LRel :=
-  | pushlr_left l : PushLR (l_left l) (l_left (l_right l))
-  | pushlr_right l : PushLR (l_right l) (l_right l).
+(* Inductive USApplyInAllCases (map : LRel -> LRel) (US : LRSet) : LRSet :=
+  us_apply_in_all_cases u v : US u -> (map u) ⊆2 v -> USApplyInAllCases map US v. *)
+Inductive MappedLRSets (map : LRel -> LRel) (US : LRSet) : LRSet :=
+  mapped_lrset u : US u -> MappedLRSets map US (map u).
+Definition USApplyInAllCases (map : LRel -> LRel) US := MinimumUPosSuperset (MappedLRSets map US).
+Definition USPushL := USApplyInAllCases UPushL.
+Definition USPullR := USApplyInAllCases UPullR.
 
-Inductive PushR : LRel := pushr l : PushR l (l_right l).
-Inductive PullL : LRel := pulll l : PullL (l_left l) l. *)
+Lemma USApplyInAllCases_monotonic map (map_monotonic : ∀ U V, U ⊆2 V -> map U ⊆2 map V) :
+  (∀ US VS, US ⊆1 VS -> USApplyInAllCases map US ⊆1  USApplyInAllCases map VS).
+  intros.
+  destruct H0. destruct H0.
+  econstructor. econstructor.
+  apply H. apply H0.
+  assumption. assumption.
+Qed.
 
-(* Inductive UMapLocations (map : Location -> Location) (U : LRel) : LRel :=
-  | u_pulldownLLin l m : U l m -> UMapLocations map U (map l) (map m). *)
-
-(* Definition UPullL := UChangeLocations PullL.
-Definition UPushR := UChangeLocations PushR.
-Definition UPushLL := UChangeLocations PushLL.
-Definition UPushLR := UChangeLocations PushLR. *)
-
-Inductive USApplyInAllCases (map : LRel -> LRel) (US : LRSet) : LRSet :=
-  us_apply_in_all_cases u : US u -> USApplyInAllCases map US (map u).
-Definition USPullL := USApplyInAllCases UPullL.
-Definition USPushR := USApplyInAllCases UPushR.
-Definition USPushLL := USApplyInAllCases UPushLL.
-Definition USPushLR := USApplyInAllCases UPushLR.
-
-Definition USUnion (A B : LRSet) : LRSet := λ u, A u ∨ B u.
-Definition USIntersection (A B : LRSet) : LRSet := λ u, A u ∧ B u.
+(* Definition USUnion (A B : LRSet) : LRSet := λ u, A u ∨ B u.
+Definition USIntersection (A B : LRSet) : LRSet := λ u, A u ∧ B u. *)
 (* Definition USRequireBoth (A B : LRSet) : LRSet := λ u, A u ∨ B u. *)
 (* Definition URequireBoth (A B : LRel) : LRel := λ l m, A u ∨ B u. *)
 Inductive URequireBoth (A B : LRel) : LRel :=
-  | urb_left : UNaiveSubset A (URequireBoth A B)
-  | urb_right : UNaiveSubset B (URequireBoth A B)
-  | urb_trans : LRTrans (URequireBoth A B)
+  | urb_left : A ⊆2 URequireBoth A B
+  | urb_right : B ⊆2 URequireBoth A B
+  (* | urb_trans : LRTrans (URequireBoth A B) *)
+  | urb_trans x y z : URequireBoth A B x y -> URequireBoth A B y z -> URequireBoth A B x z
   .
+Instance URequireBoth_Refl A B : LRRefl A -> LRRefl (URequireBoth A B).
+  constructor; intros. apply urb_left. apply lr_refl.
+Qed.
+Instance URequireBoth_U A B : Unif A -> Unif B -> Unif (URequireBoth A B).
+  intros. apply u_from_rewrites_and_refl; [exact _|].
+  intros l m UABlm.
+
+  (* intros j k UABxjk. *)
+  induction UABlm; intros j k UABxjk.
+  3: {
+    apply IHUABlm2.
+    apply IHUABlm1.
+    assumption.
+  }
+  {
+    apply unif in H1.
+    pose (H1 j _ (lr_refl _)) as Ayjxj.
+    eapply urb_trans.
+    apply urb_left; apply Ayjxj.
+    assumption.
+  }
+  {
+    apply unif in H1.
+    pose (H1 j _ (lr_refl _)) as Byjxj.
+    eapply urb_trans.
+    apply urb_right; apply Byjxj.
+    assumption.
+  }
+Qed.
+
+Instance Intersection_USet A B : USet A -> USet (A ∧1 B).
+  constructor; intros.
+  apply uset_members_are_unifications.
+  apply H0.
+Qed.
+Instance Intersection_UPoss A B : UPossibilities A -> UPossibilities B -> UPossibilities (A ∧1 B).
+  constructor; [exact _|].
+  intros.
+  destruct H3. split; eapply upo_includes_supersets; eassumption.
+Qed.
+
 (* Inductive USRequireBoth (A B : LRSet) : LRSet :=
   | us_require_both a b c :
-      A a -> B b -> (a ⊢ c) -> (b ⊢ c) ->
+      A a -> B b -> (a ⊆2 c) -> (b ⊆2 c) ->
       LRTrans c -> USRequireBoth A B c. *)
 
 
@@ -425,8 +493,7 @@ Inductive USIterate (Base Step : LRSet) : LRSet :=
   (* | usi_base Base :
       Base B -> USIterate Base Step B *)
   (* | usi_base : (USIterate Base Step) ⊢ Base *)
-  | usi_base :
-      USNaiveSuperset (USIterate Base Step) Base
+  | usi_base : Base ⊆1 USIterate Base Step
   (* | usi_iterate :
       USNaiveSuperset (USIterate Base Step)
         (λ Tail, USRequireBoth Step (USPushR Tail)) *)
@@ -435,59 +502,180 @@ Inductive USIterate (Base Step : LRSet) : LRSet :=
       (S ⊢ Combined) -> (UPushR Tail ⊢ Combined) ->
       USIterate Base Step Combined *)
   | usi_iterate :
-      USNaiveSuperset (USIterate Base Step) 
-        (USIntersection Step (USPushR (USIterate Base Step)))
+      (Step ∧1 (USPushL (USIterate Base Step)))
+      ⊆1 USIterate Base Step
   .
 
+Instance USIterate_USet Base Step : UPossibilities Base -> UPossibilities Step -> USet (USIterate Base Step).
+  constructor; intros.
+  induction H1.
+  { apply (@uset_members_are_unifications Base). exact _. assumption. }
+  { destruct H1. apply (@uset_members_are_unifications Step). exact _. assumption. }
+Qed.
+Instance USIterate_UPoss Base Step : UPossibilities Base -> UPossibilities Step -> UPossibilities (USIterate Base Step).
+  constructor; [exact _|].
+  intros.
+  induction H3.
+  apply usi_base; eapply upo_includes_supersets; eassumption.
+  {
+    apply usi_iterate.
+    destruct H3. split; eapply upo_includes_supersets; eassumption.
+  }
+Qed.
+
 Fixpoint URfu rfu : LRel := match rfu with
-  | rfu_unify_children => UUnifyChildren
-  | rfu_pullL a => UPullL (URfu a)
-  | rfu_pushR a => UPushR (URfu a)
-  | rfu_pushLL a => UPushLL (URfu a)
-  | rfu_pushLR a => UPushLR (URfu a)
+  | rfu_LL_RL => U_LL_RL
+  | rfu_LR_RRL => U_LR_RRL
+  | rfu_LR_RRR => U_LR_RRR
+  | rfu_pushL a => UPushL (URfu a)
+  | rfu_pullR a => UPullR (URfu a)
   | rfu_require_both a b => URequireBoth (URfu a) (URfu b)
   end.
 
 Fixpoint UsRus rus : LRSet := match rus with
-  | rus_unify_children => USUnifyChildren
-  | rus_pullL a => USPullL (UsRus a)
-  | rus_pushR a => USPushR (UsRus a)
-  | rus_pushLL a => USPushLL (UsRus a)
-  | rus_pushLR a => USPushLR (UsRus a)
-  | rus_union a b => USUnion (UsRus a) (UsRus b)
-  | rus_intersection a b => USIntersection (UsRus a) (UsRus b)
+  | rus_LL_RL => US_LL_RL
+  | rus_LR_RRL => US_LR_RRL
+  | rus_LR_RRR => US_LR_RRR
+  | rus_pushL a => USPushL (UsRus a)
+  | rus_pullR a => USPullR (UsRus a)
+  (* | rus_union a b => USUnion (UsRus a) (UsRus b) *)
+  | rus_intersection a b => (UsRus a) ∧1 (UsRus b)
   | rus_iterate base step => USIterate (UsRus base) (UsRus step)
   end.
 
 Fixpoint rus_rfu rfu : RUS := match rfu with
-  | rfu_unify_children => rus_unify_children
-  | rfu_pullL a => rus_pullL (rus_rfu a)
-  | rfu_pushR a => rus_pushR (rus_rfu a)
-  | rfu_pushLL a => rus_pushLL (rus_rfu a)
-  | rfu_pushLR a => rus_pushLR (rus_rfu a)
+  | rfu_LL_RL => rus_LL_RL
+  | rfu_LR_RRL => rus_LR_RRL
+  | rfu_LR_RRR => rus_LR_RRR
+  | rfu_pushL a => rus_pushL (rus_rfu a)
+  | rfu_pullR a => rus_pullR (rus_rfu a)
   | rfu_require_both a b => rus_intersection (rus_rfu a) (rus_rfu b)
   end.
 
+Instance RFU_U rfu : Unif (URfu rfu).
+  induction rfu; exact _.
+Qed.
+
+Instance RUS_U rus : UPossibilities (UsRus rus).
+  induction rus; exact _.
+Qed.
   
 (****************************************************
                       Something
 ****************************************************)
 
-Lemma mapped_set_transpose U map : Unifications U -> USApplyInAllCases map (MinimumUPosContaining U) ⊣⊢ MinimumUPosContaining (map U).
-  (* unfold USApplyInAllCases. *)
-  split; repeat intro.
-  destruct H, H0.
-  
-  constructor.
+Lemma minupos_applymap_agrees map (map_monotonic : ∀ U V, U ⊆2 V -> map U ⊆2 map V) As B (UB: Unif B) :
+  As ≡1 MinimumUPosContaining B ->
+  USApplyInAllCases map As ≡1 MinimumUPosContaining (map B).
+  intro AeB.
+  split; intro As_x.
+  {
+    eapply USApplyInAllCases_monotonic in As_x; [|apply map_monotonic|apply AeB].
+
+    destruct As_x. destruct H. destruct H. destruct H.
+    econstructor; [constructor|assumption|].
+    intros l m UUlm.
+    apply H1.
+    apply (map_monotonic _ _ H3).
+    assumption.
+  }
+  {
+    destruct As_x. destruct H.
+    eapply USApplyInAllCases_monotonic.
+    apply map_monotonic.
+    apply AeB.
+    econstructor.
+    constructor. econstructor. constructor.
+    3: exact _.
+    3: eassumption.
+    exact _.
+    trivial.
+  }
 Qed.
 
-Lemma rus_rfu_correct rfu : UsRus (rus_rfu rfu) ⊣⊢ (MinimumUPosContaining (URfu rfu)).
-  red.
+Lemma rus_rfu_correct rfu : UsRus (rus_rfu rfu) ≡1 MinimumUPosContaining (URfu rfu).
   induction rfu; cbn.
-  split; repeat intro; assumption.
-  split; repeat intro.
+   
+  (* Base cases *)
+  1-3: split; intros; assumption.
 
+  (* UPushL *)
+  apply minupos_applymap_agrees; [apply UPushL_monotonic|exact _|assumption].
 
+  (* UPullR *)
+  apply minupos_applymap_agrees; [apply UPullR_monotonic|exact _|assumption].
+
+  (* Intersection *)
+  {
+    intro U.
+    split; intros.
+    {
+      destruct H as (URU1, URU2).
+      pose (uset_members_are_unifications _ URU1) as UU; clearbody UU.
+      econstructor; [constructor|exact UU|].
+      {
+        intros l m Ulm.
+        induction Ulm.
+        {
+          apply IHrfu1 in URU1.
+          destruct URU1. destruct H0.
+          apply H2.
+          assumption.
+        }
+        {
+          apply IHrfu2 in URU2.
+          destruct URU2. destruct H0.
+          apply H2.
+          assumption.
+        }
+        {
+          assert (LRTrans U).
+
+          exact _.
+          eapply lr_trans; eassumption.
+        }
+      }
+    }
+    {
+      destruct H. destruct H.
+      split; [apply IHrfu1|apply IHrfu2].
+      all: econstructor; [constructor|assumption|]; intros l m Ulm; apply H1.
+      apply urb_left; assumption.
+      apply urb_right; assumption.
+    }
+  }
+Qed.
+
+Definition rfu_L_R := rfu_pullR (rfu_pullR (rfu_require_both rfu_LR_RRL rfu_LR_RRR)).
+
+Definition rfu_pushR (r : RFU) : RFU :=
+  rfu_require_both rfu_L_R (rfu_pushL r).
+
+(* Definition rfu_LR_RR (l m : Location) :=
+  rfu_require_both rfu_LR_RL () *)
+Fixpoint rfu_L_Rx (x : Location) :=
+  match x with
+  | nil => rfu_L_R
+  | c::x => rfu_pullR (rfu_require_both
+      (rfu_require_both
+        rfu_LL_RL
+        (rfu_pushL (rfu_L_Rx x)) (* i.e. LL=LRx *)
+      )  
+      match c with 
+    | 𝕃 => rfu_LR_RRL (* RL=LL=LRx=RRLx, so after pullR, L=RLx*)
+    | ℝ => rfu_LR_RRR (* RL=LL=LRx=RRRx, so after pullR, L=RRx*)
+    end)
+  end.
+Definition rfu_unify (a b : Location) :=
+  (* Ra=L=Rb, so after pullR, a=b*)
+  rfu_pullR (rfu_require_both (rfu_L_Rx a) (rfu_L_Rx b)).
+Definition rfu_LL_R := rfu_unify (𝕃::𝕃::nil) (ℝ::nil).
+
+Definition rus_pullL (s : RUS) : RUS :=
+  rus_pullR (rus_intersection (rus_pushL s) (rus_LL_R)).
+
+Definition rus_union (a b : RUS) : RUS :=
+  rus_pullL (rus_iterate (rus_pushL a) (rus_pushL b)).
 
 
 Inductive FiniteTree T :=
