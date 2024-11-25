@@ -67,6 +67,7 @@ Definition Location := list WhichChild.
 Bind Scope list_scope with Location.
 Notation "'𝕃'" := wc_left.
 Notation "'ℝ'" := wc_right.
+Hint Extern 5 => progress change (list WhichChild) with Location in *; shelve : simplify.
 
 (* Definition ℒ := l_left. *)
 (* Notation "'𝕃,' l" := (l_left l) (at level 5, format "'𝕃,' l").
@@ -161,47 +162,59 @@ Class LRRelatesLocsWhoseParentItRelates (R : LRel) := {
 Qed. *)
 
 Definition LeftPrefixRewrites (R : LRel) : LRel :=
-  λ x y, ∀ z w, R (x++z) w -> R (y++z) w.
+  λ x y, ∀ z d w, R (x++(d::z)) w -> R (y++(d::z)) w.
 
 (* "IsUnificationPredicate" perhaps, but that's long *)
 Class Unif (R : LRel) := {
   unif : R ≡2 LeftPrefixRewrites R
 }.
 
-Lemma left_rewrite_exact R [x y z] :
+(* Lemma left_rewrite_exact R [x y z] : Unif R ->
   LeftPrefixRewrites R x y -> R x z -> R y z.
   intros.
+  apply unif.
+  apply unif in H1.
+  red; intros.
+  apply H1.
   rewrite <- (app_nil_r y).
   apply H.
   rewrite (app_nil_r x).
   assumption.
-Qed.
+Qed. *)
 Lemma uhhhh R : (LeftPrefixRewrites R ⊆2 R) -> LRRefl R.
   unfold LeftPrefixRewrites; constructor; intros.
   apply H; intros; assumption.
 Qed.
-Lemma rewrites_sym R : (R ⊆2 LeftPrefixRewrites R) -> LRRefl R -> LRSym R.
+(* Lemma rewrites_sym R : (R ⊆2 LeftPrefixRewrites R) -> LRRefl R -> LRSym R.
   constructor. intros.
+  apply H.
+  apply unif in H1.
   apply (left_rewrite_exact (H _ _ H1)).
   apply lr_refl.
-Qed.
-Lemma lrr_includes_rewrites R : (R ⊆2 LeftPrefixRewrites R) -> LRRefl R -> (LeftPrefixRewrites R ⊆2 R).
+Qed. *)
+(* Lemma lrr_includes_rewrites R : (R ⊆2 LeftPrefixRewrites R) -> LRRefl R -> (LeftPrefixRewrites R ⊆2 R).
   intros.
   apply rewrites_sym; trivial.
   apply (left_rewrite_exact H1).
   apply lr_refl.
-Qed.
-Lemma u_from_rewrites_and_refl R {rrefl : LRRefl R} : (R ⊆2 LeftPrefixRewrites R) -> Unif R.
+Qed. *)
+(* Lemma u_from_rewrites_and_refl R {rrefl : LRRefl R} : (R ⊆2 LeftPrefixRewrites R) -> Unif R.
   constructor; split; intros.
   apply H; assumption.
   apply lrr_includes_rewrites; assumption.
-Qed.
+Qed. *)
 
 Lemma u_refl R : Unif R -> LRRefl R.
   intros. apply uhhhh. apply unif.
 Qed.
 Hint Immediate u_refl : typeclass_instances.
 Lemma u_sym R : Unif R -> LRSym R.
+  constructor. intros.
+  apply H.
+  apply unif in H0.
+  red; intros.
+  apply H0.
+
   intros. apply rewrites_sym. apply unif. apply u_refl; assumption.
 Qed.
 Hint Immediate u_sym : typeclass_instances.
@@ -692,6 +705,7 @@ Qed.
 
 Inductive DisjointLocations :=
   | dl_root
+  | dl_nowhere
   | dl_branch (l r : DisjointLocations).
 
 Inductive InDL : DisjointLocations -> Location -> Prop :=
@@ -718,6 +732,8 @@ Lemma DLs_same_suffix [dl x y d0 d1] :
   dependent destruction H;
   dependent destruction H0.
   rewrite 2 app_nil_l in H1; assumption.
+  
+  intros; dependent destruction H.
 
   intros.
   dependent destruction H;
@@ -755,54 +771,98 @@ Instance UniteDL_U dl : Unif (UniteDL dl).
   }
 Qed.
 
-Inductive ReflOrCousins (x y xd yd : Location) : Prop :=
-  | cor_refl : xd = yd -> ReflOrCousins x y xd yd
-  | cor_cousins_xy (d : Location) : xd = x++d -> yd = y++d -> ReflOrCousins x y xd yd
-  | cor_cousins_yx (d : Location) : xd = y++d -> yd = x++d -> ReflOrCousins x y xd yd
+
+Definition PairDisjoint (x y : Location) : Prop :=
+  ∀ d1 d2, (x++d1) = (y++d2) -> x = y.
+Lemma PairDisjoint_same_descendant x y d1 d2 :
+  PairDisjoint x y -> (x++d1) = (y++d2) -> d1 = d2.
+  intros. rewrite (H _ _ H0) in H0.
+  apply app_inv_head in H0; assumption.
+Qed.
+Definition LsDisjoint (Ls : Location -> Prop) : Prop :=
+  ∀ x y, Ls x -> Ls y -> PairDisjoint x y.
+Inductive UnifyLs (Ls : Location -> Prop) : LRel :=
+  | uls_refl x : UnifyLs Ls x x
+  | uls_members x y d : Ls x -> Ls y -> UnifyLs Ls (x++d) (y++d)
+  .
+Instance UnifyLs_Refl Ls : LRRefl (UnifyLs Ls).
+  constructor. intros. apply uls_refl.
+Qed.
+Instance UnifyLs_Unif Ls : LsDisjoint Ls -> Unif (UnifyLs Ls).
+  intro. apply u_from_rewrites_and_refl; [exact _|].
+  red; intros.
+  remember (x ++ z); destruct H1; simplify.
+  {
+    destruct H0. apply uls_refl.
+    rewrite <- 2 app_assoc; apply uls_members; assumption.
+  }
+  {
+    destruct H0.
+    rewrite <- Heql; apply uls_members; assumption.
+    rewrite <- app_assoc in *.
+    apply PairDisjoint_same_descendant in Heql; try assumption.
+    rewrite Heql; apply uls_members; assumption. apply H; assumption.
+  }
+Qed.
+Definition LssDisjoint (Lss : (Location -> Prop) -> Prop) : Prop :=
+  (∀ Ls0 Ls1 x, Lss Ls0 -> Lss Ls1 -> Ls0 x -> Ls1 x -> Ls0 = Ls1) ∧
+  LsDisjoint (λ l, ∃ Ls, Lss Ls ∧ Ls l).
+  
+Inductive UnifyLss (Lss : (Location -> Prop) -> Prop) : LRel :=
+  | ulss_refl x : UnifyLss Lss x x
+  | ulss_members Ls x y d : Lss Ls -> Ls x -> Ls y -> UnifyLss Lss (x++d) (y++d)
   .
 
-Instance ReflOrCousins_Refl x y : LRRefl (ReflOrCousins x y).
-  constructor. intros. apply cor_refl. reflexivity.
+Instance UnifyLss_Refl Lss : LRRefl (UnifyLss Lss).
+  constructor. intros. apply ulss_refl.
 Qed.
-Instance ReflOrCousins_U x y : Unif (ReflOrCousins x y).
-  apply u_from_rewrites_and_refl; [exact _|].
-  intros xd yd Rxyd l m R.
-  destruct Rxyd; simplify.
+Instance UnifyLss_Unif Lss : LssDisjoint Lss -> Unif (UnifyLss Lss).
+  intro. apply u_from_rewrites_and_refl; [exact _|].
+  red; intros.
+  remember (x ++ z); destruct H1; simplify.
   {
-    destruct R; simplify.
-    apply cor_cousins_yx with (d ++ l); apply eq_sym; apply app_assoc.
-    {
-      rewrite <- app_assoc in H.
-      apply app_inv_head_iff in H.
-      rewrite <- H.
-      apply cor_refl.
-      apply eq_sym; apply app_assoc.
-    }
-    apply cor_cousins_xy with (d ++ l).
-    ; apply eq_sym; apply app_assoc.
-    {
-      rewrite <- app_assoc in H.
-      apply app_inv_head_iff in H.
-      rewrite <- H.
-      apply cor_refl.
-      apply eq_sym; apply app_assoc.
-    }
+    destruct H0. apply ulss_refl.
+    rewrite <- 2 app_assoc; eapply ulss_members; eassumption.
   }
-  
-  ; apply eq_sym; apply app_assoc.
-
-  destruct R; simplify.
-  apply cor_cousins with (d ++ l).
-  simplify.
-  remember (x0 ++ z). destruct H0. assumption.
+  {
+    destruct H0.
+    rewrite <- Heql; eapply ulss_members; eassumption.
+    rewrite <- app_assoc in *.
+    destruct H as (separate, disjoint).
+    epose (disjoint _ _ _ _ _ _ Heql) as e; trivial.
+    Unshelve.
+    2: exists Ls; split; assumption.
+    2: exists Ls0; split; assumption.
+    clearbody e. rewrite e in *. clear e.
+    pose (separate Ls Ls0 x H1 H0 H2 H4) as e.
+    clearbody e. rewrite <- e in *. clear e.
+    apply PairDisjoint_same_descendant in Heql; try assumption.
+    rewrite Heql.
+    
+    eapply ulss_members; eassumption.
+    red; trivial.
+  }
 Qed.
-Lemma MUR_cousins_or_refl x y xd yd :
-  MinimumURelating x y xd yd -> ReflOrCousins x y xd yd.
-  intro H.
-  unfold MinimumURelating,MinimumUSuperset in H.
-  apply H.
-  intros x0 y0 l. destruct l.
-  apply cor_cousins with nil; apply eq_sym; apply app_nil_r.
+Definition NoOverlap (U : LRel) :=
+  ∀ x y d1 d2, U x y -> U (x++d1) (y++d2) -> d1 = d2.
+
+Lemma LL_RL_NoO : NoOverlap U_LL_RL.
+  red; intros.
+  revert d1 d2 H0.
+  (* cbv in H. *)
+  apply H; clear H.
+  {
+    intros.
+    destruct H.
+    rewrite <- 4 app_comm_cons in H0. ; discriminate.
+  }
+
+  apply u_from_rewrites_and_refl.
+  constructor; intros. apply app_inv_head_iff in H0. assumption.
+
+  clear x y.
+  intros. red. intros.
+  apply H0 in H1.
 
 
 Definition rfu_L_R := rfu_pullR (rfu_pullR (rfu_require_both rfu_LR_RRL rfu_LR_RRR)).
