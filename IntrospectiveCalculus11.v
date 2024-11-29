@@ -97,24 +97,24 @@ Definition PrefixRewrites (S : LSet) : Location -> Location -> Prop :=
 Inductive SubtreeMap (S : LSet) (d : Location) : LSet :=
   | sm_cons x : S x -> SubtreeMap S d (x++d). 
 
-Infix "++₁" := SubtreeMap (right associativity, at level 60).
+Infix "*++" := SubtreeMap (right associativity, at level 60).
 
 Definition UnifiablePairAssuming (Indep : LSSet) (x y : Location)
   := ∀   S   e,   Indep   S -> ( S      (x++e) <->  S      (y++e)).
 Definition UnifiablePair (Indep : LSSet) (x y : Location)
-  := ∀   S d e,   Indep   S -> ((S++₁d) (x++e) <-> (S++₁d) (y++e)).
+  := ∀   S d e,   Indep   S -> ((S*++d) (x++e) <-> (S*++d) (y++e)).
 Definition UnifiableSet (Indep : LSSet) (U : LSet)
-  := ∀ S x y d e, Indep   S -> U x -> U y -> (S++₁d) (x++e) -> (S++₁d) (y++e).
+  := ∀ S x y d e, Indep   S -> U x -> U y -> (S*++d) (x++e) -> (S*++d) (y++e).
 
 Definition IndepAbleWithRelAssuming (Unified : LRel) (S : LSet)
-  := ∀ x y f  , Unified x y ->  (S++₁f)  x ->     (S++₁f)  y.
+  := ∀ x y f  , Unified x y ->  (S*++f)  x ->     (S*++f)  y.
 Definition IndepAbleWithRel (Unified : LRel) (S : LSet)
-  := ∀ x y f g, Unified x y ->  (S++₁f) (x++g) -> (S++₁f) (y++g).
+  := ∀ x y f g, Unified x y ->  (S*++f) (x++g) -> (S*++f) (y++g).
 Definition IndepAbleWithSets (Unif : LSSet) (S : LSet)
-  := ∀ U x y f g, Unif U  -> U x -> U y -> (S++₁f) (x++g) -> (S++₁f) (y++g).
+  := ∀ U x y f g, Unif U  -> U x -> U y -> (S*++f) (x++g) -> (S*++f) (y++g).
 
 Definition IndepSetPermitsUnifyingSet (S U : LSet)
-  := ∀ x y d e, U x -> U y -> (S++₁d) (x++e) -> (S++₁d) (y++e).
+  := ∀ x y d e, U x -> U y -> (S*++d) (x++e) -> (S*++d) (y++e).
 Definition UnifiableAllSetVersion (Indep : LSSet) (U : LSet)
   := ∀ S, Indep S -> IndepSetPermitsUnifyingSet S U.
 Definition IndepAbleAllSetVersion (Unif : LSSet) (S : LSet)
@@ -124,7 +124,7 @@ Definition IndepAbleAllSetVersion (Unif : LSSet) (S : LSet)
 Definition IndepSetPermitsUnifyingSetUnrolled (S U : LSet)
   := ∀ x y z d e, U x -> U y -> S z -> (z++d) = (x++e) -> ∃ w, S w ∧ (w++d) = (y++e).
 Definition IndepSetPermitsUnifyingSetRolled (S U : LSet)
-  := ∀ x y d e, (U++₁e) x -> (U++₁e) y -> (S++₁d) x -> (S++₁d) y.
+  := ∀ x y d e, (U*++e) x -> (U*++e) y -> (S*++d) x -> (S*++d) y.
 
 Notation "∀ₛ x ∈ S , P" := (∀ x, S x -> P) (at level 200, x binder, right associativity).
 
@@ -148,7 +148,7 @@ Class UnifRel (Unified : LRel) := {
 
 (* Parameter IUCompatible : LSet -> LSet -> Prop. *)
 Definition IUCompatible (I U : LSet)
-  := ∀ x y d e, (U++₁e) x -> (U++₁e) y -> (I++₁d) x -> (I++₁d) y.
+  := ∀ x y d e, (U*++e) x -> (U*++e) y -> (I*++d) x -> (I*++d) y.
 Definition Unifiable (Indep : LSSet) (U : LSet)
   := ∀ I, Indep I -> IUCompatible I U.
 Definition IndepAble1 (Unif : LSSet) (I : LSet)
@@ -367,7 +367,7 @@ Section IndepUnifAbleProperties.
 
   Lemma Indep_subtrees Unif 
     I (II : IndepAble1 Unif I) d
-    : IndepAble1 Unif (I++₁d).
+    : IndepAble1 Unif (I*++d).
     intros U UU. 
     apply II in UU.
     intros x y e f Ufx Ufy H.
@@ -403,7 +403,7 @@ Section IndepUnifAbleProperties.
 
   Lemma Unif_subtrees Indep 
     U (UU : Unifiable Indep U) d
-    : Unifiable Indep (U++₁d).
+    : Unifiable Indep (U*++d).
     intros I II. 
     apply UU in II.
     intros x y e f Ufx Ufy H.
@@ -424,20 +424,20 @@ Section IndepUnifAbleProperties.
 End IndepUnifAbleProperties.
 
 Definition IFollowsArrowStrict (x y : Location) (I : LSet)
-  := ∀ (d e : Location), (I++₁d) (x++e) -> (I++₁d) (y++e).
+  := ∀ (d e : Location), (I*++d) (x++e) -> (I*++d) (y++e).
 Definition IndepsFollowArrowStrict (x y : Location) (Indep : LSSet)
   := Indep ⊆ IFollowsArrowStrict x y.
 Definition IndepAbleStrictArrows (Indep : LSSet) (I : LSet)
   := ∀ x y, (IndepsFollowArrowStrict x y Indep) -> IFollowsArrowStrict x y I.
 Definition IFollowsArrowLax (x y : Location) (I : LSet)
-  := ∀ (d : Location), (I++₁d) x -> (I++₁d) y.
+  := ∀ (d : Location), (I*++d) x -> (I*++d) y.
 Definition IndepsFollowArrowLax (x y : Location) (Indep : LSSet)
   := Indep ⊆ IFollowsArrowLax x y.
 Definition IndepAbleLaxArrows (Indep : LSSet) (I : LSet)
   := ∀ x y, (IndepsFollowArrowLax x y Indep) -> IFollowsArrowLax x y I.
 
 Definition IFollowsBothArrow (x y : Location) (I : LSet)
-  := ∀ (d e : Location), (I++₁d) (x++e) <-> (I++₁d) (y++e).
+  := ∀ (d e : Location), (I*++d) (x++e) <-> (I*++d) (y++e).
 Definition IndepsFollowBothArrow (x y : Location) (Indep : LSSet)
   := Indep ⊆ IFollowsBothArrow x y.
 Definition IndepAbleBothArrows (Indep : LSSet) (I : LSet)
@@ -550,7 +550,7 @@ Section IndepAble2Properties.
   Qed.
 
   Lemma IndepAbleStrictArrows_subtrees (Indep : LSSet) (I : LSet) d :
-    IndepAbleStrictArrows Indep I -> IndepAbleStrictArrows Indep (I++₁d).
+    IndepAbleStrictArrows Indep I -> IndepAbleStrictArrows Indep (I*++d).
     repeat intro.
     (* remember (x ++ e). destruct H1. *)
    (* remember (x0). *)
@@ -564,7 +564,7 @@ Section IndepAble2Properties.
     (* rewrite <- app_assoc in *. *)
     specialize (x0 (d++d0) e).
     (* remember (x ++ e). destruct H1. destruct H1. *)
-    assert ((I ++₁ d ++ d0) (x ++ e)).
+    assert ((I *++ d ++ d0) (x ++ e)).
     remember (x ++ e). destruct H1. destruct H1.
     rewrite <- app_assoc.
     constructor.
@@ -611,8 +611,11 @@ Section IndepAble2Properties.
   Qed.
 End IndepAble2Properties.
 
+Inductive SubtreeMapBoth (S : LSet) (d e : Location) : LSet :=
+  | sm_cons x : S x -> SubtreeMap S d (x++d).
+
 Definition IFollows (x y : Location) (I : LSet)
-  := ∀ (d e : Location), (I++₁d) (x++e) -> (I++₁d) (y++e).
+  := ∀ (d e : Location), (I*++d) (x++e) -> (I*++d) (y++e).
 Definition IndepAble (Indep : LSSet) (I : LSet)
   := ∀ x y, (Indep ⊆ IFollows x y) -> IFollows x y I.
 (* Definition IndepAble (Indep : LSSet) (I : LSet)
@@ -626,17 +629,28 @@ Class CompleteIndeps (Indep : LSSet) := {
 Definition Dependable (Dep : LRel) (x y : Location)
   := ∀ I, (Dep ⊆2 (λ z w, IFollows z w I)) -> IFollows x y I.
 
+Definition IndepPush c Indep I :=
+  ∀ x y, (Indep ⊆ IFollows x y) -> IFollows (c::x) (c::y) I.
+Definition IndepPull c Indep I :=
+  ∀ x y, (Indep ⊆ IFollows (c::x) (c::y)) -> IFollows x y I.
+
 (* Infix "𝕃::* S" := (λ x, S (𝕃::x)) (right associativity, at level 60).
 Infix " 'ℝ::*' S" := (λ x, S (ℝ::x)) (right associativity, at level 60). *)
-Definition PullR (S : LSet) x := S (ℝ::x).
-Inductive PushR (S : LSet) : LSet :=
-  pushr_cons x : S x -> PushR S (ℝ::x).
+
+(* Inductive SubtreeMap (S : LSet) (d : Location) : LSet :=
+  | sm_cons x : S x -> SubtreeMap S d (x++d).  *)
+Definition Pull (c : WhichChild) (S : LSet) (x : Location) := S (c::x).
+Inductive Push (c : WhichChild) (S : LSet) : LSet :=
+  push_cons x : S x -> Push c S (c::x).
+
+Infix "::*" := Push (right associativity, at level 60).
+Infix "-::*" := Pull (right associativity, at level 60).
 
 Definition Indep_LL_RL : LSSet := IFollows (𝕃::𝕃::nil) (ℝ::𝕃::nil).
 Definition Indep_LR_RRL : LSSet := IFollows (𝕃::ℝ::nil) (ℝ::ℝ::𝕃::nil).
 Definition Indep_LR_RRR : LSSet := IFollows (𝕃::ℝ::nil) (ℝ::ℝ::ℝ::nil).
 
-Instance IFollows_Complete x y:CompleteIndeps (IFollows x y).
+Instance IFollows_Complete x y: CompleteIndeps (IFollows x y).
   constructor.
   intros I II.
   apply II.
@@ -646,19 +660,101 @@ Qed.
 (* Definition IPullR (I:LSet) : LSet :=
   λ x, I (ℝ::x). *)
 
-Definition IndepPullR (Indep:LSSet) : LSSet :=
-  λ I, ∃ I2, Indep I2 ∧ I ≡ PullR I2.
+Inductive IndepMap (m : LSet -> LSet) (Indep:LSSet) : LSSet :=
+  im_cons 
+  λ I, ∃ I2, Indep I2 ∧ I ≡ map I2.
+Definition IndepPull (c : WhichChild) (Indep:LSSet) : LSSet :=
+  λ I, ∃ I2, Indep I2 ∧ I ≡ c::*I2.
 
-Lemma PushR_f x y I :
-  IFollows (ℝ::x) (ℝ::y) I <-> IFollows x y (PushR I).
+(* Ltac esmcons := match goal with
+  |- (?S *++ ?d) ?xd =>
+    let x := fresh "x" in
+    let eq := fresh "eq" in
+    eassert (xd = _++d) as eq; [|rewrite eq; constructor]
+  end. *)
+Lemma SubtreeMap_inv_tail I d x :
+  (I *++ d) (x ++ d) -> I x.
+  intro.
+  remember (x ++ d).
+  destruct H.
+  apply app_inv_tail in Heql.
+  rewrite <- Heql.
+  assumption.
+Qed.
+Lemma Push_injective c I x :
+  (c::*I) (c::x) -> I x.
+  intro.
+  remember (c::x).
+  destruct H.
+  injection Heql as ->.
+  assumption.
+Qed.
+Lemma SubtreeMap_comm_Push c I d :
+  ((c ::* I) *++ d) ≡ (c ::* (I *++ d)).
   split; intro.
-  intros d e Q.
-  remember (x ++ e).
-  destruct Q.
+
+  destruct H. destruct H.
+  rewrite <- app_comm_cons.
+  constructor; constructor; assumption.
+  
+  destruct H. destruct H.
+  rewrite app_comm_cons.
+  constructor; constructor; assumption.
 Qed.
 
+Lemma Push_follows c x y I :
+  IFollows x y I <-> IFollows (c::x) (c::y) (c::* I).
+  split; intro.
+  {
+    intros d e Q.
+    apply SubtreeMap_comm_Push.
+    apply SubtreeMap_comm_Push in Q.
+    rewrite <- app_comm_cons.
+    rewrite <- app_comm_cons in Q.
+    constructor.
+    apply H.
+    apply Push_injective with c; assumption.
+  }
+  {
+    intros d e Q.
+    apply Push_injective with c.
+    apply SubtreeMap_comm_Push.
+    apply H.
+    rewrite <- app_comm_cons.
+    apply SubtreeMap_comm_Push.
+    constructor; assumption.
+  }
+Qed.
+Lemma Pull_monotonic c I J :
+  I ⊆ J -> (c -::* I) ⊆ (c -::* J).
+  intros. apply H. assumption.
+Qed.
+  
+Lemma SubtreeMap_comm_Pull c I d :
+  ((c -::* I) *++ d) ≡ (c -::* (I *++ d)).
+  split; intro.
+
+  destruct H.
+  eapply Pull_monotonic.
+
+  induction d.
+  constructor.
+  rewrite <- app_comm_cons.
+  constructor; constructor; assumption.
+  
+  destruct H. destruct H.
+  rewrite app_comm_cons.
+  constructor; constructor; assumption.
+Qed.
+
+Lemma Pull_follows c x y I :
+  IFollows (c::x) (c::y) I <-> IFollows x y (c-::* I).
+  split; intro.
+  {
+    intros d e Q.
+
 Lemma UhhPullR I d x :
-  (PullR I ++₁ d) x <-> (I ++₁ d) (ℝ :: x).
+  (PullR I *++ d) x <-> (I *++ d) (ℝ :: x).
   split; intro.
   {
     remember x.
@@ -695,13 +791,13 @@ Lemma PullR_f x y I :
   
 Qed.
 
-Instance IndepPullR_Complete Indep (IC : CompleteIndeps Indep) 
-  : CompleteIndeps (IndepPullR Indep).
+Instance IndepPull_Complete c Indep (IC : CompleteIndeps Indep) 
+  : CompleteIndeps (IndepPull c Indep).
   constructor.
   intros I II.
-  assert (IndepAble Indep (PushR I)).
+  assert (IndepAble Indep (c-::*I)).
   intros x y Ixy.
-  apply PushR_f.
+  apply Pull_follows.
   apply II.
   intros I2 II2.
   destruct II2 as (I3, (II3, rr)).
@@ -710,6 +806,7 @@ Instance IndepPullR_Complete Indep (IC : CompleteIndeps Indep)
   remember (x++e).
   destruct H. destruct H.
   cbv in H.
+  apply rr in H.
   specialize (II (x++e) (y++e)).
   (* apply Ixy. *)
   apply II.
