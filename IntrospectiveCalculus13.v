@@ -124,21 +124,28 @@ Section ContextSet.
           ∀ x d m n, Submeanings m d n ->
             C2 x m -> C2 (x++d) n *)
     
+    (* Definition ContainsMappedContext M N (Map : M -> Context N)
+      (Cₘ : Context M) (Cₙ : Context N) :=
+      (∀ x d m n, Cₘ m x -> Map m n d ->
+        Cₙ n (x++d)).
+
+    Definition CanonicalMappedContext M N (Map : M -> Context N)
+      (Cₘ : Context M) :=
+      λ y n, ∀ Cₙ₂, ContainsMappedContext Map Cₘ Cₙ₂ -> Cₙ₂ y n.
+
+    Definition IsMappedContext M N (Map : M -> Context N)
+      (Cₘ : Context M) (Cₙ : Context N) :=
+      Cₙ ≡₂ CanonicalMappedContext Map Cₘ. *)
   End AbandonedApproaches.
 
-  Definition ContainsMappedContext M N (Map : M -> Context N)
-    (Cₘ : Context M) (Cₙ : Context N) :=
-    (∀ x d m n, Cₘ m x -> Map m n d ->
-      Cₙ n (x++d)).
-
-  Definition IsMappedContext M N (Map : M -> Context N)
-    (Cₘ : Context M) (Cₙ : Context N) :=
-    ∀ y n, Cₙ y n <-> ∀ Cₙ₂, ContainsMappedContext Map Cₘ Cₙ₂ ->
-      Cₙ₂ y n.
+  Inductive MappedContext M N (Map : M -> Context N)
+    (Cₘ : Context M) : Context N :=
+    mc_cons x d m n : Cₘ m x -> Map m n d ->
+      MappedContext Map Cₘ n (x++d).
 
   Definition ContextSet_DoesntTreatMeaningsDifferentlyFromSubtrees
     (Cs : ContextSet) := ∀ M N C1 C2 (Submeanings : M -> Context N),
-      IsMappedContext Submeanings C1 C2 ->
+      C2 ≡₂ MappedContext Submeanings C1 ->
       Cs M C1 -> Cs N C2.
   
   Class CsValid (Cs : ContextSet) := {
@@ -161,6 +168,8 @@ Section ContextSet.
     mlr_cons xo : S xo -> x++d = xo++e -> MemberAtLinealRelation S x d e.
   Definition ConformsTo x y : ContextSet :=
     λ M C, ∀ m d e, MemberAtLinealRelation (C m) x d e -> MemberAtLinealRelation (C m) y d e.
+  Definition UnifiesWith x y : ContextSet :=
+    ConformsTo x y ∩₂ ConformsTo y x.
   (* Definition Independent (I : Location -> Prop) (Cs : ContextSet) : Prop :=
     ∀ M (m : M), ∃ C, Cs M C ∧ ∀ x, I x -> C x m. *)
   
@@ -228,7 +237,8 @@ Section ContextSet.
 
         (* assert (∃ xm ym f m, Submeanings m f n ∧ xm ++ f = x ∧ ym ++ f = y ∧ C1 xm m). *)
         (* assert (∃ xm m f, Submeanings m n f ∧ xm ++ f = xo) as exh. *)
-        assert (∃ xb m f, C1 m xb ∧ Submeanings m n f ∧ xb ++ f = xo) as exh.
+        destruct HX as (xb, f, m, n, C1mxb, Smfn).
+        (* assert (∃ xb m f, C1 m xb ∧ Submeanings m n f ∧ xb ++ f = xo) as exh.
         {
           apply HX.
           red; intros.
@@ -238,28 +248,110 @@ Section ContextSet.
           exists d0.
           intuition idtac; trivial.
         }
-        destruct exh as (xb, (m, (f, (C1mxb, (Smfn, xbfx))))).
+        destruct exh as (xb, (m, (f, (C1mxb, (Smfn, xbfx))))). *)
         red in H0.
         specialize (H0 m d (f ++ e)).
         lapply H0.
         {
           intros (yb, C1myb, ydye).
           apply mlr_cons with (yb ++ f).
-          refine (proj2 (H _ _) _); trivial.
-          intros.
-          (* red in H1. *)
-          exact (H1 _ _ _ _ C1myb Smfn).
+          refine (proj2 (H _ _) _).
+          econstructor; try eassumption.
           rewrite <- app_assoc; assumption.
         }
         apply mlr_cons with xb; trivial.
         rewrite app_assoc.
-        rewrite xbfx.
         assumption.
       }
       (* {
         intros. split; apply csv_full; assumption.
       } *)
     Qed.
-      
+
+    Lemma UnifiesWith_Valid x y : CsValid (UnifiesWith x y).
+      apply CsValid_intersection; apply ConformsTo_Valid.
+    Qed.
   End Properties.
 End ContextSet.
+
+(****************************************************
+              More concrete ContextSets
+****************************************************)
+Section ConcreteContextSet.
+  Inductive FilterToSubtree (x : Location) M (C : Context M) : Context M :=
+    fts_cons m l : C m (x++l) -> FilterToSubtree x C m (x++l).
+  Inductive MovedSubcontext (x y : Location) M (C : Context M) : Context M :=
+    movedSc_cons m (l : Location) : C m (x++l) -> MovedSubcontext x y C m (y++l).
+
+  Inductive MoveCS (x y : Location) (S : ContextSet) : ContextSet :=
+    moveCS_cons M Cx Cy :
+      Cy ≡₂ MovedSubcontext x y Cx ->
+      S M Cx -> MoveCS x y S Cy.
+
+  Section Properties.
+    Lemma MovedSubcontext_assoc d e x y M (C:Context M) m :
+      MovedSubcontext x y C m (y++d++e) <-> MovedSubcontext (x++d) (y++d) C m (y++d++e).
+      split; intro; remember (y ++ d ++ e); destruct H.
+      {
+        apply app_inv_head in Heql.
+        rewrite Heql.
+        rewrite app_assoc.
+        constructor.
+        rewrite <- app_assoc.
+        rewrite <- Heql.
+        assumption.
+      }
+      {
+        rewrite <- app_assoc.
+        constructor.
+        rewrite app_assoc.
+        assumption.
+      }
+    Qed.
+
+
+    Lemma MoveCS_Valid x y S : CsValid S -> CsValid (MoveCS x y S).
+      intro CVS.
+      constructor.
+      red; intros.
+      destruct H0.
+      apply moveCS_cons with (MappedContext Submeanings (FilterToSubtree x Cx)).
+      split; intros.
+      apply H in H2.
+      (* remember x0. remember y0. *)
+      destruct H2.
+      apply H0 in H2.
+      destruct H2.
+      rewrite <- app_assoc.
+      apply MovedSubcontext_assoc.
+      rewrite app_assoc.
+      econstructor.
+      econstructor.
+      econstructor.
+      eassumption.
+      assumption.
+      apply H.
+      destruct H2.
+      remember (x ++ l).
+      destruct H2.
+      destruct H2.
+      econstructor.
+      apply H0.
+      econstructor.
+
+      red; intros n l.
+      split; intro.
+      destruct H2.
+      
+       apply H. econstructor.
+      apply H0.
+      
+       apply H. red; intros.
+      red in H3.
+      refine (H3 y _ _ _ _ _).
+      apply H3.
+      
+  
+  End Properties.
+
+End ConcreteContextSet.
