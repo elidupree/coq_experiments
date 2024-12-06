@@ -88,13 +88,18 @@ Section Context.
   Inductive NmIsBranch V S : NodeMeaning V S -> S -> S -> Prop :=
     | nmib l r : NmIsBranch (branch l r) l r.
 
-  Inductive Context := c_cons {
+  Inductive Context V := c_cons {
     c_S : Type
     ; c_CS :: CState V c_S
     ; c_root : c_S }.
+  Inductive AnyContext := ac_cons {
+    c_Var : Type
+    ; c_Form : Context c_Var }.
   Definition CCurried [V] R := ∀ c_S (c_CS : CState V c_S) (c_root : c_S), R.
-  Definition CUncurry [V] [R] : CCurried R -> Context V -> R := Context_rect _.
-  Definition CUncurry2 [V W R] : @CCurried V (@CCurried W R) -> Context V -> Context W -> R := λ P Cv, CUncurry (CUncurry P Cv).
+  Definition ACCurried R := ∀ V c_S (c_CS : CState V c_S) (c_root : c_S), R.
+  Definition CUncurry [V] [R] : CCurried R -> Context V -> R := Eval compute in Context_rect _.
+  Definition ACUncurry [R] : ACCurried R -> AnyContext -> R := Eval compute in λ P, AnyContext_rect _ (λ V C, (CUncurry (P V) C)).
+  Definition ACUncurry2 [R] : @ACCurried (@ACCurried R) -> AnyContext -> AnyContext -> R := Eval compute in λ P Cv, ACUncurry (ACUncurry P Cv).
     
   (* Definition IsVar V (C : Context V) v : Prop :=
     NmIsVar (cs_meaning (c_root C)) v.
@@ -125,22 +130,22 @@ Section Context.
       IsBranchCurried s1 l1 r1 -> IsBranchCurried s2 l2 r2 ->
       CEquivCurried l1 l2 -> CEquivCurried r1 r2 -> CEquivCurried s1 s2
       .
-  Notation "P '≡ₓ' Q" := (CEquivCurried P Q) (at level 70, no associativity) : type_scope.
+  (* Notation "P '≡ₓ' Q" := (CEquivCurried P Q) (at level 70, no associativity) : type_scope. *)
 
-  CoInductive IsSpecializationCurried V W (values : V -> Context W) SA [_CA : CState V SA] sa SB [_CB : CState W SB] sb : Prop :=
-    | iss_var v : IsVarCurried v sa -> CUncurry (CEquivCurried sb) (values v) -> IsSpecializationCurried values sa sb
+  CoInductive IsSpecializationCurried V SA [_CA : CState V SA] sa W SB [_CB : CState W SB] sb (values : V -> Context W) : Prop :=
+    | iss_var v : IsVarCurried v sa -> CUncurry (CEquivCurried sb) (values v) -> IsSpecializationCurried sa sb values
     | iss_branch (la ra : SA) (lb rb : SB) :
       IsBranchCurried sa la ra -> IsBranchCurried sb lb rb ->
-      IsSpecializationCurried values la lb ->
-      IsSpecializationCurried values ra rb ->
-      IsSpecializationCurried values sa sb.
+      IsSpecializationCurried la lb values ->
+      IsSpecializationCurried ra rb values ->
+      IsSpecializationCurried sa sb values.
   
   (* Inductive IsAnySpecialization V W (Cv : Context V) (Cw : Context W) : Prop := *)
-  Inductive IsAnySpecializationCurried V W SA [_CA : CState V SA] sa SB [_CB : CState W SB] sb : Prop :=
-    | ias_cons values : IsSpecializationCurried values sa sb -> IsAnySpecializationCurried sa sb.
+  Inductive IsAnySpecializationCurried V SA [_CA : CState V SA] sa W SB [_CB : CState W SB] sb : Prop :=
+    | ias_cons values : IsSpecializationCurried sa sb values -> IsAnySpecializationCurried sa sb.
 
-  Definition IsAnySpecialization V W : Context V -> Context W -> Prop :=
-    CUncurry2 (@IsAnySpecializationCurried V W).
+  Definition IsAnySpecialization : AnyContext -> AnyContext -> Prop :=
+    ACUncurry2 (@IsAnySpecializationCurried).
 
 (* 
   Definition meaning_map [V S T] (f : S -> T) (m : NodeMeaning V S) : NodeMeaning V T :=
@@ -168,17 +173,11 @@ Section Context.
     (s : Sb) := inl s. *)
     
   
-  Definition ContextSet := ∀ V S, CState V S -> S -> Prop.
+  Definition ContextSet := AnyContext -> Prop.
 
   Class CsValid (Cs : ContextSet) := {
         csv_includes_specializations :
-          ∀ V W Sb Sv Sc
-            (_Cb : CState V Sb) (_Cv : CState W Sv) (_Cc : CState W Sc)
-            (values : V -> Sv)
-            (sb:Sb) (sc:Sc),
-            (* let _adfd : CState W (Sb + Sv) := specialization_cs values in *)
-            (@CEquiv _ _ _ _ (specialization_cs values) sc (inl sb)) ->
-            Cs V Sb _Cb sb -> Cs W Sc _Cc sc
+          ∀ CA CB, IsAnySpecialization CA CB -> Cs CA -> Cs CB
       }.
 
   (* Class CsValid (Cs : ContextSet) := {
@@ -235,7 +234,7 @@ Section Context.
     
     Definition CEquiv V (C D : Context V) : Prop :=
       InContext C ≡₂ InContext D. *)
-    Notation "P '≡ₓ' Q" := (CEquiv P Q) (at level 70, no associativity) : type_scope.
+    (* Notation "P '≡ₓ' Q" := (CEquiv P Q) (at level 70, no associativity) : type_scope. *)
     
     (* CoFixpoint specialize V (C : Context V) W (values : V -> Context W) :=
       match C with
