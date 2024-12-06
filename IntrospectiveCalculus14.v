@@ -132,6 +132,8 @@ Section Context.
       .
   (* Notation "P '≡ₓ' Q" := (CEquivCurried P Q) (at level 70, no associativity) : type_scope. *)
 
+  (* There are several different ways we could express this…
+    `values` can either be (V -> Context W), or (V -> SC) for some third state-type C, or technically even (V -> SB) - but in that last approach,you'd be tempted to say `=` instead of `CEquiv`, and that doesn't work because _CB may have different states that express the same meaning, and still has to count as a specialization in that case. *)
   CoInductive IsSpecializationCurried V SA [_CA : CState V SA] sa W SB [_CB : CState W SB] sb (values : V -> Context W) : Prop :=
     | iss_var v : IsVarCurried v sa -> CUncurry (CEquivCurried sb) (values v) -> IsSpecializationCurried sa sb values
     | iss_branch (la ra : SA) (lb rb : SB) :
