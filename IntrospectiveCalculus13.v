@@ -278,8 +278,8 @@ End ContextSet.
               More concrete ContextSets
 ****************************************************)
 Section ConcreteContextSet.
-  Inductive FilterToSubtree (x : Location) M (C : Context M) : Context M :=
-    fts_cons m l : C m (x++l) -> FilterToSubtree x C m (x++l).
+  (* Inductive FilterToSubtree (x : Location) M (C : Context M) : Context M :=
+    fts_cons m l : C m (x++l) -> FilterToSubtree x C m (x++l). *)
   Inductive MovedSubcontext (x y : Location) M (C : Context M) : Context M :=
     movedSc_cons m (l : Location) : C m (x++l) -> MovedSubcontext x y C m (y++l).
 
@@ -315,7 +315,10 @@ Section ConcreteContextSet.
       constructor.
       red; intros.
       destruct H0.
-      apply moveCS_cons with (MappedContext Submeanings (FilterToSubtree x Cx)).
+      apply moveCS_cons with (MappedContext Submeanings
+       (FilterToSubtree x Cx)
+       (* Cx *)
+       ).
       split; intros.
       apply H in H2.
       (* remember x0. remember y0. *)
@@ -335,9 +338,17 @@ Section ConcreteContextSet.
       remember (x ++ l).
       destruct H2.
       destruct H2.
+      rewrite <- app_assoc in Heql0.
+      apply app_inv_head in Heql0.
+      rewrite <- Heql0.
+      rewrite app_assoc.
       econstructor.
       apply H0.
       econstructor.
+      eassumption. assumption.
+      destruct CVS.
+      red in csv_subtrees0.
+      eapply csv_subtrees0.
 
       red; intros n l.
       split; intro.
