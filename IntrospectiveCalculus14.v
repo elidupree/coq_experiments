@@ -88,20 +88,26 @@ Section Context.
   Inductive NmIsBranch V S : NodeMeaning V S -> S -> S -> Prop :=
     | nmib l r : NmIsBranch (branch l r) l r.
 
-  (* Inductive Context V := c_cons {
+  Inductive Context := c_cons {
     c_S : Type
     ; c_CS :: CState V c_S
     ; c_root : c_S }.
+  Definition CCurried [V] R := ∀ c_S (c_CS : CState V c_S) (c_root : c_S), R.
+  Definition CUncurry [V] [R] : CCurried R -> Context V -> R := Context_rect _.
+  Definition CUncurry2 [V W R] : @CCurried V (@CCurried W R) -> Context V -> Context W -> R := λ P Cv, CUncurry (CUncurry P Cv).
     
-  Definition IsVar V (C : Context V) v : Prop :=
+  (* Definition IsVar V (C : Context V) v : Prop :=
     NmIsVar (cs_meaning (c_root C)) v.
   Definition IsBranch V (lr l r : Context V) : Prop :=
     NmIsBranch (cs_meaning (c_root lr)) (c_root l) (c_root r). *)
 
-  Definition IsVar V S [_C: CState V S] s v : Prop :=
+  Definition IsVarCurried V v S [_C: CState V S] s : Prop :=
     NmIsVar (cs_meaning s) v.
-  Definition IsBranch V S [_C: CState V S] lr l r : Prop :=
+  Definition IsBranchCurried V S [_C: CState V S] lr l r : Prop :=
     NmIsBranch (cs_meaning lr) l r.
+
+  Definition IsVar V v : Context V -> Prop :=
+    Context_rect _ (IsVarCurried v).
 
   (* Inductive Context V := c_cons {
     c_S : Type
@@ -112,34 +118,51 @@ Section Context.
     | ceq_branch la lb ra rb :
       IsBranch a la ra -> IsBranch b lb rb ->
       CEquiv la lb -> CEquiv ra rb -> CEquiv a b. *)
-  CoInductive CEquiv V S1 S2 [_C1 : CState V S1] [_C2 : CState V S2]
-    (s1 : S1) (s2 : S2) : Prop :=
-    | ceq_var v : IsVar s1 v -> IsVar s2 v -> CEquiv s1 s2
+  CoInductive CEquivCurried [V S1] [_C1 : CState V S1]
+    (s1 : S1) [S2] [_C2 : CState V S2] (s2 : S2) : Prop :=
+    | ceq_var v : IsVarCurried v s1 -> IsVarCurried v s2 -> CEquivCurried s1 s2
     | ceq_branch l1 r1 l2 r2 :
-      IsBranch s1 l1 r1 -> IsBranch s2 l2 r2 ->
-      CEquiv l1 l2 -> CEquiv r1 r2 -> CEquiv s1 s2
+      IsBranchCurried s1 l1 r1 -> IsBranchCurried s2 l2 r2 ->
+      CEquivCurried l1 l2 -> CEquivCurried r1 r2 -> CEquivCurried s1 s2
       .
-  Notation "P '≡ₓ' Q" := (CEquiv P Q) (at level 70, no associativity) : type_scope.
-    
+  Notation "P '≡ₓ' Q" := (CEquivCurried P Q) (at level 70, no associativity) : type_scope.
+
+  CoInductive IsSpecializationCurried V W (values : V -> Context W) SA [_CA : CState V SA] sa SB [_CB : CState W SB] sb : Prop :=
+    | iss_var v : IsVarCurried v sa -> CUncurry (CEquivCurried sb) (values v) -> IsSpecializationCurried values sa sb
+    | iss_branch (la ra : SA) (lb rb : SB) :
+      IsBranchCurried sa la ra -> IsBranchCurried sb lb rb ->
+      IsSpecializationCurried values la lb ->
+      IsSpecializationCurried values ra rb ->
+      IsSpecializationCurried values sa sb.
+  
+  (* Inductive IsAnySpecialization V W (Cv : Context V) (Cw : Context W) : Prop := *)
+  Inductive IsAnySpecializationCurried V W SA [_CA : CState V SA] sa SB [_CB : CState W SB] sb : Prop :=
+    | ias_cons values : IsSpecializationCurried values sa sb -> IsAnySpecializationCurried sa sb.
+
+  Definition IsAnySpecialization V W : Context V -> Context W -> Prop :=
+    CUncurry2 (@IsAnySpecializationCurried V W).
+
+(* 
+  Definition meaning_map [V S T] (f : S -> T) (m : NodeMeaning V S) : NodeMeaning V T :=
+    match m with
+    | var w => var w
+    | branch l r => branch (f l) (f r)
+    end.
+
   Instance specialization_cs
     V W Sb Sv [_Cb : CState V Sb] [_Cv : CState W Sv] (values : V -> Sv)
     : CState W (Sb + Sv)
     := { cs_meaning := λ S : Sb + Sv,
           match S with
           | inl s => match cs_meaning s with
-            | var v => match cs_meaning (values v) with
-              | var w => var w
-              | branch l r => branch (inr l) (inr r)
-              end
+            | var v => meaning_map inr (cs_meaning (values v))
             | branch l r => branch (inl l) (inl r)
             end
-          | inr s => match cs_meaning s with
-            | var w => var w
-            | branch l r => branch (inr l) (inr r)
-            end
+          | inr s => meaning_map inr (cs_meaning s)
           end
       }.
-  
+   *)
+
   (* Definition specialize
     V W Sb Sv [_Cb : CState V Sb] [_Cv : CState W Sv] (values : V -> Sv)
     (s : Sb) := inl s. *)
@@ -157,6 +180,17 @@ Section Context.
             (@CEquiv _ _ _ _ (specialization_cs values) sc (inl sb)) ->
             Cs V Sb _Cb sb -> Cs W Sc _Cc sc
       }.
+
+  (* Class CsValid (Cs : ContextSet) := {
+        csv_includes_specializations :
+          ∀ V W Sb Sv Sc
+            (_Cb : CState V Sb) (_Cv : CState W Sv) (_Cc : CState W Sc)
+            (values : V -> Sv)
+            (sb:Sb) (sc:Sc),
+            (* let _adfd : CState W (Sb + Sv) := specialization_cs values in *)
+            (@CEquiv _ _ _ _ (specialization_cs values) sc (inl sb)) ->
+            Cs V Sb _Cb sb -> Cs W Sc _Cc sc
+      }. *)
   
   
     
