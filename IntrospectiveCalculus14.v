@@ -97,99 +97,129 @@ Section Context.
     c_S : Type
     ; c_CS :: CState V c_S
     ; c_root : c_S }.
-  Arguments c_cons [V c_S c_CS].
+  Arguments c_cons {V c_S c_CS}.
   Inductive AnyContext := ac_cons {
     c_Var : Type
     ; c_Form : Context c_Var }.
   (* Arguments ac_cons [V c_S c_CS]. *)
-  Definition CCurried [V] R := ∀ c_S (c_CS : CState V c_S) (c_root : c_S), R.
+  (* Definition CCurried [V] R := ∀ c_S (c_CS : CState V c_S) (c_root : c_S), R.
   Definition ACCurried R := ∀ V c_S (c_CS : CState V c_S) (c_root : c_S), R.
   Definition CUncurry [V] [R] : CCurried R -> Context V -> R := Eval compute in Context_rect _.
   Definition ACUncurry [R] : ACCurried R -> AnyContext -> R := Eval compute in λ P, AnyContext_rect _ (λ V C, (CUncurry (P V) C)).
   Definition ACUncurry2 [R] : @ACCurried (@ACCurried R) -> AnyContext -> AnyContext -> R := Eval compute in λ P Cv, ACUncurry (ACUncurry P Cv).
-  Definition ac [V] [c_S] [c_CS : CState V c_S] (c_root : c_S) := ac_cons (c_cons c_root).
+  Definition ac [V] [c_S] [c_CS : CState V c_S] (c_root : c_S) := ac_cons (c_cons c_root). *)
     
-  (* Definition IsVar V (C : Context V) v : Prop :=
+  (* Definition CIsVar V (C : Context V) v : Prop :=
     NmIsVar (cs_meaning (c_root C)) v.
-  Definition IsBranch V (lr l r : Context V) : Prop :=
+  Definition CIsBranch V (lr l r : Context V) : Prop :=
     NmIsBranch (cs_meaning (c_root lr)) (c_root l) (c_root r). *)
 
-  Definition IsVarCurried V v S [_C: CState V S] s : Prop :=
+  Definition IsVarCurried V v S {_C: CState V S} s : Prop :=
     NmIsVar (cs_meaning s) v.
-  Definition IsBranchCurried V S [_C: CState V S] lr l r : Prop :=
+  Definition IsBranchCurried V S {_C: CState V S} lr l r : Prop :=
     NmIsBranch (cs_meaning lr) l r.
 
-  Definition IsVar V v : Context V -> Prop :=
+  (* Definition CIsVar V v : Context V -> Prop :=
     Context_rect _ (IsVarCurried v).
+  Inductive CIsBranch V : Context V -> Context V -> Context V -> Prop :=
+    ib_cons S (_C: CState V S) lr l r : IsBranchCurried lr l r -> CIsBranch (c_cons lr) (c_cons l) (c_cons r). *)
+
+  Definition nm_map_states [V S T] (f : S -> T) (m : NodeMeaning V S) : NodeMeaning V T :=
+    match m with
+    | var w => var w
+    | branch l r => branch (f l) (f r)
+    end.
+    
+  Instance cc V : CState V (Context V) := {
+      cs_meaning := λ c, let (S, _C, s) := c in
+        nm_map_states c_cons (cs_meaning s)
+    }.
+    (* Eval compute in cc.
+    Eval cbv delta [cc c_root nm_map_states] in cc. *)
+  
+  Definition CIsVar V (v : V) (C : Context V) : Prop := IsVarCurried v C.
+  Definition CIsBranch V (lr l r : Context V) : Prop := IsBranchCurried lr l r.
+  Inductive ACIsBranch : AnyContext -> AnyContext -> AnyContext -> Prop :=
+    acib_cons V (lr l r : Context V) : CIsBranch lr l r -> ACIsBranch (ac_cons lr) (ac_cons l) (ac_cons r).
 
   (* Inductive Context V := c_cons {
     c_S : Type
     ; c_CS : CState V c_S
     ; c_root : c_S }. *)
   (* CoInductive CEquiv V (a b : Context V) : Prop :=
-    | ceq_var v : IsVar a v -> IsVar b v -> CEquiv a b
+    | ceq_var v : CIsVar a v -> CIsVar b v -> CEquiv a b
     | ceq_branch la lb ra rb :
-      IsBranch a la ra -> IsBranch b lb rb ->
+      CIsBranch a la ra -> CIsBranch b lb rb ->
       CEquiv la lb -> CEquiv ra rb -> CEquiv a b. *)
-  CoInductive CEquivCurried [V S1] [_C1 : CState V S1]
-    (s1 : S1) [S2] [_C2 : CState V S2] (s2 : S2) : Prop :=
-    | ceq_var v : IsVarCurried v s1 -> IsVarCurried v s2 -> CEquivCurried s1 s2
-    | ceq_branch l1 r1 l2 r2 :
-      IsBranchCurried s1 l1 r1 -> IsBranchCurried s2 l2 r2 ->
-      CEquivCurried l1 l2 -> CEquivCurried r1 r2 -> CEquivCurried s1 s2
+  CoInductive CEquiv [V] (a b : Context V) : Prop :=
+    | ceq_var v : CIsVar v a -> CIsVar v b -> CEquiv a b
+    | ceq_branch la ra lb rb :
+      CIsBranch a la ra -> CIsBranch b lb rb ->
+      CEquiv la lb -> CEquiv ra rb -> CEquiv a b
       .
-  (* Notation "P '≡ₓ' Q" := (CEquivCurried P Q) (at level 70, no associativity) : type_scope. *)
+  Notation "P '≡ₓ' Q" := (CEquiv P Q) (at level 70, no associativity) : type_scope.
 
   (* There are several different ways we could express this…
     `values` can either be (V -> Context W), or (V -> SC) for some third state-type C, or technically even (V -> SB) - but in that last approach,you'd be tempted to say `=` instead of `CEquiv`, and that doesn't work because _CB may have different states that express the same meaning, and still has to count as a specialization in that case. *)
-  (* CoInductive IsSpecializationCurried V SA [_CA : CState V SA] sa W SB [_CB : CState W SB] sb (values : V -> Context W) : Prop :=
-    | iss_var v : IsVarCurried v sa -> CUncurry (CEquivCurried sb) (values v) -> IsSpecializationCurried sa sb values
-    | iss_branch (la ra : SA) (lb rb : SB) :
-      IsBranchCurried sa la ra -> IsBranchCurried sb lb rb ->
-      IsSpecializationCurried la lb values ->
-      IsSpecializationCurried ra rb values ->
-      IsSpecializationCurried sa sb values. *)
+  CoInductive IsThisSpecialization V W (values : V -> Context W) (c : Context V) (s : Context W) : Prop :=
+    | its_var v : CIsVar v c -> s ≡ₓ (values v) -> IsThisSpecialization values c s
+    | its_branch (lc rc : Context V) (ls rs : Context W) :
+      CIsBranch c lc rc -> CIsBranch s ls rs ->
+      IsThisSpecialization values lc ls ->
+      IsThisSpecialization values rc rs ->
+      IsThisSpecialization values c s.
   
   (* Inductive IsAnySpecialization V W (Cv : Context V) (Cw : Context W) : Prop := *)
   (* Inductive IsAnySpecializationCurried V SA [_CA : CState V SA] sa W SB [_CB : CState W SB] sb : Prop :=
     | ias_cons values : IsSpecializationCurried sa sb values -> IsAnySpecializationCurried sa sb. *)
      
-
-  Definition meaning_map [V S T] (f : S -> T) (m : NodeMeaning V S) : NodeMeaning V T :=
-    match m with
-    | var w => var w
-    | branch l r => branch (f l) (f r)
-    end.
+  (* Inductive Context2 V := c2_cons {
+    c2_S : Type
+    ; c2_CS :: CState V c2_S
+    ; c2_root : c2_S }.
+  Arguments c2_cons {V c2_S c2_CS}.
+  Instance cc2 V : CState V (Context2 V) := {
+      cs_meaning := λ c, nm_map_states c2_cons (cs_meaning (c2_root c))
+    }. *)
+  (* Definition C2CRepack V : Context2 V -> Context V := Context2_rect _ (@c_cons _).
+  Definition CC2Repack V : Context V -> Context2 V := Context_rect _ (@c2_cons _). *)
+  (* Inductive SpecializationState V W :=
+    | spec_outer (_:Context V)
+    | spec_value (_:Context W).
+  Arguments spec_outer {V W} _.
+  Arguments spec_value {V W} _.
 
   Instance specialization_cs
-    V W Sb Sv [_Cb : CState V Sb] [_Cv : CState W Sv] (values : V -> Sv)
-    : CState W (Sb + Sv)
-    := { cs_meaning := λ S : Sb + Sv,
-          match S with
-          | inl s => match cs_meaning s with
-            | var v => meaning_map inr (cs_meaning (values v))
-            | branch l r => branch (inl l) (inl r)
+    V W (values : V -> Context W)
+    : CState W (SpecializationState V W)
+    := { cs_meaning := λ c,
+          match c with
+          | spec_outer (c_cons St _C s) => match cs_meaning s with
+            | var v => nm_map_states spec_value (cs_meaning (values v))
+            | branch l r => branch (spec_outer (c_cons l)) (spec_outer (c_cons r))
             end
-          | inr s => meaning_map inr (cs_meaning s)
+          | spec_value s => nm_map_states spec_value (cs_meaning s)
           end
       }.
+  Eval compute in specialization_cs.
+  Definition foo W := @c_cons W (Context W).
+  Definition specialize V W (c : Context V) (values : V -> Context2 W) : Context W := @c_cons W (SpecializationState V W) (specialization_cs values) (spec_outer c). *)
 
-  Inductive IsAnySpecializationCurried V SA [_CA : CState V SA] sa W SB [_CB : CState W SB] sb : Prop :=
-    | ias_cons values : CEquivCurried (_C2 := (specialization_cs values)) sb (inl sa) -> IsAnySpecializationCurried sa sb.
+  Inductive CIsAnySpecialization V (c : Context V) W (s : Context W) : Prop :=
+    | ias_cons values : IsThisSpecialization values c s -> CIsAnySpecialization c s.
 
   (* Definition specialize
     V W Sb Sv [_Cb : CState V Sb] [_Cv : CState W Sv] (values : V -> Sv)
     (s : Sb) := inl s. *)
 
-  Definition IsAnySpecialization : AnyContext -> AnyContext -> Prop := Eval cbv delta [ACUncurry2] in
-    ACUncurry2 (@IsAnySpecializationCurried).
+  Definition ACIsAnySpecialization (c s : AnyContext) : Prop := let (V, c) := c in let (W, s) := s in CIsAnySpecialization c s.
     
   
   Definition ContextSet := AnyContext -> Prop.
 
   Class CsValid (Cs : ContextSet) := {
         csv_includes_specializations :
-          ∀ CA CB, IsAnySpecialization CA CB -> Cs CA -> Cs CB
+          ∀ c s, ACIsAnySpecialization c s -> Cs c -> Cs s
       }.
   
 
@@ -262,21 +292,61 @@ Section Context.
     Definition ConformsTo (x y : Location) : ContextSet :=
       λ V C, ∀ m d e, MemberAtLinealRelation (C m) x d e -> MemberAtLinealRelation (C m) y d e. *)
   End AbandonedApproaches.
-End Context.
 
+  Section Properties.
+    Lemma CEq_spec V (c s : Context V) : c ≡ₓ s -> CIsAnySpecialization c s.
+      intro eq.
+      econstructor.
+      revert c s eq.
+      cofix Q.
+      destruct eq.
+      eapply its_var.
+      eassumption.
+      admit.
+      eapply its_branch.
+      eassumption. eassumption.
+      apply Q; assumption.
+      apply Q; assumption.
+    Qed.
+  End Properties.
+End Context.
+Notation "P '≡ₓ' Q" := (CEquiv P Q) (at level 70, no associativity) : type_scope.
 
 (****************************************************
                 Concrete ContextSets
 ****************************************************)
 Section ConcreteCSes.
   Inductive PushL (Cs : ContextSet) : ContextSet :=
-    pushL_cons V Sa (_Ca : CState V Sa) (alone : Sa) S (_C : CState V S) (lr l r : S) : IsBranchCurried lr l r -> CEquivCurried alone l -> Cs (ac alone) -> PushL Cs (ac lr).
+    pushL_cons lr l r : ACIsBranch lr l r -> Cs l -> PushL Cs lr.
 
   Inductive PullR (Cs : ContextSet) : ContextSet :=
-    pullR_cons V Sa (_Ca : CState V Sa) (alone : Sa) S (_C : CState V S) (lr l r : S) : IsBranchCurried lr l r -> CEquivCurried alone r -> Cs (ac lr) -> PullR Cs (ac alone).
+    pullR_cons lr l r : ACIsBranch lr l r -> Cs lr -> PullR Cs r.
 
   Section Properties.
-    Lemma PullL_valid Cs : CsValid Cs -> CsValid (PushL Cs).
+    Lemma PushL_valid Cs : CsValid Cs -> CsValid (PushL Cs).
+      intro csv.
+      constructor.
+      intros c s is_spec Pc.
+      destruct c as (V, c). destruct s as (W, s).
+      destruct is_spec as (values, H).
+      destruct H;
+      (* var lr isn't branch *) [admit|].
+      (* remember {| c_Var := V; c_Form := c |}. *)
+      dependent destruction Pc.
+      dependent destruction H3.
+      (* CIsBranch-unique: *)
+      replace lc with l in *; [|admit].
+      replace rc with r in *; [|admit].
+      clear H3.
+      epose (csv_includes_specializations _ (ac_cons ls) _ H4) as ic2; clearbody ic2.
+      (* injection Heqa. *)
+      apply pushL_cons with (ac_cons ls) (ac_cons rs).
+      constructor; assumption.
+      assumption.
+      Unshelve.
+      econstructor; eassumption.
+
+
       intro csv.
       constructor.
       intros CA CB is_spec pA.
