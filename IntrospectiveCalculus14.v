@@ -156,7 +156,7 @@ Section Context.
   
   Definition CEquivP [V] : Context V -> Context V -> Prop :=
     CPred (@CIsVar V) (@CIsBranch V).
-  Definition IsThisSpecializationvP V W (values : V -> Context W) : Context V -> Context W -> Prop :=
+  Definition IsThisSpecializationP V W (values : V -> Context W) : Context V -> Context W -> Prop :=
     CPred (λ v, CEquivP (values v)) (@CIsBranch W).
 
   (* the reversed way de-facto requires implementing the state-type of a specialization *)
@@ -178,6 +178,26 @@ Section Context.
     sib_branch lr l r values : CIsBranch lr l r -> SpecsToBranch (specialize lr values) (specialize l values) (specialize r values).
   Definition IsThisSpecializationvP2 V W : Context W -> Specialization V W -> Prop :=
     CPred (@SpecsToVar _ _) (@SpecsToBranch _ _).
+
+  Inductive WhichChild := left | right.
+
+  (* path head starts at subtree *)
+  Record SpecializationSubtree V W := specsub { specsub_base : Context V ; specsub_values : V -> Context W ; specsub_subtree : list WhichChild }.
+  Inductive SpecSubsToVar V W : W -> SpecializationSubtree V W -> Prop :=
+    | sstv_var v cv w values : CIsVar v cv -> CIsVar w (values v) -> SpecSubsToVar w (specsub cv values nil)
+    | sstv_left lr l r w values a : CIsBranch lr l r ->
+      SpecSubsToVar w (specsub l values a) ->
+      SpecSubsToVar w (specsub lr values (left::a))
+    | sstv_right lr l r w values a : CIsBranch lr l r ->
+      SpecSubsToVar w (specsub r values a) ->
+      SpecSubsToVar w (specsub lr values (right::a))
+    .
+  Inductive SpecSubsToBranch V W : SpecializationSubtree V W -> SpecializationSubtree V W -> SpecializationSubtree V W -> Prop :=
+    sstb lr l r values a : CIsBranch lr l r ->
+      SpecSubsToBranch (specsub lr values a) (specsub l values (left::a)) (specsub r values (right::a)).
+
+  Definition SpecSubsTo V W : Context W -> SpecializationSubtree V W -> Prop :=
+    CPred (@SpecSubsToVar _ _) (@SpecSubsToBranch _ _).
 
   (* Inductive Context V := c_cons {
     c_S : Type
