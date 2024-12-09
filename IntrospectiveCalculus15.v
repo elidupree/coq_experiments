@@ -64,40 +64,41 @@ End ProofBureaucracy.
                     Contexts
 ****************************************************)
 Section Context.
+  Inductive WhichChild := left | right.
+
   Class CState C := {
-        CsMayBeAny : C -> Prop
-      ; CsMayBeBranch : C -> C -> C -> Prop
-    }.
-  
+    CsMayBeBranch : C -> (WhichChild -> C) -> Prop
+  }.
   
   Inductive Context := c_cons {
-    c_S : Type
-    ; c_CS :: CState c_S
-    ; c_root : c_S }.
+    c_S : Type;
+    c_CS :: CState c_S;
+    c_root : c_S;
+  }.
 
   
   (* Inductive CorrespondingBranch B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) (bl br : B) (s : S) : Prop :=
     cb_cons sl sr : CsMayBeBranch s sl sr -> paired bl sl -> paired br sr -> CorrespondingBranch paired bl br s. *)
-  Inductive AnySatisfied B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) (b : B) : Prop :=
-    cb_cons : CsMayBeAny b -> AnySatisfied paired b.
+  (* Inductive AnySatisfied B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) (b : B) : Prop :=
+    cb_cons : CsMayBeAny b -> AnySatisfied paired b. *)
 
-  Inductive BranchSatisfied B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) (b : B) (sl sr : S) : Prop :=
-    | bs_any : CsMayBeAny b -> BranchSatisfied paired b sl sr
-    | bs_branch bl br : CsMayBeBranch b bl br -> paired bl sl -> paired br sr -> BranchSatisfied paired b sl sr.
+  Inductive BranchSatisfied B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) (b : B) (sc : WhichChild -> S) : Prop :=
+    (* | bs_any : CsMayBeAny b -> BranchSatisfied paired b sl sr *)
+    | bs_branch bc : CsMayBeBranch b bc -> (∀ w, paired (bc w) (sc w)) -> BranchSatisfied paired b sc.
   
   CoInductive ValidSpecialization B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) : Prop := {
       (* vs_branches_agree : ∀ b bl br s, paired b s -> CsMayBeBranch b bl br -> CorrespondingBranch paired bl br s ;  *)
-      vs_anys_satisfied : ∀ b s, paired b s -> CsMayBeAny s -> CsMayBeAny b ; 
-      vs_branches_satisfied : ∀ b s sl sr, paired b s -> CsMayBeBranch s sl sr -> BranchSatisfied paired b sl sr ; 
-      vs_injective : ∀ b s1 s2, paired b s1 -> paired b s2 -> ∃ p2, ValidSpecialization p2 ∧ p2 s1 s2
+      (* vs_anys_satisfied : ∀ b s, paired b s -> CsMayBeAny s -> CsMayBeAny b ;  *)
+      vs_branches_satisfied : ∀ b s sc, paired b s -> CsMayBeBranch s sc -> BranchSatisfied paired b sc ; 
+      vs_injective : ∀ b s1 s2, paired b s1 -> paired b s2 -> ∃ p2, ValidSpecialization p2 ∧ p2 s1 s2 ;
     }.
   
   Section Properties.
     Lemma eq_valid B {BC : CState B} : ValidSpecialization eq.
       cofix Q; constructor.
-      {
+      (* {
         intros. destruct H; assumption.
-      }
+      } *)
       {
         intros. destruct H. eapply bs_branch. eassumption. all: reflexivity.
       }
@@ -113,7 +114,23 @@ End Context.
                 Concrete ContextSets
 ****************************************************)
 Section ConcreteCSes.
-  Inductive PushL (Cs : Context) : Context :=
+  Inductive FromAnyOf S (InitialChoices : S -> Prop) :=
+    | ao_initial_choices
+    | ao_deeper (_:S).
+  Arguments ao_initial_choices {S} {InitialChoices}.
+  Arguments ao_deeper {S} {InitialChoices} _.
+  (* Definition FromAnyOf Case S := (Case -> S). *)
+  Inductive FromAnyOf_MayBeBranch S {CS : CState S} (InitialChoices : S -> Prop) : FromAnyOf InitialChoices -> (WhichChild -> FromAnyOf InitialChoices) -> Prop :=
+    | aocs_initial s sc : InitialChoices s -> CsMayBeBranch s sc -> FromAnyOf_MayBeBranch ao_initial_choices (λ w, ao_deeper (sc w))
+    | aocs_deeper s sc : CsMayBeBranch s sc -> FromAnyOf_MayBeBranch (ao_deeper s) (λ w, ao_deeper (sc w))
+    .
+  Instance FromAnyOf_CS S {CS : CState S} (InitialChoices : S -> Prop) : CState (FromAnyOf InitialChoices) := {| CsMayBeBranch := @FromAnyOf_MayBeBranch _ _ _ |}.
+  
+  Definition PushL (w : WhichChild) (Cs : Context) : Context :=
+    {|
+      c_S := (c_S Cs) -> Prop ;
+      c_CS := λ Ss SCs, ∀ ∃ s, Ss s 
+    |}
     pushL_cons lr l r : IsBranch lr l r -> Cs l -> PushL Cs lr.
 
   Inductive PullR (Cs : Context) : Context :=
