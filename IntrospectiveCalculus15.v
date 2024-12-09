@@ -65,6 +65,7 @@ End ProofBureaucracy.
 ****************************************************)
 Section Context.
   Inductive WhichChild := left | right.
+  Definition map_children A B (map : A -> B) (a : WhichChild -> A) (w : WhichChild) := map (a w).
 
   Class CState C := {
     CsMayBeBranch : C -> (WhichChild -> C) -> Prop
@@ -75,7 +76,12 @@ Section Context.
     c_CS :: CState c_S;
     c_root : c_S;
   }.
+  Arguments c_cons {c_S} {c_CS} c_root.
 
+  Inductive CMayBeBranch : Context -> (WhichChild -> Context) -> Prop :=
+    cmbb S (CS : CState S) s sc : CsMayBeBranch s sc -> CMayBeBranch (c_cons s) (map_children c_cons sc).
+  
+  Instance Context_CS S {CS : CState S} : CState Context := {| CsMayBeBranch := CMayBeBranch |}.
   
   (* Inductive CorrespondingBranch B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) (bl br : B) (s : S) : Prop :=
     cb_cons sl sr : CsMayBeBranch s sl sr -> paired bl sl -> paired br sr -> CorrespondingBranch paired bl br s. *)
@@ -93,6 +99,9 @@ Section Context.
       vs_injective : ∀ b s1 s2, paired b s1 -> paired b s2 -> ∃ p2, ValidSpecialization p2 ∧ p2 s1 s2 ;
     }.
   
+  Inductive CImplies : Context -> Context -> Prop :=
+    cimp B {BC : CState B} b S {SC : CState S} s (paired : B -> S -> Prop) : ValidSpecialization paired -> paired b s -> CImplies (c_cons b) (c_cons s).
+
   Section Properties.
     Lemma eq_valid B {BC : CState B} : ValidSpecialization eq.
       cofix Q; constructor.
@@ -114,23 +123,18 @@ End Context.
                 Concrete ContextSets
 ****************************************************)
 Section ConcreteCSes.
-  Inductive FromAnyOf S (InitialChoices : S -> Prop) :=
-    | ao_initial_choices
-    | ao_deeper (_:S).
-  Arguments ao_initial_choices {S} {InitialChoices}.
-  Arguments ao_deeper {S} {InitialChoices} _.
-  (* Definition FromAnyOf Case S := (Case -> S). *)
-  Inductive FromAnyOf_MayBeBranch S {CS : CState S} (InitialChoices : S -> Prop) : FromAnyOf InitialChoices -> (WhichChild -> FromAnyOf InitialChoices) -> Prop :=
-    | aocs_initial s sc : InitialChoices s -> CsMayBeBranch s sc -> FromAnyOf_MayBeBranch ao_initial_choices (λ w, ao_deeper (sc w))
-    | aocs_deeper s sc : CsMayBeBranch s sc -> FromAnyOf_MayBeBranch (ao_deeper s) (λ w, ao_deeper (sc w))
+  Definition ChoicesOf S := (S -> Prop).
+  (* Definition ChoicesOf Case S := (Case -> S). *)
+  Inductive ChoicesOf_MayBeBranch S {CS : CState S} (root : ChoicesOf S) : (WhichChild -> ChoicesOf S) -> Prop :=
+    | combb s sc : root s -> CsMayBeBranch s sc -> ChoicesOf_MayBeBranch root (λ w, eq (sc w))
     .
-  Instance FromAnyOf_CS S {CS : CState S} (InitialChoices : S -> Prop) : CState (FromAnyOf InitialChoices) := {| CsMayBeBranch := @FromAnyOf_MayBeBranch _ _ _ |}.
-  
-  Definition PushL (w : WhichChild) (Cs : Context) : Context :=
-    {|
-      c_S := (c_S Cs) -> Prop ;
-      c_CS := λ Ss SCs, ∀ ∃ s, Ss s 
-    |}
+  Instance ChoicesOf_CS S {CS : CState S} : CState (ChoicesOf S) := {| CsMayBeBranch := @ChoicesOf_MayBeBranch _ _ |}.
+
+  Inductive HasChild (w : WhichChild) (C : Context) : Prop :=
+    
+  Definition Pull (w : WhichChild) (C : Context) : Context :=
+    let (S,CS,root) := C in
+      c_cons (λ s, ∃ sc CsMayBeBranch root sc ∧ sc w = s)
     pushL_cons lr l r : IsBranch lr l r -> Cs l -> PushL Cs lr.
 
   Inductive PullR (Cs : Context) : Context :=
