@@ -182,7 +182,19 @@ Section Context.
   Inductive WhichChild := left | right.
 
   (* path head starts at subtree *)
+  (* Inductive CSubtree V := csubtree (c:Context V) (path:list WhichChild). *)
   Record SpecializationSubtree V W := specsub { specsub_base : Context V ; specsub_values : V -> Context W ; specsub_subtree : list WhichChild }.
+  Inductive PathVar V := path_var (path:list WhichChild) (var:V).
+  Inductive PvIsVar V : V -> PathVar V -> Prop :=
+     pviv v : PvIsVar v (path_var nil v).
+  Inductive PvWrapsOneOf V : PathVar V -> PathVar V -> PathVar V -> Prop :=
+     pvb_left lr l r lp rp : PvIsVar (path_var (left::lp) lr) (path_var l lp) (path_var r rp).
+  Definition VarAt V : PathVar V -> Context V -> Prop :=
+    CPred (@PvIsVar _) 
+  Inductive VarAt W : W -> list WhichChild -> Context W -> Prop :=
+    | va_var w cw : CIsVar w cw -> VarAt w nil cw
+    | va_branch w lr l r a : CIsBranch lr l r -> VarAt w a l -> 
+    .
   Inductive SpecSubsToVar V W : W -> SpecializationSubtree V W -> Prop :=
     | sstv_var v cv w values : CIsVar v cv -> CIsVar w (values v) -> SpecSubsToVar w (specsub cv values nil)
     | sstv_left lr l r w values a : CIsBranch lr l r ->
