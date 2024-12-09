@@ -123,6 +123,13 @@ End Context.
                 Concrete ContextSets
 ****************************************************)
 Section ConcreteCSes.
+  Inductive Any :=
+    any_at (l : list WhichChild).
+  Inductive Any_MayBeBranch (root : Any) : (WhichChild -> Any) -> Prop :=
+    | combb s sc : root s -> CsMayBeBranch s sc -> ChoicesOf_MayBeBranch root (λ w, eq (sc w))
+  
+  Instance ChoicesOf_CS S {CS : CState S} : CState (ChoicesOf S) := {| CsMayBeBranch := @ChoicesOf_MayBeBranch _ _ |}.
+  
   Definition ChoicesOf S := (S -> Prop).
   (* Definition ChoicesOf Case S := (Case -> S). *)
   Inductive ChoicesOf_MayBeBranch S {CS : CState S} (root : ChoicesOf S) : (WhichChild -> ChoicesOf S) -> Prop :=
@@ -137,7 +144,9 @@ Section ConcreteCSes.
     let (S,CS,root) := c in
       @c_cons _ _ (HasChild w root).
 
-  Inductive Push (w : WhichChild) (c : Context) : Context :=
+  Inductive Push (w : WhichChild) S :=
+    | push_root
+    | push_
 
   Section Properties.
     Lemma PushL_valid Cs : CsValid Cs -> CsValid (PushL Cs).
