@@ -130,15 +130,14 @@ Section ConcreteCSes.
     .
   Instance ChoicesOf_CS S {CS : CState S} : CState (ChoicesOf S) := {| CsMayBeBranch := @ChoicesOf_MayBeBranch _ _ |}.
 
-  Inductive HasChild (w : WhichChild) (C : Context) : Prop :=
+  Inductive HasChild (w : WhichChild) S {CS : CState S} (c : S) : S -> Prop :=
+    hc cs : CsMayBeBranch c cs -> HasChild w c (cs w).
     
-  Definition Pull (w : WhichChild) (C : Context) : Context :=
-    let (S,CS,root) := C in
-      c_cons (λ s, ∃ sc CsMayBeBranch root sc ∧ sc w = s)
-    pushL_cons lr l r : IsBranch lr l r -> Cs l -> PushL Cs lr.
+  Definition Pull (w : WhichChild) (c : Context) : Context :=
+    let (S,CS,root) := c in
+      @c_cons _ _ (HasChild w root).
 
-  Inductive PullR (Cs : Context) : Context :=
-    pullR_cons lr l r : ACIsBranch lr l r -> Cs lr -> PullR Cs r.
+  Inductive Push (w : WhichChild) (c : Context) : Context :=
 
   Section Properties.
     Lemma PushL_valid Cs : CsValid Cs -> CsValid (PushL Cs).
