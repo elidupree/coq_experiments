@@ -64,7 +64,9 @@ End ProofBureaucracy.
                     Contexts
 ****************************************************)
 
+Notation "P '⊆' Q" := (∀ x, P x -> Q x) (at level 70, no associativity) : type_scope.
 Notation "P '⊆₂' Q" := (∀ x y, P x y -> Q x y) (at level 70, no associativity) : type_scope.
+Notation "P '≡' Q" := (∀ x, P x <-> Q x) (at level 70, no associativity) : type_scope.
 Notation "P '≡₂' Q" := (∀ x y, P x y <-> Q x y) (at level 70, no associativity) : type_scope.
 Notation "P '∩₂' Q" := (λ x y, P x y ∧ Q x y) (at level 80, right associativity) : type_scope.
 Notation "P '∪₂' Q" := (λ x y, P x y ∨ Q x y) (at level 85, right associativity) : type_scope.
@@ -141,6 +143,41 @@ Section Context.
   Definition CIsBranch V (lr l r : Context V) : Prop := IsBranchCurried lr l r.
   Inductive ACIsBranch : AnyContext -> AnyContext -> AnyContext -> Prop :=
     acib_cons V (lr l r : Context V) : CIsBranch lr l r -> ACIsBranch (ac_cons lr) (ac_cons l) (ac_cons r).
+
+
+  CoInductive CPred [V] P (VarCase : V -> P -> Prop) (BranchCase : P -> P -> P -> Prop) (c : Context V) (p : P) : Prop :=
+    | cpred_var v : CIsVar v c -> VarCase v p -> CPred VarCase BranchCase c p
+    | cpred_branch l r pl pr :
+      CIsBranch c l r -> BranchCase p pl pr ->
+      (CPred VarCase BranchCase l pl) -> 
+      (CPred VarCase BranchCase r pr) ->
+      CPred VarCase BranchCase c p
+      .
+  
+  Definition CEquivP [V] : Context V -> Context V -> Prop :=
+    CPred (@CIsVar V) (@CIsBranch V).
+  Definition IsThisSpecializationvP V W (values : V -> Context W) : Context V -> Context W -> Prop :=
+    CPred (λ v, CEquivP (values v)) (@CIsBranch W).
+
+  (* the reversed way de-facto requires implementing the state-type of a specialization *)
+  (* Definition IsThisSpecializationvP2 V W (values : V -> Context W) : Context W -> Context V -> Prop :=
+    CPred (λ v, CEquivP (values v)) (_). *)
+    (* ...unless...? *)
+    
+  (* Definition CEquivs [V] : Context V -> (Context V -> Prop) -> Prop
+    (* := *)
+    . refine 
+    (@CPred _ (Context V -> Prop) (λ v others, others ⊆ @CIsVar V v) (λ lr l r, _)).
+    admit.
+  Admitted. *)
+  Record Specialization V W := specialize { spec_base : Context V ; values : V -> Context W }.
+  Inductive SpecsToVar V W : W -> Specialization V W -> Prop :=
+    stv v cv w values : CIsVar v cv -> CIsVar w (values v) -> SpecsToVar w (specialize cv values).
+  Inductive SpecsToBranch V W : Specialization V W -> Specialization V W -> Specialization V W -> Prop :=
+    sib_var cv : CIsVar v cv -> 
+    sib_branch lr l r values : CIsBranch lr l r -> SpecsToBranch (specialize lr values) (specialize l values) (specialize r values).
+  Definition IsThisSpecializationvP2 V W : Context W -> Specialization V W -> Prop :=
+    CPred (@SpecsToVar _ _) (@SpecsToBranch _ _).
 
   (* Inductive Context V := c_cons {
     c_S : Type
@@ -327,6 +364,9 @@ Section ConcreteCSes.
       intro csv.
       constructor.
       intros c s is_spec Pc.
+      destruct Pc.
+
+
       destruct c as (V, c). destruct s as (W, s).
       destruct is_spec as (values, H).
       destruct H;
