@@ -64,7 +64,11 @@ End ProofBureaucracy.
                     Contexts
 ****************************************************)
 Notation "P '∪₂' Q" := (λ x y, P x y ∨ Q x y) (at level 85, right associativity) : type_scope.
+Notation "P '⊆' Q" := (∀ x, P x -> Q x) (at level 70, no associativity) : type_scope.
 Notation "P '⊆₂' Q" := (∀ x y, P x y -> Q x y) (at level 70, no associativity) : type_scope.
+Inductive UnionX2 T (Rs : (T -> T -> Prop) -> Prop) (x y : T) : Prop :=
+  u2_cons R : Rs R -> R x y -> UnionX2 Rs x y.
+Notation "'⋃₂' Rs" := (UnionX2 Rs) (at level 200, right associativity).
 
 Section Context.
   Inductive WhichChild := left | right.
@@ -136,24 +140,26 @@ Section Context.
         TransitiveClosure R b c ->
         TransitiveClosure R a c
         .
-    Instance spec_union A B : ValidSpecialization A -> ValidSpecialization B -> ValidSpecialization (TransitiveClosure (A ∪₂ B)).
+    Instance spec_union Rs : (Rs ⊆ ValidSpecialization) -> ValidSpecialization (TransitiveClosure (⋃₂ Rs)).
+      intro RsV.
       constructor.
       {
-        intros.
-        revert sc H2.
-        induction H1 as [b s P|].
+        intros b s sc Tbs Cssc.
+        revert sc Cssc.
+        induction Tbs as [b s P|].
         {
           intros.
-          destruct P; [destruct H|destruct H0];
-            destruct (vs_branches_satisfied0 b s sc); trivial; 
-            apply branch_satisfied with bc; trivial;
-            intros; apply tc_single;
-            [left|right]; trivial.
+          destruct P.
+          destruct (RsV _ H).
+          destruct (vs_branches_satisfied0 b s sc); trivial. 
+          apply branch_satisfied with bc; trivial.
+          intros; apply tc_single; trivial.
+          econstructor. eassumption. apply H2.
         }
         {
-          intros.
-          destruct (IHTransitiveClosure2 sc H2) as (bc, Cbbc, Pbcsc).
-          destruct (IHTransitiveClosure1 bc Cbbc) as (ac, Caac, Pacbc).
+          intros cc Cccc.
+          destruct (IHTbs2 cc Cccc) as (bc, Cbbc, Pbcsc).
+          destruct (IHTbs1 bc Cbbc) as (ac, Caac, Pacbc).
           apply branch_satisfied with ac.
           exact Caac.
           intro. apply tc_trans with (bc w).
@@ -162,7 +168,33 @@ Section Context.
         }
       }
       {
-        intros.
+        assert (∀ R, Rs R -> ∀ b s1 s2, R b s1 -> R b s2 -> R s1 s2) as RsInj; [|clear RsV].
+        {
+          intros.
+          destruct (RsV _ H).
+          apply vs_injective0 with b; trivial.
+        }
+        intros b s1 s2 Tbs1 Tbs2.
+        (* revert RsInj. *)
+        (* induction Tbs1 as [b s1 (R, RsR, Rbs1)|]; [|tauto]. *)
+        revert s1 Tbs1.
+        induction Tbs2 as [b s2 (R2, RsR2, R2bs2)|x y z].
+        2: {
+          intros.
+          apply IHTbs2_2.
+          (* eapply tc_trans. *)
+          induction Tbs1 as [b s1 (R, RsR, Rbs1)|].
+          apply tc_single.
+          econstructor. exact RsR.
+          
+          apply RsInj with b; trivial.
+          
+          apply IHTbs2_1.
+          induction (IHTbs2_1 Rbs1).
+        }
+        2: tauto.
+        induction Tbs2 as [a b Rab|a b c Tbs11 Tbs12].
+        induction Tbs2 as [Rab|Tbs21 Tbs22].
         destruct H1, H2.
         apply (vs_injective) in H1.
         apply @vs_injective
