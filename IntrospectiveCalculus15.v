@@ -88,31 +88,40 @@ Section Context.
   (* Inductive AnySatisfied B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) (b : B) : Prop :=
     cb_cons : CsMayBeAny b -> AnySatisfied paired b. *)
 
-  Inductive BranchSatisfied B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) (b : B) (sc : WhichChild -> S) : Prop :=
+  (* Inductive BranchSatisfied B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) (b : B) (sc : WhichChild -> S) : Prop :=
     (* | bs_any : CsMayBeAny b -> BranchSatisfied paired b sl sr *)
-    | bs_branch bc : CsMayBeBranch b bc -> (∀ w, paired (bc w) (sc w)) -> BranchSatisfied paired b sc.
+    | bs_branch bc : CsMayBeBranch b bc -> (∀ w, paired (bc w) (sc w)) -> BranchSatisfied paired b sc. *)
+  Inductive BranchSatisfied (paired : Context -> Context -> Prop) (b : Context) (sc : WhichChild -> Context) : Prop :=
+    (* | bs_any : CsMayBeAny b -> BranchSatisfied paired b sl sr *)
+    | bs_branch bc : CMayBeBranch b bc -> (∀ w, paired (bc w) (sc w)) -> BranchSatisfied paired b sc.
   
-  CoInductive ValidSpecialization B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) : Prop := {
+  (* CoInductive ValidSpecialization B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) : Prop := {
       (* vs_branches_agree : ∀ b bl br s, paired b s -> CsMayBeBranch b bl br -> CorrespondingBranch paired bl br s ;  *)
       (* vs_anys_satisfied : ∀ b s, paired b s -> CsMayBeAny s -> CsMayBeAny b ;  *)
       vs_branches_satisfied : ∀ b s sc, paired b s -> CsMayBeBranch s sc -> BranchSatisfied paired b sc ; 
       vs_injective : ∀ b s1 s2, paired b s1 -> paired b s2 -> ∃ p2, ValidSpecialization p2 ∧ p2 s1 s2 ;
+    }. *)
+
+  Class ValidSpecialization (paired : Context -> Context -> Prop) : Prop := {
+      vs_branches_satisfied : ∀ b s sc, paired b s -> CMayBeBranch s sc -> BranchSatisfied paired b sc ; 
+      vs_injective : ∀ b s1 s2, paired b s1 -> paired b s2 -> paired s1 s2 ;
     }.
   
   Inductive CImplies : Context -> Context -> Prop :=
-    cimp B {BC : CState B} b S {SC : CState S} s (paired : B -> S -> Prop) : ValidSpecialization paired -> paired b s -> CImplies (c_cons b) (c_cons s).
+    cimp b s (paired : Context -> Context -> Prop) : ValidSpecialization paired -> paired b s -> CImplies b s.
 
   Section Properties.
-    Lemma eq_valid B {BC : CState B} : ValidSpecialization eq.
-      cofix Q; constructor.
+    Instance eq_vs B {BC : CState B} : ValidSpecialization eq.
+      constructor.
       (* {
         intros. destruct H; assumption.
       } *)
       {
-        intros. destruct H. eapply bs_branch. eassumption. all: reflexivity.
+        intros. destruct H.
+        eapply bs_branch; [eassumption|reflexivity].
       }
       {
-        intros. destruct H, H0. exists eq. split. assumption. reflexivity.
+        congruence.
       }
     Qed.
 
