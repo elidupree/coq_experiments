@@ -63,6 +63,9 @@ End ProofBureaucracy.
 (****************************************************
                     Contexts
 ****************************************************)
+Notation "P '∪₂' Q" := (λ x y, P x y ∨ Q x y) (at level 85, right associativity) : type_scope.
+Notation "P '⊆₂' Q" := (∀ x y, P x y -> Q x y) (at level 70, no associativity) : type_scope.
+
 Section Context.
   Inductive WhichChild := left | right.
   Definition map_children A B (map : A -> B) (a : WhichChild -> A) (w : WhichChild) := map (a w).
@@ -82,49 +85,94 @@ Section Context.
     cmbb S (CS : CState S) s sc : CsMayBeBranch s sc -> CMayBeBranch (c_cons s) (map_children c_cons sc).
   
   Instance Context_CS S {CS : CState S} : CState Context := {| CsMayBeBranch := CMayBeBranch |}.
-  
-  (* Inductive CorrespondingBranch B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) (bl br : B) (s : S) : Prop :=
-    cb_cons sl sr : CsMayBeBranch s sl sr -> paired bl sl -> paired br sr -> CorrespondingBranch paired bl br s. *)
-  (* Inductive AnySatisfied B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) (b : B) : Prop :=
-    cb_cons : CsMayBeAny b -> AnySatisfied paired b. *)
 
-  (* Inductive BranchSatisfied B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) (b : B) (sc : WhichChild -> S) : Prop :=
+  Section AbandonedApproaches.
+    (* Inductive CorrespondingBranch B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) (bl br : B) (s : S) : Prop :=
+      cb_cons sl sr : CsMayBeBranch s sl sr -> paired bl sl -> paired br sr -> CorrespondingBranch paired bl br s. *)
+    (* Inductive AnySatisfied B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) (b : B) : Prop :=
+      cb_cons : CsMayBeAny b -> AnySatisfied paired b. *)
+
+    (* Inductive BranchSatisfied B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) (b : B) (sc : WhichChild -> S) : Prop :=
+      (* | bs_any : CsMayBeAny b -> BranchSatisfied paired b sl sr *)
+      | bs_branch bc : CsMayBeBranch b bc -> (∀ w, paired (bc w) (sc w)) -> BranchSatisfied paired b sc. *)
+    (* CoInductive ValidSpecialization B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) : Prop := {
+        (* vs_branches_agree : ∀ b bl br s, paired b s -> CsMayBeBranch b bl br -> CorrespondingBranch paired bl br s ;  *)
+        (* vs_anys_satisfied : ∀ b s, paired b s -> CsMayBeAny s -> CsMayBeAny b ;  *)
+        vs_branches_satisfied : ∀ b s sc, paired b s -> CsMayBeBranch s sc -> BranchSatisfied paired b sc ; 
+        vs_injective : ∀ b s1 s2, paired b s1 -> paired b s2 -> ∃ p2, ValidSpecialization p2 ∧ p2 s1 s2 ;
+      }. *)
+
     (* | bs_any : CsMayBeAny b -> BranchSatisfied paired b sl sr *)
-    | bs_branch bc : CsMayBeBranch b bc -> (∀ w, paired (bc w) (sc w)) -> BranchSatisfied paired b sc. *)
+  End AbandonedApproaches.
+  
   Inductive BranchSatisfied (paired : Context -> Context -> Prop) (b : Context) (sc : WhichChild -> Context) : Prop :=
-    (* | bs_any : CsMayBeAny b -> BranchSatisfied paired b sl sr *)
-    | bs_branch bc : CMayBeBranch b bc -> (∀ w, paired (bc w) (sc w)) -> BranchSatisfied paired b sc.
+    | branch_satisfied bc : CMayBeBranch b bc -> (∀ w, paired (bc w) (sc w)) -> BranchSatisfied paired b sc.
   
-  (* CoInductive ValidSpecialization B S {BC : CState B} {SC : CState S} (paired : B -> S -> Prop) : Prop := {
-      (* vs_branches_agree : ∀ b bl br s, paired b s -> CsMayBeBranch b bl br -> CorrespondingBranch paired bl br s ;  *)
-      (* vs_anys_satisfied : ∀ b s, paired b s -> CsMayBeAny s -> CsMayBeAny b ;  *)
-      vs_branches_satisfied : ∀ b s sc, paired b s -> CsMayBeBranch s sc -> BranchSatisfied paired b sc ; 
-      vs_injective : ∀ b s1 s2, paired b s1 -> paired b s2 -> ∃ p2, ValidSpecialization p2 ∧ p2 s1 s2 ;
-    }. *)
-
   Class ValidSpecialization (paired : Context -> Context -> Prop) : Prop := {
       vs_branches_satisfied : ∀ b s sc, paired b s -> CMayBeBranch s sc -> BranchSatisfied paired b sc ; 
       vs_injective : ∀ b s1 s2, paired b s1 -> paired b s2 -> paired s1 s2 ;
     }.
   
-  Inductive CImplies : Context -> Context -> Prop :=
-    cimp b s (paired : Context -> Context -> Prop) : ValidSpecialization paired -> paired b s -> CImplies b s.
+  Inductive CImplies (b s : Context) : Prop :=
+    cimp (paired : Context -> Context -> Prop) : ValidSpecialization paired -> paired b s -> CImplies b s.
 
   Section Properties.
-    Instance eq_vs B {BC : CState B} : ValidSpecialization eq.
+    Instance eq_vs : ValidSpecialization eq.
       constructor.
-      (* {
-        intros. destruct H; assumption.
-      } *)
       {
         intros. destruct H.
-        eapply bs_branch; [eassumption|reflexivity].
+        econstructor; [eassumption|reflexivity].
       }
       {
         congruence.
       }
     Qed.
 
+    Inductive TransitiveClosure T (R : T -> T -> Prop) : T -> T -> Prop :=
+      | tc_single a b
+          : R a b -> TransitiveClosure R a b
+      | tc_trans a b c :
+        TransitiveClosure R a b ->
+        TransitiveClosure R b c ->
+        TransitiveClosure R a c
+        .
+    Instance spec_union A B : ValidSpecialization A -> ValidSpecialization B -> ValidSpecialization (TransitiveClosure (A ∪₂ B)).
+      constructor.
+      {
+        intros.
+        revert sc H2.
+        induction H1 as [b s P|].
+        {
+          intros.
+          destruct P; [destruct H|destruct H0];
+            destruct (vs_branches_satisfied0 b s sc); trivial; 
+            apply branch_satisfied with bc; trivial;
+            intros; apply tc_single;
+            [left|right]; trivial.
+        }
+        {
+          intros.
+          destruct (IHTransitiveClosure2 sc H2) as (bc, Cbbc, Pbcsc).
+          destruct (IHTransitiveClosure1 bc Cbbc) as (ac, Caac, Pacbc).
+          apply branch_satisfied with ac.
+          exact Caac.
+          intro. apply tc_trans with (bc w).
+          apply Pacbc.
+          apply Pbcsc.
+        }
+      }
+      {
+        intros.
+        destruct H1, H2.
+        apply (vs_injective) in H1.
+        apply @vs_injective
+        congruence.
+      }
+    Qed.
+    Lemma imp_trans a b c : CImplies a b -> CImplies b c -> CImplies a c.
+      destruct 1 as (P1, V1, P1ab).
+      destruct 1 as (P2, V2, P2bc).
+      constructor.
   End Properties.
 End Context.
 
