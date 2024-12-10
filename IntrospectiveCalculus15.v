@@ -132,6 +132,23 @@ Section Context.
       }
     Qed.
 
+    Instance vs_max : ValidSpecialization CImplies.
+      constructor.
+      {
+        intros.
+        destruct H as (P, PV, Pbs).
+        destruct (vs_branches_satisfied _ Pbs H0).
+        apply branch_satisfied with bc.
+        assumption.
+        intro.
+        econstructor. eassumption. apply H1.
+      }
+      {
+        intros.
+        destruct H as (P1, P1V, P1bs1).
+        destruct H0 as (P2, P2V, P2bs2).
+      }
+
     Inductive TransitiveClosure T (R : T -> T -> Prop) : T -> T -> Prop :=
       | tc_single a b
           : R a b -> TransitiveClosure R a b
@@ -140,7 +157,17 @@ Section Context.
         TransitiveClosure R b c ->
         TransitiveClosure R a c
         .
-    Instance spec_union Rs : (Rs ⊆ ValidSpecialization) -> ValidSpecialization (TransitiveClosure (⋃₂ Rs)).
+    
+    Lemma tc_by_steps_from_head T (R : T -> T -> Prop) x w : TransitiveClosure R x w -> ∀ (P : T -> Prop), (∀ y, R x y -> P y) -> (∀ y z, R y z -> P y -> P z) -> P w.
+      induction 1; intros.
+      apply H0; assumption.
+      apply IHTransitiveClosure2; [|assumption].
+      intros.
+      apply H2 with b. assumption.
+      apply IHTransitiveClosure1; assumption.
+    Qed.
+
+    Instance tc_spec R : (ValidSpecialization R) -> ValidSpecialization (TransitiveClosure R).
       intro RsV.
       constructor.
       {
@@ -149,12 +176,10 @@ Section Context.
         induction Tbs as [b s P|].
         {
           intros.
-          destruct P.
-          destruct (RsV _ H).
+          destruct RsV.
           destruct (vs_branches_satisfied0 b s sc); trivial. 
           apply branch_satisfied with bc; trivial.
           intros; apply tc_single; trivial.
-          econstructor. eassumption. apply H2.
         }
         {
           intros cc Cccc.
@@ -168,43 +193,64 @@ Section Context.
         }
       }
       {
-        assert (∀ R, Rs R -> ∀ b s1 s2, R b s1 -> R b s2 -> R s1 s2) as RsInj; [|clear RsV].
+        intros b s1 s2 Tbs1 Tbs2.
+        induction Tbs1 as [b s1 Rbs1|]; [|tauto].
+        (* apply (tc_by_steps_from_head Tbs1); clear s1 Tbs1.
+        intros s1 Rbs1.
+        apply tc_single.
+        apply vs_injective with b. assumption. *)
+
+        apply (tc_by_steps_from_head Tbs2); clear s2 Tbs2.
+        {
+          intros s2 Rbs2.
+          apply tc_single.
+          apply vs_injective with b; assumption.
+        }
         {
           intros.
-          destruct (RsV _ H).
-          apply vs_injective0 with b; trivial.
+          apply tc_trans with y; [|apply tc_single]; assumption.
         }
-        intros b s1 s2 Tbs1 Tbs2.
-        (* revert RsInj. *)
-        (* induction Tbs1 as [b s1 (R, RsR, Rbs1)|]; [|tauto]. *)
-        revert s1 Tbs1.
-        induction Tbs2 as [b s2 (R2, RsR2, R2bs2)|x y z].
-        2: {
-          intros.
-          apply IHTbs2_2.
-          (* eapply tc_trans. *)
-          induction Tbs1 as [b s1 (R, RsR, Rbs1)|].
-          apply tc_single.
-          econstructor. exact RsR.
-          
-          apply RsInj with b; trivial.
-          
-          apply IHTbs2_1.
-          induction (IHTbs2_1 Rbs1).
-        }
-        2: tauto.
-        induction Tbs2 as [a b Rab|a b c Tbs11 Tbs12].
-        induction Tbs2 as [Rab|Tbs21 Tbs22].
-        destruct H1, H2.
-        apply (vs_injective) in H1.
-        apply @vs_injective
-        congruence.
       }
     Qed.
+    Inductive RCompose T (R S : T -> T -> Prop) (x z : T) : Prop :=
+      | cr_compose y
+          : R x y -> S y z -> RCompose R S x z.
+    
+    Instance rc_spec R S : ValidSpecialization R -> ValidSpecialization S -> ValidSpecialization (RCompose R S).
+      intros RV SV.
+      constructor; intros.
+      {
+        destruct H.
+        destruct RV as (RV, _).
+        destruct SV as (SV, _).
+        destruct (SV _ _ _ H1 H0) as (yc, Cyyc, Sycsc).
+        destruct (RV _ _ _ H Cyyc) as (bc, Cbbc, Rbcyc).
+        apply branch_satisfied with bc.
+        assumption.
+        intros.
+        split with (yc w).
+        apply Rbcyc.
+        apply Sycsc.
+      }
+      {
+        destruct H, H0.
+        destruct RV as (_, RV).
+        destruct SV as (_, SV).
+        constructor with y.
+        apply RV in H.
+      }
+
+
     Lemma imp_trans a b c : CImplies a b -> CImplies b c -> CImplies a c.
       destruct 1 as (P1, V1, P1ab).
       destruct 1 as (P2, V2, P2bc).
-      constructor.
+      apply cimp with (RCompose P1 P2).
+      {
+        constructor; intros.
+        {
+          destruct H.
+        }
+      }
   End Properties.
 End Context.
 
