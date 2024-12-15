@@ -66,7 +66,7 @@ End ProofBureaucracy.
 
 Notation "P '⊆₂' Q" := (∀ x y, P x y -> Q x y) (at level 70, no associativity) : type_scope.
 
-Section Formulas.
+(* Section Formulas. *)
   Inductive Formula :=
     | f_atom
     | f_branch (_ _:Formula).
@@ -82,7 +82,10 @@ Section Formulas.
     | r_branch (_ _:Rewrite).
   Declare Scope rewrite_scope.
   Bind Scope rewrite_scope with Rewrite.
-  (* Notation "?" := r_ignore : rewrite_scope. *)
+  Notation "'_'" := r_ignore : rewrite_scope.
+  Notation "a ⇒ b" := (r_replace a b) (at level 80, no associativity) : rewrite_scope.
+  Notation "a !" := (r_replace a a) (at level 80, no associativity) : rewrite_scope.
+  Notation "[ a , b ]" := (r_branch a b) : rewrite_scope.
 
   Inductive RRewrites : Rewrite -> Formula -> Formula -> Prop :=
     | rr_ignore f : RRewrites r_ignore f f
@@ -97,12 +100,12 @@ Section Formulas.
     | rsr r : Rs r -> RRewrites r a b -> RsRewrites Rs a b.
   
 
-End Formulas.
+(* End Formulas. *)
 
 (****************************************************
         Implementing variables via rewrites
 ****************************************************)
-Section ImplementingVariablesViaRewrites.
+(* Section ImplementingVariablesViaRewrites. *)
   (* object :~ ((symbol) (args...))
      where args are objects
      need:
@@ -111,6 +114,8 @@ Section ImplementingVariablesViaRewrites.
      ∀ s t : Symbol, f : Formula, s ≠ (t, f)
      easiest way: just make LHS of symbol always the same. make it ★
      then RHS of symbol can be anything
+
+     inside symbols, we can have names/namespaces, which are unrestricted except they cannot be symbols (LHS always (★,★)?)
      *)
   
   (* how an op moves constructors[...+inductive instances] from zero or more places to zero or more places, leaving them "empty" *)
@@ -132,7 +137,50 @@ Section ImplementingVariablesViaRewrites.
     "move to staging, then copy" etc
     
    *)
-End ImplementingVariablesViaRewrites.
+
+  (* Reified Inductive Constructor / Type *)
+  Inductive Name := name_base | name_branch (_ _:Name).
+  (* TODO... *)
+  Fixpoint name_f n := match n with name_base => ★ | name_branch a b => (name_f a, name_f b) end.
+  Inductive Symbol := symbol (_ : Name).
+  Inductive Object := object (symbol : Symbol) (args : list Object).
+  Inductive Ric := ric { name : Name ; ric_base : list (list Ric) ; ric_num_recursive : nat }.
+  Definition Rit := list Ric.
+
+  Definition Ready (n : Name) : Object := object (symbol ()).
+  Definition Step (n m : Name) : Rewrite := [[★!, [(name_f n)!, _]], ].
+  Inductive RicNamespaces.
+
+  Inductive Process := {
+
+    }.
+  
+  Definition RitProcess (n : Name) : list Rewrite :=.
+    (* lifecycle begins by changing the starting-data-root to an instance of this Process, at the initial state; it can then receive constructors?
+
+    typical process:
+    received branch : "start" left subtree, enter state delegating to that.
+    in "delegate to #n" and subtree n is that process's output type (distinct from its process type): start next / finish (only if you have no current input! having current input is an error/deadend.)
+    received atom : finish
+
+    starting a process expects preexisting state to be right type (including "nonexistent")
+
+     *)
+    (* for each [child] and constructor, "move constructor into child
+    [child] = subprocess we may delegate a subtree of the input into, likely ourselves
+     *)
+    (*  *)
+    (* RitProcess P (e.g. "build Rit"/"destroy Rit"),
+      for each constructor C,
+        (C=>P,init),d0 => (_=>P,(C,#A0)),d1 and d0->d1 is "start C" (e.g. empty -> C shape containing empties, nop)
+        for each argument A to C of type T, with subprocess Q:T->U,
+          (_=>P,(C,A),(..,(T,d0),..) =>,(..,((_=>Q,init),d0),..)
+          for each constructor D,
+            (D=>P,(C,A),(..,(_=>?),..) => (_=>P,(C,A)),(..,(D=>?),..)
+          (_=>P,(C,A)),(..,((_=>Q,finished),d1),..) => (_=>P,(C,A+1)),(..,(T,d1),..)
+        (_=>P,(C,#An)),d0 => (_=>P,finished),d1 and d0->d1 is "finish C" (e.g. nop, C shape containing empties -> empty)
+        
+(* End ImplementingVariablesViaRewrites. *)
 
 (****************************************************
             Embedding finite rewrite lists
