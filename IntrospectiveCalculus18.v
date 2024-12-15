@@ -70,18 +70,26 @@ Section Formulas.
   Inductive Formula :=
     | f_atom
     | f_branch (_ _:Formula).
+
+  Declare Scope formula_scope.
+  Bind Scope formula_scope with Formula.
+  Notation "★" := f_atom.
+  Notation "( a , b )" := (f_branch a b).
   
   Inductive Rewrite :=
     | r_ignore
     | r_replace (_ _:Formula)
     | r_branch (_ _:Rewrite).
+  Declare Scope rewrite_scope.
+  Bind Scope rewrite_scope with Rewrite.
+  (* Notation "?" := r_ignore : rewrite_scope. *)
 
   Inductive RRewrites : Rewrite -> Formula -> Formula -> Prop :=
     | rr_ignore f : RRewrites r_ignore f f
     | rr_replace a b : RRewrites (r_replace a b) a b
     | rr_branch a b a1 b1 a2 b2 :
         RRewrites a a1 a2 -> RRewrites b b1 b2 ->
-        RRewrites (r_branch a b) (f_branch a1 b1) (f_branch a2 b2).
+        RRewrites (r_branch a b) (a1, b1) (a2, b2).
 
   Definition RewriteSet := Rewrite -> Prop.
 
@@ -95,6 +103,19 @@ End Formulas.
         Implementing variables via rewrites
 ****************************************************)
 Section ImplementingVariablesViaRewrites.
+  (* object :~ ((symbol) (args...))
+     where args are objects
+     need:
+     ∀ s : Symbol, o : Object, s ≠ o
+     to achieve this:
+     ∀ s t : Symbol, f : Formula, s ≠ (t, f)
+     easiest way: just make LHS of symbol always the same. make it ★
+     then RHS of symbol can be anything
+     *)
+  
+  (* how an op moves constructors[...+inductive instances] from zero or more places to zero or more places, leaving them "empty" *)
+  (*  *)
+
   (* 
     slot ?? atom -> atom done
     branch (left cons) (_ _ space) _ -> branch (left space) (_ _ cons) _
