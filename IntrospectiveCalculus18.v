@@ -179,6 +179,10 @@ Notation "P '⊆₂' Q" := (∀ x y, P x y -> Q x y) (at level 70, no associativ
             (D=>P,(C,A),(..,(_=>?),..) => (_=>P,(C,A)),(..,(D=>?),..)
           (_=>P,(C,A)),(..,((_=>Q,finished),d1),..) => (_=>P,(C,A+1)),(..,(T,d1),..)
         (_=>P,(C,#An)),d0 => (_=>P,finished),d1 and d0->d1 is "finish C" (e.g. nop, C shape containing empties -> empty)
+
+      note that "start C" and "start first arg of C" could be merged into 1 step, and same for "finish C",
+      and for no-args, "start C" and "finish C" could be merged
+      *)
         
 (* End ImplementingVariablesViaRewrites. *)
 
