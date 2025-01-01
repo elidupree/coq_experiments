@@ -56,33 +56,33 @@ refine (
     n eq_refl).
 Defined.
 
-Parameter OpaqueFormula : Type.
+Parameter OpaqueFormula : Prop.
 Parameter q_0 : OpaqueFormula.
 Parameter q_S : OpaqueFormula -> OpaqueFormula.
 
-Definition ZeroOrSucc q := ∀ C, (q = q_0 -> C) -> (∀ p, q = (q_S p) -> C) -> C. 
-Definition InductiveNat n :=
+(* Definition ZeroOrSucc q := ∀ C, (q = q_0 -> C) -> (∀ p, q = (q_S p) -> C) -> C.  *)
+Definition InductiveNat n : Prop :=
   ∀ (P : OpaqueFormula → Prop)
     (zero_case : P q_0)
     (succ_case : ∀ m, P m → P (q_S m)),
     P n.
-Definition CoinductiveNat n :=
-  ∀ C, (∀ State, State -> ()) -> C.
-Parameter weaklyEqual : OpaqueFormula -> OpaqueFormula -> Prop.
-Parameter weq_refl : ∀ q, weaklyEqual q q.
+(* Definition CoinductiveNat n :=
+  ∀ C, (∀ State, State -> ()) -> C. *)
+Parameter OpaqueEq : OpaqueFormula -> OpaqueFormula -> Prop.
+Parameter oeq_refl : ∀ q, OpaqueEq q q.
 
-Definition HigherDestruct q := ∀ (zero_case : Prop) (succ_case : OpaqueFormula -> Prop), ((weaklyEqual q q_0) -> zero_case) ∧ (∀ p, (weaklyEqual q (q_S p) -> succ_case p)).
+Definition HigherDestruct q := ∀ (zero_case : Prop) (succ_case : OpaqueFormula -> Prop), ((OpaqueEq q q_0) -> zero_case) ∧ (∀ p, (OpaqueEq q (q_S p) -> succ_case p)).
 
 
-Definition IsSucc Sn n :=
+(* Definition IsSucc Sn n :=
   ∀ P, P (q_S n) -> P Sn.
 Definition PredsAre (P : OpaqueFormula -> Prop) m :=
-  ∀ p, IsSucc m p -> P p. 
+  ∀ p, IsSucc m p -> P p.  *)
 
-Lemma ind_zs_pred n : (∀ n, InductiveNat n -> HigherDestruct n) -> InductiveNat (q_S n) -> InductiveNat n.
+Lemma ind_pred n : (∀ n, InductiveNat n -> HigherDestruct n) -> InductiveNat (q_S n) -> InductiveNat n.
   intros hd iSn.
   unfold InductiveNat; intros.
-  apply (iSn (λ m, InductiveNat m ∧ ∀ p (is_succ : weaklyEqual m (q_S p)), InductiveNat p)).
+  apply (iSn (λ m, InductiveNat m ∧ ∀ p (is_succ : OpaqueEq m (q_S p)), InductiveNat p)).
 
   {
     split.
@@ -108,28 +108,43 @@ Lemma ind_zs_pred n : (∀ n, InductiveNat n -> HigherDestruct n) -> InductiveNa
     apply (H1 False _). assumption.
     
   }
-  apply weq_refl.
+  apply oeq_refl.
   assumption.
   assumption.
 Qed.
 
 
-  refine (
-    _ (lSn 
-      (PredsAre P) _ _)).
-  intros.
-  apply x; unfold IsSucc; trivial.
+Definition StrictInductiveNat n : Prop :=
+  ∀ (P : OpaqueFormula → Prop)
+    (zero_case : HigherDestruct q_0 -> P q_0)
+    (succ_case : ∀ m, HigherDestruct (q_S m) -> P m → P (q_S m)),
+    P n.
+
+Lemma sind_pred n : StrictInductiveNat (q_S n) -> StrictInductiveNat n.
+  intros  iSn.
+  unfold StrictInductiveNat; intros.
+  apply (iSn (λ m, StrictInductiveNat m ∧ ∀ p (is_succ : OpaqueEq m (q_S p)), StrictInductiveNat p)).
   
   {
-    unfold PredsAre; intros.
+    split.
+    { unfold StrictInductiveNat; intros; apply zero_case0; assumption. }
+    
+    intros.
+    apply (H True _).
+    assumption.
+  }
+  {
+    split.
+    { unfold StrictInductiveNat; intros. apply succ_case0. assumption.
+     destruct H0. apply H0. trivial. assumption. }
+    destruct H0.
+    intros.
+    
+    apply (H False _). assumption.
     
   }
+  apply oeq_refl.
 
-  {
-  intros.
-  apply H.
-
-  }
-  intros.
-  injection H1 as <-.
-  apply
+  assumption.
+  assumption.
+Qed.
