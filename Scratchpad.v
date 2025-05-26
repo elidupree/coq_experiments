@@ -163,3 +163,65 @@ Lemma sind_pred n : StrictInductiveNat (q_S n) -> StrictInductiveNat n.
   }
   { apply oeq_refl. }
 Qed.
+
+
+
+Parameter OpaqueIsZero : OpaqueFormula -> Prop.
+Parameter oi0 : OpaqueIsZero q_0.
+Parameter OpaqueIsSucc : OpaqueFormula -> OpaqueFormula -> Prop.
+Parameter oiS : ∀ p, OpaqueIsSucc p (q_S p).
+
+Definition FulfillsAllApplicableCases q
+  (ZeroCase : OpaqueFormula -> Prop)
+  (SuccCase : OpaqueFormula -> OpaqueFormula -> Prop) :=
+  (OpaqueIsZero q -> ZeroCase q) ∧
+  (∀ p, OpaqueIsSucc p q -> SuccCase p q).
+
+(* "ZeroCase q_0 ->" can easily be changed to "∀ q, OpaqueIsZero q -> ZeroCase q ->", which should allow StrictInductiveNat2 to use OpaqueIsZero instead of q_0, etc. *)
+Parameter FulfillsZero_FulfillsAll : ∀
+  (ZeroCase : OpaqueFormula -> Prop)
+  (SuccCase : OpaqueFormula -> OpaqueFormula -> Prop),
+  ZeroCase q_0 -> FulfillsAllApplicableCases q_0 ZeroCase SuccCase.
+Parameter FulfillsSucc_FulfillsAll : ∀ p 
+  (ZeroCase : OpaqueFormula -> Prop)
+  (SuccCase : OpaqueFormula -> OpaqueFormula -> Prop),
+  (SuccCase p (q_S p)) -> FulfillsAllApplicableCases (q_S p) ZeroCase SuccCase.
+
+Definition StrictInductiveNat2 n : Prop :=
+  ∀ (P : OpaqueFormula → Prop)
+    (zero_case : P q_0)
+    (succ_case : ∀ p, P p → P (q_S p)),
+    P n.
+
+Lemma sind2_0 : StrictInductiveNat2 q_0.
+  unfold StrictInductiveNat2; intros; apply zero_case; assumption.
+Qed.
+
+Lemma sind2_S p : StrictInductiveNat2 p -> StrictInductiveNat2 (q_S p).
+  unfold StrictInductiveNat2; intros.  apply succ_case.
+  apply H; assumption.
+Qed.
+
+Lemma sind_pred2 n : StrictInductiveNat2 (q_S n) -> StrictInductiveNat2 n.
+  intros iSn.
+  unfold StrictInductiveNat2; intros.
+  apply (iSn (λ m, StrictInductiveNat2 m ∧ ∀ p (is_succ : OpaqueIsSucc p m), StrictInductiveNat2 p)); trivial.
+  
+  {
+    split.
+    { apply sind2_0; assumption. }
+    
+    intros.
+    apply (FulfillsZero_FulfillsAll (λ _, True) (λ p _, StrictInductiveNat2 p)).
+    exact I.
+    assumption.
+  }
+  {
+    split; destruct H.
+    { apply sind2_S; assumption. }
+    
+    intros.
+    apply (FulfillsSucc_FulfillsAll p (λ _, False) (λ p _, StrictInductiveNat2 p)); assumption.
+  }
+  { apply oiS. }
+Qed.
