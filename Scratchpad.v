@@ -204,7 +204,7 @@ Qed.
 
 Lemma sind_pred2 n : StrictInductiveNat2 (q_S n) -> StrictInductiveNat2 n.
   intros iSn.
-  unfold StrictInductiveNat2; intros.
+  (* unfold StrictInductiveNat2; intros. *)
   apply (iSn (λ m, StrictInductiveNat2 m ∧ ∀ p (is_succ : OpaqueIsSucc p m), StrictInductiveNat2 p)); trivial.
   
   {
@@ -225,3 +225,108 @@ Lemma sind_pred2 n : StrictInductiveNat2 (q_S n) -> StrictInductiveNat2 n.
   }
   { apply oiS. }
 Qed.
+
+
+Definition StrictInductiveSuccIsNat n : Prop :=
+  ∀ (N : OpaqueFormula → Prop) (SiN : OpaqueFormula → Prop)
+    (zero_case : N q_0)
+    (succ_case : ∀ p, N p → N (q_S p))
+    (succ_is_nat_case : ∀ p, N (q_S p) → SiN p),
+    SiN n.
+
+Lemma sind_pred3 n : StrictInductiveSuccIsNat n -> StrictInductiveNat2 n.
+  intros.
+  apply H with StrictInductiveNat2.
+  { apply sind2_0. }
+  { apply sind2_S. }
+  { apply sind_pred2. }
+Qed.
+
+Definition NatRules (N : OpaqueFormula → Prop) : Prop := N q_0 ∧ ∀ p, N p → N (q_S p).
+Definition SuccIsNatRules (N SiN : OpaqueFormula → Prop) : Prop := NatRules N ∧ ∀ p, N (q_S p) → SiN p.
+
+(* result of simply stripping a q_S from each conclusion of NatRules (which elimates the impossible zero case) *)
+Definition NatOfQSRules (N N2 : OpaqueFormula → Prop) : Prop := ∀ p, N p → N2 p.
+
+Parameter InductiveNatsRespectSymbolMatching :
+  ∀ p,
+    (∀ N, NatRules N -> N (q_S p))
+    ->
+    (∀ N N2, NatRules N -> NatOfQSRules N N2 -> N2 p).
+
+Definition StrictInductiveNat3 n : Prop :=
+  ∀ (N : OpaqueFormula → Prop), NatRules N -> N n.
+
+(* this proof is a bit messy but it works to enact the purpose (showing that it's provable with no magic except a single use of InductiveNatsRespectSymbolMatching in the relevant case) *)
+Lemma sind_pred4 n : StrictInductiveSuccIsNat n -> StrictInductiveNat3 n.
+  intros Premise.
+  red in Premise.
+  apply Premise with StrictInductiveNat3.
+  { intros p H. apply H. }
+  { intros p H N H2. apply H2. apply H. split. apply H2. apply H2. }
+  { intros p H. pose (InductiveNatsRespectSymbolMatching p H). intros N2 NN2. apply p0 with N2. apply NN2. red. trivial. }
+Qed.
+
+
+CoInductive FunctionType :=
+  ft : (FunctionType -> Prop) -> FunctionType -> FunctionType.
+
+CoInductive ASet T : Type :=
+  | as_nil : ASet T
+  | as_branch : T -> ASet T -> ASet T -> ASet T.
+Arguments as_nil {T}.
+Arguments as_branch [T].
+CoInductive FunctionType :=
+  ft : (ASet FunctionType) -> FunctionType -> FunctionType.
+(* Parameter FunctionType : Type. *)
+Definition FunctionTypes := ASet FunctionType.
+(* Parameter ft : (FunctionType -> Prop) -> FunctionType -> FunctionType. *)
+
+Inductive ASContains [T] : ASet T -> T -> Prop :=
+  | asc_here t l r : ASContains (as_branch t l r) t
+  | asc_l t h l r : ASContains l t -> ASContains (as_branch h l r) t
+  | asc_r t h l r : ASContains r t -> ASContains (as_branch h l r) t.
+(* Definition Props := Prop -> Prop. *)
+Definition EnvIncludes (Superset Subset : FunctionTypes) := (∀ p, ASContains Subset p -> ASContains Superset p).
+Definition CanApplyInEnv (A : FunctionTypes) (B : FunctionType) (env : FunctionTypes) := EnvIncludes env A -> ASContains env B.
+Definition CanApplyAnyInEnv (Fs : FunctionTypes) env := (∀ A B, ASContains Fs (ft A B) -> CanApplyInEnv A B env).
+
+(* Inductive Proof (Rules : FunctionTypes) (Premises : FunctionTypes) (Conclusion : FunctionType) : Type :=
+  | atr_premises : ASContains Premises Conclusion -> Proof Rules Premises Conclusion
+  | atr_chain Idx (ts : Idx -> FunctionType) : ASContains Rules (ft (aset ts) Conclusion) -> (∀ (idx:Idx), Proof Rules Premises (ts idx)) -> Proof Rules Premises Conclusion. *)
+(* Record AnyAppTree : Type := { aat_ft : FunctionType ; aat_at : AppTree aat_ft }. *)
+(* Definition Proof (Rules : FunctionTypes) (Premises : FunctionTypes) (Conclusion : FunctionType) := ∀ env, EnvIncludes env Premises -> CanApplyAnyInEnv Rules env -> ASContains env Conclusion. *)
+CoFixpoint AllFunctionTypes : FunctionTypes :=
+  as_branch (as_nil) (as_branch ) ().
+CoFixpoint OneStep (Rules : FunctionTypes) (Context : FunctionTypes) : FunctionTypes :=
+  match Context with
+  | as_nil => as_nil
+  | as_branch t l r => as_branch t (OneStep Rules l) (OneStep Rules r)
+  end.
+  
+(* Record AnyProof (Rules : FunctionTypes) := { ap_Premises : FunctionTypes ; ap_Conclusion : FunctionType ; ap_prf : Proof Rules ap_Premises ap_Conclusion }.
+Arguments ap_Premises [Rules].
+Arguments ap_Conclusion [Rules]. *)
+(* Definition ap_ft [Rules] (p : AnyProof Rules) : FunctionType := ft (ap_Premises p) (ap_Conclusion p). *)
+Definition Star : FunctionTypes -> FunctionTypes -> FunctionTypes :=
+  λ (Rules Inputs : FunctionTypes), aset (λ (p : AnyProof Rules), ap_ft p).
+
+Inductive MPPremises A B : FunctionTypes :=
+  | mpp1 : MPPremises A B (ft A B)
+  | mpp2 a : A a -> MPPremises A B a.
+
+Inductive MP : FunctionTypes :=
+  | mp A B : MP (ft (MPPremises A B) B).
+
+Definition MPStar := Star MP.
+
+(* "set of function types" is (Prop -> Prop) I guess
+Set := (Prop -> Prop)
+CanApplyInEnv f env := ∀ v, env v -> env (f v)
+CanApplyAnyInEnv Functions env := (∀ f, Functions f -> CanApplyInEnv f env)
+* : Set -> Set -> Set
+* :=
+  λ (Functions : Set), λ (Inputs : Set), λ (Output : Prop), ∀ env, env Inputs -> CanApplyAnyInEnv f env -> env Output *)
+
+Definition SetOfTypes := Prop -> Prop.
+Definition MemberOfEach (S : SetOfTypes) : Prop := ∀T, S T -> T.

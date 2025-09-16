@@ -71,8 +71,17 @@ Section Graph.
   Variable RoleId : Type.
   Variable VertexId : Type.
   Variable EdgeId : Type.
-  (* Variable Graph : Type *)
-  Definition Graph := VertexId -> EdgeId -> RoleId -> Prop.
+  Variable Graph : Type.
+  Variable GraphIncludes : Graph -> VertexId -> EdgeId -> RoleId -> Type.
+  Variable GraphExcludes : Graph -> VertexId -> EdgeId -> RoleId -> Type.
+  Variable GraphIncludesOneOf : Graph -> Graph -> Type.
+  Variable GraphExcludesOneOf : Graph -> Graph -> Type.
+
+  Hypothesis gi_ge : ∀ g v e r, GraphIncludes g v e r -> GraphExcludes g v e r -> False.
+  Hypothesis gioo : ∀ g1 g2, GraphIncludesOneOf g1 g2 -> (∀ v e r, GraphIncludes g2 v e r -> GraphExcludes g1 v e r) -> False.
+  Hypothesis geoo : ∀ g1 g2, GraphExcludesOneOf g1 g2 -> (∀ v e r, GraphIncludes g2 v e r -> GraphIncludes g1 v e r) -> False.
+
+  
   Inductive SubgraphConstraint := rule (present : Graph) (absent : Graph).
 
   Inductive ContainsObeyer (g ng : Graph) : (p np : Graph) -> Prop :=
