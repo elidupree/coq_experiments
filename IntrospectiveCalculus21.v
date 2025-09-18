@@ -65,6 +65,121 @@ End ProofBureaucracy.
 ****************************************************)
 
 Section Rules.
+  Definition System P := P -> P -> Prop.
+
+  Inductive Derivable [P] (S : System P) (premise : P) (conclusion : P) : Prop :=
+    | d_rule (_:S premise conclusion)
+    | d_chain (b : P) (_: Derivable S premise b) (_: Derivable S premise conclusion)
+    | d_gather (_:∀ci, S conclusion ci -> Derivable S premise ci)
+    .
+
+  Lemma Extensions1DoNothing P (S : System P) : ∀ p c, Derivable (Derivable S) p c -> Derivable S p c.
+    Set Printing Implicit.
+    fix f 3.
+    destruct 1.
+    assumption.
+    apply d_chain with b; apply f; assumption.
+    apply d_gather. intros.
+    apply f.
+    apply H.
+    apply d_rule; assumption.
+  Qed.
+
+  Inductive DerivabilityOmega [P] (S : System P) : System P -> Prop :=
+    | d_rules : DerivabilityOmega S (Derivable S)
+    | d_succ (R : System P) : DerivabilityOmega S (Derivable R) -> DerivabilityOmega S (Derivable (Derivable R)).
+
+  Lemma ExtensionsOmegaDoNothing P (S : System P) p c D : DerivabilityOmega S D -> D p c -> Derivable S p c.
+    Set Printing Implicit.
+    induction 1.
+    trivial.
+    intro.
+    apply IHDerivabilityOmega.
+    apply Extensions1DoNothing.
+    assumption.
+  Qed.
+
+  
+  Unset Printing Implicit.
+  Definition System3 P := P -> P -> P -> Prop.
+
+  (* a p c = asserter premise conclusion *)
+  Definition UsePremises {P} (Ctx : System3 P) := ∀ a p, Ctx a p p.
+  Definition UseRules {P} (Rules : System3 P) (Ctx : System3 P) := ∀ a p c, Rules a p c -> Ctx a p c.
+  Definition Chain {P} (Ctx : System3 P) := ∀ a x y z, Ctx a x y -> Ctx a y z -> Ctx a x z.
+  Definition Gather {P} (Rules : System3 P) (Ctx : System3 P) := ∀ a x y, (∀ z, Rules a y z -> Ctx a x z) -> Ctx a x y.
+
+  Definition CanGatherAsserters {P} (gatherer : P) (Rules : System3 P) (Ctx : System3 P) := ∀ a b, (∀ p c, Rules b p c -> Ctx a p c) -> Ctx gatherer a b.
+  Definition CanCollapse {P} (collapser : P) (Ctx : System3 P) := ∀ a c, Ctx a a c -> Ctx collapser a c.
+  Definition AnyoneCanGatherAsserters {P} (Rules : System3 P) (Ctx : System3 P) := ∀ m, CanGatherAsserters m Rules Ctx.
+  Definition AnyoneCanCollapse {P} (Ctx : System3 P) := ∀ m, CanCollapse m Ctx.
+
+
+  Definition NoRules P : System3 P := λ a p c, False.
+  Definition Absurd {P} (Ctx : System3 P) := ∀ a p c, Ctx a p c.
+
+  Definition ResultsOf {P} (Reasoning : System3 P -> Prop) : System3 P := λ a p c, (∀ (Ctx : System3 P), Reasoning Ctx -> Ctx a p c).
+  Definition And {P} (A B : System3 P -> Prop) : (System3 P -> Prop) := λ Ctx, A Ctx ∧ B Ctx.
+
+  Inductive RussellsProps := rp_true | rp_paradox | rp_false.
+  Definition Russells : System3 RussellsProps := λ a p c, match a, p, c with
+    | rp_paradox, rp_paradox, _ => True
+    | _, _, _ => False
+    end.
+  
+  Definition ExtendWith {P} (Reasoning : System3 P -> Prop) (Ctx : System3 P) : System3 P := ResultsOf (And Reasoning (UseRules Ctx)).
+  Definition ExtendWith2 {P} (Reasoning : System3 P -> System3 P -> Prop) (Rules : System3 P) : System3 P := ResultsOf (And (Reasoning Rules) (UseRules Rules)).
+
+  Definition BrokenByRussells1 {P} (Rules : System3 P) := (ExtendWith AnyoneCanCollapse Rules).
+  Lemma anyone_says_paradox_absurd a c : (BrokenByRussells1 Russells) a rp_paradox c.
+    intros Ctx (AnyoneCanCollapse, R).
+    apply AnyoneCanCollapse.
+    apply R.
+    constructor.
+  Qed.
+  Lemma paradox_only_says_paradox_absurd p c : (BrokenByRussells1 Russells) rp_paradox p c -> p = rp_paradox.
+    intro.
+    destruct H with (λ (a p c : RussellsProps), p = rp_paradox); trivial.
+    split.
+    intros a b. trivial.
+    intros a p0 c0 R.
+    destruct a; destruct p0; cbn; cbv in R; trivial; contradiction.
+  Qed.
+  Lemma paradox_only_says_what_anyone_does a p c : (BrokenByRussells1 Russells) rp_paradox p c -> (BrokenByRussells1 Russells) a p c.
+    intro H.
+    apply paradox_only_says_paradox_absurd in H. rewrite H.
+    apply anyone_says_paradox_absurd.
+  Qed.
+
+  Definition BrokenByRussells2 {P} (Rules : System3 P) := ExtendWith2 AnyoneCanGatherAsserters (BrokenByRussells1 Rules).
+  Lemma anyone_says_anyone_paradox a p : (BrokenByRussells2 Russells) a p rp_paradox.
+    intros Ctx (GatherAsserters, R2).
+    apply GatherAsserters; intros.
+    apply R2.
+    apply paradox_only_says_what_anyone_does.
+    assumption.
+  Qed.
+
+  Definition BrokenByRussells {P} (Rules : System3 P) := ExtendWith Chain (BrokenByRussells2 Rules).
+    
+  Lemma yes_its_broken_by_russells : Absurd (BrokenByRussells Russells).
+    unfold Absurd; intros.
+    intros Ctx (Chain, R2).
+    eapply Chain.
+    {
+      apply R2.
+      apply anyone_says_anyone_paradox.
+    }
+    {
+      apply R2.
+      intros Ctx2 (A, R3).
+      apply R3.
+      apply anyone_says_paradox_absurd.
+    }
+  Qed.
+    
+
+
   (* Variable Object : Type. *)
 
   (* Record Proposition := { relation : Object ; lhs : Object ; rhs : Object }. *)
@@ -160,7 +275,7 @@ Section Rules.
   Qed.
 
   (* … And therefore, if you had a concrete subsystem where the subsystem-meanings were exactly "this rule does valid subsystem derivations", then you would be allowed to both (1) have a rule that did MP on the entries of that subsystem and (2) inject arbitrary valid subsystem derivations into that subsystem. The injection is valid because it has fulfilled the meaning directly, and MP is valid because of the above lemma.
-  
+
   What's the generalization of this? As the above lemma shows, "Rule does valid subsystem derivations" is a special case of "rule valid on (our) subsystem meanings" – a particular special case which is notable for not being dependent on the concrete meanings in any way. You (probably?) cannot have a subsystem whose meanings are defined as "rule valid on (our) subsystem meanings", because it would be an improper recursive definition. But the principle here should be valid in any situation where you have a subsystem whose meanings happen-to-be a special case of "rule valid on (our) subsystem meanings". *)
   
   Definition MeansValidDerivability {S : SystemOfSystems}
