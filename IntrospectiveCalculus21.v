@@ -67,6 +67,14 @@ End ProofBureaucracy.
 Section Rules.
   Definition System P := P -> P -> Prop.
 
+  Definition And {S} (A B : S -> Prop) : (S -> Prop) := λ Ctx, A Ctx ∧ B Ctx.
+  Definition Reflexive {P} (Ctx : System P) := ∀ x, Ctx x x.
+  Definition UseRules {P} (Rules : System P) (Ctx : System P) := ∀ p c, Rules p c -> Ctx p c.
+  Definition Chain {P} (Ctx : System P) := ∀ x y z, Ctx x y -> Ctx y z -> Ctx x z.
+  Definition Gathering {P} (Rules : System P) (Ctx : System P) := ∀ x y, (∀z, Rules y z -> Ctx x z) -> Ctx x y.
+  Definition ResultsOf {P} (Reasoning : System P -> Prop) : System P := λ p c, (∀ (Ctx : System P), Reasoning Ctx -> Ctx p c).
+  Definition ExtendWith {P} (Reasoning : System P -> Prop) (Ctx : System P) : System P := ResultsOf (And Reasoning (UseRules Ctx)).
+
   Inductive Derivable [P] (S : System P) (premise : P) (conclusion : P) : Prop :=
     | d_rule (_:S premise conclusion)
     | d_chain (b : P) (_: Derivable S premise b) (_: Derivable S premise conclusion)
@@ -99,15 +107,16 @@ Section Rules.
     assumption.
   Qed.
 
+
   
   Unset Printing Implicit.
   Definition System3 P := P -> P -> P -> Prop.
 
   (* a p c = asserter premise conclusion *)
   Definition UsePremises {P} (Ctx : System3 P) := ∀ a p, Ctx a p p.
-  Definition UseRules {P} (Rules : System3 P) (Ctx : System3 P) := ∀ a p c, Rules a p c -> Ctx a p c.
-  Definition Chain {P} (Ctx : System3 P) := ∀ a x y z, Ctx a x y -> Ctx a y z -> Ctx a x z.
-  Definition Gather {P} (Rules : System3 P) (Ctx : System3 P) := ∀ a x y, (∀ z, Rules a y z -> Ctx a x z) -> Ctx a x y.
+  Definition UseRules3 {P} (Rules : System3 P) (Ctx : System3 P) := ∀ a p c, Rules a p c -> Ctx a p c.
+  Definition ChainInSameAsserter {P} (Ctx : System3 P) := ∀ a x y z, Ctx a x y -> Ctx a y z -> Ctx a x z.
+  Definition GatherInSameAsserter {P} (Rules : System3 P) (Ctx : System3 P) := ∀ a x y, (∀ z, Rules a y z -> Ctx a x z) -> Ctx a x y.
 
   Definition CanGatherAsserters {P} (gatherer : P) (Rules : System3 P) (Ctx : System3 P) := ∀ a b, (∀ p c, Rules b p c -> Ctx a p c) -> Ctx gatherer a b.
   Definition CanCollapse {P} (collapser : P) (Ctx : System3 P) := ∀ a c, Ctx a a c -> Ctx collapser a c.
@@ -118,8 +127,7 @@ Section Rules.
   Definition NoRules P : System3 P := λ a p c, False.
   Definition Absurd {P} (Ctx : System3 P) := ∀ a p c, Ctx a p c.
 
-  Definition ResultsOf {P} (Reasoning : System3 P -> Prop) : System3 P := λ a p c, (∀ (Ctx : System3 P), Reasoning Ctx -> Ctx a p c).
-  Definition And {P} (A B : System3 P -> Prop) : (System3 P -> Prop) := λ Ctx, A Ctx ∧ B Ctx.
+  Definition ResultsOf3 {P} (Reasoning : System3 P -> Prop) : System3 P := λ a p c, (∀ (Ctx : System3 P), Reasoning Ctx -> Ctx a p c).
 
   Inductive RussellsProps := rp_true | rp_paradox | rp_false.
   Definition Russells : System3 RussellsProps := λ a p c, match a, p, c with
@@ -127,10 +135,10 @@ Section Rules.
     | _, _, _ => False
     end.
   
-  Definition ExtendWith {P} (Reasoning : System3 P -> Prop) (Ctx : System3 P) : System3 P := ResultsOf (And Reasoning (UseRules Ctx)).
-  Definition ExtendWith2 {P} (Reasoning : System3 P -> System3 P -> Prop) (Rules : System3 P) : System3 P := ResultsOf (And (Reasoning Rules) (UseRules Rules)).
+  Definition ExtendWith3 {P} (Reasoning : System3 P -> Prop) (Ctx : System3 P) : System3 P := ResultsOf3 (And Reasoning (UseRules3 Ctx)).
+  Definition ExtendWith32 {P} (Reasoning : System3 P -> System3 P -> Prop) (Rules : System3 P) : System3 P := ResultsOf3 (And (Reasoning Rules) (UseRules3 Rules)).
 
-  Definition BrokenByRussells1 {P} (Rules : System3 P) := (ExtendWith AnyoneCanCollapse Rules).
+  Definition BrokenByRussells1 {P} (Rules : System3 P) := (ExtendWith3 AnyoneCanCollapse Rules).
   Lemma anyone_says_paradox_absurd a c : (BrokenByRussells1 Russells) a rp_paradox c.
     intros Ctx (AnyoneCanCollapse, R).
     apply AnyoneCanCollapse.
@@ -151,7 +159,7 @@ Section Rules.
     apply anyone_says_paradox_absurd.
   Qed.
 
-  Definition BrokenByRussells2 {P} (Rules : System3 P) := ExtendWith2 AnyoneCanGatherAsserters (BrokenByRussells1 Rules).
+  Definition BrokenByRussells2 {P} (Rules : System3 P) := ExtendWith32 AnyoneCanGatherAsserters (BrokenByRussells1 Rules).
   Lemma anyone_says_anyone_paradox a p : (BrokenByRussells2 Russells) a p rp_paradox.
     intros Ctx (GatherAsserters, R2).
     apply GatherAsserters; intros.
@@ -160,7 +168,7 @@ Section Rules.
     assumption.
   Qed.
 
-  Definition BrokenByRussells {P} (Rules : System3 P) := ExtendWith Chain (BrokenByRussells2 Rules).
+  Definition BrokenByRussells {P} (Rules : System3 P) := ExtendWith3 ChainInSameAsserter (BrokenByRussells2 Rules).
     
   Lemma yes_its_broken_by_russells : Absurd (BrokenByRussells Russells).
     unfold Absurd; intros.
@@ -177,6 +185,166 @@ Section Rules.
       apply anyone_says_paradox_absurd.
     }
   Qed.
+    
+
+  Definition CanUseReasoningInAsserter {P} (asserter : P) (Reasoning : System P -> Prop) : (System3 P -> Prop) := λ Ctx, Reasoning (Ctx asserter).
+
+  (* to write gathering without Rocq ∀,
+       need repr of the ∀, which is just superset-guarantees between Ps, which is just a System P,
+       though one we understand to be "superset-guarantees from an asserter/premise viewed exhaustively and the same kind of thing viewed positively"
+    so it's just CanUseReasoningInAsserter a (UseRules (superset_guarantees)) *)
+
+  Definition PropImpliesEveryRepresentableRule {P} (prop : P) (Rules : System P) (MeansImplies : System3 P) (Ctx : System P) : Prop := ∀ a, (∀ p c, MeansImplies a p c -> Rules p c) -> Ctx prop a.
+
+  (* import Rocq superset-guarantees as a system... *)
+  Definition SupersetGuarantees {P} (Reasoning : System P -> Prop) : System P := λ x y, (∀ Ctx z, Reasoning Ctx -> Ctx y z -> Ctx x z).
+
+  (* internally, a System is an asserter? so a Reasoning is a set of asserters? so it's a prop that implies asserters by a System? *)
+  Section Wrong.
+    Definition Subsystem [P] (asserter : P) (MeansImplies : System3 P) : System P := λ a b, MeansImplies asserter a b.
+
+    Inductive Subsystems [P] (asserters : P -> Prop) (Rules : System P) (MeansImplies : System3 P) : (System P -> Prop) :=
+      | subsystem_cons a : asserters a -> Subsystems asserters Rules MeansImplies (Subsystem a MeansImplies).
+      
+    Definition AllImplicationsOfSystemSet [P] (asserter : P) (Rules : System P) (MeansImplies : System3 P) : System P := λ a b, ∃ ab, Rules asserter ab ∧ MeansImplies ab a b.
+  End Wrong.
+
+  (* no, a Reasoning can't depend on what's representable. Properties have their own existence. SupersetGuarantees *is* the definition of reasoning ... extending them is (the same as? dual to?) extending implications. *)
+
+  Definition ReasoningOf {P} (set : P) (Rules : System P) (MeansImplies : System3 P) : (System P -> Prop) := λ Ctx, Rules set .
+
+  Definition InternalSupersetGuarantees (Reasoning : System P -> Prop)
+
+  Definition Gathers [P] (overseer : P) (gathered : P -> Prop) (OverseerRulesWeAreExtending : System P) (MeansImplies : System3 P) (Ctx : System P) := ∀ MeansImplies g a b -> Ctx gatherer ().
+
+
+
+  Record IntrospectiveReasoning {P} (SaysImplies : System3 P) := {
+      ir_refl : UsePremises SaysImplies ;
+      ir_chain : ChainInSameAsserter SaysImplies ;
+      ir_collapse : AnyoneCanCollapse SaysImplies ;
+      (* inject : ∀ a p c, Implies p c -> MeansImplies a p c ; *)
+    }.
+  
+  Definition IntrospectiveImplies [P] (SaysImplies : System3 P) (a b : P) := ∀ Ctx,
+    UseRules3 SaysImplies Ctx ->
+    IntrospectiveReasoning Ctx ->
+    Ctx a a b.
+
+  Lemma II_refl  [P] (SaysImplies : System3 P) : Reflexive (IntrospectiveImplies SaysImplies).
+    intros x Ctx R I.
+    apply (ir_refl I).
+  Qed.
+
+  Lemma II_chain [P] (SaysImplies : System3 P) : Chain (IntrospectiveImplies SaysImplies).
+    red; intros.
+    intros Ctx R I.
+    apply (ir_chain I) with y.
+    apply H; assumption.
+    apply I.
+    apply H0; assumption.
+  Qed.
+
+  Definition EveryoneKnowsIntrospectiveImplies {P} (SaysImplies : System3 P) (Ctx : System3 P) :=
+    ∀ a, UseRules (IntrospectiveImplies SaysImplies) (Ctx a).
+    
+  Lemma IR_means_EveryoneKnowsIntrospectiveImplies :
+    ∀ P (SaysImplies Ctx : System3 P),
+      UseRules3 SaysImplies Ctx -> 
+      IntrospectiveReasoning Ctx -> EveryoneKnowsIntrospectiveImplies SaysImplies Ctx.
+    intros.
+    intros a p c I.
+    apply H0.
+    apply I; assumption.
+  Qed.
+
+  Definition ExtendWithIR [P] (SaysImplies : System3 P) : System3 P :=
+    ExtendWith3 IntrospectiveReasoning SaysImplies.
+
+  Lemma ExtendWithIR_IR [P] (SaysImplies : System3 P) :
+    IntrospectiveReasoning (ExtendWithIR SaysImplies).
+    constructor.
+    {
+      destruct 1.
+      apply H.
+    }
+    {
+      destruct 3.
+      apply (ir_chain H1) with y.
+      apply H. split; assumption.
+      apply H0. split; assumption.
+    }
+    {
+      destruct 2.
+      apply H0.
+      apply H.
+      split; assumption.
+    }
+  Qed.
+
+  Lemma IntrospectiveReasoningIdempotent :
+    ∀ P (SaysImplies : System3 P),
+      UseRules3 (ExtendWithIR (ExtendWithIR SaysImplies)) (ExtendWithIR SaysImplies).
+    
+    intros.
+    intros a p c E.
+    apply E. split.
+    {
+      apply ExtendWithIR_IR.
+    }
+    {
+      cbv. trivial.
+    }
+  Qed.
+    
+
+  Lemma IntrospectiveReasoningConsistent :
+    ∀ P (minimal absurd : P) (SaysImplies : System3 P),
+      (∀ p c, SaysImplies minimal p c -> False) ->
+      (∀ p c, SaysImplies absurd p c) ->
+      IntrospectiveImplies SaysImplies minimal absurd ->
+      False.
+    intros.
+    red in H1.
+    specialize (H1 (λ a p c, ((∀ c0, SaysImplies a a c0 -> False) -> (a = p -> p = c)))).
+    refine (_ (H1 _ _)); clear H1.
+    {
+      intro.
+      lapply x.
+      intros.
+      lapply H1.
+      intro.
+      rewrite H2 in H.
+      apply H with minimal minimal. apply H0.
+      reflexivity.
+      apply H.
+    }
+    {
+      intros a p c SI NSI eq.
+      exfalso.
+      rewrite <- eq in SI. exact (NSI _ SI).
+    }
+    {
+      constructor.
+      {
+        intros a p NSI eq.
+        reflexivity.
+      }
+      {
+        intros a x y z H1 H2 NSI eq.
+        rewrite eq in *.
+        rewrite <- (H1 NSI eq_refl) in *.
+        exact (H2 NSI eq_refl).
+      }
+      {
+        intros a p c Hx NSI  eq.
+        rewrite eq in *.
+        exact (Hx NSI eq_refl).
+      }
+    }
+  Qed.
+
+
     
 
 
