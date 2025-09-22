@@ -345,6 +345,11 @@ Section Rules.
   Qed.
 
 
+  
+  Definition IntrospectiveImplies2 [P] (SaysImplies : System3 P) (a b : P) := ∀ Ctx p c,
+    UseRules3 SaysImplies Ctx ->
+    IntrospectiveReasoning Ctx ->
+    Ctx a p c -> Ctx b p c.
     
 
 

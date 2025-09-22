@@ -1,0 +1,115 @@
+\documentclass{article}
+
+\usepackage{tikz}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+%\usepackage[nointegrals]{wasysym}
+\usepackage{mathtools}
+\usepackage{mathpartir}
+\usepackage{nameref}
+\usepackage{xcolor}
+
+\usepackage[english]{babel}
+\usepackage[autostyle]{csquotes}
+\usepackage{amsmath}
+\usepackage{wasysym}
+\MakeOuterQuote{"}
+\DeclareMathAlphabet{\mathpzc}{OT1}{pzc}{m}{it}
+
+%\usepackage[backend=biber,style=numeric]{biblatex}
+%\addbibresource{Introspective_Calculus.bib}
+
+\title{Introspective Reasoning}
+\author{Crystal Dendrite*}
+\date{\today}
+
+\DeclareMathSymbol{\mlq}{\mathord}{operators}{``}
+\DeclareMathSymbol{\mrq}{\mathord}{operators}{`'}
+
+\begin{document}
+  \maketitle
+  
+  \section{Introduction}
+  
+  How shall a proof system handle paradoxes of self-reference, like Russell's paradox and Girard's paradox?
+
+  To avoid unsoundness, proof-systems typically prevent you from \emph{expressing} self-referential claims.
+  However, general-purpose computation can inevitably construct self-referential claims.
+  So this protection also denies you the full power of computation.
+
+  Here, we present a simple approach that allows powerful reasoning, even with self-reference.
+
+  \section{The source of unsoundness}
+
+  To understand where paradoxes come from, let's construct an example and see what it takes to break it.
+
+  We don't want our system to prove $\bot$ (the absurd); but let's suppose we are allowed to express claims that "say anything we want", including \emph{referring} to themselves and $\bot$. In particular, let's assume we can construct a paradoxical statement $P$, where:
+
+  \begin{align*}
+    P &\equiv (P \to \bot) \\
+  \end{align*}
+
+  and assume that $\equiv$ means the two sides can always be treated as the same object.
+
+  Now, we need an \textbf{unsound ruleset}, which can produce $\bot$ from nothing. These are enough:
+
+  \begin{align*}
+    \label{refl}
+    \tag{reflexivity}
+    &\vdash (A \to A) \\
+    \label{mp}
+    \tag{modus ponens}
+    (A \to B), A &\vdash B \\
+    \label{unsoundrule}
+    \tag{the trickster}
+    (C \to (A \to B)), (C \to A) &\vdash (C \to B) \\
+  \end{align*}
+
+  \eqref{refl} gets us $P \to P$, which is the same as $P \to (P \to \bot)$.
+  This fulfills both premises of \eqref{unsoundrule}, getting us $P \to \bot$.
+  Which is the same as $P$, so it fulfills both premises of \eqref{mp}, getting us $\bot$.
+
+  Why is \eqref{unsoundrule} bad? All it says is that you can use \eqref{mp} under a hypothetical $C$.
+  
+  To see why, let's ask what we \emph{mean} by the relation "$\to$".
+
+  \section{What is implication?}
+
+  We would like to express arbitrary \textbf{systems of reasoning}, which we define by rules that say certain premises go to certain conclusions. This will obey \eqref{refl} and \eqref{trans}:
+  \begin{align*}
+    \tag{reflexivity}
+    &\vdash (A \to A) \\
+    \label{trans}
+    \tag{transitivity}
+    (A \to B), (B \to C) &\vdash (A \to C) \\
+  \end{align*}
+
+  But notice that the premises and conclusions of \emph{these} rules have exactly one "$\to$" each.
+  If we start putting "$\to$" inside the operands of other "$\to$", we are doing reasoning \emph{about} reasoning: "A particular piece of \emph{reasoning} goes to another."
+  And there's more than one way to define which reasoning-about-reasoning to accept.
+
+  [you assume stronger reasoning <-> you can do weaker reasoning]
+
+  ["if A is true, then B must be true" - but we're still in the midst of defining what it means for "A -> B" to be "true", so,]
+
+  [A -> B is possible under certain reasoning - but which reasoning? Let's generalize over kinds of reasoning. conveniently the way to do this is ...]
+
+  In the proposition $A \to B$, where $A$ and $B$ both represent reasoning, one may think of $A$ as the starting-rules and $B$ as derived-rules. If we say:
+  \begin{align*}
+    \tag{derive reflexivity}
+    &\vdash B \to (A \to A) \\
+  \end{align*}
+
+  then we cease to acknowledge that \emph{any} system of reasoning can \emph{fail} to derive \eqref{refl}.
+
+  Similarly, a system could assert \emph{any} of its own beliefs as universal truths that can be derived from anything:
+  \begin{align*}
+    \tag{weakening}
+    A &\vdash (B \to A) \\
+  \end{align*}
+
+  By including \eqref{mp} in a system, we say: You may reason from any $A$ to all \textbf{consequences} of $A$ (the $B$ where ($A \to B$)).
+
+
+  %\printbibliography
+\end{document}
