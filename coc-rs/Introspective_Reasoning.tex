@@ -25,6 +25,7 @@
 
 \DeclareMathSymbol{\mlq}{\mathord}{operators}{``}
 \DeclareMathSymbol{\mrq}{\mathord}{operators}{`'}
+\renewcommand{\emptyset}{\varnothing}
 
 \begin{document}
   \maketitle
@@ -75,13 +76,71 @@
 
   \section{What is implication?}
 
-  We would like to express arbitrary \textbf{systems of reasoning}, which we define by rules that say certain premises go to certain conclusions. This will obey \eqref{refl} and \eqref{trans}:
+  We would like to express arbitrary \textbf{systems of reasoning}, which we define by rules that say certain premises go to certain conclusions.
+  $(A \to B)$ could represent a potential \emph{rule} \textendash "you may reason from $A$ to $B$."
+
+  Can it also represent a proposition that could be true or false? $(A \to B)$ would be true if you can "objectively" reason from $A$ to $B$.
+  But reason \emph{under what rules}?
+  We're still in the middle of deciding what rules should be allowed.
+  If $\to$ \emph{means} using certain rules, and we haven't decided what those rules are, it's hard to justify whether a rule \emph{about} $\to$ should be allowed.
+
+  We take refuge in "full generality": For \emph{any} rules $R$, we want to be able to express the question of whether $R$ can reason from $A$ to $B$.
+  We can express this with a \emph{concrete} relation between rules, where $R \twoheadrightarrow S$ means "the rule(s) $R$ can derive the rule(s) $S$ through nothing but using the rules of $R$ in sequence":
+  \begin{align*}
+    \label{rrefl}
+    \tag{reflexivity}
+    &\vdash R \twoheadrightarrow (A \to A) \\
+    \label{rtrans}
+    \tag{transitivity}
+    (R \twoheadrightarrow (A \to B, B \to C)) &\vdash (R \twoheadrightarrow (A \to C)) \\
+  \end{align*}
+
+  Note that \emph{under} $\twoheadrightarrow$, the meaning of the relation $\to$ isn't defined by our system \textendash\ it's defined by whatever's in $R$.
+
+  What's the fate of \eqref{mp} in this system?
+  Since our top-level propositions are only $\twoheadrightarrow$, those are our only possible conclusions.
+  And since we claim that they are defined \emph{exhaustively} by \eqref{rrefl} and \eqref{rtrans}, they can only be based on reasoning from \emph{those exact rules}.
+  We can express that ruleset internally; I call it $\mathbb{D}$, for "derivation":
+
+  \begin{align*}
+    &\vdash \mathbb{D} \twoheadrightarrow (\emptyset \to (A \to A)) \\
+    &\vdash \mathbb{D} \twoheadrightarrow ((R \twoheadrightarrow (A \to B, B \to C)) \to (R \twoheadrightarrow (A \to C))) \\
+  \end{align*}
+
+  And then use it to express a version of \eqref{mp}:
+  \newcommand{\dto}{\mathbb{D} \twoheadrightarrow}
+
+  \begin{align*}
+    \label{mp_deriv}
+    \tag{modus ponens for $\twoheadrightarrow$}
+    (\dto (A \to B)), A &\vdash B \\
+  \end{align*}
+
+  Surely this must be a valid rule!
+  We surely think our system doesn't produce any wrong beliefs about $(\dto)$, so anything you could derive with this rule is something you could derive anyway.
+
+  At first this may look \emph{too} easy: it kinda looks like $(\mathbb{D} \twoheadrightarrow (A \to B))$ can just be a stand-in for our previous $(A \to B)$. So now let's construct our paradox again:
+
+  \begin{align*}
+    P &\equiv (\dto (P \to \bot)) \\
+    \label{unsoundrule_deriv}
+    \tag{the trickster for $\twoheadrightarrow$}
+    (\dto (C \to (\mathbb{D} \to (A \to B)))), (\dto (C \to A)) &\vdash (\dto (C \to B)) \\
+  \end{align*}
+
+  But now we can understand the trickster's claim.
+  It says: If a system $C$ can reason from $\mathbb{D}$ to $A \to B$, and also can implement $A$ itself, then surely it implements $B$.
+  This is plainly \emph{false}!
+  $C$'s rules for $\to$ could simply have gone beyond our definition of $\twoheadrightarrow$.
+
+  This will obey \eqref{refl} and \eqref{trans}:
   \begin{align*}
     \tag{reflexivity}
     &\vdash (A \to A) \\
     \label{trans}
     \tag{transitivity}
     (A \to B), (B \to C) &\vdash (A \to C) \\
+    (S \looparrowright (A \to (B \looparrowright C)), (S \looparrowright (A \to B)) &\vdash (S \looparrowright (A \to C)) \\
   \end{align*}
 
   But notice that the premises and conclusions of \emph{these} rules have exactly one "$\to$" each.
