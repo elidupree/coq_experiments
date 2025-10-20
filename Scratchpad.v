@@ -248,14 +248,22 @@ Definition SuccIsNatRules (N SiN : OpaqueFormula → Prop) : Prop := NatRules N 
 (* result of simply stripping a q_S from each conclusion of NatRules (which elimates the impossible zero case) *)
 Definition NatOfQSRules (N N2 : OpaqueFormula → Prop) : Prop := ∀ p, N p → N2 p.
 
+Definition StrictInductiveNat3 n : Prop :=
+  ∀ (N : OpaqueFormula → Prop), NatRules N -> N n.
+
 Parameter InductiveNatsRespectSymbolMatching :
   ∀ p,
-    (∀ N, NatRules N -> N (q_S p))
+    StrictInductiveNat3 (q_S p)
     ->
     (∀ N N2, NatRules N -> NatOfQSRules N N2 -> N2 p).
 
-Definition StrictInductiveNat3 n : Prop :=
-  ∀ (N : OpaqueFormula → Prop), NatRules N -> N n.
+Definition StrictInductiveNat3_0 : StrictInductiveNat3 q_0 :=
+  (λ N (NN : NatRules N),
+      proj1 NN).
+Definition StrictInductiveNat3_succ p : StrictInductiveNat3 p -> StrictInductiveNat3 (q_S p) :=
+  λ (Pn : StrictInductiveNat3 p),
+    (λ N (NN : NatRules N),
+      proj2 NN p (Pn N NN)).
 
 (* this proof is a bit messy but it works to enact the purpose (showing that it's provable with no magic except a single use of InductiveNatsRespectSymbolMatching in the relevant case) *)
 Lemma sind_pred4 n : StrictInductiveSuccIsNat n -> StrictInductiveNat3 n.
@@ -263,9 +271,90 @@ Lemma sind_pred4 n : StrictInductiveSuccIsNat n -> StrictInductiveNat3 n.
   red in Premise.
   apply Premise with StrictInductiveNat3.
   { intros p H. apply H. }
+  Show Proof.
   { intros p H N H2. apply H2. apply H. split. apply H2. apply H2. }
   { intros p H. pose (InductiveNatsRespectSymbolMatching p H). intros N2 NN2. apply p0 with N2. apply NN2. red. trivial. }
-Qed.
+Defined.
+Definition sind_pred4_reduced := Eval compute in sind_pred4.
+Print sind_pred4.
+Print sind_pred4_reduced.
+
+Definition sind_pred4_reduced_manually n : StrictInductiveSuccIsNat n -> StrictInductiveNat3 n :=
+  λ (Premise : StrictInductiveSuccIsNat n),
+  Premise
+
+    (* "we claim both N and SiN can just be the type of inductive naturals" *)
+    StrictInductiveNat3
+    StrictInductiveNat3
+
+    (* zero case: *)
+    StrictInductiveNat3_0
+
+    (* succ case: *)
+    StrictInductiveNat3_succ
+
+    (* SiN case: *)
+    (λ p (Pn : StrictInductiveNat3 (q_S p)),
+      (λ N (NN : NatRules N),
+        (InductiveNatsRespectSymbolMatching p Pn)
+          N N
+          NN
+          (λ p2 P2n, P2n))).
+
+
+Definition ONatRules (N : OpaqueFormula → Prop) : Prop := (∀ z, OpaqueIsZero z → N z) ∧ (∀ p q, OpaqueIsSucc p q → N p → N q).
+(* result of rewriting ONatRules on two sets:
+  * in ONatRules, the idea is to say when "N obeys the rules of natural numbers", by saying exactly when it forces a number to count as a natural based on others
+  * in OSuccsAreNatRules, we restrict this to exactly when ONatRules force *a number's successors* to obey the rules of natural numbers, based on what numbers count as naturals. This eliminates all cases that require OpaqueIsZero, because no number's successors are guaranteed to all be zero. *)
+Definition OSuccsAreNatRules (N SiN : OpaqueFormula → Prop) : Prop := ONatRules N ∧ ∀ p, N p → SiN p.
+
+Definition StrictInductiveNat4 n : Prop :=
+  ∀ (N : OpaqueFormula → Prop), ONatRules N -> N n.
+
+Definition StrictInductiveNat4_0 z : OpaqueIsZero z -> StrictInductiveNat4 z :=
+  (λ zz N (NN : ONatRules N),
+      proj1 NN z zz).
+
+Definition StrictInductiveNat4_succ p q : OpaqueIsSucc p q -> StrictInductiveNat4 p -> StrictInductiveNat4 q :=
+  λ pqs (Pn : StrictInductiveNat4 p),
+    (λ N (NN : ONatRules N),
+      proj2 NN p q pqs (Pn N NN)).
+
+(* OPredOfNatRules differs from OSuccsAreNatRules in that it produces a result exactly when there *exists* a natural number that is the successor of this predecessor, not merely when *all* successors of it are nats. (Due to the concrete rules of natural numbers, it happens to be that this is "stricter" rather than "orthogonal".) *)
+Definition OPredOfNatRules (N PoN : OpaqueFormula → Prop) : Prop := ONatRules N ∧ ∀ p q, OpaqueIsSucc p q → N q → PoN p.
+
+Definition StrictInductiveSuccsAreNat4 n : Prop :=
+  ∀ (N SiN : OpaqueFormula → Prop), OSuccsAreNatRules N SiN -> SiN n.
+Definition StrictInductivePredOfNat4 n : Prop :=
+  ∀ (N SiN : OpaqueFormula → Prop), OPredOfNatRules N SiN -> SiN n.
+
+Parameter InductiveNatsRespectSymbolMatching4 :
+  ∀ p q, OpaqueIsSucc p q ->
+    StrictInductiveNat4 q
+    ->
+    StrictInductiveSuccsAreNat4 p.
+
+Definition sind_pred5_reduced_manually n : StrictInductivePredOfNat4 n -> StrictInductiveNat4 n :=
+  λ (Premise : StrictInductivePredOfNat4 n),
+  Premise
+
+    (* "we claim both N and SiN can just be the type of inductive naturals" *)
+    StrictInductiveNat4
+    StrictInductiveNat4
+
+    (conj
+      (conj
+        StrictInductiveNat4_0
+        StrictInductiveNat4_succ)
+
+      ((λ p q pqs (qn : StrictInductiveNat4 q),
+      (λ N (NN : ONatRules N),
+        (InductiveNatsRespectSymbolMatching4 p q pqs qn)
+          N N
+          (conj NN
+          (λ p2 P2n, P2n))))))
+    .
+
 
 
 CoInductive FunctionType :=
